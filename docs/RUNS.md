@@ -2946,3002 +2946,3003 @@ traced tests' seconds, beside the released tests' untraced:
 | mypy               | guess   |    239 |    239 |        0 |                      |                                                                                  |         |          |
 
 The bindings with neither a fix nor a guess, by shape: those a traced test reached, and those it saw
-hold one type, the most any inference could type, with the commonest source:
+hold one type, the most any inference could type (each shape's commonest source is in
+`tables/one-type.csv`):
 
-| corpus             | shape                                      | no fix | traced | one type |                                                                                                         commonest source |
-| ------------------ | ------------------------------------------ | -----: | -----: | -------: | -----------------------------------------------------------------------------------------------------------------------: |
-| django             | call: chained .method()                    |  1,355 |    959 |      602 |                                                                                                    super().deconstruct() |
-| django             | call: self.method()                        |    987 |    662 |      425 |                                                                                                     self.decode(encoded) |
-| django             | call: param.method()                       |    657 |    478 |      378 |                                                                                                   token.split_contents() |
-| django             | call: imported function                    |    656 |    275 |      201 |                                                                                                            urlsplit(url) |
-| django             | call: local.method()                       |    546 |    387 |      266 |                                                                                                        p.rpartition('-') |
-| django             | empty list                                 |    452 |      0 |        0 |                                                                                                                          |
-| django             | copy: local                                |    435 |    322 |      227 |                                                                                                                     bits |
-| django             | attr: chained                              |    406 |    280 |      183 |                                                                                                         self.model._meta |
-| django             | None literal                               |    365 |    104 |      104 |                                                                                                                     None |
-| django             | copy: param (unannotated)                  |    348 |    236 |      142 |                                                                                                                databases |
-| django             | attr: self.x                               |    345 |    268 |      144 |                                                                                                  self.renamed_operations |
-| django             | call: imported.attr()                      |    301 |    142 |       95 |                                                                  router.db_for_write(self.model, instance=self.instance) |
-| django             | other constant                             |    296 |     22 |       22 |                                                                                                                    False |
-| django             | subscript: other                           |    265 |    198 |      161 |                                                                              self.to_state.models[app_label, model_name] |
-| django             | dict (mixed/unknown elements)              |    236 |    104 |       73 |                                                                                                      {'name': self.name} |
-| django             | empty dict                                 |    201 |      0 |        0 |                                                                                                                          |
-| django             | call: module function (unannotated)        |    195 |    142 |      105 |                                                                                       _get_duration_components(duration) |
-| django             | tuple (mixed/unknown elements)             |    193 |     95 |       72 |                                                                                                  (app_label, model_name) |
-| django             | copy: imported                             |    179 |      8 |        7 |                                                                                                              connections |
-| django             | call: builtin getattr()                    |    174 |    154 |       72 |                                                                                                 getattr(obj, field.name) |
-| django             | subscript: local[...]                      |    173 |    107 |       90 |                                                                                                                  bits[1] |
-| django             | attr: local.x                              |    170 |    129 |       92 |                                                                                                              model._meta |
-| django             | ListComp (unknown elements)                |    165 |    118 |       81 |                                                                              [col for col in self.lhs for _ in range(2)] |
-| django             | list (mixed/unknown elements)              |    157 |     53 |       41 |                                                                                                                [request] |
-| django             | conditional                                |    157 |    127 |       67 |                                                  klass.__name__ if isinstance(klass, type) else klass.__class__.__name__ |
-| django             | binop (unknown operands)                   |    140 |     92 |       85 |                                                                                                  builtin_libs + app_libs |
-| django             | subscript: param[...]                      |    136 |    111 |       94 |                                                                                                      options['database'] |
-| django             | attr: param.x                              |    127 |    105 |       76 |                                                                                                    changelist.add_facets |
-| django             | boolop (or)                                |    112 |     92 |       68 |                                                                                self.encoding or settings.DEFAULT_CHARSET |
-| django             | call: builtin set()                        |    109 |     16 |       12 |                                                                                                set(self.using(db).all()) |
-| django             | attr: imported.x                           |    105 |     21 |       17 |                                                                                         settings.AUTHENTICATION_BACKENDS |
-| django             | call: imported class                       |     96 |     14 |       14 |                                                                                                      TopologicalSorter() |
-| django             | call: module.func()                        |     96 |     71 |       61 |                                                                                               itertools.cycle([OR, AND]) |
-| django             | call: builtin enumerate()                  |     85 |     67 |       37 |                                                                                           enumerate(self.lookup_choices) |
-| django             | call: builtin sorted()                     |     77 |     64 |       58 |                                                                                             sorted(self.kept_model_keys) |
-| django             | call: builtin list()                       |     62 |     47 |       34 |                                                                                    list(getattr(module, '__path__', [])) |
-| django             | subscript: imported[...]                   |     59 |     40 |       36 |                                                                                                          connections[db] |
-| django             | call: builtin zip()                        |     58 |     38 |       16 |                                              zip(old_model._meta.local_many_to_many, new_model._meta.local_many_to_many) |
-| django             | DictComp (unknown elements)                |     57 |     37 |       21 |                                                                   {key: str(value) for key, value in param_dict.items()} |
-| django             | call: other name                           |     52 |     36 |       21 |                                                                                               view_func(*args, **kwargs) |
-| django             | call: local name                           |     51 |     36 |       18 |                                                                            receiver(signal=self, sender=sender, **named) |
-| django             | call: builtin property()                   |     49 |      0 |        0 |                                                                                                                          |
-| django             | boolop (and)                               |     42 |     29 |       22 |                                                             self.can_delete and self.has_delete_permission(request, obj) |
-| django             | call: global.method()                      |     42 |     28 |       17 |                                                                                         UserModel.get_email_field_name() |
-| django             | binop (one side literal)                   |     42 |     16 |       16 |                                                                                 'DJANGO_SUPERUSER_' + field_name.upper() |
-| django             | SetComp (unknown elements)                 |     40 |     21 |       17 |                                                               {app_config.name for app_config in self.get_app_configs()} |
-| django             | copy: other                                |     40 |      7 |        5 |                                                                                                           sync_receivers |
-| django             | empty tuple                                |     39 |      0 |        0 |                                                                                                                          |
-| django             | compare                                    |     35 |     20 |       20 |                                                                                                          order == 'DESC' |
-| django             | call: builtin next()                       |     32 |     31 |       27 |                                                                                                          next(cols_iter) |
-| django             | call: module class                         |     31 |      7 |        7 |                                                                                           Parser(stream, self._boundary) |
-| django             | GeneratorExp (unknown elements)            |     29 |     26 |       25 |                            (f for f in self.opts.get_fields(include_hidden=True) if f.auto_created and (not f.concrete)) |
-| django             | copy: global                               |     27 |      6 |        6 |                                                                                                       intword_converters |
-| django             | copy: modclass                             |     27 |      0 |        0 |                                                                                                                          |
-| django             | copy: moddef                               |     26 |      0 |        0 |                                                                                                                          |
-| django             | call: other callee                         |     24 |     16 |       12 |                                                getattr(self.default_settings, 'is_overridden', lambda s: False)(setting) |
-| django             | attr: module.x                             |     21 |      5 |        4 |                                                                                                  sys.__interactivehook__ |
-| django             | call: builtin iter()                       |     21 |     17 |       16 |                                                                                                     iter(cols_list[:-1]) |
-| django             | call: builtin reversed()                   |     19 |     16 |        6 |                                                                                         reversed(apps.get_app_configs()) |
-| django             | await: call: self.method()                 |     18 |     14 |        6 |                                                                                               await self._aget_session() |
-| django             | call: builtin tuple()                      |     18 |     14 |        8 |                                                                          tuple(handle_extensions(options['extensions'])) |
-| django             | attr: modclass.x                           |     17 |      1 |        1 |                                                                                                    _TestState.saved_data |
-| django             | call: builtin type()                       |     17 |     14 |       10 |                                                                                          type('Meta', (), meta_contents) |
-| django             | await: call: chained .method()             |     17 |     17 |        3 |                                                                          await request.session.aget(BACKEND_SESSION_KEY) |
-| django             | call: other.method()                       |     15 |     11 |        6 |                                                                                                     path.rpartition('.') |
-| django             | call: builtin object()                     |     14 |      2 |        2 |                                                                                                                 object() |
-| django             | call: modclass.method()                    |     14 |      5 |        5 |                                                                          DeconstructableSerializer._serialize_path(path) |
-| django             | binop: literal % formatting                |     13 |      8 |        8 |                                                                                             '%s(%s' % (rel_type, rel_to) |
-| django             | attr: cls.x                                |     12 |     12 |       10 |                                                                                                                cls._meta |
-| django             | copy: builtin                              |     12 |      1 |        1 |                                                                                                                  setattr |
-| django             | call: builtin staticmethod()               |     11 |      0 |        0 |                                                                                                                          |
-| django             | call: builtin max()                        |     11 |      7 |        7 |                                                                               max((x for x in numbers if x is not None)) |
-| django             | call: cls.method()                         |     10 |      6 |        4 |                                                                              cls._databases_names(include_mirrors=False) |
-| django             | copy: self                                 |      9 |      7 |        4 |                                                                                                                     self |
-| django             | call: capitalised                          |      9 |      6 |        3 |                                                                                                             Permission() |
-| django             | await: call: other name                    |      9 |      9 |        8 |                                                                                         await view_func(*args, **kwargs) |
-| django             | call: builtin dict()                       |      8 |      7 |        3 |                                                                                             dict(self.field.flatchoices) |
-| django             | call: builtin.method()                     |      8 |      6 |        5 |                                                                                                         dict.items(self) |
-| django             | call: builtin map()                        |      7 |      3 |        2 |                                                                                                          map(list, rows) |
-| django             | call: builtin frozenset()                  |      7 |      1 |        1 |                                                                             frozenset((' ', '"', "'", FILTER_SEPARATOR)) |
-| django             | set (mixed/unknown elements)               |      6 |      4 |        4 |                                                                                                    {self.date_hierarchy} |
-| django             | call: builtin min()                        |      6 |      2 |        2 |                                                                                       min(total, lineno + context_lines) |
-| django             | attr: global.x                             |      6 |      1 |        1 |                                                                                                             logger.error |
-| django             | await: call: module.func()                 |      6 |      0 |        0 |                                                                                                                          |
-| django             | call: param name                           |      5 |      5 |        1 |                                                                                             child_cls(name=path_segment) |
-| django             | await: call: param name                    |      4 |      4 |        3 |                                                                      await receiver(signal=self, sender=sender, **named) |
-| django             | call: builtin sum()                        |      4 |      3 |        3 |      sum((from_model == getattr(field.remote_field, 'model', None) for field in self.remote_field.through._meta.fields)) |
-| django             | call: builtin filter()                     |      4 |      4 |        4 |                                                                                                      filter(None, lists) |
-| django             | call: builtin divmod()                     |      4 |      4 |        4 |                                                                                                 divmod(total_months, 12) |
-| django             | call: builtin str()                        |      3 |      2 |        2 |                                                                   str(user._meta.get_field(attribute_name).verbose_name) |
-| django             | call: builtin len()                        |      3 |      2 |        2 |                                                                                                         len(digit_tuple) |
-| django             | call: str-literal.method()                 |      3 |      3 |        3 | '\n'.join([f'  import {obj}' for obj, _ in top_level] + [f'  from {module} import {objects}' for module, imported_object |
-| django             | attr: other.x                              |      3 |      3 |        2 |                                                                                                       self._result_cache |
-| django             | await: call: param.method()                |      2 |      2 |        0 |                                                                                                                          |
-| django             | subscript: self[...]                       |      2 |      1 |        1 |                                                                                                                self[key] |
-| django             | call: global name                          |      2 |      0 |        0 |                                                                                                                          |
-| django             | call: builtin slice()                      |      2 |      1 |        1 |                                                                                                       slice(start, stop) |
-| django             | await: call: other callee                  |      2 |      2 |        2 |                                                                                     await sync_to_async(list)(_iterator) |
-| django             | JoinedStr                                  |      2 |      1 |        1 |                                                                                                f'{language}_{territory}' |
-| django             | attr: builtin.x                            |      2 |      1 |        1 |                                                                                                            tuple.__new__ |
-| django             | call: builtin int()                        |      2 |      1 |        1 |                                                                                                                int(page) |
-| django             | call: bytes-literal.method()               |      2 |      1 |        1 |                                                                                                         b''.join(chunks) |
-| django             | subscript: global[...]                     |      2 |      2 |        2 |                                                                                                         OPERATORS[token] |
-| django             | await: call: local.method()                |      1 |      1 |        0 |                                                                                                                          |
-| django             | await: call: module function (unannotated) |      1 |      1 |        1 |                                                                                    await _aget_user_session_key(request) |
-| django             | call: builtin abs()                        |      1 |      1 |        1 |                                                                                                               abs(value) |
-| django             | await: call: local name                    |      1 |      1 |        0 |                                                                                                                          |
-| django             | await: call: other.method()                |      1 |      1 |        0 |                                                                                                                          |
-| django             | call: builtin vars()                       |      1 |      1 |        0 |                                                                                                                          |
-| django             | unaryop USub                               |      1 |      0 |        0 |                                                                                                                          |
-| django             | call: builtin super()                      |      1 |      1 |        1 |                                                                                                         super(cls, self) |
-| django             | subscript: other[...]                      |      1 |      1 |        0 |                                                                                                                          |
-| django             | await: call: imported function             |      1 |      1 |        0 |                                                                                                                          |
-| django             | call: builtin __import__()                 |      1 |      1 |        1 |                                                                      __import__(test_module_name, {}, {}, test_path[-1]) |
-| django             | call: builtin repr()                       |      1 |      1 |        1 |                                                                                                          repr(self.func) |
-| django             | call: builtin memoryview()                 |      1 |      1 |        1 |                                                                                              memoryview(compressed_data) |
-| sqlalchemy         | call: chained .method()                    |    961 |    468 |      318 |                                                                                       base_mapper._sorted_tables.items() |
-| sqlalchemy         | other constant                             |    773 |      8 |        8 |                                                                                                                        0 |
-| sqlalchemy         | call: self.method()                        |    644 |    350 |      202 |                                                                                                self._operation_context() |
-| sqlalchemy         | attr: chained                              |    576 |    287 |      220 |                                                                                                     state.manager.mapper |
-| sqlalchemy         | call: local.method()                       |    528 |    289 |      184 |                                                                                   match.group(1, 2, 3, 4, 5, 6, 7, 8, 9) |
-| sqlalchemy         | call: param.method()                       |    458 |    279 |      162 |                                                                                                               kw.items() |
-| sqlalchemy         | attr: self.x                               |    373 |    290 |      163 |                                                                                               self._like_percent_literal |
-| sqlalchemy         | copy: local                                |    360 |    222 |      137 |                                                                                                                  records |
-| sqlalchemy         | subscript: other                           |    357 |    215 |      138 |                                                                                              mapper._pks_by_table[table] |
-| sqlalchemy         | call: imported function                    |    344 |    166 |       97 |                                                                                         cast(dml.Insert, self.statement) |
-| sqlalchemy         | attr: param.x                              |    337 |    272 |      166 |                                                                                                           create.element |
-| sqlalchemy         | call: imported.attr()                      |    328 |    170 |      115 |                                                                                      attributes.instance_state(instance) |
-| sqlalchemy         | attr: local.x                              |    264 |    209 |      133 |                                                                                             context.result_column_struct |
-| sqlalchemy         | tuple (mixed/unknown elements)             |    206 |    139 |       93 |                                                                                               (have - want, want - have) |
-| sqlalchemy         | copy: param (unannotated)                  |    183 |    135 |       89 |                                                                                                                   states |
-| sqlalchemy         | subscript: local[...]                      |    180 |     99 |       59 |                                                                                                                  cl[0:2] |
-| sqlalchemy         | None literal                               |    173 |     73 |       73 |                                                                                                                     None |
-| sqlalchemy         | ListComp (unknown elements)                |    159 |    119 |       71 |                                    [i for i, e in enumerate(ctx._entities) if isinstance(e, querycontext._MapperEntity)] |
-| sqlalchemy         | copy: modclass                             |    147 |      1 |        1 |                                                                                                        InternalTraversal |
-| sqlalchemy         | attr: imported.x                           |    145 |     17 |       17 |                                                                                                              base.Engine |
-| sqlalchemy         | call: imported class                       |    129 |     10 |       10 |                                                                                                       AsyncAdaptedLock() |
-| sqlalchemy         | call: builtin list()                       |    120 |     75 |       44 |                                                                                                               list(self) |
-| sqlalchemy         | copy: imported                             |    118 |      1 |        1 |                                                                                                                   Mapper |
-| sqlalchemy         | empty list                                 |    114 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | copy: param (annotated)                    |    110 |     89 |       54 |                                                                                                                     args |
-| sqlalchemy         | call: module.func()                        |    108 |     49 |       40 |                                                           itertools.combinations_with_replacement(range(len(case_a)), 2) |
-| sqlalchemy         | dict (mixed/unknown elements)              |    103 |     16 |       14 |                                                                          {'compiled_cache': base_mapper._compiled_cache} |
-| sqlalchemy         | call: builtin getattr()                    |    102 |     83 |       39 |                                                                                        getattr(target_class, value_attr) |
-| sqlalchemy         | binop (unknown operands)                   |     90 |     48 |       37 |                                                                                              self.linting & WARN_LINTING |
-| sqlalchemy         | call: param name                           |     90 |     36 |       14 |                                                                                             meth(filter_names=_fn, **kw) |
-| sqlalchemy         | call: builtin set()                        |     86 |     37 |       23 |                                                                                                                set(self) |
-| sqlalchemy         | empty dict                                 |     82 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | boolop (or)                                |     76 |     62 |       49 |                                                                                 getattr(self, 'bind', None) or config.db |
-| sqlalchemy         | call: other name                           |     76 |     57 |       33 |                                                                                                              parse_fks() |
-| sqlalchemy         | subscript: param[...]                      |     76 |     61 |       36 |                                                                                                      populators['quick'] |
-| sqlalchemy         | conditional                                |     72 |     42 |       22 |                                                             CheckFirst.TABLES if not table.is_view else CheckFirst.VIEWS |
-| sqlalchemy         | call: local name                           |     63 |     51 |       25 |                                                                                                       getter(self, size) |
-| sqlalchemy         | copy: other                                |     63 |     19 |       14 |                                                                                                               evaluators |
-| sqlalchemy         | list (mixed/unknown elements)              |     62 |     18 |       10 |  [self.preparer.format_column(column), self.dialect.type_compiler_instance.process(column.type, type_expression=column)] |
-| sqlalchemy         | DictComp (unknown elements)                |     61 |     35 |       15 |             {fk_sig(fk['constrained_columns'], fk['referred_table'], fk['referred_columns']): fk for fk in fks.values()} |
-| sqlalchemy         | call: module function (unannotated)        |     59 |     49 |       37 |                                                             _connections_for_states(base_mapper, uowtransaction, states) |
-| sqlalchemy         | call: builtin zip()                        |     57 |     35 |       17 |                                                                         zip(records, result.context.compiled_parameters) |
-| sqlalchemy         | copy: global                               |     50 |      6 |        6 |                                                                                                  instrumentation_finders |
-| sqlalchemy         | call: builtin dict()                       |     49 |     23 |       12 |                                                                                                                 dict(kw) |
-| sqlalchemy         | call: builtin enumerate()                  |     42 |     30 |        8 |                                                                         enumerate(zip(fn.__code__.co_freevars, closure)) |
-| sqlalchemy         | call: builtin tuple()                      |     38 |     15 |        5 |                                                                                  tuple(util.quoted_token_parser(attype)) |
-| sqlalchemy         | call: other.method()                       |     36 |     20 |       10 |                                                                                                       self.query(mapper) |
-| sqlalchemy         | SetComp (unknown elements)                 |     35 |     22 |       16 |                  {_get_params[col].key for col, value in zip(mapper.primary_key, primary_key_identity) if value is None} |
-| sqlalchemy         | call: module class                         |     35 |     17 |       17 |                                                                      _ListenerCollection(self.parent, obj._instance_cls) |
-| sqlalchemy         | call: cls.method()                         |     34 |     28 |       19 |                                                                                                         cls.__new__(cls) |
-| sqlalchemy         | call: module function (annotated)          |     32 |     29 |       14 |                                                              _key_getters_for_crud_column(compiler, stmt, compile_state) |
-| sqlalchemy         | boolop (and)                               |     26 |     26 |       22 |                                                     assert_singlerow and connection.dialect.supports_sane_multi_rowcount |
-| sqlalchemy         | call: builtin.method()                     |     24 |     22 |       10 |                                                                            object.__getattribute__(self, '_to_evaluate') |
-| sqlalchemy         | attr: modclass.x                           |     21 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | attr: cls.x                                |     20 |     19 |        9 |                                                                                                             cls.__dict__ |
-| sqlalchemy         | empty tuple                                |     16 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | compare                                    |     15 |      9 |        9 |                                                                                                              hidden == 3 |
-| sqlalchemy         | call: builtin type()                       |     15 |     10 |        3 |                                                                                                           type(instance) |
-| sqlalchemy         | call: other callee                         |     15 |     11 |        5 |                                                                   object.__getattribute__(self, '_py_wrapper_literal')() |
-| sqlalchemy         | await: call: imported function             |     15 |     13 |        8 |                                                                                 await greenlet_spawn(getter, self, size) |
-| sqlalchemy         | GeneratorExp (unknown elements)            |     14 |      7 |        7 |                                                                  (col for col in cols if col.key in on_duplicate_update) |
-| sqlalchemy         | attr: global.x                             |     14 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin sorted()                     |     13 |      9 |        8 |                                                          sorted(set(opts).difference((key for key, _ in pysqlite_args))) |
-| sqlalchemy         | call: global.method()                      |     13 |     11 |       10 |                  _copy_internals.run_generated_dispatch(self, traverse_internals, '_generated_copy_internals_traversal') |
-| sqlalchemy         | copy: moddef                               |     13 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | subscript: global[...]                     |     12 |     11 |        9 |                                                                                            __interfaces[collection_type] |
-| sqlalchemy         | call: global name                          |     12 |     12 |        4 |                                                                                                opt_manager_of_class(cls) |
-| sqlalchemy         | attr: module.x                             |     11 |      9 |        9 |                                                                                                            datetime.time |
-| sqlalchemy         | copy: builtin                              |     11 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | attr: other.x                              |     10 |      7 |        7 |                                                                                                     self._attribute_keys |
-| sqlalchemy         | call: builtin object()                     |     10 |      6 |        6 |                                                                                                                 object() |
-| sqlalchemy         | binop (one side literal)                   |      9 |      6 |        6 |                                                                                                            seconds // 60 |
-| sqlalchemy         | call: modclass.method()                    |      8 |      8 |        5 |                                                                                       FrozenResult.__new__(FrozenResult) |
-| sqlalchemy         | subscript: other[...]                      |      8 |      8 |        4 |                                                                                                               process[0] |
-| sqlalchemy         | call: builtin reversed()                   |      8 |      6 |        6 |                                                                                   reversed(list(self.iterate_to_root())) |
-| sqlalchemy         | copy: self                                 |      7 |      6 |        5 |                                                                                                                     self |
-| sqlalchemy         | await: call: chained .method()             |      6 |      1 |        1 |                                                                                    await self._cursor.execute(operation) |
-| sqlalchemy         | set (mixed/unknown elements)               |      6 |      4 |        2 |                                                                                                                   {self} |
-| sqlalchemy         | call: builtin __import__()                 |      5 |      2 |        2 |                                                                                                      __import__(modname) |
-| sqlalchemy         | await: call: self.method()                 |      4 |      4 |        4 |                                           await self.execute(statement, parameters, execution_options=execution_options) |
-| sqlalchemy         | call: self name                            |      4 |      4 |        2 |                                                                                                                   self() |
-| sqlalchemy         | call: builtin frozenset()                  |      4 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin int()                        |      3 |      1 |        1 |                                                                                                               int(value) |
-| sqlalchemy         | call: builtin bool()                       |      3 |      3 |        3 |                                                                                           bool(dml_statement._returning) |
-| sqlalchemy         | subscript: imported[...]                   |      3 |      2 |        1 |                                                                                                Tuple[Optional[str], str] |
-| sqlalchemy         | call: builtin staticmethod()               |      2 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | await: call: local.method()                |      2 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | unaryop USub                               |      2 |      1 |        1 |                                                                                                                       -1 |
-| sqlalchemy         | call: builtin next()                       |      2 |      2 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin max()                        |      2 |      2 |        2 |                                              max((since for since, args, conv in dispatch_collection.legacy_signatures)) |
-| sqlalchemy         | call: builtin globals()                    |      2 |      1 |        1 |                                                                                                                globals() |
-| sqlalchemy         | call: builtin eval()                       |      2 |      2 |        0 |                                                                                                                          |
-| sqlalchemy         | subscript: self[...]                       |      2 |      2 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin vars()                       |      2 |      2 |        2 |                                                                                                                vars(cls) |
-| sqlalchemy         | call: builtin sum()                        |      2 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | await: call: module function (unannotated) |      2 |      2 |        2 |                            await run_scenario(engine_factory, scenario, cancel_at=cancel_at, warm=warm, recycle=recycle) |
-| sqlalchemy         | await: copy: param (annotated)             |      1 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | JoinedStr                                  |      1 |      1 |        1 |                                                                                                f'{qschema}.{table_name}' |
-| sqlalchemy         | call: builtin len()                        |      1 |      1 |        1 |                                                                                                                len(self) |
-| sqlalchemy         | await: call: module.func()                 |      1 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | await: call: builtin anext()               |      1 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | subscript: modclass[...]                   |      1 |      0 |        0 |                                                                                                                          |
-| sqlalchemy         | call: builtin str()                        |      1 |      1 |        1 |                                                                                                           str(statement) |
-| sqlalchemy         | binop: literal % formatting                |      1 |      1 |        1 |                                                                                              '__[POSTCOMPILE_%s]' % name |
-| sqlalchemy         | call: capitalised                          |      1 |      1 |        1 |                                                                                                               MetaData() |
-| sqlalchemy         | call: builtin id()                         |      1 |      1 |        1 |                                                                                                                 id(elem) |
-| sqlalchemy         | await: copy: local                         |      1 |      1 |        0 |                                                                                                                          |
-| sqlalchemy         | call: str-literal.method()                 |      1 |      1 |        1 |                                                                        '|'.join((p for p in pipe_tokens if p != 'None')) |
-| pydantic           | call: chained .method()                    |    126 |     54 |       36 |                                                                                          cls.__pydantic_fields__.items() |
-| pydantic           | call: local.method()                       |    114 |     58 |       30 |                                                                                                 dataclass_fields.items() |
-| pydantic           | call: imported function                    |    112 |     60 |       41 |                                                                                               import_cached_field_info() |
-| pydantic           | call: param.method()                       |    101 |     59 |       31 |                                                                                                           schema.items() |
-| pydantic           | call: self.method()                        |     56 |     32 |        9 |                                                                                           self.as_hsl_tuple(alpha=False) |
-| pydantic           | call: builtin getattr()                    |     53 |     29 |       17 |                                                                                      getattr(base, 'model_config', None) |
-| pydantic           | call: module function (annotated)          |     53 |     14 |        8 |                                                                                                        mro_for_bases(tp) |
-| pydantic           | attr: param.x                              |     49 |     25 |       12 |                                                                                                   field_info.description |
-| pydantic           | conditional                                |     37 |     18 |       10 |                                      {} if 'items_schema' not in schema else self.generate_inner(schema['items_schema']) |
-| pydantic           | copy: param (annotated)                    |     36 |     20 |       12 |                                                                                                                    bases |
-| pydantic           | copy: local                                |     35 |     16 |       12 |                                                                                                             dynamic_attr |
-| pydantic           | tuple (mixed/unknown elements)             |     35 |      8 |        6 |                                                                                                       (None, None, None) |
-| pydantic           | call: imported.attr()                      |     33 |     28 |       10 |                            _typing_extra.eval_type(cls.__pydantic_extra_info__.annotation, *ns_resolver.types_namespace) |
-| pydantic           | attr: chained                              |     33 |      5 |        4 |                                                                                               self._config_wrapper.extra |
-| pydantic           | subscript: other                           |     32 |     11 |        3 |                                                                                               list(self.keys())[:excess] |
-| pydantic           | boolop (or)                                |     27 |     14 |        6 |                                                 field_info.field_title_generator or config_wrapper.field_title_generator |
-| pydantic           | attr: local.x                              |     26 |      9 |        6 |                                                                                                   field_info.description |
-| pydantic           | subscript: param[...]                      |     26 |     15 |       12 |                                                                                                  choice['discriminator'] |
-| pydantic           | empty dict                                 |     25 |      0 |        0 |                                                                                                                          |
-| pydantic           | binop (unknown operands)                   |     23 |      7 |        5 |                                                                                  ignored_types + default_ignored_types() |
-| pydantic           | call: module class                         |     23 |      2 |        2 |                                                                         PydanticExtraInfo(annotation=ann, complete=True) |
-| pydantic           | dict (mixed/unknown elements)              |     22 |     15 |       11 |                                                                                 {'type': 'array', 'items': items_schema} |
-| pydantic           | copy: imported                             |     21 |      2 |        2 |                                                                                                                      Any |
-| pydantic           | attr: cls.x                                |     20 |      6 |        4 |                                                                                                             cls.__init__ |
-| pydantic           | call: module.func()                        |     20 |      9 |        6 |                                                                                                    typing.cast(Any, Any) |
-| pydantic           | subscript: imported[...]                   |     20 |      1 |        0 |                                                                                                                          |
-| pydantic           | other constant                             |     20 |      1 |        1 |                                                                                                             'extra_data' |
-| pydantic           | None literal                               |     19 |     10 |       10 |                                                                                                                     None |
-| pydantic           | ListComp (unknown elements)                |     16 |      7 |        3 | [field.alias for name, field in self.model.__pydantic_fields__.items() if name not in (self.v_args_name, self.v_kwargs_n |
-| pydantic           | empty list                                 |     16 |      0 |        0 |                                                                                                                          |
-| pydantic           | DictComp (unknown elements)                |     15 |      2 |        1 |                               {f_name: copy(field_info) for f_name, field_info in dataclass.__pydantic_fields__.items()} |
-| pydantic           | copy: builtin                              |     14 |      0 |        0 |                                                                                                                          |
-| pydantic           | attr: self.x                               |     13 |      6 |        3 |                                                                                                           self.__slots__ |
-| pydantic           | call: builtin zip()                        |     13 |      2 |        2 |                                                                        zip(dataclasses.fields(self), state, strict=True) |
-| pydantic           | subscript: local[...]                      |     12 |      4 |        4 |                                                                                               generic_metadata['origin'] |
-| pydantic           | copy: global                               |     12 |      5 |        3 |                                                                                                                   _Unset |
-| pydantic           | call: builtin tuple()                      |     12 |      5 |        4 |                                            tuple((h.on_enter for h in event_handlers if filter_handlers(h, 'on_enter'))) |
-| pydantic           | call: builtin enumerate()                  |     12 |      2 |        1 |                                                                                                          enumerate(args) |
-| pydantic           | call: builtin dict()                       |     12 |      1 |        0 |                                                                                                                          |
-| pydantic           | call: param name                           |     11 |     11 |        6 |                                                                                                          handler(source) |
-| pydantic           | call: other name                           |     10 |      5 |        3 |                                                                                                    validator(model_dict) |
-| pydantic           | call: builtin list()                       |     10 |      7 |        6 |                                                                                              list(model_dict_new.keys()) |
-| pydantic           | set (mixed/unknown elements)               |     10 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin set()                        |      8 |      1 |        1 |                                                                                                   set(model_dict.keys()) |
-| pydantic           | GeneratorExp (unknown elements)            |      8 |      2 |        2 |                                                                             ((s, getattr(self, s)) for s in attrs_names) |
-| pydantic           | call: builtin reversed()                   |      7 |      6 |        2 |                                                                                                 reversed(mro(typ)[1:-1]) |
-| pydantic           | call: global.method()                      |      7 |      1 |        0 |                                                                                                                          |
-| pydantic           | call: builtin object()                     |      6 |      1 |        1 |                                                                                                                 object() |
-| pydantic           | copy: other                                |      6 |      5 |        5 |                                                                                                                   frozen |
-| pydantic           | attr: imported.x                           |      6 |      2 |        2 |                                                                                                          Parameter.empty |
-| pydantic           | call: cls.method()                         |      6 |      2 |        1 |                                                                     cls._get_field_info(name, annotation, value, config) |
-| pydantic           | call: local name                           |      5 |      3 |        2 |                                                                                        coerce_instance_wrap(dict_schema) |
-| pydantic           | call: capitalised                          |      5 |      2 |        2 |                                                                                                   CoreRef(schema['ref']) |
-| pydantic           | list (mixed/unknown elements)              |      5 |      3 |        2 |           [FunctionType, property, classmethod, staticmethod, PydanticDescriptorProxy, ComputedFieldInfo, TypeAliasType] |
-| pydantic           | attr: module.x                             |      4 |      0 |        0 |                                                                                                                          |
-| pydantic           | -                                          |      4 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin type()                       |      4 |      3 |        0 |                                                                                                                          |
-| pydantic           | call: other.method()                       |      4 |      4 |        2 |                                                                                                       annotation.func(v) |
-| pydantic           | call: imported class                       |      4 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin next()                       |      4 |      2 |        1 |                                        next((v for v in get_args(values_source_type) if isinstance(v, FieldInfo)), None) |
-| pydantic           | call: global name                          |      4 |      4 |        4 |                                                                _inspect_validator(self.func, mode='after', type='field') |
-| pydantic           | SetComp (unknown elements)                 |      3 |      2 |        0 |                                                                                                                          |
-| pydantic           | compare                                    |      3 |      0 |        0 |                                                                                                                          |
-| pydantic           | attr: modclass.x                           |      3 |      2 |        2 |                                                                                                      FieldInfo.__slots__ |
-| pydantic           | call: builtin.method()                     |      3 |      3 |        2 |                                                                  object.__getattribute__(self, '__private_attributes__') |
-| pydantic           | NamedExpr                                  |      2 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin len()                        |      2 |      2 |        2 |                                                                                                          len(parameters) |
-| pydantic           | attr: builtin.x                            |      2 |      0 |        0 |                                                                                                                          |
-| pydantic           | copy: cls                                  |      2 |      2 |        1 |                                                                                                                      cls |
-| pydantic           | subscript: builtin[...]                    |      2 |      0 |        0 |                                                                                                                          |
-| pydantic           | attr: other.x                              |      2 |      0 |        0 |                                                                                                                          |
-| pydantic           | subscript: global[...]                     |      2 |      1 |        1 |                                                                                                   ENCODERS_BY_TYPE[base] |
-| pydantic           | call: builtin max()                        |      2 |      1 |        1 |                                                                                      max(0, max_digits - decimal_places) |
-| pydantic           | call: builtin min()                        |      2 |      1 |        1 |                                                                                          min(max_digits, decimal_places) |
-| pydantic           | call: str-literal.method()                 |      2 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin globals()                    |      1 |      1 |        1 |                                                                                                                globals() |
-| pydantic           | copy: moddef                               |      1 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: modclass.method()                    |      1 |      1 |        1 |                                                                                             FieldInfo.__new__(FieldInfo) |
-| pydantic           | binop (one side literal)                   |      1 |      1 |        1 |                                                                                   max_digits - (decimal_places or 0) - 1 |
-| pydantic           | call: builtin iter()                       |      1 |      0 |        0 |                                                                                                                          |
-| pydantic           | call: builtin open()                       |      1 |      0 |        0 |                                                                                                                          |
-| pydantic           | copy: self                                 |      1 |      0 |        0 |                                                                                                                          |
-| pandas             | call: local.method()                       |  6,252 |  5,163 |    4,816 |                                                                                                                df.copy() |
-| pandas             | call: chained .method()                    |  4,857 |  3,756 |    3,402 |                                                                                         (np.arange(N) + N).astype(dtype) |
-| pandas             | call: module.func()                        |  3,635 |  2,468 |    2,328 |                                                                                                      np.array([1, 2, 3]) |
-| pandas             | copy: param (unannotated)                  |  1,960 |  1,741 |      800 |                                                                                                                     case |
-| pandas             | call: imported function                    |  1,616 |  1,188 |    1,026 |                                                                                                       get_array(df, 'a') |
-| pandas             | subscript: other                           |  1,515 |  1,230 |    1,101 |                                                                                                               df.iloc[0] |
-| pandas             | call: param.method()                       |  1,479 |  1,024 |      820 |                                                                                                       float_frame.copy() |
-| pandas             | binop (unknown operands)                   |  1,123 |    958 |      812 |                                                                          np.arange(10, dtype='i8') * 24 * 3600 * 10 ** 9 |
-| pandas             | subscript: local[...]                      |    948 |    754 |      711 |                                                                                                                    df[:] |
-| pandas             | attr: chained                              |    805 |    537 |      438 |                                                                                                    df.set_index('L1').L2 |
-| pandas             | list (mixed/unknown elements)              |    798 |    548 |      410 | [(rng1, other1, expected1, expected1_notsorted), (rng2, other2, expected2, expected2_notsorted), (rng3, other3, expected |
-| pandas             | call: param name                           |    769 |    726 |      271 |                                                                                                               method(df) |
-| pandas             | call: imported class                       |    681 |    576 |      571 |                                                                              TimedeltaIndex(np.arange(5, dtype='int64')) |
-| pandas             | call: self.method()                        |    618 |    419 |      258 |                                                                                                      self.read_dta(path) |
-| pandas             | call: imported.attr()                      |    607 |    484 |      397 |                                                                          tslib.array_to_datetime(arr, creso=creso_infer) |
-| pandas             | call: other callee                         |    503 |    418 |      339 |                                                                                               getattr(ser.str, method)() |
-| pandas             | conditional                                |    473 |    379 |      199 |                                                                       self._get_numeric_data() if numeric_only else self |
-| pandas             | attr: local.x                              |    453 |    342 |      282 |                                                                                                                df.dtypes |
-| pandas             | copy: local                                |    421 |    277 |      199 |                                                                                                                  grouped |
-| pandas             | subscript: param[...]                      |    384 |    276 |      165 |                                                                     multiindex_year_month_day_dataframe_random_data['A'] |
-| pandas             | ListComp (unknown elements)                |    377 |    197 |      143 |                                                             [klass(second.values) for klass in [np.array, Series, list]] |
-| pandas             | tuple (mixed/unknown elements)             |    371 |    225 |      179 |                                                                                                             (None, None) |
-| pandas             | compare                                    |    345 |    267 |      246 |                                                                                               ts + offset - offset == ts |
-| pandas             | dict (mixed/unknown elements)              |    334 |    210 |      184 |                                                                                 {'fields': fields, 'primaryKey': ['id']} |
-| pandas             | attr: self.x                               |    316 |    232 |      134 |                                                                                                            self._ndarray |
-| pandas             | call: builtin zip()                        |    307 |    207 |      147 |                                                                                                zip(*arrays, strict=True) |
-| pandas             | call: builtin getattr()                    |    307 |    225 |      155 |                                                                                                getattr(operator, opname) |
-| pandas             | attr: param.x                              |    300 |    197 |      110 |                                                                                                            request.param |
-| pandas             | call: local name                           |    296 |    255 |      147 |                                                                                            op(numeric_only=numeric_only) |
-| pandas             | call: module function (unannotated)        |    283 |    140 |       87 |                                                                                             get_labels_levels(df_levels) |
-| pandas             | binop (one side literal)                   |    280 |    211 |      190 |                                                                                                        [slice(None)] * 2 |
-| pandas             | empty list                                 |    278 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin enumerate()                  |    235 |    157 |      109 |                                                                                                      enumerate(iterated) |
-| pandas             | other constant                             |    176 |     48 |       48 |                                                                                                                        0 |
-| pandas             | call: builtin list()                       |    170 |    126 |       89 |                                                                                                             list(reader) |
-| pandas             | None literal                               |    157 |    113 |      113 |                                                                                                                     None |
-| pandas             | attr: module.x                             |    121 |     84 |       82 |                                                                                                                   np.nan |
-| pandas             | Lambda                                     |    121 |     78 |       78 |                                                                                                              lambda x: x |
-| pandas             | call: global.method()                      |    118 |      4 |        2 |                                                                                          _NP_KINDS.get(dtype.kind, None) |
-| pandas             | call: other name                           |    113 |     77 |       55 |                                                                                           stack_factorize(frame.columns) |
-| pandas             | call: module function (annotated)          |    100 |     62 |       37 |                                                                  _get_multiindex_indexer(join_keys, right_ax, sort=sort) |
-| pandas             | attr: imported.x                           |     94 |     23 |       23 |                                                                                                  DataFrame._align_for_op |
-| pandas             | empty dict                                 |     90 |      0 |        0 |                                                                                                                          |
-| pandas             | copy: imported                             |     89 |     51 |       51 |                                                                                                           Pandas4Warning |
-| pandas             | copy: other                                |     78 |      8 |        4 |                                                                                                                    nodes |
-| pandas             | copy: param (annotated)                    |     76 |     53 |       37 |                                                                                                                     data |
-| pandas             | GeneratorExp (unknown elements)            |     70 |     60 |       60 |                                                                                                (list(x) for x in zipped) |
-| pandas             | call: capitalised                          |     60 |     59 |       58 |                                                        DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6], 'c': [0.1, 0.2, 0.3]}) |
-| pandas             | copy: builtin                              |     59 |     42 |       42 |                                                                                                                TypeError |
-| pandas             | DictComp (unknown elements)                |     58 |     43 |       33 |                                                            {name: mi.levels[i].dtype for i, name in enumerate(mi.names)} |
-| pandas             | call: builtin set()                        |     49 |     19 |       16 |                                                                                                   set(super().__dir__()) |
-| pandas             | call: other.method()                       |     47 |     29 |       24 |                                                                                                     self._prep_values(x) |
-| pandas             | unaryop Invert                             |     40 |     28 |       26 |                                                                                                                    ~mask |
-| pandas             | boolop (and)                               |     37 |     23 |       22 |                                    selected_obj.ndim == 2 and selected_obj.columns.nunique() < len(selected_obj.columns) |
-| pandas             | call: builtin next()                       |     36 |     29 |       21 |                                                                                                                next(gen) |
-| pandas             | call: builtin divmod()                     |     35 |     24 |       24 |                                                                                                divmod(idx.values, other) |
-| pandas             | boolop (or)                                |     34 |     22 |       22 |                                                                                                           self.axis or 0 |
-| pandas             | call: builtin dict()                       |     31 |     11 |        6 |                                                                                                 dict(ioargs.compression) |
-| pandas             | call: builtin sorted()                     |     29 |     23 |       22 |                                                                                                     sorted(zip(*arrays)) |
-| pandas             | call: builtin type()                       |     27 |     25 |        6 |                                                                                                       type(simple_index) |
-| pandas             | call: builtin tuple()                      |     26 |     16 |        9 |                                                                                                      tuple(_res_indexer) |
-| pandas             | call: builtin slice()                      |     25 |     22 |       22 |                                                                                    slice(time(13, 0, 0), time(14, 0, 0)) |
-| pandas             | call: cls name                             |     22 |     15 |        1 |                                                                                                     cls(*args, **kwargs) |
-| pandas             | call: builtin max()                        |     20 |     15 |       13 |                                                                           max((len(line) for line in value.split('\n'))) |
-| pandas             | call: builtin open()                       |     20 |     13 |        6 |                                                                                                    open(path, mode='wb') |
-| pandas             | unaryop USub                               |     19 |     14 |       14 |                                                                                                                     -arr |
-| pandas             | copy: self                                 |     18 |     15 |       10 |                                                                                                                     self |
-| pandas             | subscript: self[...]                       |     18 |     16 |       11 |                                                                                                          self[:-periods] |
-| pandas             | subscript: imported[...]                   |     17 |     13 |       11 |                                                                                                 _global_config['future'] |
-| pandas             | copy: moddef                               |     17 |      0 |        0 |                                                                                                                          |
-| pandas             | call: cls.method()                         |     16 |     12 |       10 |                  cls._generate_range(start=index[0], end=None, periods=len(index), freq=freq, unit=index.unit, **kwargs) |
-| pandas             | attr: other.x                              |     14 |      1 |        1 |                                                                                                              self.values |
-| pandas             | SetComp (unknown elements)                 |     14 |     10 |        5 |                                                                                    {obj.dtype.kind for obj in to_concat} |
-| pandas             | copy: global                               |     13 |      7 |        6 |                                                                                                                ok_for_dt |
-| pandas             | subscript: global[...]                     |     13 |     11 |        4 |                                                                                                            _ops[op_name] |
-| pandas             | set (mixed/unknown elements)               |     12 |      5 |        5 |                                                                                                {dtype.kind, dtype2.kind} |
-| pandas             | call: builtin min()                        |     12 |      7 |        7 |                                                                                             min(abs(periods), len(self)) |
-| pandas             | call: modclass.method()                    |     11 |      8 |        8 |                                                                                      DataFrame._from_mgr(mgr, axes=axes) |
-| pandas             | call: builtin len()                        |     11 |      5 |        5 |                                                                                                                  len(qs) |
-| pandas             | call: builtin.method()                     |     10 |      9 |        8 |                                                                                  object.__getattribute__(self, 'prefix') |
-| pandas             | copy: modclass                             |     10 |      0 |        0 |                                                                                                                          |
-| pandas             | JoinedStr                                  |      8 |      4 |        4 |                                                                                                          f'visit_{node}' |
-| pandas             | attr: cls.x                                |      7 |      5 |        4 |                                                                                                             cls.__name__ |
-| pandas             | call: builtin map()                        |      7 |      7 |        7 |                                                                                             map(_is_list, (left, right)) |
-| pandas             | call: builtin abs()                        |      7 |      6 |        6 |                                                                                                                 abs(arr) |
-| pandas             | call: module class                         |      7 |      3 |        2 |                                                                                                 TimeGrouper(obj, **kwds) |
-| pandas             | subscript: other[...]                      |      6 |      3 |        3 |                                                                                                            obj[gpr.name] |
-| pandas             | call: builtin frozenset()                  |      6 |      2 |        2 |                                                                                          frozenset([np.dtype('object')]) |
-| pandas             | call: builtin iter()                       |      6 |      4 |        4 |                                                                                                            iter(indexes) |
-| pandas             | call: builtin property()                   |      5 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin eval()                       |      5 |      5 |        5 |                                                                                                                 eval(ex) |
-| pandas             | call: builtin sum()                        |      4 |      2 |        2 |                                                                    sum((i.memory_usage(deep=deep) for i in self.levels)) |
-| pandas             | call: builtin range()                      |      4 |      2 |        2 |                                                                  range(overlap[-1] + first.step, first.stop, first.step) |
-| pandas             | call: builtin pow()                        |      4 |      4 |        4 |                                                                                                          pow(idx1, idx2) |
-| pandas             | call: builtin all()                        |      3 |      2 |        2 |                                                                               all((df.index.is_unique for df in frames)) |
-| pandas             | call: global name                          |      3 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin round()                      |      3 |      1 |        1 |                                                                                                               round(ser) |
-| pandas             | unaryop UAdd                               |      3 |      3 |        3 |                                                                                                                     +arr |
-| pandas             | copy: cls                                  |      2 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin object()                     |      2 |      1 |        1 |                                                                                                                 object() |
-| pandas             | call: str-literal.method()                 |      2 |      1 |        1 |                                                                     '1111111111\n    2222222222\n    3333333333'.strip() |
-| pandas             | call: self name                            |      1 |      1 |        1 |                                                                                                                self(env) |
-| pandas             | attr: modclass.x                           |      1 |      1 |        1 |                                                                                                       ParseState.DEFAULT |
-| pandas             | call: builtin ord()                        |      1 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin isinstance()                 |      1 |      1 |        1 |                                                                                             isinstance(data, np.ndarray) |
-| pandas             | call: builtin float()                      |      1 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin reversed()                   |      1 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin bytes()                      |      1 |      1 |        1 |                                                                                                     bytes(strl, 'utf-8') |
-| pandas             | attr: builtin.x                            |      1 |      1 |        1 |                                                                                                                str.upper |
-| pandas             | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| pandas             | call: builtin repr()                       |      1 |      1 |        1 |                                                                                                                  repr(i) |
-| structlog          | copy: other                                |     47 |      2 |        2 |                                                                                                                key_order |
-| structlog          | call: param.method()                       |     27 |     23 |       11 |                                                                                                               kw.items() |
-| structlog          | call: imported.attr()                      |     16 |     15 |       13 |                                      _ASYNC_CALLING_THREAD.set((threading.get_ident(), threading.current_thread().name)) |
-| structlog          | attr: chained                              |     12 |      2 |        2 |                                                                                            as_immutable(logger)._context |
-| structlog          | call: chained .method()                    |      8 |      6 |        5 |                                                                                                    _get_context().copy() |
-| structlog          | call: module function (annotated)          |      7 |      2 |        1 |                                                                                                        get_contextvars() |
-| structlog          | copy: param (annotated)                    |      5 |      5 |        4 |                                                                                                                     keys |
-| structlog          | call: imported function                    |      5 |      1 |        1 |                                                                              partial(self._proxy_to_logger, method_name) |
-| structlog          | copy: local                                |      5 |      4 |        4 |                                                                                                                      ctx |
-| structlog          | call: self.method()                        |      4 |      4 |        0 |                                                                                                                          |
-| structlog          | empty list                                 |      4 |      0 |        0 |                                                                                                                          |
-| structlog          | call: module.func()                        |      4 |      3 |        2 |                                                                                                          sys._getframe() |
-| structlog          | attr: self.x                               |      3 |      3 |        1 |                                                                                                    self._active_handlers |
-| structlog          | boolop (or)                                |      3 |      3 |        2 |                                                                                       f.f_globals.get('__name__') or '?' |
-| structlog          | tuple (mixed/unknown elements)             |      3 |      2 |        1 |                                                                          ('structlog', *tuple(additional_ignores or ())) |
-| structlog          | subscript: imported[...]                   |      3 |      3 |        3 |                                                                                                     LEVEL_TO_NAME[level] |
-| structlog          | None literal                               |      3 |      2 |        2 |                                                                                                                     None |
-| structlog          | DictComp (unknown elements)                |      3 |      3 |        3 |                                                                      {k: context[k] for k in context.keys() & kw.keys()} |
-| structlog          | call: builtin object()                     |      3 |      0 |        0 |                                                                                                                          |
-| structlog          | copy: global                               |      3 |      0 |        0 |                                                                                                                          |
-| structlog          | call: builtin getattr()                    |      3 |      3 |        1 |                                                                       getattr(record, '_name', '__structlog_sentinel__') |
-| structlog          | await: call: chained .method()             |      2 |      0 |        0 |                                                                                                                          |
-| structlog          | dict (mixed/unknown elements)              |      2 |      1 |        1 |                                                                                                          {'force': True} |
-| structlog          | empty dict                                 |      2 |      0 |        0 |                                                                                                                          |
-| structlog          | subscript: global[...]                     |      2 |      2 |        2 |                                                                                               _CONTEXT_VARS[structlog_k] |
-| structlog          | subscript: other                           |      2 |      2 |        1 |                                                                                               get_config()['processors'] |
-| structlog          | copy: moddef                               |      1 |      0 |        0 |                                                                                                                          |
-| structlog          | call: local name                           |      1 |      1 |        0 |                                                                                                                          |
-| structlog          | conditional                                |      1 |      1 |        0 |                                                                                                                          |
-| structlog          | call: local.method()                       |      1 |      1 |        1 |                                                                                             configured_processors.copy() |
-| structlog          | other constant                             |      1 |      1 |        1 |                                                                                                                       '' |
-| structlog          | call: builtin type()                       |      1 |      1 |        1 |                                                 type('WrappedDict-' + str(uuid.uuid4()), (_ThreadLocalDictWrapper,), {}) |
-| structlog          | binop (unknown operands)                   |      1 |      1 |        1 |                                                                                                    len(obj) - max_string |
-| structlog          | attr: param.x                              |      1 |      1 |        0 |                                                                                                                          |
-| structlog          | subscript: local[...]                      |      1 |      1 |        0 |                                                                                                                          |
-| attrs              | call: imported function                    |     35 |      6 |        3 |                                                                                                    get_generic_base(cls) |
-| attrs              | copy: param (unannotated)                  |     18 |     17 |        6 |                                                                                                             dict_factory |
-| attrs              | call: module function (annotated)          |     18 |     15 |       10 | _make_init_script(self._cls, self._attrs, self._has_pre_init, self._pre_init_has_args, self._has_post_init, self._frozen |
-| attrs              | call: module function (unannotated)        |     16 |     15 |        8 |                                                                                                        _split_what(what) |
-| attrs              | call: local.method()                       |     12 |      9 |        2 |                                                                                                             anns.items() |
-| attrs              | empty list                                 |     11 |      0 |        0 |                                                                                                                          |
-| attrs              | empty dict                                 |     11 |      0 |        0 |                                                                                                                          |
-| attrs              | attr: self.x                               |     11 |     11 |        7 |                                                                                                    self._script_snippets |
-| attrs              | call: builtin getattr()                    |     10 |      7 |        1 |                                                                                 getattr(base_cls, '__attrs_attrs__', []) |
-| attrs              | call: module.func()                        |      8 |      6 |        1 |                                                                    linecache.cache.setdefault(filename, linecache_tuple) |
-| attrs              | copy: local                                |      8 |      8 |        8 |                                                                                                                    attrs |
-| attrs              | conditional                                |      8 |      4 |        4 |                                                                  value_type if retain_collection_types is True else list |
-| attrs              | ListComp (unknown elements)                |      8 |      4 |        3 |                                [fca(attr_name, ca, kw_only is not no, anns.get(attr_name)) for attr_name, ca in ca_list] |
-| attrs              | attr: local.x                              |      8 |      7 |        5 |                                                                                                                   a.name |
-| attrs              | call: self.method()                        |      6 |      6 |        0 |                                                                                                                          |
-| attrs              | compare                                    |      5 |      0 |        0 |                                                                                                                          |
-| attrs              | call: param.method()                       |      5 |      3 |        2 |                                                                                    attributes_arguments.pop('cmp', None) |
-| attrs              | tuple (mixed/unknown elements)             |      5 |      4 |        4 |                                                                   (len(script), None, script.splitlines(True), filename) |
-| attrs              | copy: imported                             |      4 |      0 |        0 |                                                                                                                          |
-| attrs              | dict (mixed/unknown elements)              |      4 |      3 |        2 | {'cached_properties': cached_properties, '_cached_setattr_get': _OBJ_SETATTR.__get__, 'original_getattr': original_getat |
-| attrs              | call: builtin type()                       |      4 |      3 |        0 |                                                                                                                          |
-| attrs              | attr: modclass.x                           |      4 |      3 |        3 |                                                                                             Attribute.from_counting_attr |
-| attrs              | DictComp (unknown elements)                |      4 |      0 |        0 |                                                                                                                          |
-| attrs              | boolop (or)                                |      4 |      3 |        3 |                                                                                         a.on_setattr or self._on_setattr |
-| attrs              | attr: param.x                              |      3 |      3 |        1 |                                                                                                            val.__class__ |
-| attrs              | call: builtin set()                        |      3 |      1 |        1 |                                                                                                    set(self._base_names) |
-| attrs              | attr: cls.x                                |      3 |      3 |        2 |                                                                                                             cls.__dict__ |
-| attrs              | attr: chained                              |      3 |      2 |        1 |                                                                                                ClassProps.KeywordOnly.NO |
-| attrs              | call: chained .method()                    |      3 |      3 |        0 |                                                                                                                          |
-| attrs              | call: global.method()                      |      3 |      2 |        2 |                                                                                               _OBJ_SETATTR.__get__(self) |
-| attrs              | call: builtin zip()                        |      3 |      3 |        2 |                                                                                             zip(state_attr_names, state) |
-| attrs              | subscript: param[...]                      |      3 |      3 |        2 |                                                                                                        globs['__init__'] |
-| attrs              | copy: moddef                               |      3 |      1 |        1 |                                                                                                                    attrs |
-| attrs              | copy: other                                |      3 |      3 |        1 |                                                                                                                  setters |
-| attrs              | call: other name                           |      2 |      1 |        1 |                                                                                            func(self.value, other.value) |
-| attrs              | call: builtin list()                       |      2 |      2 |        2 |                                                                                       list(self.sig.parameters.values()) |
-| attrs              | call: builtin object()                     |      2 |      0 |        0 |                                                                                                                          |
-| attrs              | binop (unknown operands)                   |      2 |      1 |        1 |                                                                                                   base_attrs + own_attrs |
-| attrs              | call: other callee                         |      2 |      2 |        0 |                                                                                                                          |
-| attrs              | call: builtin tuple()                      |      2 |      2 |        2 |                                                            tuple((an for an in self._attr_names if an != '__weakref__')) |
-| attrs              | subscript: other[...]                      |      2 |      2 |        2 |                                                                                                           sa_attrs[name] |
-| attrs              | boolop (and)                               |      2 |      2 |        2 |                                                                   auto_detect and _has_own_attribute(cls, '__setattr__') |
-| attrs              | call: module class                         |      2 |      2 |        2 | ClassProps(is_exception=is_exc, is_frozen=is_frozen, is_slotted=slots, collected_fields_by_mro=collect_by_mro, added_ini |
-| attrs              | subscript: imported[...]                   |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | call: builtin frozenset()                  |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | call: param name                           |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | attr: builtin.x                            |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | call: imported.attr()                      |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | call: builtin compile()                    |      1 |      1 |        1 |                                                                                        compile(script, filename, 'exec') |
-| attrs              | call: builtin reversed()                   |      1 |      1 |        0 |                                                                                                                          |
-| attrs              | subscript: other                           |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | SetComp (unknown elements)                 |      1 |      0 |        0 |                                                                                                                          |
-| attrs              | call: builtin hash()                       |      1 |      1 |        1 |                                                                             hash(_generate_unique_filename(cls, 'hash')) |
-| attrs              | copy: param (annotated)                    |      1 |      1 |        1 |                                                                                                                    attrs |
-| attrs              | other constant                             |      1 |      1 |        1 |                                                                      '{self.__class__.__qualname__.rsplit(">.", 1)[-1]}' |
-| attrs              | binop (one side literal)                   |      1 |      1 |        1 |                                                                                             '__attr_validator_' + a.name |
-| attrs              | call: builtin dict()                       |      1 |      0 |        0 |                                                                                                                          |
-| click              | call: chained .method()                    |     29 |     23 |       16 |                                                                       self._exit_stack.__exit__(exc_type, exc_value, tb) |
-| click              | other constant                             |     17 |      0 |        0 |                                                                                                                          |
-| click              | call: imported function                    |     16 |     12 |        8 |                                                                 _get_windows_console_stream(sys.stdin, encoding, errors) |
-| click              | call: self.method()                        |     16 |     14 |        4 |                                                                                                  self.list_commands(ctx) |
-| click              | call: local.method()                       |     12 |      9 |        7 |                                                                                                 cmd_name.rpartition('-') |
-| click              | conditional                                |     10 |      8 |        8 |                                                                   [self.options_metavar] if self.options_metavar else [] |
-| click              | call: builtin getattr()                    |      9 |      5 |        3 |                                                                                  getattr(self._stream, 'writable', None) |
-| click              | attr: self.x                               |      9 |      6 |        4 |                                                                                                        self.show_percent |
-| click              | empty list                                 |      9 |      0 |        0 |                                                                                                                          |
-| click              | call: module.func()                        |      9 |      4 |        4 |                                                                                          shlex.shlex(string, posix=True) |
-| click              | attr: imported.x                           |      9 |      6 |        6 |                                                                                                  formatting.FORCED_WIDTH |
-| click              | None literal                               |      9 |      7 |        7 |                                                                                                                     None |
-| click              | call: param.method()                       |      7 |      5 |        4 |                                                                                ctx.lookup_default(self.name, call=False) |
-| click              | call: other name                           |      6 |      4 |        4 |                                                                                                               src_func() |
-| click              | attr: global.x                             |      5 |      0 |        0 |                                                                                                                          |
-| click              | copy: param (annotated)                    |      5 |      2 |        2 |                                                                                                                    value |
-| click              | call: module function (annotated)          |      4 |      4 |        0 |                                                                                                                          |
-| click              | copy: local                                |      4 |      2 |        2 |                                                                                                                 resolved |
-| click              | call: imported class                       |      4 |      2 |        2 |                                                                                                            Counter(opts) |
-| click              | call: other callee                         |      4 |      1 |        1 |                                                        t.cast('t.Callable[[], cabc.Iterable[str]]', text_or_generator)() |
-| click              | call: capitalised                          |      4 |      0 |        0 |                                                                                                                          |
-| click              | GeneratorExp (unknown elements)            |      4 |      4 |        4 |                                                                (opt for opt, count in opts_counter.items() if count > 1) |
-| click              | boolop (and)                               |      4 |      4 |        4 |                                                                 existing_source is not None and source < existing_source |
-| click              | call: imported.attr()                      |      3 |      2 |        1 |                                                                                                 binary_streams.get(name) |
-| click              | subscript: other                           |      3 |      2 |        2 |                                                                                                            ctx.meta[key] |
-| click              | attr: module.x                             |      3 |      3 |        2 |                                                                                                               sys.stdout |
-| click              | boolop (or)                                |      2 |      2 |        2 |                                                            getattr(stream, 'encoding', None) or sys.getdefaultencoding() |
-| click              | binop (unknown operands)                   |      2 |      1 |        1 |                                                                                       os.O_RDWR | os.O_CREAT | os.O_EXCL |
-| click              | call: other.method()                       |      2 |      2 |        1 |                                                                                                attrs.pop('params', None) |
-| click              | list (mixed/unknown elements)              |      2 |      1 |        1 |                                                                                                 [_write_opts(self.opts)] |
-| click              | call: global name                          |      2 |      0 |        0 |                                                                                                                          |
-| click              | copy: builtin                              |      2 |      0 |        0 |                                                                                                                          |
-| click              | copy: imported                             |      1 |      1 |        1 |                                                                                                                      WIN |
-| click              | call: builtin dict()                       |      1 |      1 |        1 |                                                                                                         dict(os.environ) |
-| click              | binop (one side literal)                   |      1 |      0 |        0 |                                                                                                                          |
-| click              | call: global.method()                      |      1 |      0 |        0 |                                                                                                                          |
-| click              | call: builtin.method()                     |      1 |      1 |        1 |                                                                                     dict.fromkeys(ctx.help_option_names) |
-| click              | empty dict                                 |      1 |      0 |        0 |                                                                                                                          |
-| click              | attr: other.x                              |      1 |      1 |        1 |                                                                                                    self._result_callback |
-| click              | DictComp (unknown elements)                |      1 |      0 |        0 |                                                                                                                          |
-| click              | JoinedStr                                  |      1 |      0 |        0 |                                                                                                                          |
-| click              | attr: param.x                              |      1 |      1 |        0 |                                                                                                                          |
-| click              | copy: other                                |      1 |      0 |        0 |                                                                                                                          |
-| click              | call: local name                           |      1 |      1 |        0 |                                                                                                                          |
-| click              | call: param name                           |      1 |      1 |        0 |                                                                                                                          |
-| click              | call: module class                         |      1 |      1 |        1 |                                        _NamedTextIOWrapper(bytes_input, encoding=self.charset, name='<stdin>', mode='r') |
-| click              | attr: chained                              |      1 |      1 |        1 |                                                                                                         pdb.Pdb.__init__ |
-| click              | ListComp (unknown elements)                |      1 |      1 |        1 |                                                     [convert_type(type(choice)).name.upper() for choice in self.choices] |
-| click              | subscript: param[...]                      |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: chained .method()                    |     24 |     15 |       12 |                                                                                           event.raw_path.partition(b'?') |
-| hypercorn          | call: module.func()                        |     13 |      8 |        8 |                                                                                                      trio.open_nursery() |
-| hypercorn          | attr: param.x                              |     13 |      8 |        8 |                                                                                                          request.headers |
-| hypercorn          | call: local.method()                       |     12 |      2 |        1 |                                                                                      ssl_object.selected_alpn_protocol() |
-| hypercorn          | call: param.method()                       |     11 |      2 |        1 |                                                                                        request.get('http_version', 'ws') |
-| hypercorn          | None literal                               |     10 |      3 |        3 |                                                                                                                     None |
-| hypercorn          | binop (unknown operands)                   |     10 |      2 |        2 |                                                           request['path'] + ('?' + query_string if query_string else '') |
-| hypercorn          | call: imported class                       |      7 |      3 |        3 |                                                                                                     TaskGroup(self.loop) |
-| hypercorn          | subscript: param[...]                      |      6 |      6 |        6 |                                                                                                         scope['headers'] |
-| hypercorn          | call: other.method()                       |      5 |      3 |        3 |                                                           error.subgroup((LifespanFailureError, asyncio.CancelledError)) |
-| hypercorn          | await: call: chained .method()             |      4 |      1 |        0 |                                                                                                                          |
-| hypercorn          | binop (one side literal)                   |      4 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: imported function                    |      4 |      0 |        0 |                                                                                                                          |
-| hypercorn          | await: call: param name                    |      3 |      3 |        2 |                                                                                                          await receive() |
-| hypercorn          | call: self.method()                        |      3 |      1 |        1 |                                                                                        self.app(environ, start_response) |
-| hypercorn          | copy: local                                |      3 |      2 |        2 |                                                                                                            response_body |
-| hypercorn          | dict (mixed/unknown elements)              |      2 |      1 |        1 | {'REQUEST_METHOD': scope['method'], 'SCRIPT_NAME': script_name.encode('utf8').decode('latin1'), 'PATH_INFO': path.encode |
-| hypercorn          | list (mixed/unknown elements)              |      2 |      1 |        1 |                                                               [(b':method', request.method), (b':path', request.target)] |
-| hypercorn          | copy: imported                             |      2 |      0 |        0 |                                                                                                                          |
-| hypercorn          | empty list                                 |      2 |      0 |        0 |                                                                                                                          |
-| hypercorn          | attr: chained                              |      2 |      1 |        1 |                                                                                      self.stream.transport_stream.socket |
-| hypercorn          | call: other callee                         |      2 |      2 |        2 |                                                    trio.open_memory_channel[ASGIReceiveEvent](config.max_app_queue_size) |
-| hypercorn          | tuple (mixed/unknown elements)             |      2 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin bytearray()                  |      1 |      1 |        1 |                                                                                                              bytearray() |
-| hypercorn          | call: module function (annotated)          |      1 |      1 |        1 |                                                                                       _build_environ(scope, bytes(body)) |
-| hypercorn          | boolop (or)                                |      1 |      1 |        1 |                                                                                 scope.get('server') or ('localhost', 80) |
-| hypercorn          | other constant                             |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | await: call: local.method()                |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | attr: self.x                               |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | subscript: local[...]                      |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | DictComp (unknown elements)                |      1 |      1 |        1 | {key: getattr(instance, key) for key in dir(instance) if not isinstance(getattr(instance, key), types.ModuleType) and (n |
-| hypercorn          | call: builtin open()                       |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin next()                       |      1 |      1 |        1 |                                                                                                      next(self.priority) |
-| hypercorn          | call: builtin min()                        |      1 |      1 |        1 |                       min(self.connection.local_flow_control_window(stream_id), self.connection.max_outbound_frame_size) |
-| hypercorn          | copy: other                                |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin eval()                       |      1 |      0 |        0 |                                                                                                                          |
-| hypercorn          | call: builtin getattr()                    |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | call: param.method()                       |     33 |     29 |       20 |                                                                                               scope.get('root_path', '') |
-| starlette          | call: local.method()                       |     31 |     23 |       18 |                                                                                                   matched_params.items() |
-| starlette          | call: chained .method()                    |     26 |     24 |       18 |                                                                                                     self._dict.popitem() |
-| starlette          | call: builtin reversed()                   |     15 |      4 |        2 |                                                                                                     reversed(middleware) |
-| starlette          | call: imported class                       |     15 |     15 |       14 |                                                                                                     Headers(scope=scope) |
-| starlette          | subscript: param[...]                      |     14 |     14 |       13 |                                                                                                          message['type'] |
-| starlette          | attr: self.x                               |     11 |      8 |        4 |                                                                                                              self.router |
-| starlette          | call: self.method()                        |     11 |     10 |        8 |                                                                                                       self.mutablecopy() |
-| starlette          | await: call: self.method()                 |     10 |      9 |        2 |                                                                                                        await self.body() |
-| starlette          | call: module.func()                        |      9 |      9 |        7 |                                                                                                anyio.create_task_group() |
-| starlette          | other constant                             |      9 |      0 |        0 |                                                                                                                          |
-| starlette          | call: imported function                    |      9 |      9 |        7 |                                                             parse_options_header(self._current_part.content_disposition) |
-| starlette          | tuple (mixed/unknown elements)             |      8 |      7 |        6 |                                                                                           (FormMessage.FIELD_START, b'') |
-| starlette          | call: other callee                         |      8 |      8 |        8 |                                                                     anyio.create_memory_object_stream[Message](math.inf) |
-| starlette          | await: call: module.func()                 |      7 |      7 |        6 |                                                                              await anyio.open_file(self.path, mode='rb') |
-| starlette          | attr: chained                              |      6 |      6 |        5 |                                                                                                       request.app.routes |
-| starlette          | conditional                                |      6 |      6 |        3 |                                                                    [scopes] if isinstance(scopes, str) else list(scopes) |
-| starlette          | copy: param (annotated)                    |      6 |      5 |        2 |                                                                                                                     args |
-| starlette          | copy: local                                |      6 |      5 |        5 |                                                                                                                   server |
-| starlette          | dict (mixed/unknown elements)              |      6 |      2 |        2 | {'REQUEST_METHOD': scope['method'], 'SCRIPT_NAME': script_name, 'PATH_INFO': path_info, 'QUERY_STRING': scope['query_str |
-| starlette          | None literal                               |      5 |      4 |        4 |                                                                                                                     None |
-| starlette          | subscript: local[...]                      |      5 |      5 |        4 |                                                                                                          message['text'] |
-| starlette          | binop (unknown operands)                   |      5 |      2 |        2 |                                                                                    base_url.path.rstrip('/') + str(self) |
-| starlette          | ListComp (unknown elements)                |      5 |      4 |        4 |                                                                                                  [item for item in self] |
-| starlette          | call: builtin getattr()                    |      5 |      5 |        3 |                                                                                      getattr(self.file, '_rolled', True) |
-| starlette          | call: builtin dict()                       |      5 |      2 |        2 |                                                                                                       dict(self.items()) |
-| starlette          | await: call: local.method()                |      5 |      4 |        3 |                                                                       await file.read(min(self.chunk_size, end - start)) |
-| starlette          | call: module class                         |      4 |      3 |        3 |                                                                 MultiDict(parse_qsl(self.query, keep_blank_values=True)) |
-| starlette          | attr: local.x                              |      4 |      4 |        4 |                                                                                                    parsed_host.authority |
-| starlette          | boolop (or)                                |      4 |      4 |        3 |                                                                                             self.host or base_url.netloc |
-| starlette          | await: call: other name                    |      4 |      4 |        2 |                                                                                                          await receive() |
-| starlette          | call: builtin set()                        |      4 |      3 |        3 |                                                                                                  set(path_params.keys()) |
-| starlette          | await: call: chained .method()             |      3 |      3 |        2 |                                                                                         await self.stream_send.receive() |
-| starlette          | await: call: param name                    |      3 |      3 |        1 |                                                                                                          await receive() |
-| starlette          | await: call: local name                    |      2 |      2 |        2 |                                                                                                 await handler(conn, exc) |
-| starlette          | subscript: other                           |      2 |      2 |        1 |     {'http': {True: 'https', False: 'http'}, 'websocket': {True: 'wss', False: 'ws'}}[self.protocol][base_url.is_secure] |
-| starlette          | binop (one side literal)                   |      2 |      1 |        1 |                                                                                         '/' + matched_params.pop('path') |
-| starlette          | attr: param.x                              |      2 |      2 |        1 |                                                                                                        exc.__traceback__ |
-| starlette          | boolop (and)                               |      2 |      2 |        2 |                                                               scope_type == 'http' and scope['method'].upper() == 'HEAD' |
-| starlette          | subscript: imported[...]                   |      2 |      1 |        0 |                                                                                                                          |
-| starlette          | call: global.method()                      |      1 |      1 |        1 |                                                                                          _HOST_RE.fullmatch(host_header) |
-| starlette          | attr: imported.x                           |      1 |      1 |        1 |                                                                                            status.WS_1000_NORMAL_CLOSURE |
-| starlette          | copy: imported                             |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | await: call: other.method()                |      1 |      1 |        1 |                                                                                              await recv_stream.receive() |
-| starlette          | copy: other                                |      1 |      1 |        0 |                                                                                                                          |
-| starlette          | await: call: imported function             |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | set (mixed/unknown elements)               |      1 |      1 |        1 |                                                                        {media_type, media_type.partition('/')[0] + '/*'} |
-| starlette          | call: module function (annotated)          |      1 |      1 |        1 |                                                                                          build_environ(self.scope, body) |
-| starlette          | empty dict                                 |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | call: builtin sorted()                     |      1 |      1 |        1 |                                                                                               sorted(self.methods or []) |
-| starlette          | empty list                                 |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | attr: module.x                             |      1 |      0 |        0 |                                                                                                                          |
-| starlette          | call: other.method()                       |      1 |      1 |        1 |                                                                                                           request.read() |
-| starlette          | attr: other.x                              |      1 |      1 |        1 |                                                                                                              exc.session |
-| werkzeug           | other constant                             |     81 |      4 |        4 |                                                                                                                       '' |
-| werkzeug           | call: chained .method()                    |     64 |     43 |       29 |                                                                                      super().get_headers(environ, scope) |
-| werkzeug           | call: imported function                    |     36 |     20 |       18 |                                                                                              urlsplit(response.location) |
-| werkzeug           | call: local.method()                       |     34 |     20 |       15 |                                                                                                                d.lists() |
-| werkzeug           | call: param.method()                       |     33 |     30 |       23 |                                                                                                          mapping.items() |
-| werkzeug           | copy: local                                |     32 |     18 |       13 |                                                                                                                  headers |
-| werkzeug           | call: module function (annotated)          |     27 |     12 |        8 |                                                                                                iter_multi_items(mapping) |
-| werkzeug           | attr: self.x                               |     26 |     22 |       17 |                                                                                                       self._first_bucket |
-| werkzeug           | empty list                                 |     23 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: self.method()                        |     22 |     16 |       12 |                                                                                                             self.lists() |
-| werkzeug           | call: other callee                         |     20 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: module.func()                        |     17 |     10 |        8 |                                                                                               pkgutil.iter_modules(path) |
-| werkzeug           | call: builtin getattr()                    |     16 |     16 |        9 |                                                                                             getattr(obj, 'environ', obj) |
-| werkzeug           | copy: self                                 |     13 |     11 |        6 |                                                                                                                     self |
-| werkzeug           | call: other name                           |     11 |      9 |        8 |                                                                               original_compile(source, filename, symbol) |
-| werkzeug           | None literal                               |     11 |     10 |       10 |                                                                                                                     None |
-| werkzeug           | call: builtin set()                        |     10 |      0 |        0 |                                                                                                                          |
-| werkzeug           | subscript: other                           |     10 |      3 |        3 |                                                                                                           self.ranges[0] |
-| werkzeug           | copy: param (annotated)                    |      9 |      4 |        2 |                                                                                                                  exports |
-| werkzeug           | list (mixed/unknown elements)              |      9 |      8 |        7 |                        [username, modname, getattr(app, '__name__', type(app).__name__), getattr(mod, '__file__', None)] |
-| werkzeug           | call: local name                           |      8 |      8 |        7 |                                                                                                            file_loader() |
-| werkzeug           | call: builtin enumerate()                  |      6 |      6 |        2 |                                                                                                          enumerate(self) |
-| werkzeug           | tuple (mixed/unknown elements)             |      6 |      4 |        1 | (('Domain', domain), ('Expires', expires), ('Max-Age', max_age), ('Secure', secure), ('HttpOnly', httponly), ('Path', pa |
-| werkzeug           | subscript: local[...]                      |      5 |      5 |        4 |                                                                                                       storage[self.name] |
-| werkzeug           | call: builtin next()                       |      5 |      5 |        4 |                                                                                       next(parse_cookie(header).items()) |
-| werkzeug           | attr: chained                              |      5 |      2 |        2 |                                                                                             t.cast(Field, event).headers |
-| werkzeug           | call: global.method()                      |      5 |      5 |        3 |                                                                                                            _stream.get() |
-| werkzeug           | attr: local.x                              |      5 |      3 |        3 |                                                                                                            current.stack |
-| werkzeug           | call: other.method()                       |      5 |      5 |        5 |                                                                                                              local.get() |
-| werkzeug           | boolop (or)                                |      5 |      2 |        2 |                                                                                                              rules or () |
-| werkzeug           | call: builtin iter()                       |      4 |      4 |        4 |                                                                                                             iter(values) |
-| werkzeug           | empty dict                                 |      4 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: imported class                       |      4 |      1 |        1 |                                                                                                         Request(environ) |
-| werkzeug           | attr: module.x                             |      4 |      1 |        1 |                                                                                                               sys.stdout |
-| werkzeug           | subscript: param[...]                      |      4 |      3 |        3 |                                                                                                  environ['QUERY_STRING'] |
-| werkzeug           | binop (unknown operands)                   |      4 |      4 |        4 |                                                        self._last_partial_boundary_index(data[data_start:]) + data_start |
-| werkzeug           | ListComp (unknown elements)                |      3 |      1 |        1 |                                                                 [_locale_delim_re.split(item, 1)[0] for item in matches] |
-| werkzeug           | call: builtin repr()                       |      3 |      3 |        3 |                                                                                                                repr(obj) |
-| werkzeug           | call: imported.attr()                      |      3 |      3 |        2 |                                                     client.HTTPConnection(host, target.port or 80, timeout=self.timeout) |
-| werkzeug           | copy: imported                             |      3 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: param name                           |      3 |      2 |        1 |                                        response_class(data, mimetype=mimetype, headers=headers, direct_passthrough=True) |
-| werkzeug           | dict (mixed/unknown elements)              |      3 |      3 |        3 | {'path': _wsgi_decoding_dance(environ['PATH_INFO']), 'base_url': cls._make_base_url(environ['wsgi.url_scheme'], headers. |
-| werkzeug           | subscript: self[...]                       |      2 |      2 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin staticmethod()               |      2 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin hash()                       |      2 |      2 |        2 |                                                                                                        hash(tuple(self)) |
-| werkzeug           | attr: param.x                              |      2 |      2 |        1 |                                                                                                              environ.get |
-| werkzeug           | call: builtin min()                        |      2 |      1 |        1 |                                                                                  min(len(lines), line_idx + context + 1) |
-| werkzeug           | conditional                                |      2 |      2 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin sorted()                     |      2 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin zip()                        |      2 |      0 |        0 |                                                                                                                          |
-| werkzeug           | GeneratorExp (unknown elements)            |      1 |      1 |        1 |                                                                    (p for p in self.extra_files if not os.path.isdir(p)) |
-| werkzeug           | call: module class                         |      1 |      1 |        1 |                                              Accept([(_locale_delim_re.split(item[0], 1)[0], item[1]) for item in self]) |
-| werkzeug           | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: str-literal.method()                 |      1 |      1 |        1 |                                                                                              '\n\n'.join(paragraphs[1:]) |
-| werkzeug           | compare                                    |      1 |      1 |        1 |                                                                                            exc_type_str == 'SyntaxError' |
-| werkzeug           | binop (one side literal)                   |      1 |      1 |        1 |                                                                                                          self.lineno - 1 |
-| werkzeug           | call: builtin max()                        |      1 |      1 |        1 |                                                                                               max(0, line_idx - context) |
-| werkzeug           | attr: modclass.x                           |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | subscript: builtin[...]                    |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | copy: moddef                               |      1 |      1 |        1 |                                                                                                                _identity |
-| werkzeug           | attr: other.x                              |      1 |      1 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin list()                       |      1 |      1 |        1 |                                                                                    list(EnvironHeaders(environ).items()) |
-| werkzeug           | copy: other                                |      1 |      1 |        1 |                                                                                                                     path |
-| werkzeug           | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | subscript: other[...]                      |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin compile()                    |      1 |      1 |        1 |                                                                            compile(module, '<werkzeug routing>', 'exec') |
-| werkzeug           | JoinedStr                                  |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: builtin.method()                     |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | copy: global                               |      1 |      0 |        0 |                                                                                                                          |
-| werkzeug           | call: capitalised                          |      1 |      1 |        1 | Response(f'<!doctype html>\n<html lang=en>\n<title>Redirecting...</title>\n<h1>Redirecting...</h1>\n<p>You should be red |
-| werkzeug           | call: builtin __import__()                 |      1 |      1 |        1 |                                                                 __import__(module_name, globals(), locals(), [obj_name]) |
-| werkzeug           | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: imported.attr()                      |    366 |     46 |       46 |                                                                                                    search.SearchPlugin() |
-| mkdocs             | call: self.method()                        |    117 |    108 |      105 |                                                                                             self.get_config(Schema, cfg) |
-| mkdocs             | call: local.method()                       |     65 |     37 |       37 |                                                                                                          conf.validate() |
-| mkdocs             | dict (mixed/unknown elements)              |     43 |     33 |       33 |                {'name': 'mkdocs', 'custom_dir': custom_dir, 'static_templates': ['sitemap.html'], 'show_sidebar': False} |
-| mkdocs             | call: imported function                    |     42 |     26 |       25 |                                                                                            get_toc(get_markdown_toc(md)) |
-| mkdocs             | attr: param.x                              |     37 |     32 |       31 |                                                                                                     mock_build.call_args |
-| mkdocs             | call: param.method()                       |     32 |     24 |       21 |                                                                                                 ctx.ensure_object(State) |
-| mkdocs             | call: chained .method()                    |     29 |     19 |       17 |                                                                                                      cfg.theme.get_env() |
-| mkdocs             | tuple (mixed/unknown elements)             |     29 |     29 |        9 | ({'docs_dir': j('site', 'docs'), 'site_dir': 'site'}, {'docs_dir': 'docs', 'site_dir': '.'}, {'docs_dir': '.', 'site_dir |
-| mkdocs             | attr: chained                              |     26 |     22 |       21 |                                                                                      files.documentation_pages()[0].page |
-| mkdocs             | copy: local                                |     25 |     19 |       15 |                                                                                                             test_configs |
-| mkdocs             | call: module.func()                        |     24 |     10 |        9 |                                                                                                     os.path.join(*parts) |
-| mkdocs             | call: module class                         |     24 |     13 |       13 |                                                                                                            DummyPlugin() |
-| mkdocs             | call: other name                           |     15 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: other callee                         |     15 |      0 |        0 |                                                                                                                          |
-| mkdocs             | list (mixed/unknown elements)              |     13 |     10 |        8 | [{'Home': 'index.md'}, {'API Guide': [{'Running': 'api-guide/running.md'}, {'Testing': 'api-guide/testing.md'}, {'Debugg |
-| mkdocs             | call: imported class                       |     12 |      9 |        9 |                                                                                                     Theme(name='mkdocs') |
-| mkdocs             | attr: self.x                               |     12 |     12 |        7 |                                                                                                             self._schema |
-| mkdocs             | copy: param (unannotated)                  |     10 |     10 |        7 |                                                                                                                    paths |
-| mkdocs             | subscript: other                           |      9 |      7 |        7 |                                                                                        mkdocs.__file__.split(os.sep)[-3] |
-| mkdocs             | call: module function (annotated)          |      8 |      4 |        2 |                                                                                                _get_by_type(items, Page) |
-| mkdocs             | attr: local.x                              |      8 |      5 |        5 |                                                                                                    server._visible_epoch |
-| mkdocs             | subscript: param[...]                      |      7 |      6 |        5 |                                                                                                       config['docs_dir'] |
-| mkdocs             | copy: param (annotated)                    |      6 |      5 |        3 |                                                                                                                    attrs |
-| mkdocs             | empty list                                 |      6 |      0 |        0 |                                                                                                                          |
-| mkdocs             | None literal                               |      6 |      6 |        6 |                                                                                                                     None |
-| mkdocs             | conditional                                |      4 |      4 |        4 |                                                                        data if isinstance(data, tuple) else (None, data) |
-| mkdocs             | subscript: imported[...]                   |      4 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin zip()                        |      4 |      2 |        0 |                                                                                                                          |
-| mkdocs             | call: other.method()                       |      4 |      4 |        4 |                                                                                                            files.items() |
-| mkdocs             | call: module function (unannotated)        |      3 |      1 |        0 |                                                                                                                          |
-| mkdocs             | subscript: local[...]                      |      3 |      1 |        1 |                                                                                              path[len(self.mount_path):] |
-| mkdocs             | empty dict                                 |      3 |      0 |        0 |                                                                                                                          |
-| mkdocs             | other constant                             |      3 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin reversed()                   |      2 |      1 |        1 |                                                                                                           reversed(opts) |
-| mkdocs             | call: builtin staticmethod()               |      2 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin open()                       |      2 |      1 |        1 |                                                                                        open(dest_path, encoding='utf-8') |
-| mkdocs             | call: capitalised                          |      2 |      1 |        1 |                                                                                                             PrioPlugin() |
-| mkdocs             | call: builtin sorted()                     |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin dict()                       |      1 |      1 |        1 |                                                                                        dict(getattr(cls, '_schema', ())) |
-| mkdocs             | call: builtin set()                        |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | JoinedStr                                  |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin tuple()                      |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | copy: global                               |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin getattr()                    |      1 |      1 |        1 |                                                                                         getattr(value, event_name, None) |
-| mkdocs             | call: local name                           |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | copy: self                                 |      1 |      1 |        1 |                                                                                                                     self |
-| mkdocs             | boolop (or)                                |      1 |      1 |        1 |                                                                                            self.abs_url or self.file.url |
-| mkdocs             | ListComp (unknown elements)                |      1 |      1 |        1 |                                                                                [_parse_toc_token(i) for i in toc_tokens] |
-| mkdocs             | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: builtin enumerate()                  |      1 |      1 |        1 |                                                                                                      enumerate(paths, 1) |
-| mkdocs             | call: builtin max()                        |      1 |      1 |        1 |                                                                                      max((p.update_date for p in pages)) |
-| mkdocs             | attr: builtin.x                            |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | call: param name                           |      1 |      0 |        0 |                                                                                                                          |
-| mkdocs             | SetComp (unknown elements)                 |      1 |      1 |        1 |                                              {ep.name for ep in eps if ep.dist is not None and ep.dist.name == 'mkdocs'} |
-| mkdocs             | binop (one side literal)                   |      1 |      1 |        1 |                                                                                                      text.index('>') + 1 |
-| httpx              | attr: self.x                               |     26 |     22 |       16 |                                                                                                               self._list |
-| httpx              | call: param.method()                       |     26 |     19 |       12 |                                                                                                          headers.items() |
-| httpx              | call: local.method()                       |     24 |     18 |       16 |                                                                                                        val.split(';', 1) |
-| httpx              | call: chained .method()                    |     24 |     22 |       18 |                                                                                      self.response.headers.multi_items() |
-| httpx              | subscript: imported[...]                   |     18 |      0 |        0 |                                                                                                                          |
-| httpx              | subscript: other                           |     17 |      2 |        2 |                                                                                             response.headers['Location'] |
-| httpx              | call: imported class                       |     11 |      9 |        9 |                                Client(cookies=cookies, proxy=proxy, verify=verify, timeout=timeout, trust_env=trust_env) |
-| httpx              | call: self.method()                        |     11 |      8 |        5 |                                                                             self._redirect_headers(request, url, method) |
-| httpx              | boolop (or)                                |     11 |      9 |        9 |                                                                                          self._uri_reference.path or '/' |
-| httpx              | ListComp (unknown elements)                |      9 |      7 |        7 |                                            [(name.lower() if http2 else name, value) for name, value in request.headers] |
-| httpx              | attr: chained                              |      8 |      6 |        6 |                                                                                                      request.headers.raw |
-| httpx              | dict (mixed/unknown elements)              |      8 |      7 |        7 | {'username': self._username, 'realm': challenge.realm, 'nonce': challenge.nonce, 'uri': path, 'response': digest(b':'.jo |
-| httpx              | subscript: param[...]                      |      8 |      4 |        4 |                                                                                                     info['return_value'] |
-| httpx              | copy: local                                |      7 |      2 |        2 |                                                                                                                   remove |
-| httpx              | None literal                               |      7 |      7 |        7 |                                                                                                                     None |
-| httpx              | conditional                                |      5 |      5 |        3 |                                                         content.encode('utf-8') if isinstance(content, str) else content |
-| httpx              | call: module class                         |      5 |      5 |        5 |                                                                                                            QueryParams() |
-| httpx              | call: module.func()                        |      4 |      2 |        2 |                                                                                                    re.split(b', ?', qop) |
-| httpx              | empty list                                 |      4 |      0 |        0 |                                                                                                                          |
-| httpx              | copy: param (annotated)                    |      4 |      4 |        3 |                                                                                                                    value |
-| httpx              | Yield                                      |      3 |      3 |        3 |                                                                                                          (yield request) |
-| httpx              | tuple (mixed/unknown elements)             |      3 |      3 |        3 |                                                                             (request.url.username, request.url.password) |
-| httpx              | attr: param.x                              |      3 |      2 |        2 |                                                                                                           request.method |
-| httpx              | call: other name                           |      2 |      2 |        2 |                                                                                                               digest(A2) |
-| httpx              | list (mixed/unknown elements)              |      2 |      2 |        2 |                                                                                              [HA1, challenge.nonce, HA2] |
-| httpx              | await: call: chained .method()             |      2 |      1 |        1 |                                                                               await self._pool.handle_async_request(req) |
-| httpx              | call: builtin reversed()                   |      2 |      1 |        1 |                                                                                                    reversed(pop_indexes) |
-| httpx              | call: builtin locals()                     |      1 |      0 |        0 |                                                                                                                          |
-| httpx              | await: call: local.method()                |      1 |      0 |        0 |                                                                                                                          |
-| httpx              | call: builtin list()                       |      1 |      1 |        1 |                                                                   list(_obfuscate_sensitive_headers(self.multi_items())) |
-| httpx              | call: builtin dict()                       |      1 |      1 |        1 |                                                                                                            dict(as_list) |
-| httpx              | other constant                             |      1 |      1 |        1 |                                                                                                                        0 |
-| httpx              | call: builtin.method()                     |      1 |      1 |        1 |                                                                                                  int.__new__(cls, value) |
-| httpx              | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| httpx              | await: call: other.method()                |      1 |      0 |        0 |                                                                                                                          |
-| black              | attr: param.x                              |     59 |     56 |       31 |                                                                                                            node.children |
-| black              | subscript: other                           |     36 |     31 |       16 |                                                                                                        node.children[-1] |
-| black              | attr: local.x                              |     34 |     31 |       22 |                                                                                                             first.lineno |
-| black              | call: local.method()                       |     32 |     30 |       21 |                                                                                                           match.groups() |
-| black              | call: chained .method()                    |     21 |     15 |       13 |                                                                                                       leaf.value.lower() |
-| black              | attr: chained                              |     19 |     15 |       12 |                                                                                             line.leaves[-1].next_sibling |
-| black              | copy: local                                |     18 |     15 |       12 |                                                                                                                      idx |
-| black              | copy: builtin                              |     16 |      0 |        0 |                                                                                                                          |
-| black              | call: imported function                    |     13 |      5 |        4 |                                                                                               dump_to_file(dst_contents) |
-| black              | subscript: local[...]                      |     12 |     11 |       11 |                                                                                                               table[idx] |
-| black              | boolop (and)                               |     11 |      9 |        7 |                                                                         '\x0c' in remainder and remainder.endswith('\n') |
-| black              | empty list                                 |     11 |      0 |        0 |                                                                                                                          |
-| black              | conditional                                |     10 |     10 |        6 |                                                               path.resolve() if path.is_dir() else path.resolve().parent |
-| black              | call: builtin enumerate()                  |      8 |      8 |        3 |                                                                                  enumerate(re.split('\r?\n|\r', prefix)) |
-| black              | call: module function (annotated)          |      7 |      5 |        5 |                                                                              decode_bytes(sys.stdin.buffer.read(), mode) |
-| black              | call: module.func()                        |      7 |      4 |        4 |                                                                   itertools.groupby(self.leaves, lambda leaf: leaf.type) |
-| black              | binop (unknown operands)                   |      7 |      7 |        7 |                                                                        comment.value + '\n' + content_between_and_fmt_on |
-| black              | copy: param (annotated)                    |      7 |      6 |        6 |                                                                                                        previous_consumed |
-| black              | call: param.method()                       |      6 |      6 |        4 |                                                                                                       old_child.remove() |
-| black              | binop (one side literal)                   |      5 |      5 |        5 |                                                                                     path_project_root / 'pyproject.toml' |
-| black              | attr: imported.x                           |      4 |      4 |        4 |                                                                                                               Changed.NO |
-| black              | list (mixed/unknown elements)              |      4 |      4 |        3 |                                                                                                 [token.LPAR, token.LSQB] |
-| black              | tuple (mixed/unknown elements)             |      4 |      3 |        1 |                                                                                      (common_base, *common_base.parents) |
-| black              | call: builtin next()                       |      4 |      4 |        4 |                                                                                                           next(children) |
-| black              | attr: self.x                               |      4 |      3 |        3 |                                                                                                          self.visit_stmt |
-| black              | call: builtin set()                        |      3 |      1 |        1 |                                                                                                      set(target_version) |
-| black              | compare                                    |      3 |      2 |        2 |                                                                                                child.type == token.COMMA |
-| black              | call: builtin list()                       |      3 |      3 |        3 |                                                                                                      list(node.leaves()) |
-| black              | None literal                               |      3 |      3 |        3 |                                                                                                                     None |
-| black              | copy: imported                             |      2 |      1 |        1 |                                                                                                              WIDTH_TABLE |
-| black              | call: builtin getattr()                    |      2 |      2 |        0 |                                                                                                                          |
-| black              | SetComp (unknown elements)                 |      2 |      2 |        2 | {feature for feature in {Feature.PARENTHESIZED_CONTEXT_MANAGERS, Feature.UNPARENTHESIZED_EXCEPT_TYPES, Feature.T_STRINGS |
-| black              | ListComp (unknown elements)                |      2 |      1 |        1 |                                                [i for i, child in enumerate(node.children) if child.type == token.EQUAL] |
-| black              | boolop (or)                                |      2 |      2 |        2 |                                                                                                    operand.remove() or 0 |
-| black              | call: other name                           |      2 |      2 |        2 |                                                                                         split_func(line, features, mode) |
-| black              | call: builtin min()                        |      1 |      1 |        1 |                                                                                min((tv.value for tv in target_versions)) |
-| black              | call: imported class                       |      1 |      1 |        1 |                                                              LineGenerator(mode=mode, features=line_generation_features) |
-| black              | call: builtin.method()                     |      1 |      1 |        1 |                                                             set.intersection(*(set(parents) for parents in src_parents)) |
-| black              | call: builtin max()                        |      1 |      1 |        1 |                                                                         max(common_parents, key=lambda path: path.parts) |
-| black              | DictComp (unknown elements)                |      1 |      1 |        1 |                                                                               {f'3.{v.value}': v for v in TargetVersion} |
-| black              | dict (mixed/unknown elements)              |      1 |      1 |        1 |                                                                   {**gitignore_dict, root / child: get_gitignore(child)} |
-| black              | call: builtin iter()                       |      1 |      1 |        1 |                                                                                                      iter(node.children) |
-| black              | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| black              | attr: module.x                             |      1 |      1 |        1 |                                                                                                              sys.maxsize |
-| black              | call: other.method()                       |      1 |      1 |        1 |                                                                                                line.comments_after(leaf) |
-| black              | call: param name                           |      1 |      1 |        1 |                                                                                          transform(line, features, mode) |
-| black              | unaryop USub                               |      1 |      1 |        1 |                                                                                                                       -1 |
-| black              | empty dict                                 |      1 |      0 |        0 |                                                                                                                          |
-| black              | call: builtin sorted()                     |      1 |      1 |        1 |                                                                                                     sorted(node._fields) |
-| black              | call: module class                         |      1 |      1 |        1 |                                                                      _TopLevelStatementsVisitor(lines_set, replacements) |
-| black              | call: global.method()                      |      1 |      1 |        1 |                                                                                                   LINE_BREAK_RE.split(s) |
-| black              | other constant                             |      1 |      0 |        0 |                                                                                                                          |
-| black              | subscript: imported[...]                   |      1 |      0 |        0 |                                                                                                                          |
-| black              | subscript: global[...]                     |      1 |      0 |        0 |                                                                                                                          |
-| black              | attr: other.x                              |      1 |      1 |        1 |                                                                                                         self.line_length |
-| fastapi            | call: chained .method()                    |     42 |     40 |       20 |                                                                               req.scope.get('root_path', '').rstrip('/') |
-| fastapi            | call: module function (annotated)          |     41 |     26 |       13 | get_openapi_path(route=cast(routing._APIRouteLike, callback), operation_ids=operation_ids, model_name_map=model_name_map |
-| fastapi            | call: imported function                    |     39 |     32 |        9 |                                                                                    get_args(field.field_info.annotation) |
-| fastapi            | call: local.method()                       |     28 |     20 |       16 |                                                  fastapi_scope.get(_FASTAPI_EFFECTIVE_ROUTE_CONTEXT_KEY, _SCOPE_MISSING) |
-| fastapi            | call: param.method()                       |     28 |     25 |       12 |                                                                                                    values.getlist(alias) |
-| fastapi            | call: builtin getattr()                    |     25 |     22 |       18 |                                                                              getattr(_impartial(call), '__call__', None) |
-| fastapi            | copy: local                                |     18 |     17 |       11 |                                                                                                          static_resource |
-| fastapi            | attr: local.x                              |     13 |     13 |        7 |                                                                                                       sub_dependant.call |
-| fastapi            | attr: self.x                               |     12 |     11 |        6 |                                                                                                              self.routes |
-| fastapi            | dict (mixed/unknown elements)              |     11 |      5 |        2 | {_FASTAPI_SCOPE_KEY: {_FASTAPI_FRONTEND_PATH_KEY: frontend_path, _FASTAPI_FRONTEND_SPECIFICITY_KEY: _frontend_path_speci |
-| fastapi            | conditional                                |     11 |     11 |        6 |                             self._config.ser_json_bytes if self.mode == 'serialization' else self._config.val_json_bytes |
-| fastapi            | call: imported class                       |     11 |     11 |       11 |                                                                                                         AsyncExitStack() |
-| fastapi            | empty dict                                 |      9 |      0 |        0 |                                                                                                                          |
-| fastapi            | boolop (or)                                |      9 |      7 |        4 |                                                                                                       endpoint_ctx or {} |
-| fastapi            | DictComp (unknown elements)                |      6 |      4 |        3 |                                                            {(param['in'], param['name']): param for param in parameters} |
-| fastapi            | None literal                               |      6 |      6 |        6 |                                                                                                                     None |
-| fastapi            | copy: param (annotated)                    |      6 |      5 |        2 |                                                                                                                   fields |
-| fastapi            | call: module.func()                        |      6 |      6 |        5 |                                                                                                     inspect.unwrap(call) |
-| fastapi            | call: self.method()                        |      6 |      6 |        6 |                                                                                        self._match(scope, prefix=prefix) |
-| fastapi            | ListComp (unknown elements)                |      5 |      4 |        1 | [(field, field.mode if separate_input_output_schemas or _has_computed_fields(field) else 'validation', field._type_adapt |
-| fastapi            | attr: param.x                              |      5 |      4 |        4 |                                                                                                       call_identity.call |
-| fastapi            | call: other callee                         |      5 |      5 |        5 |                                                              anyio.create_memory_object_stream[bytes](max_buffer_size=1) |
-| fastapi            | call: global.method()                      |      5 |      3 |        2 |                                                                                     swagger_ui_default_parameters.copy() |
-| fastapi            | call: builtin dict()                       |      5 |      2 |        0 |                                                                                                                          |
-| fastapi            | call: other.method()                       |      4 |      4 |        3 |                                                                                                           self.openapi() |
-| fastapi            | await: call: module function (annotated)   |      4 |      4 |        1 |   await request_body_to_args(body_fields=dependant.body_params, received_body=body, embed_body_fields=embed_body_fields) |
-| fastapi            | attr: modclass.x                           |      4 |      0 |        0 |                                                                                                                          |
-| fastapi            | tuple (mixed/unknown elements)             |      3 |      3 |        0 |                                                                                                                          |
-| fastapi            | attr: chained                              |      3 |      3 |        1 |                                                                                              self.original_router.routes |
-| fastapi            | call: builtin reversed()                   |      3 |      2 |        0 |                                                                                                                          |
-| fastapi            | binop (unknown operands)                   |      3 |      3 |        2 |                                                                                             root_path + self.openapi_url |
-| fastapi            | list (mixed/unknown elements)              |      3 |      3 |        2 | [(ParamTypes.path, path_params), (ParamTypes.query, query_params), (ParamTypes.header, header_params), (ParamTypes.cooki |
-| fastapi            | await: call: other name                    |      3 |      3 |        1 |                                                                                                          await receive() |
-| fastapi            | call: other name                           |      3 |      3 |        2 |                                                                                                    original_context(app) |
-| fastapi            | copy: other                                |      3 |      1 |        0 |                                                                                                                          |
-| fastapi            | copy: imported                             |      2 |      0 |        0 |                                                                                                                          |
-| fastapi            | SetComp (unknown elements)                 |      2 |      2 |        1 |                                                                        {s.get('url') for s in schema.get('servers', [])} |
-| fastapi            | subscript: param[...]                      |      2 |      1 |        0 |                                                                                                                          |
-| fastapi            | call: builtin set()                        |      2 |      2 |        2 |                                                                                                          set(obj.keys()) |
-| fastapi            | empty list                                 |      2 |      0 |        0 |                                                                                                                          |
-| fastapi            | await: call: imported function             |      2 |      2 |        1 |                                                                      await run_in_threadpool(self.lookup_path, fallback) |
-| fastapi            | call: local name                           |      2 |      2 |        1 | route_class(self.prefix + path, endpoint=endpoint, response_model=response_model, status_code=status_code, tags=current_ |
-| fastapi            | call: builtin tuple()                      |      2 |      2 |        1 |                                                                                                            tuple(_owned) |
-| fastapi            | subscript: local[...]                      |      2 |      2 |        2 |                                                                                                        providers[signal] |
-| fastapi            | copy: global                               |      1 |      1 |        1 |                                                                                                                   _Attrs |
-| fastapi            | subscript: other                           |      1 |      0 |        0 |                                                                                                                          |
-| fastapi            | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| fastapi            | boolop (and)                               |      1 |      1 |        0 |                                                                                                                          |
-| fastapi            | await: call: param.method()                |      1 |      1 |        1 |                                                                                                     await request.body() |
-| fastapi            | await: call: other.method()                |      1 |      1 |        1 |                                                                                           await receive_stream.receive() |
-| fastapi            | await: call: local.method()                |      1 |      1 |        1 |                                                           await async_exit_stack.enter_async_context(_sse_producer_cm()) |
-| fastapi            | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| fastapi            | other constant                             |      1 |      0 |        0 |                                                                                                                          |
-| fastapi            | call: imported.attr()                      |      1 |      1 |        1 |                                                                  otel_context.get_value(_REQUEST_TELEMETRY_KEY, context) |
-| fastapi            | call: builtin type()                       |      1 |      1 |        0 |                                                                                                                          |
-| fastapi            | call: module class                         |      1 |      0 |        0 |                                                                                                                          |
-| fastapi            | compare                                    |      1 |      1 |        1 |                                                                                             scope['type'] == 'websocket' |
-| fastapi            | attr: other.x                              |      1 |      1 |        0 |                                                                                                                          |
-| cattrs             | call: imported function                    |     54 |     43 |       12 |                                                                                                          signature(func) |
-| cattrs             | attr: local.x                              |     20 |     18 |       12 |                                                                                                                   a.name |
-| cattrs             | empty dict                                 |     20 |      0 |        0 |                                                                                                                          |
-| cattrs             | copy: local                                |     19 |     19 |       10 |                                                                                                                    attrs |
-| cattrs             | call: builtin getattr()                    |     18 |     17 |        4 |                                                                                        getattr(cl, '__parameters__', ()) |
-| cattrs             | empty list                                 |     18 |      0 |        0 |                                                                                                                          |
-| cattrs             | call: chained .method()                    |     15 |     13 |        8 |                                                                                 self._structure_func.dispatch(elem_type) |
-| cattrs             | attr: param.x                              |     15 |     15 |        7 |                                                                                                              cl.__name__ |
-| cattrs             | call: param.method()                       |     12 |     10 |        9 |                                                                                  converter.get_structure_hook(elem_type) |
-| cattrs             | copy: imported                             |     11 |      3 |        3 |                                                                                                                      Any |
-| cattrs             | conditional                                |     10 |     10 |        5 |                                                                          attr_name if not _cattrs_use_alias else a.alias |
-| cattrs             | attr: global.x                             |      9 |      1 |        1 |                                                                                             _already_probing.working_set |
-| cattrs             | call: builtin set()                        |      8 |      3 |        0 |                                                                                                                          |
-| cattrs             | subscript: local[...]                      |      8 |      7 |        5 |                                                                                                           globs[fn_name] |
-| cattrs             | call: local.method()                       |      8 |      8 |        4 |                                                                                               internal_arg_parts.items() |
-| cattrs             | boolop (or)                                |      7 |      7 |        3 |                                                                   getattr(name_base, '__name__', None) or str(name_base) |
-| cattrs             | SetComp (unknown elements)                 |      7 |      7 |        3 |                                                    {v for t in exact_type.__args__ if is_literal(t) for v in t.__args__} |
-| cattrs             | copy: builtin                              |      6 |      4 |        4 |                                                                                                                      str |
-| cattrs             | subscript: other                           |      6 |      5 |        0 |                                                                                                                          |
-| cattrs             | call: builtin zip()                        |      6 |      6 |        3 |                                                                                                     zip(fields(cl), obj) |
-| cattrs             | subscript: param[...]                      |      6 |      6 |        4 |                                                                                                        kwargs[attr_name] |
-| cattrs             | copy: param (annotated)                    |      6 |      5 |        2 |                                                                                            unstruct_collection_overrides |
-| cattrs             | None literal                               |      6 |      5 |        5 |                                                                                                                     None |
-| cattrs             | call: module function (annotated)          |      6 |      6 |        2 |                                                                                            _adapted_fields(origin or cl) |
-| cattrs             | attr: imported.x                           |      5 |      4 |        0 |                                                                                                                          |
-| cattrs             | attr: chained                              |      5 |      5 |        5 |                                                                                          self._unstructure_func.dispatch |
-| cattrs             | DictComp (unknown elements)                |      5 |      2 |        1 |                                                                    {f'__cattr_u_{i}': h for i, h in enumerate(handlers)} |
-| cattrs             | ListComp (unknown elements)                |      5 |      4 |        3 |                      [{at.name for at in adapted_fields(get_origin(cl) or cl) if is_literal(at.type)} for cl in classes] |
-| cattrs             | call: other.method()                       |      5 |      5 |        3 |                                                                                                  uniq_attrs_dict.items() |
-| cattrs             | dict (mixed/unknown elements)              |      5 |      5 |        0 |                                                                                                                          |
-| cattrs             | call: builtin enumerate()                  |      4 |      4 |        2 |                                                                                                         enumerate(attrs) |
-| cattrs             | attr: self.x                               |      4 |      4 |        1 |                                                                                                         self.unstructure |
-| cattrs             | binop (one side literal)                   |      4 |      4 |        4 |                                                                                                   'structure_' + cl_name |
-| cattrs             | call: self.method()                        |      3 |      2 |        1 |                                                                        self._get_dis_func(cl, use_literals=use_literals) |
-| cattrs             | call: local name                           |      3 |      3 |        0 |                                                                                                                          |
-| cattrs             | call: builtin tuple()                      |      3 |      3 |        0 |                                                                                                                          |
-| cattrs             | binop (unknown operands)                   |      2 |      2 |        1 |                                                                                                     cl_reqs - other_reqs |
-| cattrs             | copy: param (unannotated)                  |      2 |      2 |        0 |                                                                                                                          |
-| cattrs             | call: builtin.method()                     |      2 |      2 |        2 |                                                                                                 str.__new__(cls, string) |
-| cattrs             | compare                                    |      2 |      2 |        2 |                                                                                                      handler == identity |
-| cattrs             | list (mixed/unknown elements)              |      2 |      2 |        2 |                [f'def {fn_name}(o, _=__cl, {internal_arg_line}):', *lines, *post_lines, *instantiation_lines, *pi_lines] |
-| cattrs             | tuple (mixed/unknown elements)             |      2 |      2 |        2 |                                                                    (len('\n'.join(lines)), None, lines, unique_filename) |
-| cattrs             | call: other name                           |      2 |      2 |        2 |                                                                                             _required_keys(origin or cl) |
-| cattrs             | subscript: imported[...]                   |      2 |      2 |        2 |                                                                                                     Union[union_classes] |
-| cattrs             | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| cattrs             | call: builtin frozenset()                  |      1 |      0 |        0 |                                                                                                                          |
-| cattrs             | call: builtin type()                       |      1 |      0 |        0 |                                                                                                                          |
-| cattrs             | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| cattrs             | subscript: builtin[...]                    |      1 |      1 |        1 |                                                                                tuple[tuple(cl.__annotations__.values())] |
-| cattrs             | boolop (and)                               |      1 |      1 |        0 |                                                                                                                          |
-| cattrs             | call: imported class                       |      1 |      1 |        1 |                                                  IterableValidationNote(f'Structuring {tup} @ index {ix}', ix, tup_type) |
-| cattrs             | call: builtin sorted()                     |      1 |      1 |        1 |                                                         sorted(cls_and_attrs, key=lambda c_a: len(c_a[1]), reverse=True) |
-| cattrs             | copy: moddef                               |      1 |      0 |        0 |                                                                                                                          |
-| cattrs             | call: builtin dict()                       |      1 |      1 |        0 |                                                                                                                          |
-| cattrs             | call: param name                           |      1 |      1 |        0 |                                                                                                                          |
-| cattrs             | call: other callee                         |      1 |      1 |        0 |                                                                                                                          |
-| pytest             | call: chained .method()                    |    159 |    126 |       99 |                                                                          self._tw.markup(verbose_word, **verbose_markup) |
-| pytest             | call: self.method()                        |     87 |     78 |       63 |                                                                                               self.read_global_capture() |
-| pytest             | attr: chained                              |     68 |     52 |       46 |                                                                                             config.invocation_params.dir |
-| pytest             | copy: local                                |     62 |     48 |       38 |                                                                                                                   tokens |
-| pytest             | attr: param.x                              |     61 |     51 |       38 |                                                                                                             stream.write |
-| pytest             | call: local.method()                       |     57 |     44 |       38 |                                      rep._get_verbose_word_with_markup(self.config, {_color_for_type['warnings']: True}) |
-| pytest             | call: param.method()                       |     53 |     46 |       41 |                                                                                                             left.items() |
-| pytest             | empty list                                 |     52 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin getattr()                    |     51 |     45 |       30 |                                                                                            getattr(report, 'node', None) |
-| pytest             | call: module.func()                        |     46 |     32 |       25 |                                                                            _pytest.config.create_terminal_writer(config) |
-| pytest             | attr: local.x                              |     46 |     36 |       25 |                                                                                                           event.longrepr |
-| pytest             | subscript: other                           |     44 |     32 |       21 |                                                                                       self.config.stash[assertstate_key] |
-| pytest             | binop (unknown operands)                   |     29 |     20 |       19 |                                                                                                         self.path / name |
-| pytest             | attr: self.x                               |     29 |     27 |       17 |                                                                                                             self.strpath |
-| pytest             | None literal                               |     27 |     23 |       23 |                                                                                                                     None |
-| pytest             | conditional                                |     27 |     21 |       14 |                                 entry._repr_style if entry is not None and entry._repr_style is not None else self.style |
-| pytest             | tuple (mixed/unknown elements)             |     25 |     24 |       22 |                                                                                                       (None, None, None) |
-| pytest             | call: module function (annotated)          |     24 |     23 |        9 |                                                                         filter_excinfo_traceback(self.tbfilter, excinfo) |
-| pytest             | copy: param (annotated)                    |     23 |     16 |        9 |                                                                                                                   markup |
-| pytest             | other constant                             |     22 |      5 |        5 |                                                                                                                        0 |
-| pytest             | call: imported class                       |     22 |      4 |        4 |                                                                              ReprFileLocation(filename, lineno, message) |
-| pytest             | boolop (or)                                |     17 |     11 |       10 | getattr(self.known_args_namespace, 'disable_plugin_autoload', False) or bool(os.environ.get('PYTEST_DISABLE_PLUGIN_AUTOL |
-| pytest             | call: other callee                         |     17 |      4 |        4 |                                                                                                 getattr(mod, hashtype)() |
-| pytest             | ListComp (unknown elements)                |     16 |     11 |        9 |                                                                                             [os.fspath(x) for x in args] |
-| pytest             | call: imported.attr()                      |     15 |     10 |        9 |                                                                               error.checked_call(pwd.getpwuid, self.uid) |
-| pytest             | call: other name                           |     14 |     12 |        9 |                                                                                           _get_single_subexc(self.value) |
-| pytest             | call: builtin list()                       |     12 |     10 |        9 |                                                                                                               list(args) |
-| pytest             | call: module class                         |     12 |      7 |        7 |                                                                      CaptureFixture(SysCapture, request, _ispytest=True) |
-| pytest             | call: builtin enumerate()                  |     11 |      8 |        3 |                                                                                                          enumerate(self) |
-| pytest             | call: imported function                    |     11 |      9 |        7 |                                            _compare_eq_any(left, right, highlighter, verbose, assertion_text_diff_style) |
-| pytest             | binop (one side literal)                   |     10 |      9 |        9 |                                                                                            self2base.count(self.sep) + 1 |
-| pytest             | Yield                                      |     10 |      7 |        7 |                                                                                                                  (yield) |
-| pytest             | copy: other                                |     10 |      1 |        1 |                                                                                                            add_attr_noop |
-| pytest             | subscript: local[...]                      |      9 |      7 |        5 |                                                                                                            traceback[-1] |
-| pytest             | DictComp (unknown elements)                |      9 |      5 |        2 |                                                                                      {name: True for name in color_opts} |
-| pytest             | list (mixed/unknown elements)              |      9 |      7 |        6 |                                                                                                               [left_res] |
-| pytest             | call: builtin reversed()                   |      9 |      7 |        5 |                                                                                                  reversed(self._setitem) |
-| pytest             | dict (mixed/unknown elements)              |      8 |      4 |        4 |                                                                   {'code': contents, 'lexer': 'text', 'expiry': '1week'} |
-| pytest             | call: module function (unannotated)        |      8 |      5 |        5 |                                                                                                          getuserid(user) |
-| pytest             | call: builtin sorted()                     |      8 |      7 |        7 |                                                                                                   sorted(counts.items()) |
-| pytest             | compare                                    |      7 |      7 |        7 |                                                                                                         style == 'short' |
-| pytest             | unaryop USub                               |      7 |      1 |        1 |                                                                                                                       -1 |
-| pytest             | attr: module.x                             |      7 |      5 |        2 |                                                                                                            sys.meta_path |
-| pytest             | subscript: global[...]                     |      7 |      7 |        7 |                                                                                                     _SCOPE_INDICES[self] |
-| pytest             | subscript: param[...]                      |      6 |      4 |        2 |                                                                                                                lines[1:] |
-| pytest             | -                                          |      6 |      0 |        0 |                                                                                                                          |
-| pytest             | copy: param (unannotated)                  |      5 |      5 |        2 |                                                                                                                    paths |
-| pytest             | empty dict                                 |      5 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin dict()                       |      4 |      3 |        3 |                                                                                               dict(entry.frame.f_locals) |
-| pytest             | GeneratorExp (unknown elements)            |      4 |      4 |        4 |                                                                              (x + '\n' for x in source.lines[start:end]) |
-| pytest             | call: builtin type()                       |      4 |      3 |        0 |                                                                                                                          |
-| pytest             | call: builtin zip()                        |      4 |      4 |        3 |                                                                                            zip(wants, gots, strict=True) |
-| pytest             | call: other.method()                       |      4 |      4 |        3 |                                       ihook.pytest_assertrepr_compare(config=item.config, op=op, left=left, right=right) |
-| pytest             | call: modclass.method()                    |      4 |      4 |        4 |                                                                                           pytestPDB._init_pdb('runcall') |
-| pytest             | call: builtin.method()                     |      4 |      2 |        1 |                                                                            dict.fromkeys(get_param_argkeys(item, scope)) |
-| pytest             | call: builtin max()                        |      3 |      3 |        3 |                                                               max((fullwidth - len(title) - 2) // (2 * len(sepchar)), 1) |
-| pytest             | copy: modclass                             |      3 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin set()                        |      3 |      2 |        0 |                                                                                                                          |
-| pytest             | call: builtin compile()                    |      3 |      3 |        3 |                                                                          compile(tree, strfn, 'exec', dont_inherit=True) |
-| pytest             | copy: self                                 |      2 |      2 |        2 |                                                                                                                     self |
-| pytest             | call: builtin str()                        |      2 |      2 |        2 |                                                                                str(source.getstatement(len(source) - 1)) |
-| pytest             | JoinedStr                                  |      2 |      2 |        2 |                                                                                                       f'in {entry.name}' |
-| pytest             | boolop (and)                               |      2 |      2 |        0 |                                                                                                                          |
-| pytest             | call: cls.method()                         |      2 |      2 |        2 |                                                                              cls._get_pdb_wrapper_class(pdb_cls, capman) |
-| pytest             | copy: imported                             |      2 |      2 |        2 |                                                                                                              HIGH_SCOPES |
-| pytest             | call: global.method()                      |      2 |      2 |        2 |                                                                                             MARK_GEN.skip(reason=reason) |
-| pytest             | call: builtin abs()                        |      2 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin sum()                        |      2 |      2 |        2 |                                                    sum((i.location[0] == current_location for i in self._session.items)) |
-| pytest             | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | Lambda                                     |      1 |      1 |        1 |                                                                                  lambda x: not x.ishidden(excinfo_or_fn) |
-| pytest             | call: builtin frozenset()                  |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin ascii()                      |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin repr()                       |      1 |      1 |        1 |                                                                                                                  repr(x) |
-| pytest             | attr: global.x                             |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin open()                       |      1 |      1 |        1 |                                                                                                    open(str(self), 'rb') |
-| pytest             | call: global name                          |      1 |      1 |        1 |                                                                                                              local(name) |
-| pytest             | SetComp (unknown elements)                 |      1 |      1 |        0 |                                                                                                                          |
-| pytest             | call: builtin object()                     |      1 |      1 |        1 |                                                                                                                 object() |
-| pytest             | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: builtin staticmethod()               |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: param name                           |      1 |      1 |        1 |                                                                 scope_callable(fixture_name=fixture_name, config=config) |
-| pytest             | subscript: other[...]                      |      1 |      1 |        1 |                                                                                                arg2fixturedefs[arg_name] |
-| pytest             | call: builtin tuple()                      |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | attr: modclass.x                           |      1 |      0 |        0 |                                                                                                                          |
-| pytest             | call: cls name                             |      1 |      1 |        1 |                                                                                                                    cls() |
-| pytest             | call: local name                           |      1 |      1 |        1 |                                                                                                 testfunction(**testargs) |
-| pytest             | call: builtin len()                        |      1 |      1 |        1 |                                                                                                                 len(ids) |
-| pytest             | call: str-literal.method()                 |      1 |      1 |        1 |                                        '[{}] {} -- Python {} {}'.format(d['id'], d['sysplatform'], ver, d['executable']) |
-| pytest             | call: builtin hasattr()                    |      1 |      1 |        1 |                                                                                                hasattr(item, '_request') |
-| pytest             | call: builtin eval()                       |      1 |      1 |        1 |                                                                                           eval(condition_code, globals_) |
-| pytest             | call: builtin min()                        |      1 |      0 |        0 |                                                                                                                          |
-| botocore           | call: self.method()                        |    373 |    329 |      211 |                                                                          self._get_additional_info_and_num_bytes(length) |
-| botocore           | call: chained .method()                    |    348 |    299 |      189 |                                                                                                    shape.members.items() |
-| botocore           | call: param.method()                       |    253 |    223 |      150 |                                                                                                            value.items() |
-| botocore           | call: local.method()                       |    236 |    200 |      124 |                                                                                                       line.split('=', 1) |
-| botocore           | copy: param (unannotated)                  |    100 |     92 |       66 |                                                                                                                   params |
-| botocore           | subscript: other                           |     97 |     77 |       62 |                                                                                        self._endpoint_data['partitions'] |
-| botocore           | attr: param.x                              |     86 |     81 |       41 |                                                                                                                shape.key |
-| botocore           | call: imported function                    |     85 |     67 |       55 |                                                                                                    urlsplit(request.url) |
-| botocore           | subscript: local[...]                      |     76 |     70 |       48 |                                                                                                        algorithm['name'] |
-| botocore           | empty dict                                 |     76 |      0 |        0 |                                                                                                                          |
-| botocore           | copy: local                                |     71 |     66 |       51 |                                                                                                                auth_info |
-| botocore           | dict (mixed/unknown elements)              |     70 |     36 |       27 |                                                  {'timestamp_precision': botocore.serialize.TIMESTAMP_PRECISION_DEFAULT} |
-| botocore           | subscript: param[...]                      |     65 |     53 |       32 |                                                                                                         response['body'] |
-| botocore           | attr: self.x                               |     60 |     57 |       31 |                                                                                                               self._root |
-| botocore           | attr: chained                              |     55 |     38 |       32 |                                                                                     client.meta.service_model.service_id |
-| botocore           | empty list                                 |     50 |      0 |        0 |                                                                                                                          |
-| botocore           | call: module.func()                        |     44 |     33 |       21 |                                                                                          jmespath.compile(self.argument) |
-| botocore           | call: module function (unannotated)        |     33 |     26 |       19 |                                        _get_presigned_url_source_and_destination_regions(request_signer, params['body']) |
-| botocore           | binop (unknown operands)                   |     31 |     27 |       23 |                                                                                      preference_list + service_supported |
-| botocore           | None literal                               |     29 |     20 |       20 |                                                                                                                     None |
-| botocore           | tuple (mixed/unknown elements)             |     25 |     16 |       16 |                                                                               (p[0], p[1], p[2], new_query_string, p[4]) |
-| botocore           | attr: local.x                              |     24 |     22 |       17 |                                                                                                       url_parts.hostname |
-| botocore           | list (mixed/unknown elements)              |     23 |     16 |       14 |                                                                                                 [request.method.upper()] |
-| botocore           | call: builtin getattr()                    |     20 |     13 |        8 |                                             getattr(self, f'_serialize_type_{shape.type_name}', self._default_serialize) |
-| botocore           | ListComp (unknown elements)                |     20 |     17 |       15 |                                                                       [scheme.split('#')[-1] for scheme in auth_options] |
-| botocore           | boolop (or)                                |     17 |     13 |        9 |                                                                                event_emitter or self._client.meta.events |
-| botocore           | call: global.method()                      |     17 |     12 |       11 |                                                                                            STRING_FORMATTER.parse(value) |
-| botocore           | call: local name                           |     16 |     13 |        5 |                                                                               percent_encode_sequence(r['query_string']) |
-| botocore           | call: imported.attr()                      |     15 |     11 |       11 |                                                                               ArnParser.is_arn(params.get('Bucket', '')) |
-| botocore           | other constant                             |     14 |      4 |        4 |                                                                                                                        0 |
-| botocore           | call: builtin enumerate()                  |     13 |     11 |        6 |                                                                                                 enumerate(input_members) |
-| botocore           | call: other.method()                       |     13 |     11 |        9 |                                                                                        self.get_component('data_loader') |
-| botocore           | compare                                    |     13 |      9 |        9 |                                                                                                serialized['body'] != b'' |
-| botocore           | boolop (and)                               |     11 |      8 |        8 |                                                      endpoint_config and endpoint_config.get('metadata', {}).get('tags') |
-| botocore           | call: builtin sorted()                     |     10 |     10 |        9 |                                                                                                   sorted(client_methods) |
-| botocore           | copy: modclass                             |     10 |      0 |        0 |                                                                                                                          |
-| botocore           | call: imported class                       |     10 |      1 |        1 |                                                                 OrderedDict({'DateLessThan': {'AWS:EpochTime': moment}}) |
-| botocore           | copy: global                               |      9 |      1 |        1 |                                                                                                       _JSON_OPEN_METHODS |
-| botocore           | call: modclass.method()                    |      9 |      9 |        9 |                                                                    DecodeUtils.unpack_byte_array(data, length_byte_size) |
-| botocore           | copy: other                                |      9 |      0 |        0 |                                                                                                                          |
-| botocore           | binop (one side literal)                   |      8 |      7 |        7 |                                                                                                    method.upper() + '\n' |
-| botocore           | call: builtin type()                       |      8 |      8 |        3 |                                                                                                      type(prepared_body) |
-| botocore           | attr: module.x                             |      8 |      1 |        1 |                                                                                                           hashlib.sha256 |
-| botocore           | copy: imported                             |      7 |      1 |        1 |                                                                                     PRIORITY_ORDERED_SUPPORTED_PROTOCOLS |
-| botocore           | conditional                                |      6 |      4 |        2 |                                                   docs_link.decode() if docs_link is not None else DEFAULT_AWS_DOCS_LINK |
-| botocore           | call: builtin iter()                       |      6 |      5 |        5 |                                                                                                iter(read_chunksize, b'') |
-| botocore           | DictComp (unknown elements)                |      6 |      3 |        3 |                                                                         {k: v[0] for k, v in query_string_parts.items()} |
-| botocore           | call: builtin list()                       |      5 |      3 |        3 |                                                                                               list(self.OPTION_DEFAULTS) |
-| botocore           | call: builtin zip()                        |      5 |      5 |        2 |                                                                               zip(self._output_token, self._input_token) |
-| botocore           | copy: builtin                              |      5 |      0 |        0 |                                                                                                                          |
-| botocore           | call: builtin next()                       |      4 |      2 |        2 |                                                           next((idx for idx, ch in enumerate(data) if not ch.isspace())) |
-| botocore           | call: module class                         |      3 |      3 |        3 |                                                                                                  ConstantProvider(value) |
-| botocore           | call: param name                           |      3 |      2 |        1 |                                                                                             open_method(full_path, 'rb') |
-| botocore           | call: builtin object()                     |      3 |      0 |        0 |                                                                                                                          |
-| botocore           | call: other name                           |      3 |      1 |        0 |                                                                                                                          |
-| botocore           | call: cls name                             |      2 |      2 |        2 |                                                                                                                    cls() |
-| botocore           | call: other callee                         |      2 |      2 |        0 |                                                                                                                          |
-| botocore           | attr: imported.x                           |      2 |      2 |        1 |                                                                     ClientContextParamsDocumenter.OMITTED_CONTEXT_PARAMS |
-| botocore           | JoinedStr                                  |      2 |      1 |        1 |                                                                                           f'{clean_prefix}/{clean_name}' |
-| botocore           | copy: self                                 |      2 |      2 |        1 |                                                                                                                     self |
-| botocore           | call: builtin min()                        |      2 |      2 |        1 |                                                      min(self._max_capacity - self._available_capacity, capacity_amount) |
-| botocore           | call: builtin dict()                       |      1 |      1 |        0 |                                                                                                                          |
-| botocore           | subscript: other[...]                      |      1 |      1 |        1 |                                                                                                         mapping['token'] |
-| botocore           | SetComp (unknown elements)                 |      1 |      1 |        1 |                                                         {a.lower() for a in http_checksum.get('responseAlgorithms', [])} |
-| botocore           | attr: modclass.x                           |      1 |      1 |        1 |                                                                                                     Shape.METADATA_ATTRS |
-| botocore           | subscript: global[...]                     |      1 |      1 |        0 |                                                                                                                          |
-| botocore           | call: builtin tuple()                      |      1 |      0 |        0 |                                                                                                                          |
-| botocore           | call: capitalised                          |      1 |      1 |        1 |                                                                  AWSRequest(method='GET', url=full_url, headers=headers) |
-| uvicorn            | call: chained .method()                    |     34 |     32 |       26 |                                                                                                 self.conn.data_to_send() |
-| uvicorn            | call: param.method()                       |     31 |     26 |       17 |                                                                                                 message.get('body', b'') |
-| uvicorn            | binop (unknown operands)                   |     24 |     17 |       14 |                                                                                                    self.root_path + path |
-| uvicorn            | conditional                                |      9 |      8 |        5 |                                                            '%s:%d - ASGI' % (client[0], client[1]) if client else 'ASGI' |
-| uvicorn            | subscript: param[...]                      |      7 |      7 |        6 |                                                                                                        message['status'] |
-| uvicorn            | copy: local                                |      6 |      5 |        5 |                                                                                                                  headers |
-| uvicorn            | dict (mixed/unknown elements)              |      6 |      2 |        2 |                                   {'config': config, 'target': target, 'sockets': sockets, 'stdin_fileno': stdin_fileno} |
-| uvicorn            | call: self.method()                        |      6 |      5 |        1 |                                                                                        self.app(environ, start_response) |
-| uvicorn            | call: local.method()                       |      6 |      6 |        5 |                                                                                                     attrs_str.split('.') |
-| uvicorn            | attr: chained                              |      6 |      6 |        6 |                                                                                                   self.config.loaded_app |
-| uvicorn            | attr: local.x                              |      6 |      6 |        6 |                                                                                                          recordcopy.args |
-| uvicorn            | attr: self.x                               |      6 |      5 |        4 |                                                                                                        self.task_counter |
-| uvicorn            | ListComp (unknown elements)                |      6 |      3 |        3 |                                                                   [token.lower().strip() for token in value.split(b',')] |
-| uvicorn            | call: module.func()                        |      5 |      0 |        0 |                                                                                                                          |
-| uvicorn            | copy: imported                             |      4 |      3 |        3 |                                                                                                      service_unavailable |
-| uvicorn            | await: call: param name                    |      4 |      4 |        0 |                                                                                                                          |
-| uvicorn            | boolop (or)                                |      4 |      3 |        3 |                                                                                          message.get('reason', '') or '' |
-| uvicorn            | await: call: self.method()                 |      4 |      2 |        0 |                                                                                                                          |
-| uvicorn            | call: imported function                    |      3 |      2 |        2 |                                                                   import_from_string(WS_PROTOCOLS.get(self.ws, self.ws)) |
-| uvicorn            | call: module function (annotated)          |      3 |      3 |        1 |                                                                                         message_with_placeholders(scope) |
-| uvicorn            | empty list                                 |      3 |      0 |        0 |                                                                                                                          |
-| uvicorn            | list (mixed/unknown elements)              |      3 |      3 |        3 |                                                                               [method, b' ', self.url, b' HTTP/1.1\r\n'] |
-| uvicorn            | attr: module.x                             |      2 |      1 |        1 |                                                                                                           socket.AF_INET |
-| uvicorn            | subscript: global[...]                     |      2 |      2 |        2 |                                                                                       LOG_LEVELS[self.log_level.lower()] |
-| uvicorn            | call: builtin getattr()                    |      2 |      2 |        2 |                                                                               getattr(self.loaded_app, '__call__', None) |
-| uvicorn            | copy: param (annotated)                    |      2 |      1 |        1 |                                                                                                            trusted_hosts |
-| uvicorn            | call: builtin max()                        |      2 |      2 |        2 |                                                                        max(0.0, self.ping_interval - self.last_ping_rtt) |
-| uvicorn            | tuple (mixed/unknown elements)             |      2 |      0 |        0 |                                                                                                                          |
-| uvicorn            | DictComp (unknown elements)                |      2 |      1 |        1 |                                                   {sig: signal.signal(sig, self.handle_exit) for sig in HANDLED_SIGNALS} |
-| uvicorn            | copy: global                               |      2 |      2 |        2 |                                                                                                          HANDLED_SIGNALS |
-| uvicorn            | subscript: builtin[...]                    |      1 |      0 |        0 |                                                                                                                          |
-| uvicorn            | call: builtin hasattr()                    |      1 |      0 |        0 |                                                                                                                          |
-| uvicorn            | await: call: other name                    |      1 |      1 |        0 |                                                                                                                          |
-| uvicorn            | other constant                             |      1 |      1 |        1 |                                                                                               '%s [%d] Started scope=%s' |
-| uvicorn            | subscript: local[...]                      |      1 |      1 |        1 |                                                                                                  environ[corrected_name] |
-| uvicorn            | call: local name                           |      1 |      1 |        0 |                                                                                                                          |
-| uvicorn            | call: builtin bytearray()                  |      1 |      1 |        1 |                                                         bytearray(event.method + b' ' + event.target + b' HTTP/1.1\r\n') |
-| uvicorn            | copy: self                                 |      1 |      1 |        0 |                                                                                                                          |
-| uvicorn            | call: builtin list()                       |      1 |      1 |        1 |                                                                                           list(reload_dir.rglob('*.py')) |
-| mcp                | call: chained .method()                    |     81 |     75 |       42 |                                                                                          self.model.model_fields.items() |
-| mcp                | call: other callee                         |     50 |     44 |       44 |                                                                    create_context_streams[SessionMessage | Exception](0) |
-| mcp                | call: imported function                    |     46 |     39 |       20 |                                                                                                            urlparse(url) |
-| mcp                | call: param.method()                       |     43 |     42 |       16 |                                                                                                           params.items() |
-| mcp                | call: module.func()                        |     41 |     36 |       19 |                                                                                                anyio.create_task_group() |
-| mcp                | conditional                                |     41 |     39 |       18 |                                    retry_interval_ms if retry_interval_ms is not None else DEFAULT_RECONNECTION_DELAY_MS |
-| mcp                | copy: local                                |     37 |     31 |       22 |                                                                                                                  streams |
-| mcp                | call: local.method()                       |     36 |     32 |       12 |                                                        request.model_dump(by_alias=True, mode='json', exclude_none=True) |
-| mcp                | await: call: param.method()                |     25 |     22 |       19 |                                                                                                   await response.aread() |
-| mcp                | call: imported class                       |     23 |     11 |       11 |                                                                                                  Request(scope, receive) |
-| mcp                | attr: param.x                              |     20 |     20 |       10 |                                                                                                            result.ttl_ms |
-| mcp                | call: module function (annotated)          |     20 |     19 |        8 |                                                                                                _client_capabilities(ctx) |
-| mcp                | call: imported.attr()                      |     17 |     17 |       13 |                                                                   ProtectedResourceMetadata.model_validate_json(content) |
-| mcp                | await: call: self.method()                 |     16 |     16 |        7 |                                       await self.send_raw_request('elicitation/create', dump_params(params, meta), opts) |
-| mcp                | await: call: local.method()                |     15 |     13 |       10 |                                                                          await session_stack.enter_async_context(client) |
-| mcp                | attr: local.x                              |     14 |     14 |        9 |                                                                                                                 atom.var |
-| mcp                | boolop (or)                                |     13 |     10 |        9 |                                                                                                      name or fn.__name__ |
-| mcp                | attr: self.x                               |     12 |     12 |        7 |                                                                                                                  self.fn |
-| mcp                | attr: chained                              |     12 |     12 |        6 |                                                                                              self.context.current_tokens |
-| mcp                | await: call: chained .method()             |     12 |     12 |        5 |                                                                                              await self._inner.receive() |
-| mcp                | None literal                               |     11 |      8 |        8 |                                                                                                                     None |
-| mcp                | call: self.method()                        |     11 |      8 |        6 |                                                                  self._make_context(dctx, method, params, meta, version) |
-| mcp                | tuple (mixed/unknown elements)             |     11 |      8 |        6 |                                                                 (claims['v'], claims['iat'], claims['exp'], claims['s']) |
-| mcp                | subscript: other                           |     10 |     10 |        8 |                                                                                 config['mcpServers'][server_name]['env'] |
-| mcp                | call: builtin getattr()                    |     10 |      7 |        3 |                                                                                   getattr(annotation, '__value__', None) |
-| mcp                | copy: param (annotated)                    |     10 |      9 |        8 |                                                                                                                     keys |
-| mcp                | ListComp (unknown elements)                |     10 |      8 |        7 |                                                  [v for v in MODERN_PROTOCOL_VERSIONS if v in result.supported_versions] |
-| mcp                | Yield                                      |     10 |      9 |        9 |                                                                                                          (yield request) |
-| mcp                | dict (mixed/unknown elements)              |     10 |      9 |        9 |                                                                                      {'Content-Type': CONTENT_TYPE_JSON} |
-| mcp                | copy: other                                |      9 |      7 |        7 |                                                                                                      write_stream_reader |
-| mcp                | call: global.method()                      |      9 |      7 |        3 |                                                                                               auth_context_var.set(user) |
-| mcp                | call: module class                         |      6 |      6 |        6 |                                              ServerRunner(server, connection, lifespan_state, init_options=init_options) |
-| mcp                | await: call: param name                    |      5 |      5 |        2 |                                                                                                     await call_next(ctx) |
-| mcp                | call: other.method()                       |      5 |      4 |        3 |                                                                                                 http_transport.connect() |
-| mcp                | binop (unknown operands)                   |      5 |      2 |        1 |                                                                                   root_path.rstrip('/') + self._endpoint |
-| mcp                | copy: imported                             |      4 |      1 |        1 |                                                                                                    LATEST_MODERN_VERSION |
-| mcp                | boolop (and)                               |      4 |      4 |        3 |                   response.status_code == 403 and extract_field_from_www_auth(response, 'error') == 'insufficient_scope' |
-| mcp                | subscript: local[...]                      |      4 |      3 |        3 |                                                                                                               mutual[-1] |
-| mcp                | SetComp (unknown elements)                 |      4 |      4 |        4 |                                                                                     {tool.name for tool in result.tools} |
-| mcp                | -                                          |      4 |      0 |        0 |                                                                                                                          |
-| mcp                | await: call: module function (annotated)   |      4 |      4 |        0 |                                                                                                                          |
-| mcp                | call: builtin next()                       |      4 |      4 |        1 |                                                              next((m for m in metadata if isinstance(m, Resolve)), None) |
-| mcp                | call: builtin enumerate()                  |      4 |      4 |        4 |                                                                                                      enumerate(material) |
-| mcp                | list (mixed/unknown elements)              |      3 |      3 |        3 |                                                                                                                   ['uv'] |
-| mcp                | call: module function (unannotated)        |      3 |      0 |        0 |                                                                                                                          |
-| mcp                | await: call: other name                    |      3 |      3 |        0 |                                                                                                                          |
-| mcp                | call: modclass.method()                    |      3 |      3 |        3 |                                                                              AuthorizationRequest.model_validate(params) |
-| mcp                | await: call: local name                    |      3 |      3 |        1 |                                                                                                               await fn() |
-| mcp                | copy: builtin                              |      3 |      0 |        0 |                                                                                                                          |
-| mcp                | binop (one side literal)                   |      2 |      1 |        1 |                                                                                config_dir / 'claude_desktop_config.json' |
-| mcp                | other constant                             |      2 |      0 |        0 |                                                                                                                          |
-| mcp                | call: builtin tuple()                      |      2 |      1 |        0 |                                                                                                                          |
-| mcp                | subscript: imported[...]                   |      2 |      2 |        2 |                                                     KNOWN_PROTOCOL_VERSIONS[KNOWN_PROTOCOL_VERSIONS.index(version) + 1:] |
-| mcp                | attr: other.x                              |      2 |      2 |        1 |                                                                                         write_stream_reader.last_context |
-| mcp                | await: call: module.func()                 |      2 |      0 |        0 |                                                                                                                          |
-| mcp                | await: call: imported function             |      2 |      2 |        0 |                                                                                                                          |
-| mcp                | call: builtin dict()                       |      2 |      1 |        1 |                                                                                                      dict(payload or {}) |
-| mcp                | call: builtin reversed()                   |      2 |      2 |        0 |                                                                                                                          |
-| mcp                | DictComp (unknown elements)                |      2 |      1 |        1 |                                                  {key: _request_digest(request) for key, request in res.pending.items()} |
-| mcp                | call: builtin object()                     |      2 |      1 |        1 |                                                                                                                 object() |
-| mcp                | empty dict                                 |      1 |      0 |        0 |                                                                                                                          |
-| mcp                | set (mixed/unknown elements)               |      1 |      1 |        1 |                                                                                                    {field.alias or name} |
-| mcp                | call: param name                           |      1 |      1 |        1 |                 httpx_client_factory(headers=headers, auth=auth, timeout=httpx2.Timeout(timeout, read=sse_read_timeout)) |
-| mcp                | await: copy: param (annotated)             |      1 |      1 |        1 |                                                                                                               await coro |
-| mcp                | copy: global                               |      1 |      0 |        0 |                                                                                                                          |
-| mcp                | call: builtin set()                        |      1 |      1 |        1 |                                                                                       set(client_metadata.scope.split()) |
-| mcp                | call: other name                           |      1 |      1 |        0 |                                                                                                                          |
-| mcp                | call: builtin sorted()                     |      1 |      0 |        0 |                                                                                                                          |
-| mcp                | compare                                    |      1 |      1 |        1 |                                                                                                 request.method == 'POST' |
-| mcp                | await: call: other.method()                |      1 |      1 |        0 |                                                                                                                          |
-| mcp                | call: builtin frozenset()                  |      1 |      1 |        1 |                                                                          frozenset(honored.resource_subscriptions or ()) |
-| mcp                | subscript: param[...]                      |      1 |      0 |        0 |                                                                                                                          |
-| pdm                | call: chained .method()                    |    175 |    144 |      119 |                                                                                         workspace_project.root.resolve() |
-| pdm                | call: local.method()                       |    123 |     97 |       83 |                                                                                                     data.get('tool', {}) |
-| pdm                | attr: chained                              |     72 |     59 |       44 |                                                                                                          project.core.ui |
-| pdm                | call: param.method()                       |     69 |     59 |       44 |                                                                                    parser.add_mutually_exclusive_group() |
-| pdm                | call: module.func()                        |     60 |     39 |       36 |                                                                                                            os.walk(root) |
-| pdm                | conditional                                |     57 |     50 |       30 |                                                       project.project_config if options.local else project.global_config |
-| pdm                | call: imported function                    |     56 |     49 |       47 |                                    get_download_link(version, implementation=implementation, arch=arch, build_dir=False) |
-| pdm                | tuple (mixed/unknown elements)             |     41 |     12 |        8 |                                                                                            (spec.operator, spec.version) |
-| pdm                | copy: local                                |     40 |     34 |       26 |                                                                                                               candidates |
-| pdm                | attr: param.x                              |     37 |     30 |       21 |                                                                                                 project.all_dependencies |
-| pdm                | call: imported.attr()                      |     35 |     32 |       26 |                                                                                                      parse.urlparse(url) |
-| pdm                | attr: local.x                              |     34 |     28 |       12 |                                                                                                             dist.version |
-| pdm                | boolop (or)                                |     33 |     30 |       24 |                                                                                     project.workspace_project or project |
-| pdm                | subscript: other                           |     30 |     24 |       22 |                                                                                   self.working_set[strip_extras(key)[0]] |
-| pdm                | ListComp (unknown elements)                |     20 |     14 |       12 |                                                             [entry.candidate for entry in locked_repo.packages.values()] |
-| pdm                | attr: self.x                               |     20 |     17 |        7 |                                                                                                            self.self_key |
-| pdm                | call: builtin list()                       |     19 |     14 |       11 |                                                                                         list(self.project.iter_groups()) |
-| pdm                | call: builtin sorted()                     |     19 |     14 |       13 |                                                                                             sorted(self.project.scripts) |
-| pdm                | dict (mixed/unknown elements)              |     19 |     11 |       10 | {'project': {'name': name, 'version': version, 'authors': array_of_inline_tables([{'name': author, 'email': email}]), 'l |
-| pdm                | other constant                             |     18 |      4 |        4 |                                                                                                                       '' |
-| pdm                | binop (unknown operands)                   |     17 |     10 |        9 |                                                                          global_requires_python & target.requires_python |
-| pdm                | copy: param (annotated)                    |     16 |     13 |        5 |                                                                                                                 env_file |
-| pdm                | list (mixed/unknown elements)              |     15 |     12 |       12 |        [('pyproject.toml', cls.read_pyproject_toml), ('setup.cfg', cls.read_setup_cfg), ('setup.py', cls.read_setup_py)] |
-| pdm                | call: self.method()                        |     15 |     14 |       12 |                                                                                                       self._get_key(obj) |
-| pdm                | call: builtin next()                       |     14 |     12 |        9 |                                                                                          next(iter(medata_hash.items())) |
-| pdm                | call: module function (annotated)          |     14 |     11 |        9 |                                                                                             _load_pyproject(parsed_args) |
-| pdm                | empty dict                                 |     13 |      0 |        0 |                                                                                                                          |
-| pdm                | empty list                                 |     13 |      0 |        0 |                                                                                                                          |
-| pdm                | DictComp (unknown elements)                |     13 |      9 |        8 |                                   {strip_extras(k)[0]: v for k, v in project.get_locked_repository().candidates.items()} |
-| pdm                | call: cls.method()                         |     12 |     12 |        0 |                                                                                                                          |
-| pdm                | call: imported class                       |     10 |      5 |        5 |                                                                                                         WorkingSet(libs) |
-| pdm                | subscript: local[...]                      |      9 |      7 |        7 |                                                                                                  all_dependencies[group] |
-| pdm                | call: other name                           |      9 |      6 |        5 |                                                                      add_package(k, working_set.get(strip_extras(k)[0])) |
-| pdm                | binop (one side literal)                   |      8 |      8 |        8 |                                                                                              project.root / '.gitignore' |
-| pdm                | call: builtin getattr()                    |      7 |      7 |        5 |                                                                                        getattr(self, 'runner_cls', None) |
-| pdm                | call: builtin zip()                        |      7 |      3 |        3 |                                                                               zip(value.keys, value.values, strict=True) |
-| pdm                | call: builtin enumerate()                  |      6 |      6 |        5 |                                                                                 enumerate(zip_longest(a_parts, b_parts)) |
-| pdm                | call: module function (unannotated)        |      5 |      2 |        2 |                                                                                                 find_libdir(real_prefix) |
-| pdm                | None literal                               |      5 |      3 |        3 |                                                                                                                     None |
-| pdm                | call: builtin set()                        |      4 |      2 |        1 |                                                                                  set(project.pyproject.dev_dependencies) |
-| pdm                | compare                                    |      4 |      3 |        3 |                                                                                                package_type == 'library' |
-| pdm                | subscript: param[...]                      |      4 |      2 |        2 |                                                                                        working_set[normalize_name(name)] |
-| pdm                | SetComp (unknown elements)                 |      4 |      4 |        4 |                                                     {name for item in requirements if (name := _requirement_name(item))} |
-| pdm                | call: builtin frozenset()                  |      4 |      2 |        2 |                                                             frozenset({root, *(member.resolve() for member in members)}) |
-| pdm                | call: moddef.method()                      |      4 |      0 |        0 |                                                                                                                          |
-| pdm                | boolop (and)                               |      3 |      3 |        1 | isinstance(child, ast.Assign) and len(child.targets) == 1 and isinstance(child.targets[0], ast.Name) and (child.targets[ |
-| pdm                | call: local name                           |      3 |      3 |        1 |                                                                                                    file_reader(filepath) |
-| pdm                | call: other.method()                       |      3 |      2 |        2 |                                                                    self.iter_reuse_candidates(identifier, requested_req) |
-| pdm                | empty tuple                                |      2 |      0 |        0 |                                                                                                                          |
-| pdm                | copy: imported                             |      2 |      1 |        1 |                                                                                                                  FORMATS |
-| pdm                | call: builtin iter()                       |      2 |      2 |        2 |                                                                                          iter(lambda: f.read(8192), b'') |
-| pdm                | call: other callee                         |      2 |      2 |        1 |                                                    BACKENDS[script_project.config['venv.backend']](script_project, None) |
-| pdm                | call: builtin dict()                       |      2 |      2 |        2 |                                              dict(name='_', kind='shared', help='Shared options', **self.global_options) |
-| pdm                | call: builtin min()                        |      2 |      2 |        1 |                                                                min(self._action_max_length + 2, self._max_help_position) |
-| pdm                | call: builtin object()                     |      2 |      1 |        1 |                                                                                                                 object() |
-| pdm                | call: global.method()                      |      2 |      2 |        2 |                                                                                         VERSION_RE.findall(str(version)) |
-| pdm                | call: str-literal.method()                 |      2 |      2 |        2 |                                                                                                      '.'.join(parts[:2]) |
-| pdm                | call: module class                         |      2 |      2 |        2 |                                                                                               OrderedSet(result.mapping) |
-| pdm                | JoinedStr                                  |      1 |      1 |        1 |                                                                                       f'>={python_major}.{python_minor}' |
-| pdm                | call: builtin max()                        |      1 |      1 |        1 |                                                                                     max(self._width - help_position, 11) |
-| pdm                | copy: global                               |      1 |      1 |        1 |                                                                                                              MARKER_KEYS |
-| pdm                | call: builtin filter()                     |      1 |      1 |        1 |                                                                               filter(None, map(self._clean_line, lines)) |
-| pdm                | subscript: imported[...]                   |      1 |      0 |        0 |                                                                                                                          |
-| pdm                | attr: other.x                              |      1 |      0 |        0 |                                                                                                                          |
-| pdm                | call: builtin open()                       |      1 |      0 |        0 |                                                                                                                          |
-| pdm                | set (mixed/unknown elements)               |      1 |      1 |        1 |                                                                                                              {'default'} |
-| pdm                | call: builtin reversed()                   |      1 |      1 |        1 |                                              reversed([i for i, item in enumerate(members) if str(item) == member_path]) |
-| pdm                | attr: imported.x                           |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: chained .method()                    |     89 |     64 |       41 |                                                                            type_.extensions.get('strawberry-definition') |
-| strawberry-graphql | call: imported function                    |     64 |     48 |       13 |                                                                                                    get_args(evaled_type) |
-| strawberry-graphql | attr: chained                              |     58 |     45 |       33 |                                                                                                     directive.name.value |
-| strawberry-graphql | call: self.method()                        |     53 |     20 |       15 |                                                                                             self._get_execute_function() |
-| strawberry-graphql | attr: param.x                              |     51 |     43 |       30 |                                                                                                   strawberry_type.fields |
-| strawberry-graphql | call: builtin getattr()                    |     43 |     31 |       14 |                                                                                  getattr(annotation, '__origin__', None) |
-| strawberry-graphql | attr: local.x                              |     42 |     35 |       21 |                                                                                               cached_type.implementation |
-| strawberry-graphql | conditional                                |     41 |     33 |        9 |                                                    node.slice if isinstance(node.slice, (list, tuple)) else [node.slice] |
-| strawberry-graphql | call: local.method()                       |     40 |     24 |       11 |                                                                                                       field_info.items() |
-| strawberry-graphql | subscript: other                           |     36 |     23 |       19 |                                                                                       self._position_metadata[class_def] |
-| strawberry-graphql | copy: local                                |     29 |     20 |       13 |                                                                                                                 existing |
-| strawberry-graphql | call: module function (annotated)          |     24 |     17 |        2 |                                                                                                  get_current_batch(self) |
-| strawberry-graphql | call: module.func()                        |     23 |     17 |       11 |                                                       m.findall(function_def, m.Param(name=m.Name(value=argument_name))) |
-| strawberry-graphql | ListComp (unknown elements)                |     22 |     13 |        8 |                                                                                                 [t.value for t in types] |
-| strawberry-graphql | call: param.method()                       |     21 |     11 |        4 |                                                                                             extra.get(python_name, None) |
-| strawberry-graphql | empty list                                 |     19 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | copy: imported                             |     16 |      1 |        1 |                                                                                         incremental_execution_directives |
-| strawberry-graphql | attr: self.x                               |     14 |     12 |        4 |                                                                                                               self.hooks |
-| strawberry-graphql | tuple (mixed/unknown elements)             |     14 |      4 |        2 |                                             (self.__rich_header__, '', self.__rich_body__, '', '', self.__rich_footer__) |
-| strawberry-graphql | boolop (or)                                |     14 |     12 |        9 |                                                                                                nodes[0].directives or () |
-| strawberry-graphql | copy: param (annotated)                    |     14 |      8 |        4 |                                                                                                                     path |
-| strawberry-graphql | empty dict                                 |     13 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | await: call: self.method()                 |     12 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: param name                           |     12 |      9 |        6 |                                                                                       _next(root, info, *args, **kwargs) |
-| strawberry-graphql | None literal                               |     12 |     12 |       12 |                                                                                                                     None |
-| strawberry-graphql | subscript: local[...]                      |     11 |      4 |        3 |                                                                                                         argument_defs[0] |
-| strawberry-graphql | DictComp (unknown elements)                |     11 |      8 |        5 | {getattr(pydantic, field_name): type for field_name, type in ATTR_TO_TYPE_MAP_Pydantic_V2.items() if hasattr(pydantic, f |
-| strawberry-graphql | GeneratorExp (unknown elements)            |     10 |     10 |       10 |                         (definition for definition in ast.definitions if isinstance(definition, FragmentDefinitionNode)) |
-| strawberry-graphql | binop (unknown operands)                   |      9 |      4 |        3 |                                                                                    position.start.column + len('class ') |
-| strawberry-graphql | dict (mixed/unknown elements)              |      9 |      2 |        2 |                                                                                                    {error_line: message} |
-| strawberry-graphql | call: builtin list()                       |      9 |      5 |        3 |                                                                                                   list(info.field_nodes) |
-| strawberry-graphql | other constant                             |      8 |      1 |        1 |                                                                                                                        0 |
-| strawberry-graphql | copy: modclass                             |      8 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | await: call: chained .method()             |      8 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: imported class                       |      8 |      5 |        5 |                                                                                                           SourceFinder() |
-| strawberry-graphql | call: builtin sorted()                     |      8 |      2 |        1 |                                                                          sorted((type_.name for type_ in allowed_types)) |
-| strawberry-graphql | call: builtin enumerate()                  |      8 |      8 |        6 |                                                                                          enumerate(type_.fields.items()) |
-| strawberry-graphql | call: other name                           |      8 |      6 |        3 |                                                                                      _strawberry_info_from_graphql(info) |
-| strawberry-graphql | subscript: param[...]                      |      6 |      2 |        1 |                                                                                         files[multipart_form_field_name] |
-| strawberry-graphql | attr: module.x                             |      6 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | SetComp (unknown elements)                 |      6 |      5 |        5 |                                   {name for name, type_ in existing_fields.items() if isinstance(type_, StrawberryAuto)} |
-| strawberry-graphql | call: builtin tuple()                      |      5 |      5 |        1 |                                                                                                 tuple(ts.static_order()) |
-| strawberry-graphql | await: call: imported function             |      5 |      5 |        2 |                                                     await await_maybe(permission.has_permission(source, info, **kwargs)) |
-| strawberry-graphql | boolop (and)                               |      4 |      4 |        4 |                                       field.extensions and field.extensions.get(GraphQLCoreConverter.DEFINITION_BACKREF) |
-| strawberry-graphql | call: local name                           |      3 |      2 |        1 | execute_function(self._schema, execution_context.graphql_document, root_value=execution_context.root_value, middleware=m |
-| strawberry-graphql | call: other callee                         |      3 |      2 |        2 | type(self)(python_name=self.python_name, graphql_name=self.graphql_name, type_annotation=self.type_annotation, origin=se |
-| strawberry-graphql | call: builtin type()                       |      3 |      3 |        1 |                                                                                                               type(None) |
-| strawberry-graphql | call: builtin zip()                        |      3 |      3 |        1 |                                                                                      zip(type_params, args, strict=True) |
-| strawberry-graphql | copy: other                                |      3 |      2 |        0 |                                                                                                                          |
-| strawberry-graphql | call: builtin next()                       |      3 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | await: call: local.method()                |      2 |      1 |        1 |                                                                                                        await queue.get() |
-| strawberry-graphql | call: builtin object()                     |      2 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | subscript: imported[...]                   |      2 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | binop (one side literal)                   |      2 |      2 |        2 |                                                                                      ' ' * exception_source.error_column |
-| strawberry-graphql | await: call: other.method()                |      2 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | copy: moddef                               |      2 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: global.method()                      |      2 |      2 |        2 |                                                                                         _parent_re.match(str_annotation) |
-| strawberry-graphql | attr: cls.x                                |      2 |      2 |        0 |                                                                                                                          |
-| strawberry-graphql | compare                                    |      2 |      1 |        1 |                                                                                                 slice_metadata.start > 0 |
-| strawberry-graphql | call: builtin eval()                       |      2 |      1 |        1 |                                                                                             eval(arg, globalns, localns) |
-| strawberry-graphql | await: copy: local                         |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | list (mixed/unknown elements)              |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: builtin min()                        |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | JoinedStr                                  |      1 |      1 |        1 |                                                                      f'[{self._print_graphql_type(type.of_type, type)}]' |
-| strawberry-graphql | call: str-literal.method()                 |      1 |      1 |        1 |                                                                          ' | '.join((name.value for name in type_names)) |
-| strawberry-graphql | await: call: param.method()                |      1 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | call: builtin frozenset()                  |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: builtin set()                        |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | attr: other.x                              |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: cls.method()                         |      1 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: module class                         |      1 |      0 |        0 |                                                                                                                          |
-| strawberry-graphql | call: builtin dict()                       |      1 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | copy: cls                                  |      1 |      1 |        0 |                                                                                                                          |
-| strawberry-graphql | copy: self                                 |      1 |      1 |        1 |                                                                                                                     self |
-| strawberry-graphql | attr: imported.x                           |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | other constant                             |  2,314 |      0 |        0 |                                                                                                                          |
-| pygments           | list (mixed/unknown elements)              |  1,586 |      6 |        6 |                                                                                                                    [arg] |
-| pygments           | dict (mixed/unknown elements)              |    563 |      2 |        2 |                                                                                                              {Token: ''} |
-| pygments           | tuple (mixed/unknown elements)             |    352 |     11 |       10 |                        (('string', String.Double, '"'), ('sym', String.Symbol, '"'), ('backtick', String.Backtick, '`')) |
-| pygments           | empty list                                 |    161 |      0 |        0 |                                                                                                                          |
-| pygments           | binop (unknown operands)                   |    128 |      9 |        9 |                                                                                                            r - values[0] |
-| pygments           | binop (one side literal)                   |    114 |     25 |       25 |                                                                                       ErbLexer.analyse_text(text) - 0.01 |
-| pygments           | call: imported.attr()                      |    109 |    100 |       98 |                                                                            RegexLexer.get_tokens_unprocessed(self, text) |
-| pygments           | copy: param (unannotated)                  |     97 |     88 |       88 |                                                                                                              tokensource |
-| pygments           | call: local.method()                       |     94 |     70 |       65 |                                                                                                            match.group() |
-| pygments           | call: imported function                    |     91 |     25 |       19 |                                                                                                         get_all_lexers() |
-| pygments           | call: param.method()                       |     82 |     78 |       74 |                                                                                                            match.group() |
-| pygments           | JoinedStr                                  |     78 |      0 |        0 |                                                                                                                          |
-| pygments           | call: chained .method()                    |     72 |     59 |       41 |                                                                                     super().get_tokens_unprocessed(text) |
-| pygments           | set (mixed/unknown elements)               |     65 |      0 |        0 |                                                                                                                          |
-| pygments           | attr: module.x                             |     64 |      0 |        0 |                                                                                                                          |
-| pygments           | copy: local                                |     61 |     46 |       42 |                                                                                                                    lines |
-| pygments           | call: module.func()                        |     54 |      8 |        8 |                                                                                      re.compile(fnmatch.translate(glob)) |
-| pygments           | call: self.method()                        |     52 |     42 |       37 |                                                                                self.get_tokens_unprocessed(context=nctx) |
-| pygments           | attr: self.x                               |     42 |     35 |       24 |                                                                                                               self.style |
-| pygments           | call: builtin set()                        |     39 |      0 |        0 |                                                                                                                          |
-| pygments           | empty dict                                 |     38 |      0 |        0 |                                                                                                                          |
-| pygments           | None literal                               |     31 |     17 |       17 |                                                                                                                     None |
-| pygments           | subscript: local[...]                      |     29 |     23 |       23 |                                                                                                                 spl[:-1] |
-| pygments           | copy: global                               |     27 |      1 |        1 |                                                                                                                    Token |
-| pygments           | call: module function (unannotated)        |     23 |     14 |       10 |                                                                                            _parse_options(argns.O or []) |
-| pygments           | call: other name                           |     23 |      3 |        1 |                                                                                                               streamer() |
-| pygments           | subscript: other                           |     19 |     13 |       13 |                                                                                                    self.styles[lasttype] |
-| pygments           | call: str-literal.method()                 |     19 |      0 |        0 |                                                                                                                          |
-| pygments           | subscript: global[...]                     |     17 |      5 |        3 |                                                                                          _STYLE_NAME_TO_MODULE_MAP[name] |
-| pygments           | copy: modclass                             |     17 |      2 |        2 |                                                                                                              PythonLexer |
-| pygments           | attr: imported.x                           |     16 |      3 |        3 |                                                                                                             Keyword.Type |
-| pygments           | call: modclass.method()                    |     16 |     16 |       16 |                                                                              XmlLexer.get_tokens_unprocessed(self, text) |
-| pygments           | attr: chained                              |     15 |      8 |        8 |                                                                                              self.style.background_color |
-| pygments           | attr: param.x                              |     14 |     14 |        9 |                                                                                                                  argns.H |
-| pygments           | attr: global.x                             |     14 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin sorted()                     |     13 |      3 |        3 |                                                                                                           sorted(colors) |
-| pygments           | call: builtin enumerate()                  |     13 |      9 |        9 |                                                                                                   enumerate(tokensource) |
-| pygments           | empty tuple                                |     13 |      0 |        0 |                                                                                                                          |
-| pygments           | boolop (or)                                |     11 |      9 |        8 |                                                                                                       self.spaces or ' ' |
-| pygments           | call: other.method()                       |     10 |      5 |        5 |                                                                      baselexer.get_tokens_unprocessed(self, text, stack) |
-| pygments           | attr: local.x                              |      9 |      4 |        4 |                                                                                                              mod.__all__ |
-| pygments           | call: global.method()                      |      9 |      3 |        1 |                                                                                           doctype_lookup_re.search(text) |
-| pygments           | subscript: param[...]                      |      8 |      7 |        6 |                                                                            line[i * self.wrap:i * self.wrap + self.wrap] |
-| pygments           | copy: other                                |      8 |      2 |        2 |                                                                                                                     args |
-| pygments           | copy: imported                             |      8 |      2 |        2 |                                                                                                                    Error |
-| pygments           | conditional                                |      7 |      6 |        6 |                                                                               String.Double if double else String.Single |
-| pygments           | call: builtin getattr()                    |      6 |      3 |        1 |                                                                                      getattr(self, 'content_type', None) |
-| pygments           | ListComp (unknown elements)                |      5 |      3 |        3 |                                                                                     [arg.rstrip('s') for arg in argns.L] |
-| pygments           | DictComp (unknown elements)                |      5 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin __import__()                 |      4 |      2 |        2 |                                                                         __import__(module_name, None, None, ['__all__']) |
-| pygments           | call: builtin list()                       |      4 |      3 |        3 |                                                                                                              list(inner) |
-| pygments           | call: local name                           |      4 |      3 |        1 |                                                                                                         translate(value) |
-| pygments           | attr: modclass.x                           |      4 |      0 |        0 |                                                                                                                          |
-| pygments           | attr: cls.x                                |      3 |      3 |        2 |                                                                                                                cls.flags |
-| pygments           | call: cls.method()                         |      3 |      2 |        1 |                                                                               cls._process_regex(tdef[0], rflags, state) |
-| pygments           | boolop (and)                               |      2 |      2 |        2 |                                                                                                       sp and i % sp == 0 |
-| pygments           | call: builtin dict()                       |      2 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin next()                       |      2 |      2 |        2 |                                                                                                         next(insertions) |
-| pygments           | call: builtin max()                        |      2 |      1 |        1 |                                                                                                                   max(m) |
-| pygments           | call: builtin zip()                        |      2 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin open()                       |      1 |      1 |        1 |                                                                                                        open(outfn, 'wb') |
-| pygments           | call: imported class                       |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | subscript: imported[...]                   |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin staticmethod()               |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | call: module class                         |      1 |      1 |        1 |                                                                                                    LexerContext(text, 0) |
-| pygments           | call: builtin sum()                        |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | SetComp (unknown elements)                 |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin tuple()                      |      1 |      0 |        0 |                                                                                                                          |
-| pygments           | call: builtin min()                        |      1 |      1 |        1 |                                                                                                                   min(m) |
-| pygments           | call: builtin.method()                     |      1 |      1 |        0 |                                                                                                                          |
-| streamlink         | call: chained .method()                    |    482 |     67 |       56 |                                                                                                 type(stream).shortname() |
-| streamlink         | other constant                             |    211 |      6 |        6 |                                                                                                                    False |
-| streamlink         | copy: local                                |    198 |     27 |       23 |                                                                                                                     data |
-| streamlink         | call: self.method()                        |    191 |     41 |       37 |                                                                                             self.parse_attributes(value) |
-| streamlink         | call: local.method()                       |    118 |     31 |       27 |                                                                                                             data.items() |
-| streamlink         | Yield                                      |    118 |      6 |        5 |                                                                                                         (yield cmd_dict) |
-| streamlink         | call: imported function                    |     74 |     41 |       38 |                                                                                                 unpack('>3sBBB4s', data) |
-| streamlink         | call: imported.attr()                      |     74 |      8 |        8 |                                                                                         AES.new(fkey, AES.MODE_CBC, riv) |
-| streamlink         | call: module.func()                        |     66 |     14 |       13 |                                                                                                      trio.open_nursery() |
-| streamlink         | dict (mixed/unknown elements)              |     51 |      2 |        2 | {'platform': 'web', 'p': int(random() * 999999), 'allow_source': 'true', 'allow_audio_only': 'true', 'playlist_include_f |
-| streamlink         | call: param.method()                       |     38 |     23 |        7 |                                                                                                     kwargs.pop('schema') |
-| streamlink         | boolop (or)                                |     37 |     19 |       17 |                                                             _validator_length_ops.get(op) or _validator_length_ops['ge'] |
-| streamlink         | subscript: other                           |     36 |      6 |        3 |                                                                                                    self.match['channel'] |
-| streamlink         | subscript: local[...]                      |     32 |      6 |        5 |                                                                                                stream_data['sdk_params'] |
-| streamlink         | attr: chained                              |     29 |     17 |       16 |                                                                                     self.root.suggestedPresentationDelay |
-| streamlink         | tuple (mixed/unknown elements)             |     24 |     18 |       16 |                                                  (self.alpha2, self.alpha3, self.numeric, self.name, self.official_name) |
-| streamlink         | copy: param (unannotated)                  |     20 |      6 |        5 |                                                                                                                     size |
-| streamlink         | attr: self.x                               |     19 |     11 |       10 |                                                                                                     self._PROTOCOL_ORDER |
-| streamlink         | empty dict                                 |     17 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: param.x                              |     17 |     14 |        7 |                                                                                                     session.localization |
-| streamlink         | binop (unknown operands)                   |     15 |     15 |       12 |                                                                                     items.keys() | [deprecated.__name__] |
-| streamlink         | conditional                                |     15 |     11 |        5 |               last.duration if last.prefetch else sum((segment.duration for segment in segments)) / float(len(segments)) |
-| streamlink         | None literal                               |     13 |      3 |        3 |                                                                                                                     None |
-| streamlink         | call: builtin next()                       |     13 |      1 |        0 |                                                                                                                          |
-| streamlink         | binop (one side literal)                   |     12 |      2 |        2 |                                                                                                                  r & 255 |
-| streamlink         | list (mixed/unknown elements)              |     11 |      3 |        3 |                                                                                                          ['hls', 'http'] |
-| streamlink         | empty list                                 |     11 |      0 |        0 |                                                                                                                          |
-| streamlink         | await: call: chained .method()             |     10 |     10 |        8 |                                                   await self.cdp_session.send(page.navigate(url=url, referrer=referrer)) |
-| streamlink         | boolop (and)                               |      9 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: local.x                              |      8 |      7 |        7 |                                                                                                      manager.loggerClass |
-| streamlink         | call: builtin sorted()                     |      8 |      2 |        1 |                                           sorted(self.cache.get_all().items(), key=operator.itemgetter(0), reverse=True) |
-| streamlink         | call: builtin getattr()                    |      8 |      8 |        5 |                                                                getattr(member, _SYMBOL_FRAME_PARSER, (None, None, None)) |
-| streamlink         | call: other callee                         |      7 |      2 |        1 |                                                                  codecs.getincrementaldecoder('utf-8')(errors='replace') |
-| streamlink         | ListComp (unknown elements)                |      6 |      3 |        1 |        [executor.submit(stream.close) for stream in self.streams if hasattr(stream, 'close') and callable(stream.close)] |
-| streamlink         | call: builtin dict()                       |      6 |      2 |        2 |                                                                                              dict(type=self.shortname()) |
-| streamlink         | DictComp (unknown elements)                |      5 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: imported class                       |      5 |      3 |        3 |                                                                                                               Matchers() |
-| streamlink         | call: other.method()                       |      5 |      5 |        3 |                                                                                                           stream.read(1) |
-| streamlink         | call: cls.method()                         |      5 |      5 |        4 |                                                                   cls.fetch_manifest(session, url_or_manifest, **kwargs) |
-| streamlink         | call: modclass.method()                    |      4 |      1 |        1 |                                                                                                  Buffer.read(self, size) |
-| streamlink         | call: builtin list()                       |      4 |      3 |        3 |                                                                                                           list(token_in) |
-| streamlink         | call: builtin enumerate()                  |      4 |      2 |        1 |                                                                                            enumerate(self.m3u8.segments) |
-| streamlink         | call: module function (unannotated)        |      4 |      2 |        0 |                                                                                                                          |
-| streamlink         | call: builtin type()                       |      4 |      4 |        1 |                                                                                                             type(schema) |
-| streamlink         | subscript: other[...]                      |      3 |      3 |        0 |                                                                                                                          |
-| streamlink         | set (mixed/unknown elements)               |      3 |      2 |        2 |                                                                                                                   {name} |
-| streamlink         | call: local name                           |      3 |      2 |        1 |                                                                                                         hashalg(content) |
-| streamlink         | call: builtin set()                        |      3 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: module.x                             |      2 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: global.x                             |      2 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: global.method()                      |      2 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: cls.x                                |      2 |      2 |        2 |                                                                                                       cls._normalize_key |
-| streamlink         | call: builtin max()                        |      2 |      2 |        2 |                                      max(1, min(LOW_LATENCY_MAX_LIVE_EDGE, stream.session.options.get('hls-live-edge'))) |
-| streamlink         | attr: other.x                              |      2 |      1 |        0 |                                                                                                                          |
-| streamlink         | JoinedStr                                  |      2 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: module class                         |      2 |      1 |        1 |                                                                                                       _CDPCmdBuffer(cmd) |
-| streamlink         | call: param name                           |      2 |      2 |        1 |                                                                         exception(f'Unable to open URL: {url} ({rerr})') |
-| streamlink         | call: builtin reversed()                   |      2 |      2 |        2 |                                              reversed(list(zip(count(self.startNumber), self.segmentTimeline.segments))) |
-| streamlink         | call: builtin divmod()                     |      2 |      2 |        0 |                                                                                                                          |
-| streamlink         | await: call: self.method()                 |      2 |      2 |        2 |                                                                                      await self.send(create_target(url)) |
-| streamlink         | call: builtin len()                        |      1 |      1 |        1 |                                                                                                                len(data) |
-| streamlink         | call: builtin min()                        |      1 |      1 |        1 |                                                                                                min(self.free, data_left) |
-| streamlink         | copy: param (annotated)                    |      1 |      1 |        1 |                                                                                                         sorting_excludes |
-| streamlink         | call: builtin memoryview()                 |      1 |      1 |        1 |                                                                                                      memoryview(packets) |
-| streamlink         | -                                          |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | unaryop USub                               |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: str-literal.method()                 |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: other name                           |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | compare                                    |      1 |      1 |        1 |                                                                                                            ad != last.ad |
-| streamlink         | call: builtin super()                      |      1 |      1 |        1 |                                                                                                                  super() |
-| streamlink         | attr: modclass.x                           |      1 |      1 |        1 |                                                                                           MPD.DEFAULT_LIVE_EDGE_SEGMENTS |
-| streamlink         | call: builtin filter()                     |      1 |      1 |        1 |                                                                filter(lambda m: m.group_id == group_id, self.m3u8.media) |
-| streamlink         | copy: other                                |      1 |      1 |        1 |                                                                                                                    extra |
-| streamlink         | await: call: param.method()                |      1 |      1 |        1 |                                                             await stream.receive_some(max_bytes=self._receive_max_bytes) |
-| streamlink         | await: call: module.func()                 |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | attr: imported.x                           |      1 |      0 |        0 |                                                                                                                          |
-| streamlink         | call: cls name                             |      1 |      1 |        1 |                                                                                   cls(websocket, timeout or CMD_TIMEOUT) |
-| sphinx             | call: chained .method()                    |    452 |    341 |      269 |                                                                                             otherdata['objects'].items() |
-| sphinx             | other constant                             |    357 |      5 |        5 |                                                                                                                       '' |
-| sphinx             | call: imported function                    |    242 |    112 |       92 |                                                                                          safe_getattr(cls, '__module__') |
-| sphinx             | call: local.method()                       |    233 |    163 |      135 |                                                                                                               m.groups() |
-| sphinx             | call: imported.attr()                      |    193 |     77 |       66 |                                                                                            addnodes.desc_parameterlist() |
-| sphinx             | attr: chained                              |    182 |    140 |      126 |                                                                                                 self._registry.css_files |
-| sphinx             | copy: local                                |    178 |    141 |      122 |                                                                                                                  entries |
-| sphinx             | call: param.method()                       |    123 |    103 |       70 |                                                                                                          node.get('ids') |
-| sphinx             | subscript: other                           |    110 |     85 |       73 |                                                                                                 self.data['root_symbol'] |
-| sphinx             | empty list                                 |    105 |      0 |        0 |                                                                                                                          |
-| sphinx             | binop (unknown operands)                   |    104 |     68 |       67 |                                                                                self.outdir / (docname + self.out_suffix) |
-| sphinx             | list (mixed/unknown elements)              |     90 |     51 |       51 |                                                                                                                    ['('] |
-| sphinx             | attr: self.x                               |     83 |     65 |       63 |                                                                                                                 self.pos |
-| sphinx             | subscript: local[...]                      |     76 |     61 |       58 |                                                                                                          node['entries'] |
-| sphinx             | attr: local.x                              |     73 |     63 |       48 |                                                                                                        memo.title_styles |
-| sphinx             | call: self.method()                        |     72 |     45 |       34 |                                                                                           self.get_refnodes(doctree, []) |
-| sphinx             | attr: param.x                              |     71 |     51 |       38 |                                                                                                                  app.env |
-| sphinx             | copy: other                                |     69 |      2 |        2 |                                                                                                                   hltext |
-| sphinx             | tuple (mixed/unknown elements)             |     69 |     28 |       23 |                                                                                          ('copyright', 'epub_copyright') |
-| sphinx             | subscript: param[...]                      |     66 |     59 |       55 |                                                                                                   sig_node['_toc_parts'] |
-| sphinx             | dict (mixed/unknown elements)              |     64 |     19 |       17 | {'project': self.config.project, 'version': version, 'docstitle': self.config.html_title, 'shorttitle': self.config.html |
-| sphinx             | call: module.func()                        |     61 |     50 |       47 |                                                                                                       time.gmtime(epoch) |
-| sphinx             | call: builtin list()                       |     55 |     37 |       35 |                                                                                                       list(self.items()) |
-| sphinx             | binop (one side literal)                   |     42 |     30 |       30 |                                                                         __('while setting up extension %s:') % 'conf.py' |
-| sphinx             | call: builtin getattr()                    |     42 |     30 |       13 |                                                                                             getattr(ext, attrname, None) |
-| sphinx             | None literal                               |     42 |     32 |       32 |                                                                                                                     None |
-| sphinx             | call: module function (annotated)          |     42 |     36 |       14 |                                                                                        eval_config_file(conf_path, tags) |
-| sphinx             | boolop (or)                                |     37 |     28 |       25 |                                                                                  self.config.today_fmt or _('%b %d, %Y') |
-| sphinx             | copy: imported                             |     34 |      9 |        8 |                                                                                                    _expression_unary_ops |
-| sphinx             | ListComp (unknown elements)                |     32 |     24 |       22 |                                                                                       [transform(e) for e in self.exprs] |
-| sphinx             | copy: param (annotated)                    |     29 |     21 |       11 |                                                                                                                    nodes |
-| sphinx             | conditional                                |     29 |     25 |       20 |                                                    source.stat() if isinstance(source, os.DirEntry) else os.stat(source) |
-| sphinx             | call: other name                           |     24 |     17 |        9 |                                                                           pathto(os.fspath(css.filename), resource=True) |
-| sphinx             | call: param name                           |     24 |     20 |       18 |                                                                                                transform(self.leftSpecs) |
-| sphinx             | empty dict                                 |     21 |      0 |        0 |                                                                                                                          |
-| sphinx             | call: imported class                       |     19 |     17 |       17 |                                                                                      ASTNamespace(name, template_prefix) |
-| sphinx             | attr: imported.x                           |     18 |      5 |        5 |                                                                                                          Parameter.empty |
-| sphinx             | call: builtin sorted()                     |     17 |     16 |       14 |                                                                                                  sorted(self.class_info) |
-| sphinx             | call: local name                           |     17 |      9 |        9 |                                                                                            extract_translations(context) |
-| sphinx             | call: global.method()                      |     15 |     13 |       10 |                                                                                                       EXTENSIONS.items() |
-| sphinx             | call: builtin enumerate()                  |     13 |     10 |        7 |                                                                                               enumerate(self['entries']) |
-| sphinx             | copy: global                               |     13 |      3 |        3 |                                                                                                       builtin_extensions |
-| sphinx             | call: builtin object()                     |     13 |      5 |        5 |                                                                                                                 object() |
-| sphinx             | call: builtin set()                        |     12 |      4 |        4 |                                                 set(OPTIONS if not opts.automodule_options else opts.automodule_options) |
-| sphinx             | compare                                    |     12 |     10 |       10 |                                                                                   self.param_group_index + 1 == len_lirp |
-| sphinx             | DictComp (unknown elements)                |     12 |      8 |        8 |                                                 {'theme_' + key: val for key, val in self.theme.get_options({}).items()} |
-| sphinx             | call: builtin zip()                        |     12 |      7 |        7 |                                                                       zip(self.content, self.content.items, strict=True) |
-| sphinx             | call: builtin frozenset()                  |     12 |      6 |        6 |                                                                             frozenset(StandardDomain._virtual_doc_names) |
-| sphinx             | boolop (and)                               |     11 |     10 |       10 |                                            not is_last_group and self.list_is_required_param[self.param_group_index + 1] |
-| sphinx             | GeneratorExp (unknown elements)            |      9 |      8 |        8 |                                                                       (line.replace('%Y', replace_yr) for line in value) |
-| sphinx             | subscript: imported[...]                   |      9 |      6 |        6 |                                                                                           admonitionlabels[node.tagname] |
-| sphinx             | call: module class                         |      8 |      6 |        6 |                                                                         DummyApplication(sphinx.locale.get_translator()) |
-| sphinx             | subscript: global[...]                     |      7 |      4 |        4 |                                                                                                  _OPTION_SPECS[obj_type] |
-| sphinx             | call: builtin reversed()                   |      6 |      1 |        0 |                                                                                                                          |
-| sphinx             | JoinedStr                                  |      6 |      3 |        3 |                                                                         f"{signature['module']}.{signature['fullname']}" |
-| sphinx             | subscript: self[...]                       |      5 |      5 |        4 |                                                                                                            self[newfile] |
-| sphinx             | copy: modclass                             |      5 |      0 |        0 |                                                                                                                          |
-| sphinx             | attr: cls.x                                |      5 |      3 |        1 |                                                                                                           cls.__module__ |
-| sphinx             | call: builtin next()                       |      5 |      3 |        1 |                                                                                          next(node.findall(nodes.tbody)) |
-| sphinx             | call: builtin type()                       |      5 |      4 |        2 | type(directivename, (GenericObject, object), {'indextemplate': indextemplate, 'parse_node': parse_node and staticmethod( |
-| sphinx             | call: builtin dict()                       |      5 |      3 |        2 |                                                                                                       dict(self.options) |
-| sphinx             | call: other.method()                       |      5 |      5 |        3 |                                                                                                          numstack.copy() |
-| sphinx             | call: builtin tuple()                      |      5 |      3 |        3 |                                                                        tuple(map(escape, split_index_msg(type, string))) |
-| sphinx             | SetComp (unknown elements)                 |      4 |      3 |        3 | {docname_to_domain(docname, gettext_compact) if docname else None for file in specified_files if (docname := env.path2do |
-| sphinx             | attr: module.x                             |      4 |      2 |        2 |                                                                                                               sys.stderr |
-| sphinx             | attr: modclass.x                           |      4 |      4 |        2 |                                                                                                    Config._config_values |
-| sphinx             | set (mixed/unknown elements)               |      3 |      2 |        2 |                                                                       {'name', 'value', *object.__dict__, *sunder_names} |
-| sphinx             | call: str-literal.method()                 |      3 |      2 |        2 |                                                                      ', '.join((self.visit(e) for e in node.slice.elts)) |
-| sphinx             | call: builtin max()                        |      2 |      2 |        2 |                                                                           max((item['level'] for item in self.refnodes)) |
-| sphinx             | call: builtin divmod()                     |      2 |      2 |        2 |                                                                                          divmod(len(fulllist), ncolumns) |
-| sphinx             | unaryop USub                               |      2 |      0 |        0 |                                                                                                                          |
-| sphinx             | call: builtin eval()                       |      2 |      1 |        1 |                                                                                                   eval(node['expr'], ns) |
-| sphinx             | copy: builtin                              |      2 |      0 |        0 |                                                                                                                          |
-| sphinx             | call: builtin round()                      |      1 |      0 |        0 |                                                                                                                          |
-| sphinx             | call: builtin vars()                       |      1 |      1 |        1 |                                                                                                               vars(args) |
-| sphinx             | call: builtin compile()                    |      1 |      1 |        1 |                                                                         compile(filename.read_bytes(), filename, 'exec') |
-| sphinx             | call: builtin filter()                     |      1 |      1 |        1 |                                                                                                filter(None, sub_targets) |
-| sphinx             | call: builtin dir()                        |      1 |      1 |        1 |                                                                                                          dir(props._obj) |
-| sphinx             | copy: moddef                               |      1 |      1 |        1 |                                                                                                  _condition_with_doctest |
-| sphinx             | call: cls.method()                         |      1 |      0 |        0 |                                                                                                                          |
-| sphinx             | call: other callee                         |      1 |      1 |        0 |                                                                                                                          |
-| sphinx             | call: builtin map()                        |      1 |      1 |        1 |                                                                                               map(Path, self.searchpath) |
-| sphinx             | call: builtin bool()                       |      1 |      1 |        1 |                                                                                   bool(kwargs.get('verify', tls_verify)) |
-| tox                | call: chained .method()                    |    135 |    121 |      102 |                                                                                          self.core.get('tox_root', Path) |
-| tox                | call: param.method()                       |     45 |     41 |       28 |                                                                                         conf.get_env(conf_args.env_name) |
-| tox                | call: local.method()                       |     45 |     37 |       29 |                                                                                                    optional_deps.items() |
-| tox                | tuple (mixed/unknown elements)             |     31 |     21 |       17 |                                                                                                   (self._out, self._err) |
-| tox                | conditional                                |     30 |     27 |       22 |                                                                             Parsed() if namespace is None else namespace |
-| tox                | subscript: other                           |     27 |     22 |       21 |                                                                                                         state.envs[name] |
-| tox                | attr: chained                              |     27 |     23 |       22 |                                                                                                       state.conf.options |
-| tox                | call: imported function                    |     25 |     20 |       17 | groupby(re.split('\n            ( (?: \\{ [^}]+ \\} )+ )  # one or more brace groups\n            |                      |
-| tox                | copy: local                                |     25 |     19 |       18 |                                                                                                             validated_of |
-| tox                | call: builtin getattr()                    |     22 |     17 |       13 |                                                                                            getattr(namespace, self.dest) |
-| tox                | call: self.method()                        |     20 |     19 |       13 |                                                                                        self._add_conf(keys_, definition) |
-| tox                | call: module.func()                        |     17 |     12 |        6 |                                                                              shutil.get_terminal_size(fallback=(-1, -1)) |
-| tox                | attr: self.x                               |     16 |     15 |        6 |                                                                                                                self.keys |
-| tox                | copy: param (annotated)                    |     16 |     14 |        8 |                                                                                                               lines_enum |
-| tox                | boolop (or)                                |     14 |     13 |        9 |                                                                                                             keys or conf |
-| tox                | call: builtin set()                        |     13 |     10 |       10 |                                                                                                         set(env_factors) |
-| tox                | attr: local.x                              |     13 |     13 |       11 |                                                                                                                   x.keys |
-| tox                | ListComp (unknown elements)                |     11 |      8 |        8 |                                                 [o for alias in (key, *all_keys) for o in self.overrides.get(alias, [])] |
-| tox                | call: imported class                       |     10 |      7 |        7 |                                            ConfigDynamicDefinition(keys_, desc, of_type, default, post_process, factory) |
-| tox                | subscript: local[...]                      |     10 |      8 |        3 |                                                                                                          settings['key'] |
-| tox                | dict (mixed/unknown elements)              |      8 |      5 |        5 | {'$schema': 'http://json-schema.org/draft-07/schema#', '$id': 'https://raw.githubusercontent.com/tox-dev/tox/main/src/to |
-| tox                | empty list                                 |      6 |      0 |        0 |                                                                                                                          |
-| tox                | call: builtin list()                       |      6 |      5 |        5 |                                                                                                  list(state.envs.iter()) |
-| tox                | DictComp (unknown elements)                |      6 |      3 |        3 | {key: (value['value'], Marker(reference_marker) if (reference_marker := value.get('marker')) else None) for key, value i |
-| tox                | attr: imported.x                           |      6 |      4 |        4 |                                                                                                               Outcome.OK |
-| tox                | binop (unknown operands)                   |      6 |      6 |        6 |                                                                                                     tox_root / file_path |
-| tox                | call: builtin sorted()                     |      5 |      4 |        4 |                                                                                              sorted(request.env.items()) |
-| tox                | attr: param.x                              |      5 |      5 |        5 |                                                                                                         options.override |
-| tox                | binop (one side literal)                   |      5 |      5 |        5 |                                                                                       self.env_tmp_dir / 'sdist-extract' |
-| tox                | attr: module.x                             |      5 |      1 |        1 |                                                                                                         sys.version_info |
-| tox                | call: global.method()                      |      4 |      2 |        1 |                                                                                       _ACTION_DEFAULT_SOURCE.get(action) |
-| tox                | call: builtin enumerate()                  |      4 |      4 |        2 |                                                                                                  enumerate(as_root_args) |
-| tox                | None literal                               |      4 |      2 |        2 |                                                                                                                     None |
-| tox                | call: other name                           |      4 |      2 |        1 |                                                                                                      _ensure_list(value) |
-| tox                | call: builtin.method()                     |      4 |      3 |        2 |                                                                                         dict.fromkeys(state.envs.iter()) |
-| tox                | other constant                             |      4 |      0 |        0 |                                                                                                                          |
-| tox                | call: builtin next()                       |      3 |      1 |        1 |                                                                           next(state.envs.iter(only_active=False), 'py') |
-| tox                | GeneratorExp (unknown elements)            |      3 |      3 |        3 |                                                                 ((k, v) for k, v in vars(self).items() if v is not None) |
-| tox                | subscript: param[...]                      |      3 |      3 |        1 |                                                                                              run_conf['wheel_build_env'] |
-| tox                | Yield                                      |      3 |      3 |        3 |                                                                                                             (yield PIPE) |
-| tox                | compare                                    |      3 |      3 |        3 |                                                                                       self.conf['package'] == 'external' |
-| tox                | call: module function (annotated)          |      3 |      3 |        2 |                                      _get_schema(state.envs[env_name].conf, path='#/properties/env_run_base/properties') |
-| tox                | call: imported.attr()                      |      3 |      3 |        3 |                                                                                             REGISTER.runner(runner_name) |
-| tox                | call: builtin object()                     |      2 |      0 |        0 |                                                                                                                          |
-| tox                | call: str-literal.method()                 |      2 |      1 |        1 |                                                                             f'{env.ljust(max_length)} -> {text}'.strip() |
-| tox                | empty dict                                 |      2 |      0 |        0 |                                                                                                                          |
-| tox                | call: builtin reversed()                   |      2 |      0 |        0 |                                                                                                                          |
-| tox                | call: module class                         |      2 |      0 |        0 |                                                                                                                          |
-| tox                | SetComp (unknown elements)                 |      1 |      1 |        1 | {name for parser in (self, self._cmd.choices.get('legacy')) if parser is not None for name, action in parser._option_str |
-| tox                | call: builtin type()                       |      1 |      0 |        0 |                                                                                                                          |
-| tox                | copy: self                                 |      1 |      1 |        1 |                                                                                                                     self |
-| tox                | copy: imported                             |      1 |      0 |        0 |                                                                                                                          |
-| tox                | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| tox                | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| tox                | call: builtin max()                        |      1 |      0 |        0 |                                                                                                                          |
-| tox                | subscript: other[...]                      |      1 |      1 |        1 |                                                                                                                deps[env] |
-| tox                | boolop (and)                               |      1 |      1 |        1 |                                                                    state.conf.options.is_colored and output_file is None |
-| tox                | call: local name                           |      1 |      1 |        1 |                                                                                                             runner(args) |
-| tox                | call: builtin id()                         |      1 |      1 |        1 |                                                                                                       id(execute_status) |
-| tox                | list (mixed/unknown elements)              |      1 |      1 |        1 |                                                                                       ['python', str(tox_root / script)] |
-| tox                | JoinedStr                                  |      1 |      1 |        1 |                                                                                                f'{line[0:2]} {line[2:]}' |
-| tox                | call: builtin vars()                       |      1 |      0 |        0 |                                                                                                                          |
-| tox                | call: cls.method()                         |      1 |      1 |        1 |                                                                                         cls.get_virtualenv_py_info(path) |
-| tox                | call: other.method()                       |      1 |      1 |        1 |                                                                                                    graph.get(vertex, ()) |
-| pint               | call: self.method()                        |    274 |     40 |       34 |                                                                                                              self.copy() |
-| pint               | call: local.method()                       |    164 |     26 |       22 |                                                                         parser.parse_string('\n'.join(lines) + '\n@end') |
-| pint               | call: imported class                       |    151 |      3 |        3 |                                                                                                UnitsContainer(converter) |
-| pint               | call: chained .method()                    |    151 |     48 |       39 |                                                                                                   quantity._units.copy() |
-| pint               | binop (unknown operands)                   |    135 |     14 |        9 |                                              self.msg + '\n    ' + (self.format_position or '') + ' ' + (self.raw or '') |
-| pint               | tuple (mixed/unknown elements)             |    128 |      2 |        1 |                                                                                      (first.magnitude, second.magnitude) |
-| pint               | copy: param (unannotated)                  |    127 |      5 |        3 |                                                                                                                    items |
-| pint               | call: module.func()                        |    106 |      4 |        3 |                                                                                                            np.isnan(obj) |
-| pint               | call: param.method()                       |    104 |     27 |       25 |                                                                                         babel_kwds.get('as_ratio', True) |
-| pint               | call: imported function                    |     88 |     40 |       28 |                                                                   override_locale(mspec, babel_kwds.get('locale', None)) |
-| pint               | binop (one side literal)                   |     80 |      2 |        2 |                                                        np.floor(np.log10(np.abs(magnitude)) / float(unit_power) / 3) * 3 |
-| pint               | attr: self.x                               |     65 |     13 |       13 |                                                                                                           self._registry |
-| pint               | call: imported.attr()                      |     65 |     13 |       11 |                                                                                        pint_eval.tokenizer(input_string) |
-| pint               | attr: chained                              |     64 |     22 |       20 |                                                                                                   self._REGISTRY._groups |
-| pint               | call: module function (unannotated)        |     37 |     28 |       23 |                                                                                     _get_first_input_units(args, kwargs) |
-| pint               | call: other callee                         |     34 |      0 |        0 |                                                                                                                          |
-| pint               | attr: local.x                              |     29 |      4 |        3 |                                                                                                         q_base.magnitude |
-| pint               | call: builtin zip()                        |     27 |      6 |        3 |                                                                                               zip(ech_matrix, id_matrix) |
-| pint               | attr: param.x                              |     26 |      6 |        6 |                                                                                                             t.__module__ |
-| pint               | call: other name                           |     26 |     11 |        3 |                                                                                                            find_simple() |
-| pint               | call: param name                           |     23 |      5 |        3 |                                                                                               to_base_func(relation.src) |
-| pint               | copy: local                                |     21 |     11 |       10 |                                                                                                                      arg |
-| pint               | subscript: local[...]                      |     21 |     17 |       15 |                                                                                                               parts[:-1] |
-| pint               | list (mixed/unknown elements)              |     19 |      1 |        1 |                                                                                                  [self.left.to_string()] |
-| pint               | call: capitalised                          |     19 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin tuple()                      |     17 |      7 |        7 |                                           tuple((attr for attr in functools.WRAPPER_ASSIGNMENTS if hasattr(func, attr))) |
-| pint               | call: builtin dict()                       |     16 |      3 |        2 |                                                                                       dict(context.defaults, **defaults) |
-| pint               | call: local name                           |     16 |      1 |        1 |                                                                                     trapezoid(y._magnitude, x, **kwargs) |
-| pint               | subscript: other                           |     15 |      4 |        2 |                                                                                                        self._adders[cls] |
-| pint               | call: builtin getattr()                    |     14 |     10 |        7 |                                                                                                    getattr(np, func_str) |
-| pint               | attr: imported.x                           |     14 |      1 |        1 |                                                                                                             np.trapezoid |
-| pint               | empty list                                 |     13 |      0 |        0 |                                                                                                                          |
-| pint               | call: module function (annotated)          |     12 |     10 |        8 |                                                                                     partition(lambda el: el[1] < 0, out) |
-| pint               | call: builtin enumerate()                  |     12 |      8 |        7 |                                                                                                    enumerate(args_as_uc) |
-| pint               | ListComp (unknown elements)                |     12 |      9 |        6 |                                  [self._contexts[name] if isinstance(name, str) else name for name in names_or_contexts] |
-| pint               | copy: param (annotated)                    |     11 |      6 |        5 |                                                                                                                      ref |
-| pint               | None literal                               |     10 |      3 |        3 |                                                                                                                     None |
-| pint               | call: builtin set()                        |     10 |      0 |        0 |                                                                                                                          |
-| pint               | GeneratorExp (unknown elements)            |      9 |      6 |        6 |                                                                        (config.to_dimension_container(s) for s in parts) |
-| pint               | Lambda                                     |      9 |      1 |        1 |                                                                                               lambda x: exp_call(abs(x)) |
-| pint               | subscript: param[...]                      |      9 |      5 |        4 |                                                                                                             all_args[1:] |
-| pint               | empty dict                                 |      8 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin divmod()                     |      8 |      2 |        0 |                                                                                                                          |
-| pint               | call: builtin next()                       |      7 |      2 |        2 |                                                                                                              next(miter) |
-| pint               | call: global.method()                      |      7 |      1 |        1 |                                                                                                      func_str.split('.') |
-| pint               | copy: other                                |      6 |      4 |        2 |                                                                                                          preferred_units |
-| pint               | conditional                                |      6 |      6 |        3 |                                                                                             lpos if power >= 0 else lneg |
-| pint               | copy: moddef                               |      6 |      1 |        1 |                                                                                                                    _noop |
-| pint               | DictComp (unknown elements)                |      6 |      3 |        1 |                          {new_unit: -1 / value for new_unit, value in new_unit_expanded.items() if new_unit != old_unit} |
-| pint               | call: builtin list()                       |      6 |      3 |        2 |                                                                                            list(quantity._units.items()) |
-| pint               | attr: module.x                             |      5 |      0 |        0 |                                                                                                                          |
-| pint               | copy: imported                             |      4 |      2 |        2 |                                                                                                                       np |
-| pint               | dict (mixed/unknown elements)              |      4 |      1 |        1 |                                                                         {**_BINARY_OPERATOR_MAP, '': _eval_implicit_mul} |
-| pint               | boolop (or)                                |      4 |      1 |        1 |                                                                       registry.get_dimensionality(cname) or {'[]': None} |
-| pint               | other constant                             |      4 |      3 |        3 |                                                                                                                        0 |
-| pint               | copy: self                                 |      4 |      4 |        4 |                                                                                                                     self |
-| pint               | call: module class                         |      4 |      4 |        4 |                                                                         IteratorLookAhead(plain_tokenizer(input_string)) |
-| pint               | call: builtin.method()                     |      4 |      2 |        1 |                                                                                           object.__new__(self.__class__) |
-| pint               | compare                                    |      3 |      1 |        0 |                                                                                                                          |
-| pint               | attr: builtin.x                            |      3 |      0 |        0 |                                                                                                                          |
-| pint               | empty tuple                                |      3 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin frozenset()                  |      2 |      2 |        2 |                                                                                                 frozenset(kwargs.keys()) |
-| pint               | subscript: imported[...]                   |      2 |      0 |        0 |                                                                                                                          |
-| pint               | call: other.method()                       |      2 |      2 |        2 |                                                                                             registry.get_name(unit_name) |
-| pint               | SetComp (unknown elements)                 |      2 |      2 |        1 |                           {type(arg) for arg in list(inputs) + list(kwargs.values()) if hasattr(arg, '__array_ufunc__')} |
-| pint               | call: builtin sorted()                     |      2 |      2 |        2 |                                                                                          sorted(quantity.dimensionality) |
-| pint               | call: builtin iter()                       |      1 |      1 |        1 |                                                                                                           iter(iterable) |
-| pint               | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin any()                        |      1 |      1 |        1 |                                                            any((ctx.redefinitions for ctx in self._active_ctx.contexts)) |
-| pint               | subscript: builtin[...]                    |      1 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| pint               | copy: global                               |      1 |      1 |        1 |                                                                                                        HANDLED_FUNCTIONS |
-| pint               | call: str-literal.method()                 |      1 |      1 |        1 |                                                               '.'.join(func.__module__.split('.')[1:] + [func.__name__]) |
-| pint               | call: builtin sum()                        |      1 |      1 |        1 |                                                           sum((param.kind != Parameter.VAR_KEYWORD for param in params)) |
-| pint               | await: copy: local                         |      1 |      0 |        0 |                                                                                                                          |
-| pint               | call: builtin type()                       |      1 |      0 |        0 |                                                                                                                          |
-| pint               | copy: builtin                              |      1 |      1 |        1 |                                                                                                                    float |
-| pint               | call: builtin max()                        |      1 |      1 |        1 |                                                                                       max((f.denominator for f in rowi)) |
-| altair             | dict (mixed/unknown elements)              |    472 |      6 |        2 |                    {'enum': _deduplicate_enum_errors, 'additionalProperties': _deduplicate_additional_properties_errors} |
-| altair             | other constant                             |    203 |      0 |        0 |                                                                                                                          |
-| altair             | call: self.method()                        |    104 |     55 |       44 |                                                                                                    self.copy(deep=False) |
-| altair             | call: chained .method()                    |     58 |     27 |       15 |                                                                                             self.schema(name).to_arrow() |
-| altair             | call: param.method()                       |     46 |     42 |       32 |                                                                                                           kwargs.items() |
-| altair             | call: local.method()                       |     46 |     38 |       17 |                                                                                              errors_by_validator.items() |
-| altair             | call: module function (annotated)          |     30 |     18 |       12 |                                                                                        _reveal_parsed_shorthand(current) |
-| altair             | call: module.func()                        |     21 |     13 |       12 |                                                                     nw.from_native(data, eager_or_interchange_only=True) |
-| altair             | copy: param (annotated)                    |     21 |     15 |        9 |                                                                                                                   errors |
-| altair             | call: imported function                    |     20 |     14 |       14 |                                                                                                            get_ipython() |
-| altair             | conditional                                |     17 |     12 |       10 |                                                                                            us if us == 0 else us // 1000 |
-| altair             | call: builtin getattr()                    |     15 |     13 |        5 |                                                                                         getattr(new_chart, 'params', []) |
-| altair             | call: imported.attr()                      |     12 |      8 |        7 |                                                                                               utils.parse_shorthand(val) |
-| altair             | attr: param.x                              |     12 |     11 |        8 |                                                                                                          obj.microsecond |
-| altair             | copy: local                                |     11 |      9 |        4 |                                                                                                                 requires |
-| altair             | attr: local.x                              |     10 |      6 |        5 |                                                                                                           data_nw.schema |
-| altair             | empty list                                 |     10 |      0 |        0 |                                                                                                                          |
-| altair             | subscript: other                           |      9 |      7 |        6 |                                                                      hashlib.sha256(hash_json.encode()).hexdigest()[:16] |
-| altair             | GeneratorExp (unknown elements)            |      9 |      8 |        8 |                                                 ((col, _FIELD_TO_DTYPE[tp_str]()) for col, tp_str in self[name].items()) |
-| altair             | subscript: local[...]                      |      9 |      5 |        2 |                                                                                             url[len(VEGAFUSION_PREFIX):] |
-| altair             | tuple (mixed/unknown elements)             |      8 |      7 |        5 | (read(pl.read_csv, is_csv, try_parse_dates=True), *fn_json, read(pl.read_csv, is_tsv, separator='\t', try_parse_dates=Tr |
-| altair             | attr: chained                              |      7 |      5 |        4 |                                                                                                      type(self).__name__ |
-| altair             | empty dict                                 |      7 |      0 |        0 |                                                                                                                          |
-| altair             | attr: imported.x                           |      7 |      0 |        0 |                                                                                                                          |
-| altair             | call: module function (unannotated)        |      7 |      7 |        4 |                                                                                                              _pngxy(png) |
-| altair             | binop (unknown operands)                   |      6 |      4 |        3 |                                                                                             col.isnull() | np.isinf(col) |
-| altair             | ListComp (unknown elements)                |      6 |      4 |        3 |                                                                        [','.join(err.validator_value) for err in errors] |
-| altair             | subscript: param[...]                      |      5 |      5 |        5 |                                                                                                           meta['suffix'] |
-| altair             | attr: self.x                               |      5 |      4 |        2 |                                                                                                     self._implementation |
-| altair             | call: imported class                       |      4 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin set()                        |      4 |      1 |        1 |                                                set(chain.from_iterable((impl._relevant_columns for impl in self._read))) |
-| altair             | boolop (or)                                |      4 |      4 |        2 |                                                                         get_group_mark_for_scope(vega_spec, scope) or {} |
-| altair             | DictComp (unknown elements)                |      4 |      4 |        1 |                                                                               {k: feat[k] for k in ('type', 'geometry')} |
-| altair             | binop (one side literal)                   |      3 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin list()                       |      3 |      1 |        1 |                                                                                               list(self._plugins.keys()) |
-| altair             | subscript: imported[...]                   |      3 |      2 |        2 |                                                                                                   VERSIONS['vegafusion'] |
-| altair             | None literal                               |      3 |      2 |        2 |                                                                                                                     None |
-| altair             | call: local name                           |      3 |      2 |        1 |                                                                                                  compiler(vegalite_spec) |
-| altair             | call: builtin tuple()                      |      2 |      1 |        1 |                                                                                                      tuple(next(reader)) |
-| altair             | subscript: self[...]                       |      2 |      2 |        2 |                                                                                                               self[name] |
-| altair             | copy: self                                 |      2 |      1 |        0 |                                                                                                                          |
-| altair             | call: builtin dict()                       |      2 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin next()                       |      2 |      2 |        0 |                                                                                                                          |
-| altair             | call: other.method()                       |      2 |      2 |        2 |                                                                                             ns.read_json(source, **kwds) |
-| altair             | set (mixed/unknown elements)               |      2 |      2 |        2 |                                                                                                                    {cls} |
-| altair             | call: other name                           |      2 |      1 |        1 |                                                                         split_into_equal_parts(num_param_names, columns) |
-| altair             | subscript: other[...]                      |      2 |      0 |        0 |                                                                                                                          |
-| altair             | list (mixed/unknown elements)              |      2 |      2 |        0 |                                                                                                                          |
-| altair             | compare                                    |      2 |      2 |        2 |                                                                                                     'type' in self._kwds |
-| altair             | call: other callee                         |      1 |      0 |        0 |                                                                                                                          |
-| altair             | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin enumerate()                  |      1 |      1 |        1 |                                                                                                       enumerate(geo_dct) |
-| altair             | copy: imported                             |      1 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin compile()                    |      1 |      1 |        1 |                                                          compile(ast.Module([node], []), filename=filename, mode='exec') |
-| altair             | call: global.method()                      |      1 |      1 |        1 |                                                                                        TEMPLATES.get(template, template) |
-| altair             | call: builtin zip()                        |      1 |      1 |        1 |                                                                                 zip(value_strings, errors, strict=False) |
-| altair             | call: builtin min()                        |      1 |      1 |        1 |                                                                 min(max_column_width // max_name_length, square_columns) |
-| altair             | call: builtin sorted()                     |      1 |      1 |        1 |                                                                                       sorted(to_py_types, key=str.lower) |
-| altair             | call: cls.method()                         |      1 |      1 |        1 |                                                                                                 cls.resolve_references() |
-| altair             | call: modclass.method()                    |      1 |      1 |        0 |                                                                                                                          |
-| altair             | SetComp (unknown elements)                 |      1 |      0 |        0 |                                                                                                                          |
-| altair             | copy: global                               |      1 |      0 |        0 |                                                                                                                          |
-| altair             | call: builtin iter()                       |      1 |      1 |        1 |                                                                                                 iter(get_args(ColorHex)) |
-| altair             | attr: modclass.x                           |      1 |      0 |        0 |                                                                                                                          |
-| altair             | call: module class                         |      1 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: self.method()                        |    151 |    139 |      104 |                                                                                                        self.facet_data() |
-| seaborn            | call: module.func()                        |    148 |    131 |      126 |                                                                                                           np.isfinite(x) |
-| seaborn            | call: param.method()                       |    132 |    124 |       75 |                                                                                                        comp_dict.items() |
-| seaborn            | call: local.method()                       |    128 |    112 |       92 |                                                                                                          axes_df.items() |
-| seaborn            | call: chained .method()                    |    125 |    112 |       95 |                                                                                                  self.comp_data.dropna() |
-| seaborn            | call: imported function                    |     92 |     76 |       58 |                                                                                   resolve_properties(self, keys, scales) |
-| seaborn            | tuple (mixed/unknown elements)             |     81 |     58 |       48 |                                                                                                               (pos, val) |
-| seaborn            | binop (unknown operands)                   |     79 |     71 |       58 |                                                                                 self._nrow * self._ncol - self._n_facets |
-| seaborn            | subscript: other                           |     70 |     62 |       51 |                                                                                          mpl.rcParams['lines.linewidth'] |
-| seaborn            | copy: param (unannotated)                  |     68 |     48 |       34 |                                                                                                                   triple |
-| seaborn            | copy: local                                |     59 |     49 |       35 |                                                                                                                 subplots |
-| seaborn            | empty list                                 |     56 |      0 |        0 |                                                                                                                          |
-| seaborn            | attr: self.x                               |     49 |     47 |       20 |                                                                                                       self.estimate_data |
-| seaborn            | conditional                                |     48 |     42 |       23 |                                                           self._hue_map(sub_vars['hue']) if 'hue' in sub_vars else color |
-| seaborn            | ListComp (unknown elements)                |     46 |     44 |       40 |                                                                                    [palette[k] for k in sorted(palette)] |
-| seaborn            | attr: chained                              |     42 |     35 |       32 |                                                                                      converter.get_transform().transform |
-| seaborn            | subscript: local[...]                      |     42 |     39 |       28 |                                                                                                                sub['ax'] |
-| seaborn            | call: local name                           |     39 |     39 |       36 |                                                                                 estimator(observations, weights=weights) |
-| seaborn            | subscript: imported[...]                   |     33 |      1 |        0 |                                                                                                                          |
-| seaborn            | dict (mixed/unknown elements)              |     32 |     30 |       12 |                                                                            {'width': w * scaling, 'height': h * scaling} |
-| seaborn            | empty dict                                 |     30 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: builtin zip()                        |     30 |     29 |       24 |                            zip(xpos.flat, ypos.flat, mesh.get_array().flat, mesh.get_facecolors(), self.annot_data.flat) |
-| seaborn            | binop (one side literal)                   |     30 |     22 |       20 |                                                                                                        data['width'] / 2 |
-| seaborn            | call: builtin getattr()                    |     29 |     23 |        9 |                                                                                            getattr(ax, f'set_{name}lim') |
-| seaborn            | call: builtin enumerate()                  |     29 |     25 |       21 |                                                                                                     enumerate(self.axes) |
-| seaborn            | subscript: param[...]                      |     26 |     25 |       22 |                                                                                                                  df[var] |
-| seaborn            | None literal                               |     25 |     12 |       12 |                                                                                                                     None |
-| seaborn            | call: param name                           |     25 |     25 |       20 |                                                                                                              split_gen() |
-| seaborn            | list (mixed/unknown elements)              |     25 |     21 |       19 |                                                  ['o', 'X', (4, 0, 45), 'P', (4, 0, 0), (4, 1, 0), '^', (4, 1, 45), 'v'] |
-| seaborn            | DictComp (unknown elements)                |     25 |     22 |       18 |                                                                                            {v: value for v in variables} |
-| seaborn            | call: builtin dict()                       |     24 |     22 |       10 |                                                                                       dict(bins=n_bins, range=bin_range) |
-| seaborn            | other constant                             |     20 |      9 |        9 |                                                                                                                    False |
-| seaborn            | call: imported.attr()                      |     19 |     14 |       13 |                                                                                                   husl.rgb_to_husl(*rgb) |
-| seaborn            | call: module function (unannotated)        |     16 |     15 |        5 |                                                                            _percentile_interval(boots, self.error_level) |
-| seaborn            | compare                                    |     14 |     12 |       12 |                                                                                                   self.stat == 'density' |
-| seaborn            | attr: local.x                              |     13 |     13 |       13 |                                                                                                           orig_xy_data.T |
-| seaborn            | call: other name                           |     12 |      7 |        6 |                                                                                                      get_dimensions(col) |
-| seaborn            | attr: param.x                              |     10 |      8 |        7 |                                                                                                           axis.axis_name |
-| seaborn            | boolop (or)                                |      9 |      9 |        7 | sub[visible_side] or not p._pair_spec.get('cross', True) or (axis in p._pair_spec.get('structure', {}) and bool(p._pair_ |
-| seaborn            | call: builtin min()                        |      8 |      8 |        4 |                                                                                 min(_freedman_diaconis_bins(grid.x), 50) |
-| seaborn            | boolop (and)                               |      7 |      6 |        5 |    mapper.map_type == 'numeric' and (verbosity == 'brief' or (verbosity == 'auto' and len(mapper.levels) > brief_ticks)) |
-| seaborn            | call: builtin tuple()                      |      7 |      7 |        2 |                                                                                                  tuple(sub_vars.items()) |
-| seaborn            | subscript: self[...]                       |      7 |      3 |        3 |                                                                                                            self[self._l] |
-| seaborn            | call: builtin list()                       |      6 |      6 |        5 |                                                                                               list(np.sort(list(sizes))) |
-| seaborn            | attr: module.x                             |      6 |      6 |        6 |                                                                                                                   np.nan |
-| seaborn            | copy: param (annotated)                    |      5 |      5 |        3 |                                                                                                                  options |
-| seaborn            | call: builtin max()                        |      5 |      5 |        3 |                                                                                      max(map(max, self.dependent_coord)) |
-| seaborn            | call: other.method()                       |      4 |      3 |        2 |                                                                                       rng.uniform(-0.5, +0.5, len(data)) |
-| seaborn            | SetComp (unknown elements)                 |      3 |      3 |        3 |                                                                                 {axis.get_scale() for axis in axis_list} |
-| seaborn            | call: other callee                         |      3 |      2 |        1 |                                                                            getattr(axis_obj, f'get_{group}ticklabels')() |
-| seaborn            | call: imported class                       |      3 |      2 |        2 |                                                                            Subplots(subplot_spec, facet_spec, pair_spec) |
-| seaborn            | copy: imported                             |      3 |      3 |        3 |                                                                                                                 histplot |
-| seaborn            | call: builtin sorted()                     |      3 |      2 |        1 |                                                                     sorted(sub_data[self.orient].unique().astype(float)) |
-| seaborn            | copy: other                                |      2 |      1 |        1 |                                                                                                                 subplots |
-| seaborn            | unaryop Invert                             |      2 |      1 |        0 |                                                                                                                          |
-| seaborn            | copy: modclass                             |      2 |      2 |        2 |                                                                                                   _CategoricalAggPlotter |
-| seaborn            | call: capitalised                          |      2 |      2 |        0 |                                                                                                                          |
-| seaborn            | copy: moddef                               |      2 |      1 |        1 |                                                                                                              scatterplot |
-| seaborn            | copy: global                               |      2 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: builtin staticmethod()               |      2 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: module class                         |      1 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: builtin sum()                        |      1 |      1 |        0 |                                                                                                                          |
-| seaborn            | GeneratorExp (unknown elements)            |      1 |      1 |        1 |                                                                       (path.vertices for path in collection.get_paths()) |
-| seaborn            | call: builtin set()                        |      1 |      1 |        1 |                                                                                                      set(self.variables) |
-| seaborn            | call: builtin reversed()                   |      1 |      1 |        1 |                                                                                                          reversed(swarm) |
-| seaborn            | call: builtin slice()                      |      1 |      1 |        1 |                                                                                              slice(2 * idx, 2 * idx + 2) |
-| seaborn            | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: builtin str()                        |      1 |      0 |        0 |                                                                                                                          |
-| seaborn            | call: builtin map()                        |      1 |      1 |        1 |                                                                             map(lambda row: dot_product(row, triple), m) |
-| seaborn            | call: self name                            |      1 |      1 |        1 |                                                                                                      self(X, bytes=True) |
-| aiohttp            | call: chained .method()                    |    110 |    104 |       72 |                                                                                             self._parser.feed_data(data) |
-| aiohttp            | attr: self.x                               |     84 |     80 |       45 |                                                                                                               self._loop |
-| aiohttp            | other constant                             |     74 |      2 |        2 |                                                                                                                  'utf-8' |
-| aiohttp            | call: local.method()                       |     69 |     62 |       46 |                                                                                                           match.groups() |
-| aiohttp            | call: module.func()                        |     43 |     29 |       28 |                                                                                                         time.gmtime(now) |
-| aiohttp            | attr: local.x                              |     36 |     34 |       22 |                                                                                                app._middlewares_handlers |
-| aiohttp            | conditional                                |     29 |     27 |       17 |                                                       conn._connector._timeout_ceil_threshold if conn is not None else 5 |
-| aiohttp            | attr: param.x                              |     28 |     26 |       10 |                                                                                                                req.proxy |
-| aiohttp            | copy: local                                |     27 |     27 |       21 |                                                                                                          auth_from_netrc |
-| aiohttp            | attr: chained                              |     26 |     15 |       13 |                                                                                                request.rel_url.path_safe |
-| aiohttp            | call: self.method()                        |     21 |     19 |       12 |                                                                                   self._get_resource_index_key(resource) |
-| aiohttp            | subscript: other                           |     19 |     18 |       17 |                                                                                                       self._waiters[key] |
-| aiohttp            | tuple (mixed/unknown elements)             |     19 |     12 |       10 |                                                                                                     (domain, path, name) |
-| aiohttp            | await: call: chained .method()             |     19 |     14 |        8 |                                                                                                await self._reader.read() |
-| aiohttp            | call: param.method()                       |     17 |     17 |       11 |                                                                                     transport.get_extra_info('peername') |
-| aiohttp            | await: call: self.method()                 |     16 |     16 |        9 |                                                                                              await self.receive(timeout) |
-| aiohttp            | binop (unknown operands)                   |     16 |     10 |        8 |                                                                   writer.output_size - transport.get_write_buffer_size() |
-| aiohttp            | copy: param (annotated)                    |     15 |     14 |        9 |                                                                                                                     data |
-| aiohttp            | call: imported class                       |     15 |     11 |       10 |                                                                                                           SimpleCookie() |
-| aiohttp            | await: call: local.method()                |     15 |      6 |        2 |                                                                          await field.read_chunk(size=DEFAULT_CHUNK_SIZE) |
-| aiohttp            | None literal                               |     14 |      8 |        8 |                                                                                                                     None |
-| aiohttp            | empty list                                 |     12 |      0 |        0 |                                                                                                                          |
-| aiohttp            | subscript: imported[...]                   |     12 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: imported                             |     11 |      0 |        0 |                                                                                                                          |
-| aiohttp            | boolop (or)                                |     10 |      6 |        5 |                                                                                       attribute_match.group('val') or '' |
-| aiohttp            | call: global.method()                      |      9 |      7 |        7 |                                                                                _SIMPLE_COOKIE.value_encode(cookie.value) |
-| aiohttp            | dict (mixed/unknown elements)              |      8 |      5 |        5 |                                                           {'client_session': self, 'message': 'Unclosed client session'} |
-| aiohttp            | call: imported function                    |      8 |      7 |        6 |                                               build_client_middlewares(_connect_and_send_request, effective_middlewares) |
-| aiohttp            | attr: module.x                             |      8 |      1 |        1 |                                                                                                mimetypes.guess_file_type |
-| aiohttp            | call: builtin getattr()                    |      8 |      8 |        6 |                                                                                                  getattr(msg, 'code', 0) |
-| aiohttp            | subscript: local[...]                      |      7 |      7 |        6 |                                                                                                         cookie['domain'] |
-| aiohttp            | boolop (and)                               |      6 |      5 |        2 |                                                               bool(self._tail) and len(self._tail) >= self._read_bufsize |
-| aiohttp            | attr: imported.x                           |      4 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: capitalised                          |      4 |      4 |        4 |                                                                                                          H(entity_bytes) |
-| aiohttp            | call: builtin frozenset()                  |      4 |      0 |        0 |                                                                                                                          |
-| aiohttp            | DictComp (unknown elements)                |      4 |      0 |        0 |                                                                                                                          |
-| aiohttp            | ListComp (unknown elements)                |      3 |      3 |        3 |                                        [proto.strip() for proto in resp.headers[hdrs.SEC_WEBSOCKET_PROTOCOL].split(',')] |
-| aiohttp            | set (mixed/unknown elements)               |      3 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: global                               |      3 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: builtin list()                       |      3 |      3 |        1 |                                                                                            list(reversed(lst[:idx + 1])) |
-| aiohttp            | call: imported.attr()                      |      3 |      2 |        1 |                                                                                LIST_QUOTED_ETAG_RE.finditer(etag_header) |
-| aiohttp            | binop (one side literal)                   |      3 |      1 |        1 |                                                                                         _COOKIE_HEADER_PREFIX_LENGTH - 2 |
-| aiohttp            | empty dict                                 |      3 |      0 |        0 |                                                                                                                          |
-| aiohttp            | compare                                    |      3 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: local name                           |      3 |      3 |        2 |                                                                                                         func(extra_argv) |
-| aiohttp            | call: other name                           |      3 |      1 |        0 |                                                                                                                          |
-| aiohttp            | subscript: builtin[...]                    |      3 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: moddef                               |      2 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: modclass                             |      2 |      1 |        1 |                                                                                                           ClientResponse |
-| aiohttp            | attr: global.x                             |      2 |      1 |        1 |                                                                                            CONTENT_TYPES.guess_file_type |
-| aiohttp            | call: builtin reversed()                   |      2 |      2 |        2 |                                                                                                     reversed(self._maps) |
-| aiohttp            | SetComp (unknown elements)                 |      2 |      2 |        2 | {token.lower() for conn_value in conn_values for token in (part.strip(' \t') for part in conn_value.split(',')) if token |
-| aiohttp            | GeneratorExp (unknown elements)            |      2 |      2 |        2 |                                                   (_safe_header(k) + ': ' + _safe_header(v) for k, v in headers.items()) |
-| aiohttp            | subscript: param[...]                      |      2 |      1 |        1 |                                                                                                               apps[::-1] |
-| aiohttp            | call: builtin sorted()                     |      2 |      2 |        2 |                                                                                              sorted(self.kwargs.items()) |
-| aiohttp            | attr: builtin.x                            |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: builtin bytearray()                  |      1 |      1 |        1 |                                                                             bytearray(b''.join(self._payload_fragments)) |
-| aiohttp            | call: builtin.method()                     |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | await: call: param.method()                |      1 |      1 |        1 |                                                                                                    await body.as_bytes() |
-| aiohttp            | copy: other                                |      1 |      1 |        0 |                                                                                                                          |
-| aiohttp            | JoinedStr                                  |      1 |      1 |        1 |                                                                                        f'{connect_host}:{self.url.port}' |
-| aiohttp            | call: builtin memoryview()                 |      1 |      1 |        1 |                                                                               memoryview(self._decompressor.unused_data) |
-| aiohttp            | list (mixed/unknown elements)              |      1 |      1 |        1 |                                                                                                                  [first] |
-| aiohttp            | await: call: module.func()                 |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: module function (annotated)          |      1 |      1 |        1 |                                                                                                 _wait_for_close(waiters) |
-| aiohttp            | call: builtin open()                       |      1 |      1 |        1 |                        open(file_path, mode='w', encoding='utf-8', opener=lambda path, flags: os.open(path, flags, 384)) |
-| aiohttp            | call: builtin int()                        |      1 |      1 |        1 |                                                                                                             int(max_age) |
-| aiohttp            | call: builtin dict()                       |      1 |      1 |        1 |                                                                                                         dict(params[1:]) |
-| aiohttp            | call: builtin set()                        |      1 |      1 |        1 |                                                                                                         set(self._tasks) |
-| aiohttp            | unaryop Not                                |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: global name                          |      1 |      1 |        1 |                                                                                 _serialize_headers(status_line, headers) |
-| aiohttp            | call: builtin min()                        |      1 |      1 |        1 |                                                                               min(size, self._length - self._read_bytes) |
-| aiohttp            | call: module class                         |      1 |      1 |        1 |                                                                                           MultipartPayloadWriter(writer) |
-| aiohttp            | call: module function (unannotated)        |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: param name                           |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: builtin tuple()                      |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | call: other callee                         |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | copy: self                                 |      1 |      1 |        1 |                                                                                                                     self |
-| aiohttp            | unaryop USub                               |      1 |      0 |        0 |                                                                                                                          |
-| aiohttp            | await: call: param name                    |      1 |      1 |        0 |                                                                                                                          |
-| aiohttp            | await: copy: local                         |      1 |      1 |        1 |                                                                                                               await task |
-| aiohttp            | await: call: local name                    |      1 |      1 |        1 |                                                                                                           await method() |
-| websockets         | call: local.method()                       |     41 |     29 |       27 |                                                    url_map_adapter.match(path_info=parsed.path, query_args=parsed.query) |
-| websockets         | call: chained .method()                    |     33 |     21 |       16 |                                                                                                self.url_map.iter_rules() |
-| websockets         | call: module.func()                        |     33 |     24 |       24 |                                                                                               struct.unpack('!BB', data) |
-| websockets         | call: param.method()                       |     17 |      9 |        5 |                                                                              headers.get_all('Sec-WebSocket-Extensions') |
-| websockets         | tuple (mixed/unknown elements)             |     13 |      7 |        7 |                                                                                                        (max_queue, None) |
-| websockets         | YieldFrom                                  |     12 |     11 |       11 |                                                                                    (yield from parse_headers(read_line)) |
-| websockets         | attr: modclass.x                           |     12 |      0 |        0 |                                                                                                                          |
-| websockets         | call: imported class                       |     11 |      8 |        8 |                                                                                                                Headers() |
-| websockets         | attr: self.x                               |     10 |      7 |        6 |                                                                                                               self.proxy |
-| websockets         | call: self.method()                        |     10 |      9 |        6 |                                                                                                         self.__class__() |
-| websockets         | copy: param (annotated)                    |      9 |      8 |        2 |                                                                                                               extensions |
-| websockets         | attr: local.x                              |      9 |      9 |        7 |                                                                                                          parsed.hostname |
-| websockets         | call: other name                           |      8 |      8 |        4 | create_connection(protocol, ping_interval=ping_interval, ping_timeout=ping_timeout, close_timeout=close_timeout, max_que |
-| websockets         | subscript: other                           |      8 |      6 |        6 |                                                                                         request.headers['Authorization'] |
-| websockets         | copy: local                                |      8 |      6 |        6 |                                                                                                     parsed_header_values |
-| websockets         | await: call: chained .method()             |      7 |      6 |        5 |                                                                                         await self.recv_frames.receive() |
-| websockets         | attr: chained                              |      6 |      2 |        2 |                                                                                                      self.server.sockets |
-| websockets         | await: call: imported function             |      6 |      5 |        5 |                                                                                         await read_response(self.reader) |
-| websockets         | binop (unknown operands)                   |      6 |      3 |        2 |  (128 if self.fin else 0) | (64 if self.rsv1 else 0) | (32 if self.rsv2 else 0) | (16 if self.rsv3 else 0) | self.opcode |
-| websockets         | copy: moddef                               |      5 |      0 |        0 |                                                                                                                          |
-| websockets         | subscript: param[...]                      |      5 |      5 |        5 |                                                                                                    namespace['__name__'] |
-| websockets         | dict (mixed/unknown elements)              |      4 |      0 |        0 |                                                                                                                          |
-| websockets         | call: builtin iter()                       |      4 |      3 |        3 |                                                                                                            iter(message) |
-| websockets         | call: builtin next()                       |      4 |      3 |        0 |                                                                                                                          |
-| websockets         | None literal                               |      4 |      4 |        4 |                                                                                                                     None |
-| websockets         | subscript: other[...]                      |      4 |      4 |        4 |                                                                                               credentials_dict[username] |
-| websockets         | other constant                             |      4 |      0 |        0 |                                                                                                                          |
-| websockets         | copy: self                                 |      3 |      3 |        3 |                                                                                                                     self |
-| websockets         | attr: other.x                              |      3 |      3 |        3 |                                                                                                                exc.value |
-| websockets         | call: capitalised                          |      3 |      3 |        3 |                                                                                                            UTF8Decoder() |
-| websockets         | call: param name                           |      3 |      3 |        0 |                                                                                                                          |
-| websockets         | subscript: local[...]                      |      3 |      3 |        3 |                                                                                          headers['Sec-WebSocket-Accept'] |
-| websockets         | binop (one side literal)                   |      3 |      3 |        3 |                                                                                                              head2 & 127 |
-| websockets         | await: call: self.method()                 |      3 |      3 |        3 |                                                                                          await self._create_connection() |
-| websockets         | await: call: local.method()                |      2 |      0 |        0 |                                                                                                                          |
-| websockets         | call: builtin aiter()                      |      2 |      2 |        2 |                                                                                                           aiter(message) |
-| websockets         | list (mixed/unknown elements)              |      2 |      2 |        2 |                                                                                                                  [frame] |
-| websockets         | ListComp (unknown elements)                |      2 |      1 |        1 | [asyncio.create_task(websocket.close(1001)) for websocket in self.websockets if websocket.state is not State.CONNECTING] |
-| websockets         | attr: param.x                              |      2 |      2 |        2 |                                                                                                         response.headers |
-| websockets         | set (mixed/unknown elements)               |      2 |      0 |        0 |                                                                                                                          |
-| websockets         | call: builtin reversed()                   |      2 |      1 |        1 |                                                                                                     reversed(extensions) |
-| websockets         | empty list                                 |      2 |      0 |        0 |                                                                                                                          |
-| websockets         | copy: modclass                             |      2 |      0 |        0 |                                                                                                                          |
-| websockets         | await: call: param name                    |      2 |      2 |        2 |                                                                                                          await reader(2) |
-| websockets         | await: call: module function (annotated)   |      2 |      2 |        2 |                                                                                               await read_headers(stream) |
-| websockets         | await: call: other name                    |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | call: builtin.method()                     |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | empty dict                                 |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | conditional                                |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | call: builtin int()                        |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | call: cls name                             |      1 |      1 |        1 |                                                                                 cls(opcode, data, fin, rsv1, rsv2, rsv3) |
-| websockets         | call: builtin __import__()                 |      1 |      1 |        1 |                                                               __import__(source[level:], namespace, None, [name], level) |
-| websockets         | call: builtin dict()                       |      1 |      1 |        1 |                                                                                                   dict(credentials_list) |
-| websockets         | call: imported.attr()                      |      1 |      1 |        1 |                                                                        frames.Frame(opcode, data, fin, rsv1, rsv2, rsv3) |
-| websockets         | call: local name                           |      1 |      0 |        0 |                                                                                                                          |
-| websockets         | await: call: imported.attr()               |      1 |      1 |        1 |        await Frame.read(self.reader.readexactly, mask=not self.is_client, max_size=max_size, extensions=self.extensions) |
-| websockets         | await: copy: local                         |      1 |      1 |        0 |                                                                                                                          |
-| websockets         | binop: literal % formatting                |      1 |      1 |        1 |                                                                                             '%s:%d' % sock.getsockname() |
-| websockets         | call: builtin memoryview()                 |      1 |      1 |        1 |                                                                                                         memoryview(data) |
-| websockets         | await: call: param.method()                |      1 |      1 |        1 |                                                                                          await stream.receive_some(4096) |
-| websockets         | compare                                    |      1 |      1 |        1 |                                                                                                   parsed.scheme == 'wss' |
-| zarr               | call: imported function                    |     98 |     86 |       49 |                                                                                 endianness_to_numpy_str(self.endianness) |
-| zarr               | call: chained .method()                    |     98 |     75 |       60 |                                                                          self.buffer_cls.from_bytes(b'\x01\x02\x03\x04') |
-| zarr               | call: param.method()                       |     70 |     41 |       28 |                                                                                                           kwargs.items() |
-| zarr               | call: module.func()                        |     64 |     49 |       49 |                                                                                    itertools.product(*self.dim_indexers) |
-| zarr               | call: local.method()                       |     63 |     55 |       35 |                                                                                             g.chunk_offset(dim_chunk_ix) |
-| zarr               | binop (unknown operands)                   |     63 |     37 |       32 |                                                                                                    self.store_path / key |
-| zarr               | copy: local                                |     53 |     38 |       29 |                                                                                                                  indexer |
-| zarr               | call: param name                           |     53 |     52 |       37 |                                                                                              draw(stores, label='store') |
-| zarr               | call: self.method()                        |     51 |     33 |       18 |                                                                              self._get_inner_chunk_transform(shard_spec) |
-| zarr               | attr: chained                              |     41 |     18 |       17 |                                                                                               self.to_native_dtype().str |
-| zarr               | call: builtin tuple()                      |     32 |     26 |       24 |                                                                         tuple((p.dim_chunk_ix for p in dim_projections)) |
-| zarr               | subscript: param[...]                      |     31 |     30 |       27 |                                                                                                             data['name'] |
-| zarr               | subscript: other                           |     30 |     22 |       21 |                                                                                self.offsets_and_lengths[localized_chunk] |
-| zarr               | subscript: local[...]                      |     27 |     22 |       13 |                                                                                                               members[0] |
-| zarr               | call: module function (annotated)          |     27 |     20 |        6 |                                                                       _decode(arr, offset, scale, scale_repr=self.scale) |
-| zarr               | other constant                             |     23 |      9 |        9 |                                                                                                                        0 |
-| zarr               | attr: param.x                              |     22 |     18 |        9 |                                                                                                           metadata.order |
-| zarr               | await: call: chained .method()             |     22 |     14 |        2 |                                                                            await _data.async_array.getitem(chunk_coords) |
-| zarr               | ListComp (unknown elements)                |     20 |      8 |        7 |                                                        [(idx, big[r.start - start:r.end - start]) for idx, r in members] |
-| zarr               | copy: param (annotated)                    |     20 |     14 |        9 |                                                                                                                     item |
-| zarr               | conditional                                |     19 |     12 |        9 |                                                             byte_getter.store if hasattr(byte_getter, 'store') else None |
-| zarr               | attr: self.x                               |     14 |     14 |        4 |                                                                                                              self.fields |
-| zarr               | await: call: module.func()                 |     14 |      0 |        0 |                                                                                                                          |
-| zarr               | empty list                                 |     13 |      0 |        0 |                                                                                                                          |
-| zarr               | await: call: param.method()                |     13 |     13 |       11 |                                        await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range) |
-| zarr               | call: builtin zip()                        |     13 |     12 |        7 |                                                                 zip(selection_normalized, shape, dim_grids, strict=True) |
-| zarr               | call: builtin sorted()                     |     13 |     10 |       10 |                                                                                                sorted(store_dict.keys()) |
-| zarr               | call: imported.attr()                      |     11 |     10 |        9 |                                                                                                config.get('json_indent') |
-| zarr               | await: call: imported function             |     11 |      9 |        8 |                                                                                   await _collect_aiterator(store.list()) |
-| zarr               | dict (mixed/unknown elements)              |     11 |      6 |        4 |                                                        {'name': self._zarr_v3_name, 'configuration': {'fields': fields}} |
-| zarr               | tuple (mixed/unknown elements)             |     10 |     10 |        6 |                                                                       (('source', source_name), ('target', target_name)) |
-| zarr               | call: builtin list()                       |     10 |      7 |        7 |                                                                                                            list(indexer) |
-| zarr               | None literal                               |      9 |      8 |        8 |                                                                                                                     None |
-| zarr               | binop (one side literal)                   |      9 |      5 |        5 |                                                                                                          prefix + '    ' |
-| zarr               | attr: local.x                              |      8 |      7 |        7 |                                                                                                                g.nchunks |
-| zarr               | compare                                    |      7 |      7 |        7 |                                                                                                    starts != MAX_UINT_64 |
-| zarr               | empty dict                                 |      6 |      0 |        0 |                                                                                                                          |
-| zarr               | boolop (or)                                |      6 |      5 |        3 |                                                                  kwargs.pop('overwrite', None) or _infer_overwrite(mode) |
-| zarr               | call: builtin enumerate()                  |      6 |      5 |        5 |                                                                                                          enumerate(args) |
-| zarr               | call: global.method()                      |      6 |      6 |        5 |                                                                                       _vlen_utf8_codec.decode(raw_bytes) |
-| zarr               | list (mixed/unknown elements)              |      6 |      3 |        3 |                                                                                         [('', deque(nodes.get('', [])))] |
-| zarr               | JoinedStr                                  |      6 |      2 |        2 |            f'A Zarr V2 array metadata document was not found in store {store_path.store!r} at path {store_path.path!r}.' |
-| zarr               | await: copy: local                         |      5 |      5 |        2 |                                                                                                         await fetch_coro |
-| zarr               | await: call: local.method()                |      5 |      2 |        1 |                                                                          await bb_codec._encode_single(bb_data, ab_spec) |
-| zarr               | SetComp (unknown elements)                 |      4 |      4 |        2 |                                                                                            {x.name for x in fields(cls)} |
-| zarr               | call: other.method()                       |      4 |      2 |        0 |                                                                                                                          |
-| zarr               | call: builtin dict()                       |      4 |      4 |        2 |                                                                                      dict(self._obj.metadata.attributes) |
-| zarr               | call: builtin slice()                      |      4 |      4 |        4 |                                                                                                       slice(start, stop) |
-| zarr               | call: builtin getattr()                    |      3 |      3 |        1 |                                                                                             getattr(arr, 'chunks', None) |
-| zarr               | call: builtin max()                        |      3 |      3 |        3 |                                                                                         max((r.end for _, r in members)) |
-| zarr               | await: call: imported.attr()               |      3 |      2 |        2 |                                       await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False) |
-| zarr               | DictComp (unknown elements)                |      3 |      1 |        1 |                                                                                      {p + fname: data for p in prefixes} |
-| zarr               | boolop (and)                               |      3 |      3 |        3 |                                                          zarr_format == 3 and _metadata_dict.get('node_type') == 'array' |
-| zarr               | call: cls name                             |      3 |      3 |        3 |                                                             cls(metadata=metadata, store_path=store_path, config=config) |
-| zarr               | subscript: self[...]                       |      3 |      3 |        3 |                                                                                                             self[coords] |
-| zarr               | call: builtin sum()                        |      3 |      2 |        2 |                                                                                                            sum(dim_spec) |
-| zarr               | copy: self                                 |      3 |      2 |        0 |                                                                                                                          |
-| zarr               | GeneratorExp (unknown elements)            |      3 |      1 |        1 |                                   (_read_group_metadata(store, k, zarr_format=zarr_format) for k in implicit_group_keys) |
-| zarr               | await: call: self.method()                 |      3 |      3 |        3 |                                                                               await self._track_entry(entry_key, result) |
-| zarr               | call: other name                           |      2 |      1 |        1 |                                                                                       _get(RangeByteRequest(start, end)) |
-| zarr               | call: builtin set()                        |      2 |      2 |        2 |                                                                                                               set(edges) |
-| zarr               | call: builtin.method()                     |      2 |      2 |        2 |                                                              dict.fromkeys(lexicographic_order_coords(chunks_per_shard)) |
-| zarr               | call: builtin next()                       |      2 |      0 |        0 |                                                                                                                          |
-| zarr               | call: imported class                       |      2 |      0 |        0 |                                                                                                                          |
-| zarr               | call: cls.method()                         |      2 |      2 |        2 | cls._create_metadata_v3(shape=shape, dtype=dtype, chunk_grid=chunk_grid, fill_value=fill_value, chunk_key_encoding=chunk |
-| zarr               | call: module class                         |      2 |      2 |        2 |                                                          AsyncArray(metadata=meta, store_path=store_path, config=config) |
-| zarr               | copy: global                               |      2 |      0 |        0 |                                                                                                                          |
-| zarr               | subscript: imported[...]                   |      2 |      0 |        0 |                                                                                                                          |
-| zarr               | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| zarr               | call: builtin object()                     |      1 |      1 |        1 |                                                                                                                 object() |
-| zarr               | await: call: modclass.method()             |      1 |      1 |        1 |                                                       await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard) |
-| zarr               | call: modclass.method()                    |      1 |      1 |        1 |                                                                   AsyncArray.from_dict(store_path=store_path, data=data) |
-| zarr               | copy: imported                             |      1 |      1 |        1 |                                                                                                        ZMETADATA_V2_JSON |
-| zarr               | attr: modclass.x                           |      1 |      1 |        1 |                                                                                                         Order.INCREASING |
-| zarr               | attr: cls.x                                |      1 |      1 |        1 |                                                                                                           cls.__module__ |
-| zarr               | await: call: cls.method()                  |      1 |      0 |        0 |                                                                                                                          |
-| zarr               | await: call: module function (annotated)   |      1 |      1 |        1 |                                                                                      await _contains_node_v2(store_path) |
-| zarr               | attr: module.x                             |      1 |      0 |        0 |                                                                                                                          |
-| zarr               | await: copy: param (annotated)             |      1 |      0 |        0 |                                                                                                                          |
-| zarr               | call: builtin min()                        |      1 |      1 |        1 |                                                                     min(len(b), self._get_size() - self._fileobj.tell()) |
-| joblib             | call: imported function                    |    121 |     19 |       16 |                                                                                                           byte_bounds(a) |
-| joblib             | call: local.method()                       |    110 |      8 |        6 |                                                                                                       proc.communicate() |
-| joblib             | call: imported.attr()                      |    109 |      7 |        4 |                                                                                                     _COMPRESSORS.items() |
-| joblib             | call: chained .method()                    |     93 |     38 |       33 |                                                                                                 self.processes.popitem() |
-| joblib             | attr: chained                              |     79 |      4 |        3 |                                                                                                self.result_queue._reader |
-| joblib             | call: module.func()                        |     78 |     17 |       17 |                                                                                    os.path.join(self.location, *call_id) |
-| joblib             | call: module function (unannotated)        |     56 |     23 |       13 |                                                                                   spawnv_passfds(exe, args, fds_to_pass) |
-| joblib             | other constant                             |     42 |      2 |        2 |                                                                                                                        0 |
-| joblib             | call: other callee                         |     41 |      0 |        0 |                                                                                                                          |
-| joblib             | call: param.method()                       |     39 |     14 |       10 |                                                                                                              env.items() |
-| joblib             | call: self.method()                        |     33 |     27 |       24 |                                                                                          self._open_item(filename, 'rb') |
-| joblib             | copy: param (unannotated)                  |     32 |      9 |        7 |                                                                                                                 iterable |
-| joblib             | copy: local                                |     32 |      8 |        5 |                                                                                                          items_to_delete |
-| joblib             | binop (unknown operands)                   |     32 |     13 |       13 |                                                                                                        a_start - m_start |
-| joblib             | None literal                               |     31 |     11 |       11 |                                                                                                                     None |
-| joblib             | list (mixed/unknown elements)              |     26 |      4 |        4 |                                                                                                                     [-1] |
-| joblib             | call: other name                           |     26 |      1 |        0 |                                                                                                                          |
-| joblib             | attr: self.x                               |     25 |     18 |       14 |                                                                                                      self.func_code_info |
-| joblib             | call: local name                           |     25 |      2 |        0 |                                                                                                                          |
-| joblib             | tuple (mixed/unknown elements)             |     24 |      8 |        8 |                                                                       (self.func_id, self._get_args_id(*args, **kwargs)) |
-| joblib             | empty list                                 |     22 |      0 |        0 |                                                                                                                          |
-| joblib             | ListComp (unknown elements)                |     19 |      3 |        3 |                                                          [x for x in self.component_re.split(vstring) if x and x != '.'] |
-| joblib             | attr: param.x                              |     18 |      9 |        8 |                                                                                                         notempty.acquire |
-| joblib             | call: builtin list()                       |     18 |      3 |        3 |                                                                                            list(self.processes.values()) |
-| joblib             | subscript: other                           |     17 |      7 |        6 |                                                                                                      self._data[id(obj)] |
-| joblib             | attr: local.x                              |     17 |      3 |        3 |                                                                                                                sl.handle |
-| joblib             | call: builtin getattr()                    |     16 |      9 |        5 |                                                                               getattr(signal, 'SIGKILL', signal.SIGTERM) |
-| joblib             | dict (mixed/unknown elements)              |     16 |      3 |        2 |                                                                      {'verbose': self.verbose, 'prewarm': self._prewarm} |
-| joblib             | call: param name                           |     16 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin zip()                        |     15 |      1 |        1 |                                                                                                          zip(*iterables) |
-| joblib             | call: imported class                       |     15 |      1 |        1 |                                                                                         Unpickler(unpickler.file_handle) |
-| joblib             | call: builtin dict()                       |     14 |      7 |        6 |                                                                                                dict(self.dispatch_table) |
-| joblib             | empty dict                                 |     14 |      0 |        0 |                                                                                                                          |
-| joblib             | attr: module.x                             |     13 |      0 |        0 |                                                                                                                          |
-| joblib             | subscript: local[...]                      |     13 |      2 |        2 |                                                                                               prep_data['mp_tracker_fd'] |
-| joblib             | binop (one side literal)                   |      9 |      3 |        3 |                                                                                    getattr(self, 'nesting_level', 0) + 1 |
-| joblib             | call: builtin set()                        |      7 |      0 |        0 |                                                                                                                          |
-| joblib             | compare                                    |      7 |      1 |        1 |                                                                                                self._opid == os.getpid() |
-| joblib             | boolop (or)                                |      6 |      4 |        4 |                                                            self._decompressor.unused_data or self._fp.read(_BUFFER_SIZE) |
-| joblib             | call: builtin max()                        |      6 |      4 |        4 |                                                                                            max(cpu_count() // n_jobs, 1) |
-| joblib             | conditional                                |      6 |      4 |        3 |          os.path.dirname(location) if os.path.dirname(location) and os.path.basename(location) == 'joblib' else location |
-| joblib             | copy: global                               |      6 |      0 |        0 |                                                                                                                          |
-| joblib             | call: global.method()                      |      6 |      2 |        2 |                                                                                                  _STORE_BACKENDS.items() |
-| joblib             | call: builtin open()                       |      6 |      0 |        0 |                                                                                                                          |
-| joblib             | call: other.method()                       |      5 |      3 |        3 |                                                                                     self._open_item(dest_filename, 'wb') |
-| joblib             | copy: imported                             |      5 |      1 |        1 |                                                                                                                _sentinel |
-| joblib             | attr: global.x                             |      5 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin staticmethod()               |      4 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin enumerate()                  |      4 |      2 |        2 |                                                                                                    enumerate(components) |
-| joblib             | DictComp (unknown elements)                |      4 |      1 |        1 |                                                                   {k: v for k, v in kwargs.items() if k not in arg_dict} |
-| joblib             | subscript: param[...]                      |      4 |      2 |        0 |                                                                                                                          |
-| joblib             | call: builtin iter()                       |      4 |      1 |        1 |                                                                                                           iter(iterable) |
-| joblib             | await: call: local.method()                |      4 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin sum()                        |      3 |      2 |        2 |                                                                                       sum((item.size for item in items)) |
-| joblib             | call: builtin min()                        |      3 |      3 |        3 |                                                                                min(2 * old_batch_size, ideal_batch_size) |
-| joblib             | copy: builtin                              |      3 |      0 |        0 |                                                                                                                          |
-| joblib             | boolop (and)                               |      3 |      2 |        2 |                                                      hasattr(self.func, '__name__') and self.func.__name__ != '<lambda>' |
-| joblib             | subscript: global[...]                     |      3 |      2 |        1 |                                                                                               EXTERNAL_BACKENDS[backend] |
-| joblib             | copy: other                                |      3 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin eval()                       |      3 |      0 |        0 |                                                                                                                          |
-| joblib             | await: call: other name                    |      3 |      0 |        0 |                                                                                                                          |
-| joblib             | await: call: other.method()                |      2 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin type()                       |      2 |      0 |        0 |                                                                                                                          |
-| joblib             | call: str-literal.method()                 |      2 |      1 |        1 |                                                                                                         '.'.join(module) |
-| joblib             | call: builtin vars()                       |      2 |      0 |        0 |                                                                                                                          |
-| joblib             | SetComp (unknown elements)                 |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | unaryop USub                               |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin abs()                        |      1 |      1 |        0 |                                                                                                                          |
-| joblib             | call: builtin RuntimeError()               |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin tuple()                      |      1 |      1 |        1 |                                                                                   tuple(itertools.islice(it, chunksize)) |
-| joblib             | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: modclass.method()                    |      1 |      1 |        1 | _ReusablePoolExecutor.get_reusable_executor(max_workers=max_workers, context=context, timeout=timeout, kill_workers=kill |
-| joblib             | call: module class                         |      1 |      1 |        1 |                                                                NumpyHasher(hash_name=hash_name, coerce_mmap=coerce_mmap) |
-| joblib             | await: call: self.method()                 |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin.method()                     |      1 |      1 |        1 |                                                               int.to_bytes(padding_length, length=1, byteorder='little') |
-| joblib             | subscript: imported[...]                   |      1 |      1 |        1 |                                                                                                 _COMPRESSORS[compressor] |
-| joblib             | call: builtin next()                       |      1 |      1 |        1 |                                                      next((job for job in self._jobs if job.status == TASK_ERROR), None) |
-| joblib             | Lambda                                     |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: moddef.method()                      |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | await: call: param name                    |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | await: call: local name                    |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | attr: imported.x                           |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | call: builtin sorted()                     |      1 |      0 |        0 |                                                                                                                          |
-| joblib             | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | call: module.func()                        |  4,478 |    582 |      502 |                                                                                                        nx.empty_graph(n) |
-| networkx           | call: local.method()                       |    820 |    407 |      313 |                                                                                                              stack.pop() |
-| networkx           | call: imported function                    |    726 |    200 |      141 |                                                            flow_matrix_row(H, weight=weight, dtype=dtype, solver=solver) |
-| networkx           | copy: local                                |    668 |    465 |      336 |                                                                                                                    nodes |
-| networkx           | call: param.method()                       |    643 |    517 |      407 |                                                                                                                G.edges() |
-| networkx           | copy: param (unannotated)                  |    504 |    370 |      208 |                                                                                                                        G |
-| networkx           | call: module function (unannotated)        |    476 |    347 |      258 |                                                                                     _basic_graphical_tests(deg_sequence) |
-| networkx           | call: chained .method()                    |    468 |    215 |      160 |                                                                                       line.rstrip('\n').split(delimiter) |
-| networkx           | binop (unknown operands)                   |    391 |    325 |      287 |                                                                                                (1 + delta[w]) / sigma[w] |
-| networkx           | call: builtin list()                       |    373 |    150 |      103 |                                                                                                                  list(G) |
-| networkx           | call: self.method()                        |    334 |    113 |       58 |                                                                                                       self._nodes_nbrs() |
-| networkx           | subscript: other                           |    326 |    213 |      151 |                                                                                                     self.ordered_adjs[v] |
-| networkx           | subscript: local[...]                      |    307 |    263 |      194 |                                                                                                                stack[-1] |
-| networkx           | attr: self.x                               |    297 |     75 |       34 |                                                                                                                self._adj |
-| networkx           | list (mixed/unknown elements)              |    276 |     97 |       59 |                                                                                                                 [target] |
-| networkx           | call: builtin set()                        |    274 |    121 |       82 |                                                                                                                   set(G) |
-| networkx           | ListComp (unknown elements)                |    267 |    158 |      110 |                                                                                                         [{u} for u in G] |
-| networkx           | call: builtin sorted()                     |    256 |     42 |       35 |                                                                           sorted((sorted((u, v)) for u, v in G.edges())) |
-| networkx           | empty dict                                 |    220 |      0 |        0 |                                                                                                                          |
-| networkx           | DictComp (unknown elements)                |    219 |    118 |       55 |                                                                             {v: list(nx.all_neighbors(G, v)) for v in G} |
-| networkx           | tuple (mixed/unknown elements)             |    218 |    126 |       85 |                                                                                            (A.indptr, A.indices, A.data) |
-| networkx           | empty list                                 |    201 |      0 |        0 |                                                                                                                          |
-| networkx           | dict (mixed/unknown elements)              |    170 |     74 |       46 |                                  {'full': FullInverseLaplacian, 'lu': SuperLUInverseLaplacian, 'cg': CGInverseLaplacian} |
-| networkx           | call: global.method()                      |    170 |      0 |        0 |                                                                                                                          |
-| networkx           | call: local name                           |    168 |     73 |       62 |                                                                                find_fiedler(L, x, normalized, tol, seed) |
-| networkx           | call: imported.attr()                      |    157 |      4 |        4 |                                                                                                  ramsey.ramsey_R2(graph) |
-| networkx           | call: param name                           |    157 |     21 |       15 |                                                                                                        move(cycle, seed) |
-| networkx           | call: builtin zip()                        |    144 |     72 |       51 |                                                                                                         zip(*G.degree()) |
-| networkx           | subscript: param[...]                      |    142 |    113 |       85 |                                                                                                                    e[:2] |
-| networkx           | attr: local.x                              |    139 |     56 |       52 |                                                                                                                  A.shape |
-| networkx           | call: builtin dict()                       |    137 |     71 |       38 |                                                                                                           dict(G.degree) |
-| networkx           | call: builtin sum()                        |    126 |     80 |       73 |                                                                                                                sum(aseq) |
-| networkx           | conditional                                |    126 |     85 |       48 |                                                   nx.is_strongly_connected(G) if G.is_directed() else nx.is_connected(G) |
-| networkx           | call: other name                           |    123 |     93 |       55 |                                                                                                 make_CostMatrix(C, m, n) |
-| networkx           | binop (one side literal)                   |    110 |     86 |       85 |                                                                                                                    n - 1 |
-| networkx           | GeneratorExp (unknown elements)            |    106 |     74 |       73 |                                                                                 (line.decode(encoding) for line in path) |
-| networkx           | attr: param.x                              |    105 |     91 |       71 |                                                                                                                  A.shape |
-| networkx           | SetComp (unknown elements)                 |     95 |     51 |       33 |                                                                             {v for v in G[u] if degrees[v] >= best_size} |
-| networkx           | attr: module.x                             |     91 |     28 |       28 |                                                                                                   itertools.permutations |
-| networkx           | call: builtin enumerate()                  |     87 |     71 |       49 |                                                                                                             enumerate(G) |
-| networkx           | call: builtin next()                       |     79 |     67 |       45 |                                                                                                    next(iter(community)) |
-| networkx           | attr: chained                              |     79 |     30 |       25 |                                                                                            itertools.chain.from_iterable |
-| networkx           | other constant                             |     71 |     55 |       55 |                                                                                                                        0 |
-| networkx           | call: builtin.method()                     |     62 |     41 |       28 |                                                                                                    dict.fromkeys(G, 0.0) |
-| networkx           | call: builtin min()                        |     60 |     56 |       43 |                                                                                       min(G.degree(), key=itemgetter(1)) |
-| networkx           | None literal                               |     60 |     50 |       50 |                                                                                                                     None |
-| networkx           | copy: global                               |     58 |      0 |        0 |                                                                                                                          |
-| networkx           | call: capitalised                          |     53 |      6 |        5 |                                                                                                                 Gsucc(v) |
-| networkx           | call: builtin max()                        |     47 |     43 |       39 |                                                                                            max(ranking, key=ranking.get) |
-| networkx           | set (mixed/unknown elements)               |     45 |     29 |       13 |                                                                                                                   {u, v} |
-| networkx           | copy: other                                |     32 |     19 |        9 |                                                                                                                        U |
-| networkx           | call: other.method()                       |     32 |     25 |       17 |                                                                                                    G.edges(node, **kwds) |
-| networkx           | subscript: other[...]                      |     28 |     28 |        7 |                                                                                                                     d[u] |
-| networkx           | call: other callee                         |     28 |     11 |        8 |                                                                                       solvername[solver](L, dtype=dtype) |
-| networkx           | call: builtin iter()                       |     27 |     17 |       17 |                                                                                                               iter(path) |
-| networkx           | copy: moddef                               |     25 |     14 |       14 |                                                                                         _neighborhood_aggregate_directed |
-| networkx           | compare                                    |     22 |     11 |       11 |                                                                                                           source == 'in' |
-| networkx           | copy: modclass                             |     21 |      0 |        0 |                                                                                                                          |
-| networkx           | call: imported class                       |     17 |     12 |       11 |                                                                         Counter((len(vs & set(G[w]) - {w}) for w in vs)) |
-| networkx           | call: builtin staticmethod()               |     16 |      0 |        0 |                                                                                                                          |
-| networkx           | boolop (or)                                |     14 |     10 |        8 |                                                                                 SG.is_multigraph() or FG.is_multigraph() |
-| networkx           | call: builtin object()                     |     13 |      1 |        1 |                                                                                                                 object() |
-| networkx           | subscript: global[...]                     |     11 |      6 |        6 |                                                                                                       ALGORITHMS[method] |
-| networkx           | copy: imported                             |     11 |      2 |        2 |                                                                                                  local_node_connectivity |
-| networkx           | call: global name                          |     10 |      3 |        3 |                _GraphInfo(SG_fits, MONO_fits, directed, FG, SG, SG_labels, FG_labels, SG_degree, FG_degree, FG_by_label) |
-| networkx           | call: builtin tuple()                      |      9 |      8 |        7 |                                                                         tuple((data1.get(attr, d) for attr, d in attrs)) |
-| networkx           | copy: builtin                              |      9 |      0 |        0 |                                                                                                                          |
-| networkx           | call: builtin frozenset()                  |      8 |      5 |        3 |                                                                                                          frozenset(nbrs) |
-| networkx           | boolop (and)                               |      7 |      2 |        2 |                                                                        directed and orientation in ('reverse', 'ignore') |
-| networkx           | attr: imported.x                           |      6 |      0 |        0 |                                                                                                                          |
-| networkx           | call: module class                         |      6 |      1 |        1 |                                                                             _PCGSolver(lambda x: L @ x, lambda x: D * x) |
-| networkx           | call: modclass.method()                    |      5 |      3 |        3 |                                                                                       EdgeComponentAuxGraph.construct(G) |
-| networkx           | call: builtin round()                      |      4 |      3 |        3 |                                                                                          round(degree_seq[v] * (1 - mu)) |
-| networkx           | call: builtin map()                        |      4 |      4 |        2 |                                                                                         map(sum, zip(*triangles_contri)) |
-| networkx           | call: builtin reversed()                   |      3 |      3 |        3 |                                                                                                     reversed(topo_order) |
-| networkx           | copy: self                                 |      3 |      3 |        3 |                                                                                                                     self |
-| networkx           | call: builtin len()                        |      2 |      1 |        1 |                                                                                                                   len(G) |
-| networkx           | unaryop USub                               |      2 |      2 |        2 |                                                                                                                   -negdq |
-| networkx           | call: cls.method()                         |      2 |      2 |        2 |                                                                            cls._get_permutations_by_length(refined_part) |
-| networkx           | call: builtin float()                      |      1 |      1 |        1 |                                                                                                             float('inf') |
-| networkx           | attr: global.x                             |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | call: builtin range()                      |      1 |      1 |        1 |                                                                                                              range(f, l) |
-| networkx           | subscript: self[...]                       |      1 |      1 |        1 |                                                                                                                  self[v] |
-| networkx           | call: builtin abs()                        |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | attr: cls.x                                |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | call: builtin type()                       |      1 |      1 |        0 |                                                                                                                          |
-| networkx           | copy: cls                                  |      1 |      1 |        0 |                                                                                                                          |
-| networkx           | call: builtin compile()                    |      1 |      1 |        1 |                                                                                          compile(code, filename, 'exec') |
-| networkx           | call: builtin getattr()                    |      1 |      0 |        0 |                                                                                                                          |
-| networkx           | call: cls name                             |      1 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: module.func()                        |    656 |    169 |      152 |                                          np.ndarray(shape=(), dtype=header_dtype, buffer=binaryblock[:klass.sizeof_hdr]) |
-| nibabel            | call: chained .method()                    |    414 |    126 |      113 |                                                                                    super().default_structarr(endianness) |
-| nibabel            | call: imported function                    |    378 |     49 |       36 |                                                                                  shared_range(self.scaler_dtype, out_dt) |
-| nibabel            | tuple (mixed/unknown elements)             |    343 |     69 |       35 |                                                                                     (aff.shape[0] - 1, aff.shape[1] - 1) |
-| nibabel            | call: local.method()                       |    336 |     72 |       65 |                                                                                                up_str.unpack('64si4s3i') |
-| nibabel            | call: self.method()                        |    275 |     88 |       61 |                                                                                                         self._read_var() |
-| nibabel            | subscript: other                           |    218 |    113 |      105 |                                                                                              np.fromfile(fobj, dt, 1)[0] |
-| nibabel            | call: imported.attr()                      |    216 |      7 |        6 |                                                                                     LazyTractogram.from_data_func(_read) |
-| nibabel            | binop (unknown operands)                   |    211 |     89 |       70 |                                                                                self.general_info['angulation'] * DEG2RAD |
-| nibabel            | attr: self.x                               |    178 |     73 |       61 |                                                                                                          self._structarr |
-| nibabel            | call: module function (unannotated)        |    168 |     72 |       47 |                                                                                                      _split_header(fobj) |
-| nibabel            | copy: local                                |    123 |     36 |       24 |                                                                                                                     vals |
-| nibabel            | attr: local.x                              |    114 |     23 |       18 |                                                                                           first_item.data_for_streamline |
-| nibabel            | copy: imported                             |    107 |      3 |        1 |                                                                                                              native_code |
-| nibabel            | call: local name                           |    105 |      4 |        2 |                                                                                                        check(obj, False) |
-| nibabel            | call: param.method()                       |    104 |     75 |       63 |                                                                                         klass._get_fileholders(file_map) |
-| nibabel            | subscript: local[...]                      |     95 |     52 |       45 |                                                                                                               hdr['dim'] |
-| nibabel            | other constant                             |     89 |      9 |        9 |                                                                                                                        0 |
-| nibabel            | list (mixed/unknown elements)              |     84 |      4 |        4 |                                                                       [(int, NC_INT), (float, NC_FLOAT), (str, NC_CHAR)] |
-| nibabel            | attr: chained                              |     83 |     15 |       10 |                                                                                                file_map['image'].fileobj |
-| nibabel            | copy: global                               |     78 |      4 |        4 |                                                                                                                TESTSETUP |
-| nibabel            | attr: param.x                              |     76 |     47 |       39 |                                                                                                                   M.flat |
-| nibabel            | binop (one side literal)                   |     72 |     30 |       27 |                                                                     files('nibabel') / 'benchmarks/pytest.benchmark.ini' |
-| nibabel            | call: builtin zip()                        |     67 |     19 |       19 |                                                                                        zip(self._offsets, self._lengths) |
-| nibabel            | ListComp (unknown elements)                |     62 |     18 |       15 |                                                                 [i for i, obj in enumerate(sliceobj) if obj is not None] |
-| nibabel            | copy: param (unannotated)                  |     58 |     47 |       28 |                                                                                                                    mlist |
-| nibabel            | subscript: param[...]                      |     57 |     42 |       30 |                                                                                                            hdr['pixdim'] |
-| nibabel            | call: param name                           |     55 |      4 |        0 |                                                                                                                          |
-| nibabel            | empty list                                 |     54 |      0 |        0 |                                                                                                                          |
-| nibabel            | empty dict                                 |     52 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin enumerate()                  |     46 |     30 |       20 |                                                                                            enumerate(named_brain_models) |
-| nibabel            | call: imported class                       |     46 |      5 |        5 |                                                                                                           Cifti2Matrix() |
-| nibabel            | conditional                                |     44 |     25 |       19 |                                                                hdr['scl_slope'].item() if hdr.has_data_slope else np.nan |
-| nibabel            | call: global name                          |     38 |      0 |        0 |                                                                                                                          |
-| nibabel            | dict (mixed/unknown elements)              |     36 |      3 |        2 | {'CIFTI_INDEX_TYPE_SCALARS': ScalarAxis, 'CIFTI_INDEX_TYPE_LABELS': LabelAxis, 'CIFTI_INDEX_TYPE_SERIES': SeriesAxis, 'C |
-| nibabel            | call: capitalised                          |     32 |      0 |        0 |                                                                                                                          |
-| nibabel            | None literal                               |     31 |     12 |       12 |                                                                                                                     None |
-| nibabel            | compare                                    |     30 |     14 |       14 |                                                                                                            spat_dims < 0 |
-| nibabel            | call: builtin dict()                       |     27 |      5 |        4 |                                                                                                     dict(self.nvertices) |
-| nibabel            | attr: module.x                             |     26 |      3 |        3 |                                                                                                                 np.finfo |
-| nibabel            | call: global.method()                      |     25 |      3 |        1 |                                                                                        ACQ_TO_PSL.get(slice_orientation) |
-| nibabel            | copy: modclass                             |     24 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin list()                       |     22 |      3 |        3 |                                                                                                    list(self._dim_names) |
-| nibabel            | attr: imported.x                           |     20 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin getattr()                    |     18 |      8 |        4 |                                                                                                      getattr(self, name) |
-| nibabel            | attr: modclass.x                           |     17 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: other.method()                       |     16 |      5 |        5 |                                                                                                  cls._read(fileobj, hdr) |
-| nibabel            | call: builtin tuple()                      |     16 |     10 |       10 |                                                                   tuple(self._get_unique_image_prop('recon resolution')) |
-| nibabel            | subscript: imported[...]                   |     16 |      1 |        0 |                                                                                                                          |
-| nibabel            | subscript: global[...]                     |     14 |      3 |        2 |                                                                                                  image_def_dtds[version] |
-| nibabel            | copy: other                                |     12 |      2 |        1 |                                                                                                          streamlines_gen |
-| nibabel            | copy: self                                 |     11 |     11 |        5 |                                                                                                                     self |
-| nibabel            | copy: param (annotated)                    |     11 |     10 |        7 |                                                                                                               types_exts |
-| nibabel            | call: builtin next()                       |     10 |      8 |        8 |                                                                                                           next(elements) |
-| nibabel            | call: builtin sorted()                     |      9 |      4 |        4 |                                                                                                    sorted(frame_mapping) |
-| nibabel            | call: other name                           |      8 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: other callee                         |      8 |      3 |        2 |                                                          [self._unpack_int, self._unpack_int64][self.version_byte - 1]() |
-| nibabel            | GeneratorExp (unknown elements)            |      8 |      5 |        5 |                                                                        (np.atleast_1d(v) for v in (divslope, intercept)) |
-| nibabel            | attr: other.x                              |      6 |      2 |        1 |                                                                                                         self.streamlines |
-| nibabel            | boolop (and)                               |      6 |      3 |        2 |                                                        _compression.HAVE_INDEXED_GZIP and self.file_like.endswith('.gz') |
-| nibabel            | boolop (or)                                |      6 |      3 |        2 |                                                                                             keep_file_open or have_igzip |
-| nibabel            | call: cls.method()                         |      6 |      6 |        4 |                                                                                                  cls._read(fileobj, hdr) |
-| nibabel            | call: builtin __import__()                 |      6 |      3 |        3 |                                                                             __import__(self._module_name, fromlist=['']) |
-| nibabel            | call: builtin set()                        |      6 |      1 |        1 |                                                                                                             set(vol_nos) |
-| nibabel            | call: builtin open()                       |      6 |      0 |        0 |                                                                                                                          |
-| nibabel            | SetComp (unknown elements)                 |      5 |      1 |        1 |                                                                    {intent_codes.niistring[da.intent] for da in darrays} |
-| nibabel            | call: builtin.method()                     |      5 |      1 |        1 |                                                                                            str.maketrans('lrcw', '<>^^') |
-| nibabel            | DictComp (unknown elements)                |      5 |      3 |        3 |                                                                 {key.lower(): val for key, val in _hdr_key_dict.items()} |
-| nibabel            | call: builtin min()                        |      4 |      1 |        1 |                                                                                                              min(values) |
-| nibabel            | call: modclass.method()                    |      4 |      4 |        4 |                                                                                       ScalarAxis.from_index_mapping(mim) |
-| nibabel            | empty tuple                                |      4 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: module function (annotated)          |      4 |      4 |        3 |                                                                                                   _dt_min_max(out_dtype) |
-| nibabel            | call: builtin max()                        |      3 |      1 |        1 |                                                                                                              max(values) |
-| nibabel            | call: builtin sum()                        |      3 |      2 |        2 |                                                                         sum((bm.index_count for bm in mim.brain_models)) |
-| nibabel            | call: builtin type()                       |      3 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin slice()                      |      3 |      1 |        1 |                                                                                             slice(cpt, cpt + nb_scalars) |
-| nibabel            | call: builtin staticmethod()               |      3 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: module class                         |      2 |      1 |        1 |                                                        DeterministicGzipFile(filename, mode, compresslevel, mtime=mtime) |
-| nibabel            | call: builtin property()                   |      2 |      0 |        0 |                                                                                                                          |
-| nibabel            | copy: builtin                              |      2 |      0 |        0 |                                                                                                                          |
-| nibabel            | unaryop Invert                             |      2 |      1 |        1 |                                                                                                                    ~nans |
-| nibabel            | call: builtin iter()                       |      2 |      1 |        1 |                                                                                                                 iter([]) |
-| nibabel            | copy: moddef                               |      2 |      2 |        2 |                                                                                                                _endswith |
-| nibabel            | call: str-literal.method()                 |      2 |      2 |        2 |                                                                                               ''.join(self._char_blocks) |
-| nibabel            | subscript: other[...]                      |      2 |      2 |        2 |                                                                                        image_defs[idef_name + ' number'] |
-| nibabel            | attr: global.x                             |      2 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin abs()                        |      1 |      1 |        0 |                                                                                                                          |
-| nibabel            | call: builtin range()                      |      1 |      1 |        1 |                                                                                                             range(count) |
-| nibabel            | call: builtin len()                        |      1 |      0 |        0 |                                                                                                                          |
-| nibabel            | unaryop USub                               |      1 |      0 |        0 |                                                                                                                          |
-| nibabel            | set (mixed/unknown elements)               |      1 |      0 |        0 |                                                                                                                          |
-| nibabel            | Lambda                                     |      1 |      0 |        0 |                                                                                                                          |
-| nibabel            | call: builtin bytearray()                  |      1 |      1 |        1 |                                                                                                       bytearray(n_bytes) |
-| narwhals           | call: chained .method()                    |    224 |    179 |      156 |                                                                               self._implementation.to_native_namespace() |
-| narwhals           | call: imported function                    |    205 |    128 |       91 |                                                                 pad_series(self, window_size=window_size, center=center) |
-| narwhals           | conditional                                |    138 |    123 |       75 |      cum_sum - cum_sum.shift(window_size).fill_null(value=0, strategy=None, limit=None) if window_size != 0 else cum_sum |
-| narwhals           | attr: chained                              |    138 |    115 |       90 |                                                                                                        self.compliant._F |
-| narwhals           | call: module.func()                        |    134 |    114 |      108 |                                                                                           pa.array(np.arange(len(self))) |
-| narwhals           | call: self.method()                        |    113 |     94 |       74 |                                                                                            self.__narwhals_namespace__() |
-| narwhals           | attr: self.x                               |    109 |     99 |       84 |                                                                                                              self.native |
-| narwhals           | call: local.method()                       |    102 |     92 |       75 |                                                                                                  impl._backend_version() |
-| narwhals           | call: param.method()                       |     80 |     51 |       31 |                                                                                       df._evaluate_single_output_expr(a) |
-| narwhals           | ListComp (unknown elements)                |     65 |     49 |       37 |                                                                                [s for _expr in exprs for s in _expr(df)] |
-| narwhals           | tuple (mixed/unknown elements)             |     64 |     55 |       32 |                                                                              (left.implementation, right.implementation) |
-| narwhals           | attr: param.x                              |     55 |     51 |       41 |                                                                                                  context._implementation |
-| narwhals           | call: module function (annotated)          |     55 |     34 |       32 |                                                                                                             get_polars() |
-| narwhals           | call: imported class                       |     46 |      8 |        8 |                                                                                                         F('count', expr) |
-| narwhals           | binop (unknown operands)                   |     38 |     31 |       31 |                               valid_count - valid_count.shift(window_size).fill_null(value=0, strategy=None, limit=None) |
-| narwhals           | attr: local.x                              |     28 |     24 |       23 |                                                                                                              df.num_rows |
-| narwhals           | GeneratorExp (unknown elements)            |     28 |     22 |       22 |       (index_cols.append_column(variable_name, repeat(name, n)).append_column(value_name, column(name)) for name in on_) |
-| narwhals           | call: other.method()                       |     25 |     23 |       10 |                                                                                            self.__narwhals_namespace__() |
-| narwhals           | attr: imported.x                           |     24 |      1 |        1 |                                                                                            Implementation._member_names_ |
-| narwhals           | copy: local                                |     19 |     17 |       13 |                                                                                                                     item |
-| narwhals           | call: builtin list()                       |     19 |     15 |       15 |                                                               list(reversed(list(self._metadata.iter_nodes_reversed()))) |
-| narwhals           | copy: param (annotated)                    |     18 |     18 |        9 |                                                                                                                    exprs |
-| narwhals           | call: builtin tuple()                      |     18 |     18 |       14 |                                                                 tuple(chain.from_iterable((expr(df) for expr in exprs))) |
-| narwhals           | subscript: other                           |     17 |     15 |       13 |                                                                                                       predicate(self)[0] |
-| narwhals           | DictComp (unknown elements)                |     15 |     14 |        5 |     {name: generate_temporary_column_name(8, [*lhs.columns, *rhs.columns]) for name in keep_cols if name in lhs.columns} |
-| narwhals           | subscript: local[...]                      |     13 |     12 |        9 |                                                                                                         agged[col_token] |
-| narwhals           | subscript: imported[...]                   |     13 |      1 |        1 |                                                                                                         UNITS_DICT[unit] |
-| narwhals           | dict (mixed/unknown elements)              |     12 |      6 |        6 |                                 {'s': SECONDS_PER_MINUTE, 'ms': MS_PER_MINUTE, 'us': US_PER_MINUTE, 'ns': NS_PER_MINUTE} |
-| narwhals           | binop (one side literal)                   |     12 |     11 |       11 |                                                                        2 * (s > 0).astype(int_dtype_mapper(s.dtype)) - 1 |
-| narwhals           | attr: other.x                              |     12 |     12 |       12 |                                                                                                                  self._F |
-| narwhals           | call: builtin zip()                        |     11 |     10 |        7 |                                                                zip(self.columns, self.native.itercolumns(), strict=True) |
-| narwhals           | call: local name                           |     11 |     11 |       10 |                                                                align(*chain.from_iterable((expr(df) for expr in exprs))) |
-| narwhals           | call: other name                           |     10 |     10 |        5 |                                                                                      self(df.drop([token], strict=True)) |
-| narwhals           | call: builtin len()                        |     10 |      9 |        9 |                                                                                                                len(self) |
-| narwhals           | boolop (or)                                |      9 |      5 |        4 |                                                                                                          rows.start or 0 |
-| narwhals           | call: imported.attr()                      |      9 |      5 |        5 |                                                                        chain.from_iterable((expr(df) for expr in exprs)) |
-| narwhals           | empty list                                 |      9 |      0 |        0 |                                                                                                                          |
-| narwhals           | call: builtin getattr()                    |      9 |      5 |        4 |                                                                                     getattr(getattr(ns, module), method) |
-| narwhals           | compare                                    |      7 |      6 |        5 |                                                                                                            how != 'full' |
-| narwhals           | call: builtin next()                       |      6 |      5 |        3 |                                                                                 next(expr._metadata.op_nodes_reversed()) |
-| narwhals           | attr: module.x                             |      6 |      1 |        1 |                                                                                                        pc.cumulative_sum |
-| narwhals           | other constant                             |      6 |      4 |        4 |                                                                                                                    False |
-| narwhals           | call: global.method()                      |      6 |      6 |        3 |                                                                  _TIMESTAMP_DATETIME_OP_FACTOR.get((current, time_unit)) |
-| narwhals           | unaryop Invert                             |      5 |      4 |        4 |                                                       ~plx.any_horizontal(plx.col(*subset).is_null(), ignore_nulls=True) |
-| narwhals           | boolop (and)                               |      5 |      5 |        5 |                                                                   self._broadcast and getattr(other, '_broadcast', True) |
-| narwhals           | call: param name                           |      5 |      5 |        2 |                                                                                                    op(ser, other_native) |
-| narwhals           | subscript: param[...]                      |      5 |      4 |        3 |                                                                                                                 items[0] |
-| narwhals           | call: other callee                         |      5 |      4 |        3 |                                                       getattr(rolling, pandas_function_name)(ddof=scalar_kwargs['ddof']) |
-| narwhals           | call: builtin enumerate()                  |      4 |      4 |        3 |                                                                                              enumerate(dfs[1:], start=1) |
-| narwhals           | list (mixed/unknown elements)              |      4 |      3 |        2 |                                                                                                                [size[1]] |
-| narwhals           | SetComp (unknown elements)                 |      4 |      4 |        4 |                        {b() for v in (*args_nw, *kwargs_nw.values()) if (b := getattr(v, '__native_namespace__', None))} |
-| narwhals           | call: builtin dict()                       |      3 |      1 |        0 |                                                                                                                          |
-| narwhals           | call: capitalised                          |      3 |      3 |        2 |                                                                                 W(F('count', expr), inputs.partition_by) |
-| narwhals           | copy: other                                |      2 |      0 |        0 |                                                                                                                          |
-| narwhals           | empty tuple                                |      2 |      0 |        0 |                                                                                                                          |
-| narwhals           | call: builtin max()                        |      2 |      2 |        2 |                                    max((length for length, s in zip(lengths, series, strict=False) if not s._broadcast)) |
-| narwhals           | call: builtin type()                       |      2 |      1 |        1 |                                                                                               type(udf_series_out[_idx]) |
-| narwhals           | call: builtin iter()                       |      2 |      1 |        1 |                                                                                                               iter(args) |
-| narwhals           | subscript: other[...]                      |      2 |      1 |        1 |                                                                                                 scalar_kwargs['reverse'] |
-| narwhals           | attr: modclass.x                           |      2 |      1 |        1 |                                                                                                     ExpansionKind.SINGLE |
-| narwhals           | set (mixed/unknown elements)               |      2 |      0 |        0 |                                                                                                                          |
-| narwhals           | copy: imported                             |      2 |      0 |        0 |                                                                                                                          |
-| narwhals           | call: builtin sorted()                     |      2 |      1 |        1 |                                                                                            sorted(rset.difference(lset)) |
-| narwhals           | call: builtin all()                        |      1 |      1 |        1 |                                                                         all((_len == target_length for _len in lengths)) |
-| narwhals           | call: global name                          |      1 |      1 |        0 |                                                                                                                          |
-| narwhals           | copy: self                                 |      1 |      1 |        0 |                                                                                                                          |
-| narwhals           | call: builtin sum()                        |      1 |      1 |        1 |                                                              sum((x._metadata.n_orderable_ops for x in compliant_exprs)) |
-| narwhals           | attr: cls.x                                |      1 |      1 |        1 |                                                                                                             cls._version |
-| narwhals           | call: builtin slice()                      |      1 |      1 |        1 |                                                                                         slice(start, stop, columns.step) |
-| narwhals           | call: modclass.method()                    |      1 |      1 |        1 |                                                                       PandasLikeGroupBy._remap_expr_name(self.leaf_name) |
-| narwhals           | call: builtin str()                        |      1 |      1 |        1 |                                                                                                             str(s.dtype) |
-| narwhals           | call: builtin object()                     |      1 |      1 |        1 |                                                                                                                 object() |
-| narwhals           | copy: global                               |      1 |      0 |        0 |                                                                                                                          |
-| narwhals           | call: builtin.method()                     |      1 |      1 |        1 |                                                                                          dict.fromkeys(target_names, '') |
-| xarray             | call: module.func()                        |  2,171 |    124 |      110 |                                                                                        np.unique(k, return_inverse=True) |
-| xarray             | call: chained .method()                    |  1,611 |    220 |      150 |                                                                                               self.obj.data_vars.items() |
-| xarray             | call: local.method()                       |  1,346 |    119 |       81 |                                                                                                        variables.items() |
-| xarray             | call: imported function                    |  1,256 |    180 |      123 |                                                                                            unpack_for_encoding(variable) |
-| xarray             | call: imported class                       |    901 |      8 |        7 |                                                                           Dataset(data_vars, coords=coords, attrs=attrs) |
-| xarray             | binop (unknown operands)                   |    738 |     95 |       79 |                                                                                               set(dims) - set(self.dims) |
-| xarray             | call: self.method()                        |    573 |    158 |      125 |                                                                                                              self.copy() |
-| xarray             | call: module function (unannotated)        |    406 |     71 |       46 |                                                                                         _advanced_indexer_subspaces(key) |
-| xarray             | call: imported.attr()                      |    398 |     59 |       37 |                                                                                                  ops.fillna(self, value) |
-| xarray             | call: param.method()                       |    360 |    156 |      109 |                                                                                                        variables.items() |
-| xarray             | subscript: local[...]                      |    300 |     30 |       23 |                                                                                                      all_module_names[0] |
-| xarray             | attr: chained                              |    253 |     52 |       41 |                                                                                                        index.index.names |
-| xarray             | subscript: other                           |    251 |     42 |       35 |                                                                                                        coord_var.dims[0] |
-| xarray             | list (mixed/unknown elements)              |    228 |     20 |       18 |                                                                         [('data', data_items), ('coords', coords_items)] |
-| xarray             | dict (mixed/unknown elements)              |    227 |     10 |        8 |                                                                                                  {variable_dim: da.name} |
-| xarray             | ListComp (unknown elements)                |    214 |     79 |       64 |                                                          [name for name in self._data._variables if name in self._names] |
-| xarray             | call: param name                           |    177 |      8 |        5 |                                                                                                         func(*data_vars) |
-| xarray             | DictComp (unknown elements)                |    157 |     60 |       44 |                                        {d: utils.get_temp_dimname(self.obj.dims, f'_rolling_dim_{d}') for d in self.dim} |
-| xarray             | copy: local                                |    156 |     57 |       43 |                                                                                                                 renderer |
-| xarray             | conditional                                |    153 |     57 |       39 |                                                                                     self.obj.attrs if keep_attrs else {} |
-| xarray             | call: module function (annotated)          |    152 |     42 |       31 |                                                                                      _unit_timedelta_numpy(needed_units) |
-| xarray             | call: builtin zip()                        |    150 |     50 |       36 |                                                                                    zip(var.dims, var.shape, strict=True) |
-| xarray             | attr: local.x                              |    142 |     46 |       36 |                                                                                                             grouper.name |
-| xarray             | copy: param (unannotated)                  |    128 |     40 |       29 |                                                                                                                    state |
-| xarray             | empty dict                                 |    124 |      0 |        0 |                                                                                                                          |
-| xarray             | binop (one side literal)                   |    119 |     12 |       12 |                                                                                            self._counts.get(name, 0) + 1 |
-| xarray             | call: local name                           |    116 |      6 |        3 |                                                                                              access_method(values, name) |
-| xarray             | attr: self.x                               |     93 |     44 |       34 |                                                                                                            self.groupers |
-| xarray             | empty list                                 |     86 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin tuple()                      |     86 |     43 |       38 |                                                                                            tuple(reversed(self.parents)) |
-| xarray             | attr: param.x                              |     83 |     34 |       26 |                                                                                                               path.parts |
-| xarray             | call: builtin getattr()                    |     80 |     30 |       17 |                                                                             getattr(result, 'dtype', np.dtype('object')) |
-| xarray             | call: other name                           |     80 |     10 |       10 |                                                                                                    _get_h(nw, q, method) |
-| xarray             | call: builtin dict()                       |     78 |     17 |        6 |                                                                                                             dict(coords) |
-| xarray             | subscript: param[...]                      |     76 |     28 |       12 |                                                                                                             variables[0] |
-| xarray             | tuple (mixed/unknown elements)             |     66 |      9 |        7 |                                                                                         (node_a.dataset, node_b.dataset) |
-| xarray             | call: other callee                         |     65 |      9 |        3 |                                                            getattr(a_mapping[k].variable, compat)(b_mapping[k].variable) |
-| xarray             | call: builtin set()                        |     57 |     22 |       17 |                                                                                                            set(old_dims) |
-| xarray             | other constant                             |     54 |      1 |        1 |                                                                                                                    False |
-| xarray             | copy: imported                             |     54 |      0 |        0 |                                                                                                                          |
-| xarray             | compare                                    |     53 |     17 |       15 |                                                                                                       season_label != '' |
-| xarray             | copy: param (annotated)                    |     48 |     26 |       19 |                                                                                                                     func |
-| xarray             | call: builtin enumerate()                  |     46 |     20 |       10 |                                                    enumerate(zip(signature.input_core_dims, variable_args, strict=True)) |
-| xarray             | call: builtin list()                       |     45 |     20 |       16 |                                                                                               list(rolling_dim.values()) |
-| xarray             | call: global.method()                      |     43 |      3 |        3 |                                                                                     _EVICTED_PINNED.pop(self._key, None) |
-| xarray             | attr: global.x                             |     36 |      0 |        0 |                                                                                                                          |
-| xarray             | Lambda                                     |     35 |     21 |       21 |                                                                                     lambda x, ipat: len(ipat.findall(x)) |
-| xarray             | None literal                               |     30 |     16 |       16 |                                                                                                                     None |
-| xarray             | attr: module.x                             |     26 |      0 |        0 |                                                                                                                          |
-| xarray             | SetComp (unknown elements)                 |     25 |     16 |       13 |                                                                               {k for k in self.coords if k in variables} |
-| xarray             | subscript: imported[...]                   |     21 |     13 |       13 |                                                                                               OPTIONS['arithmetic_join'] |
-| xarray             | boolop (or)                                |     18 |      8 |        7 |                                                                        np.issubdtype(dtype, np.integer) or dtype is None |
-| xarray             | call: other.method()                       |     18 |      3 |        3 |                                                                                                      self._stringify('') |
-| xarray             | call: builtin.method()                     |     17 |      9 |        8 |                                                                                                      object.__new__(cls) |
-| xarray             | call: builtin next()                       |     16 |     11 |        6 |                                                                                              next(iter(indexer.items())) |
-| xarray             | boolop (and)                               |     12 |      4 |        3 |                                                  isinstance(path_or_file, str) and path_or_file.endswith('#mode=nczarr') |
-| xarray             | call: builtin sorted()                     |     11 |      5 |        4 |                                                                          sorted(zip(axis_pos, dim.items(), strict=True)) |
-| xarray             | call: modclass.method()                    |     10 |      0 |        0 |                                                                                                                          |
-| xarray             | copy: other                                |     10 |      2 |        2 |                                                                                                                  exclude |
-| xarray             | copy: self                                 |     10 |      7 |        6 |                                                                                                                     self |
-| xarray             | GeneratorExp (unknown elements)            |      9 |      5 |        5 |                                                                                    (s.strip() for s in matches.groups()) |
-| xarray             | copy: global                               |      9 |      0 |        0 |                                                                                                                          |
-| xarray             | subscript: global[...]                     |      8 |      4 |        1 |                                                                                                         _FILE_LOCKS[key] |
-| xarray             | subscript: other[...]                      |      8 |      5 |        5 |                                                                                                             counter[dim] |
-| xarray             | copy: modclass                             |      7 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin open()                       |      7 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin type()                       |      6 |      2 |        2 |                                                                                                          type(self._obj) |
-| xarray             | await: call: chained .method()             |      6 |      1 |        1 |                                                                                  await self.array.async_get_duck_array() |
-| xarray             | call: capitalised                          |      6 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin staticmethod()               |      6 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin max()                        |      5 |      4 |        3 |                                                                                              max(fixed_chunk, *v_chunks) |
-| xarray             | call: global name                          |      5 |      3 |        3 |                                                                                diff_attrs_repr(a.attrs, b.attrs, compat) |
-| xarray             | call: builtin slice()                      |      5 |      2 |        2 |                                                                                                              slice(None) |
-| xarray             | attr: imported.x                           |      5 |      3 |        3 |                                                                                                    duck_array_ops.argmin |
-| xarray             | call: builtin abs()                        |      4 |      0 |        0 |                                                                                                                          |
-| xarray             | unaryop Invert                             |      4 |      2 |        2 |                                                                                                                  ~is_nan |
-| xarray             | call: module class                         |      4 |      3 |        3 |                                                                                                                Dataset() |
-| xarray             | call: builtin iter()                       |      4 |      3 |        3 |                                                                                                           iter(iterable) |
-| xarray             | call: builtin min()                        |      4 |      4 |        4 |                                                              min(max(array.size, 1), max(math.ceil(max_width / 2.0), 2)) |
-| xarray             | copy: builtin                              |      3 |      0 |        0 |                                                                                                                          |
-| xarray             | copy: moddef                               |      3 |      2 |        2 |                                                                                                   _access_through_series |
-| xarray             | attr: modclass.x                           |      3 |      0 |        0 |                                                                                                                          |
-| xarray             | subscript: self[...]                       |      3 |      3 |        3 |                                                                                                                self[dim] |
-| xarray             | await: call: local.method()                |      3 |      0 |        0 |                                                                                                                          |
-| xarray             | call: builtin object()                     |      3 |      0 |        0 |                                                                                                                          |
-| xarray             | call: cls name                             |      3 |      2 |        2 |                                                          cls(data, coords, d.get('dims'), d.get('name'), d.get('attrs')) |
-| xarray             | call: builtin reversed()                   |      3 |      1 |        0 |                                                                                                                          |
-| xarray             | set (mixed/unknown elements)               |      2 |      2 |        2 |                                                                                                                  {names} |
-| xarray             | attr: other.x                              |      2 |      2 |        2 |                                                                                                            self.groupers |
-| xarray             | call: builtin locals()                     |      2 |      0 |        0 |                                                                                                                          |
-| xarray             | unaryop USub                               |      2 |      0 |        0 |                                                                                                                          |
-| xarray             | empty tuple                                |      1 |      0 |        0 |                                                                                                                          |
-| xarray             | await: call: imported.attr()               |      1 |      0 |        0 |                                                                                                                          |
-| xarray             | JoinedStr                                  |      1 |      1 |        1 |                                                                                            f'{base_freq}-{abbreviation}' |
-| xarray             | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| xarray             | call: cls.method()                         |      1 |      1 |        1 |                                                      cls._construct_direct(index_vars, set(index_vars), indexes=indexes) |
-| xarray             | call: builtin compile()                    |      1 |      1 |        1 |                                                                                   compile(tree, '<xarray.eval>', 'eval') |
-| xarray             | call: builtin any()                        |      1 |      1 |        1 |                                       any((not index_equals_func(other_idx, exclude_dims) for other_idx in indexes[1:])) |
-| xarray             | await: call: param name                    |      1 |      0 |        0 |                                                                                                                          |
-| xarray             | await: call: module.func()                 |      1 |      0 |        0 |                                                                                                                          |
-| xarray             | await: copy: local                         |      1 |      0 |        0 |                                                                                                                          |
-| litestar           | call: chained .method()                    |     96 |     80 |       53 |                                                                             cls.get_model_type_hints(model_type).items() |
-| litestar           | call: imported function                    |     82 |     61 |       42 |                                                                                                      create_task_group() |
-| litestar           | conditional                                |     64 |     60 |       37 |                     result if isinstance(result, Schema) else self.context.schema_registry.from_reference(result).schema |
-| litestar           | call: local.method()                       |     59 |     45 |       30 |                                                                                            field_definitions.get('data') |
-| litestar           | subscript: other                           |     58 |     52 |       35 |                                                                                                      locals()[attr_name] |
-| litestar           | call: param.method()                       |     55 |     37 |       22 |                                                                                                           kwargs.items() |
-| litestar           | call: self.method()                        |     50 |     46 |       30 |                                                                                                       self._id_factory() |
-| litestar           | call: builtin getattr()                    |     47 |     43 |       15 |                                                                                      getattr(existing, field_name, None) |
-| litestar           | attr: chained                              |     40 |     35 |       20 |                                                                                               request.app.openapi_config |
-| litestar           | attr: self.x                               |     36 |     34 |       14 |                                                                                                        self.content_type |
-| litestar           | await: call: self.method()                 |     34 |     32 |       25 |                                                                                                        await self.body() |
-| litestar           | copy: local                                |     31 |     24 |       19 |                                                                                                                    parts |
-| litestar           | attr: param.x                              |     31 |     21 |        8 |                                                                                                    route.path_components |
-| litestar           | attr: local.x                              |     31 |     23 |       15 |                                                                                               route_handler.http_methods |
-| litestar           | boolop (or)                                |     25 |     22 |       17 |                                                                                             handler.name or str(handler) |
-| litestar           | ListComp (unknown elements)                |     25 |     21 |       16 |                            [(status, get_openapi_type(res, components=components)) for status, res in responses.items()] |
-| litestar           | call: module function (annotated)          |     25 |     22 |        6 |                                                                                                 get_session_backend(app) |
-| litestar           | copy: param (annotated)                    |     21 |     17 |       11 |                                                                                                                 channels |
-| litestar           | subscript: imported[...]                   |     19 |      0 |        0 |                                                                                                                          |
-| litestar           | dict (mixed/unknown elements)              |     18 |     10 |        8 | {ParamType.QUERY: 'FromQuery', ParamType.HEADER: 'FromHeader', ParamType.COOKIE: 'FromCookie', ParamType.PATH: 'FromPath |
-| litestar           | DictComp (unknown elements)                |     16 |     13 |       12 |          {field_name: field_value for field_name in match_fields if (field_value := kwargs.get(field_name)) is not None} |
-| litestar           | empty list                                 |     14 |      0 |        0 |                                                                                                                          |
-| litestar           | await: call: chained .method()             |     14 |     14 |       12 |                                                                                                  await self._queue.get() |
-| litestar           | GeneratorExp (unknown elements)            |     13 |     13 |       12 |                                                                                    (p.strip() for p in param.split(':')) |
-| litestar           | copy: imported                             |     13 |      6 |        6 |                                                                                                               HttpMethod |
-| litestar           | empty dict                                 |     12 |      0 |        0 |                                                                                                                          |
-| litestar           | call: builtin list()                       |     12 |     12 |        7 |                                                                                                      list(plugin_.paths) |
-| litestar           | subscript: local[...]                      |     12 |     11 |        8 |                                                                                                 alternatives[param_type] |
-| litestar           | call: module.func()                        |     12 |      9 |        8 |                                                                              anyio.create_memory_object_stream(math.inf) |
-| litestar           | subscript: param[...]                      |     11 |     10 |        5 |                                                                                                    scope['litestar_app'] |
-| litestar           | await: call: param.method()                |     11 |     11 |        4 |                                                                                                  await connection.body() |
-| litestar           | call: builtin set()                        |     10 |      5 |        5 |                                                                                              set(path_parameters.keys()) |
-| litestar           | attr: imported.x                           |     10 |      4 |        4 |                                                                                                          ParamType.QUERY |
-| litestar           | call: cls.method()                         |     10 |      9 |        5 |                                                            cls._collect_errors(deserializer=deserializer, kwargs=kwargs) |
-| litestar           | call: imported class                       |      9 |      8 |        8 |                                                                                                         AsyncExitStack() |
-| litestar           | SetComp (unknown elements)                 |      8 |      4 |        4 |                                        {field_name for field_name in field_definitions if field_name in RESERVED_KWARGS} |
-| litestar           | binop (unknown operands)                   |      8 |      7 |        7 |                                                                      handler_fields.keys() & self.path_parameters.keys() |
-| litestar           | call: other callee                         |      7 |      7 |        6 |              get(not_found_handler_paths, media_type=MediaType.HTML, sync_to_thread=False)(handle_schema_path_not_found) |
-| litestar           | copy: modclass                             |      7 |      0 |        0 |                                                                                                                          |
-| litestar           | list (mixed/unknown elements)              |      6 |      4 |        4 | [TypeScriptType('ResponseBody', ts_type), TypeScriptInterface('ResponseHeaders', tuple((TypeScriptProperty(required=get_ |
-| litestar           | call: builtin tuple()                      |      6 |      6 |        2 |                                    tuple((_create_transfer_model_type_annotation(t) for t in transfer_type.inner_types)) |
-| litestar           | call: imported.attr()                      |      5 |      4 |        4 |                                                                                  ScopeState.from_scope(connection.scope) |
-| litestar           | set (mixed/unknown elements)               |      5 |      2 |        2 |                                            {*RESERVED_KWARGS, *(dependency.key for dependency in expected_dependencies)} |
-| litestar           | other constant                             |      5 |      2 |        2 |                                                                                                                     True |
-| litestar           | None literal                               |      4 |      2 |        2 |                                                                                                                     None |
-| litestar           | call: builtin dict()                       |      4 |      4 |        3 |                                                                                                 dict(dependencies or {}) |
-| litestar           | tuple (mixed/unknown elements)             |      4 |      0 |        0 |                                                                                                                          |
-| litestar           | call: modclass.method()                    |      3 |      2 |        1 | TransferFunctionFactory.create_transfer_data(is_data_field=self.is_data_field, destination_type=destination_type, field_ |
-| litestar           | call: global.method()                      |      3 |      3 |        2 |                                                               KWARG_DEFINITION_ATTRIBUTE_TO_OPENAPI_PROPERTY_MAP.items() |
-| litestar           | call: other name                           |      3 |      2 |        2 | response_class(background=background, content=data, media_type=media_type, status_code=status_code, type_encoders=type_e |
-| litestar           | await: call: local.method()                |      3 |      3 |        2 |                                                                                                     await request.form() |
-| litestar           | call: builtin next()                       |      2 |      2 |        2 |                                               next((value for name, value in scope['headers'] if name == b'host'), None) |
-| litestar           | await: call: imported function             |      2 |      1 |        0 |                                                                                                                          |
-| litestar           | attr: other.x                              |      2 |      1 |        0 |                                                                                                                          |
-| litestar           | binop (one side literal)                   |      2 |      2 |        2 |                                                                           self._handler_root_path + '{channel_name:str}' |
-| litestar           | await: call: local name                    |      2 |      2 |        1 |                                                                                              await extractor(connection) |
-| litestar           | call: local name                           |      2 |      2 |        1 |                                                                                          exception_handler(request, exc) |
-| litestar           | subscript: global[...]                     |      2 |      2 |        1 |                                                                                               param_type_map[param_type] |
-| litestar           | subscript: other[...]                      |      1 |      1 |        1 |                                                                                               alias_to_params[e.args[0]] |
-| litestar           | JoinedStr                                  |      1 |      0 |        0 |                                                                                                                          |
-| litestar           | call: module class                         |      1 |      1 |        1 |                                                                                      RegisteredSchema(key, Schema(), []) |
-| litestar           | call: builtin enumerate()                  |      1 |      1 |        0 |                                                                                                                          |
-| litestar           | call: str-literal.method()                 |      1 |      1 |        1 |                                                                                                           '.'.join(keys) |
-| litestar           | call: builtin sorted()                     |      1 |      1 |        1 |                                                                         sorted(unique([route.path for route in routes])) |
-| litestar           | await: call: other name                    |      1 |      1 |        0 |                                                                                                                          |
-| litestar           | call: builtin compile()                    |      1 |      1 |        1 |                                                                                       compile(source, file_name, 'exec') |
-| litestar           | call: param name                           |      1 |      1 |        1 | access_field_safe(source_name=source_instance_name, field_name=field_definition.name, expect_optional=field_definition.i |
-| litestar           | call: builtin reversed()                   |      1 |      1 |        0 |                                                                                                                          |
-| litestar           | attr: cls.x                                |      1 |      1 |        1 |                                                                                                             cls.__call__ |
-| litestar           | boolop (and)                               |      1 |      1 |        1 |                           status_code not in {HTTP_204_NO_CONTENT, HTTP_304_NOT_MODIFIED} and status_code >= HTTP_200_OK |
-| litestar           | await: call: param name                    |      1 |      1 |        0 |                                                                                                                          |
-| litestar           | copy: other                                |      1 |      1 |        0 |                                                                                                                          |
-| litestar           | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| celery             | None literal                               |    296 |     40 |       40 |                                                                                                                     None |
-| celery             | call: chained .method()                    |    209 |    141 |      105 |                                                                       tasks[task].__trace__(uuid, args, kwargs, request) |
-| celery             | call: imported function                    |    192 |     80 |       55 |                                                                                  maybe_signature(request.chord, app=app) |
-| celery             | call: self.method()                        |    186 |    138 |      102 |                                                                                           self._unpack_args(self.kwargs) |
-| celery             | attr: self.x                               |    167 |    142 |      111 |                                                                                                                 self.app |
-| celery             | tuple (mixed/unknown elements)             |    155 |     76 |       61 | (safe_repr(eobj), safe_str(einfo.traceback), einfo.exc_info, req.get('argsrepr') or safe_repr(req.args), req.get('kwargs |
-| celery             | call: local.method()                       |    104 |     68 |       45 |                                                                                                       arg.partition('=') |
-| celery             | attr: chained                              |     97 |     71 |       60 |                                                                                                            self.app.conf |
-| celery             | call: param.method()                       |     93 |     81 |       60 |                                                                                                app.connection_for_read() |
-| celery             | other constant                             |     93 |      4 |        4 |                                                                                                                        0 |
-| celery             | copy: local                                |     62 |     44 |       33 |                                                                                                                      res |
-| celery             | conditional                                |     62 |     48 |       33 |                                                             deps.join_native if deps.supports_native_join else deps.join |
-| celery             | attr: param.x                              |     61 |     58 |       43 |                                                                                                             job._payload |
-| celery             | boolop (or)                                |     60 |     45 |       34 |                                                                                           self.timelimit or (None, None) |
-| celery             | copy: other                                |     57 |      1 |        0 |                                                                                                                          |
-| celery             | call: module.func()                        |     56 |     23 |       15 |                                                                                                           sys.exc_info() |
-| celery             | call: module function (unannotated)        |     55 |     37 |       23 |                                                                                                   import_best_memcache() |
-| celery             | subscript: other                           |     51 |     34 |       27 |                                                                                                   pipeline.execute()[:4] |
-| celery             | copy: param (unannotated)                  |     49 |     41 |       26 |                                                                                                                     _loc |
-| celery             | attr: local.x                              |     44 |     39 |       32 |                                                                                            conf.task_default_routing_key |
-| celery             | dict (mixed/unknown elements)              |     42 |     21 |       13 |        {'callbacks': body.get('callbacks'), 'errbacks': body.get('errbacks'), 'chord': body.get('chord'), 'chain': None} |
-| celery             | attr: imported.x                           |     33 |     10 |       10 |                                                                                                            bootsteps.RUN |
-| celery             | call: builtin getattr()                    |     30 |     22 |       10 |                                                                                      getattr(self._local, 'stack', None) |
-| celery             | call: param name                           |     29 |     21 |       18 |                                                               loads(body, content_type, content_encoding, accept=accept) |
-| celery             | binop (unknown operands)                   |     29 |     19 |       16 |                                                                                         set(source.keys()) - ignore_keys |
-| celery             | call: builtin set()                        |     27 |      5 |        5 |                                                                                                  set(_on_app_finalizers) |
-| celery             | copy: imported                             |     27 |      1 |        1 |                                                                                                        reserved_requests |
-| celery             | empty dict                                 |     24 |      0 |        0 |                                                                                                                          |
-| celery             | call: imported.attr()                      |     23 |     18 |       13 |                                                                                    serialization.dumps(body, serializer) |
-| celery             | call: local name                           |     23 |     19 |        9 |                                                            j(timeout=app.conf.result_chord_join_timeout, propagate=True) |
-| celery             | empty list                                 |     22 |      0 |        0 |                                                                                                                          |
-| celery             | copy: modclass                             |     21 |      0 |        0 |                                                                                                                          |
-| celery             | call: global name                          |     20 |      0 |        0 |                                                                                                                          |
-| celery             | call: other name                           |     20 |     10 |        7 |                                                                                                           tfields(event) |
-| celery             | call: builtin next()                       |     19 |      9 |        5 |                                                                                         next(deps._failed_join_report()) |
-| celery             | subscript: local[...]                      |     19 |     14 |       10 |                                                                                                          opts['task_id'] |
-| celery             | call: imported class                       |     17 |      6 |        5 |                                                                  Exchange(name, self.create_missing_queue_exchange_type) |
-| celery             | call: builtin list()                       |     16 |     11 |       10 |                                                                                               list(p.namespaces.items()) |
-| celery             | subscript: param[...]                      |     15 |     10 |       10 |                                                                                                            patches[pool] |
-| celery             | call: builtin dict()                       |     15 |      9 |        5 |                                                                        dict(BACKEND_ALIASES, **loader.override_backends) |
-| celery             | call: capitalised                          |     14 |      8 |        6 |                                          GroupResult(group_id, [result_from_tuple(r, app=app) for r in result], app=app) |
-| celery             | boolop (and)                               |     13 |     10 |        5 |  (app.conf.task_acks_late or task.acks_late) and app.conf.worker_deduplicate_successful_tasks and app.backend.persistent |
-| celery             | call: builtin enumerate()                  |     12 |     10 |        5 |                                                                                                          enumerate(argv) |
-| celery             | DictComp (unknown elements)                |     12 |      5 |        3 |                                                          {k: params[k] for k in ('username', 'password') if k in params} |
-| celery             | attr: global.x                             |     11 |      0 |        0 |                                                                                                                          |
-| celery             | ListComp (unknown elements)                |     11 |      7 |        5 |                                                                                        [arg for arg in self.args if arg] |
-| celery             | call: builtin tuple()                      |     10 |      8 |        7 |               tuple(cmd + [format_opt(opt, self.expander(value)) for opt, value in options.items()] + [self.extra_args]) |
-| celery             | call: other.method()                       |      9 |      5 |        1 |                                                                           task_signature.bind(*task_args, **task_kwargs) |
-| celery             | copy: global                               |      9 |      3 |        3 |                                                                                                               TIME_UNITS |
-| celery             | call: other callee                         |      9 |      6 |        2 |                                                                                                               evtup[3]() |
-| celery             | attr: module.x                             |      9 |      0 |        0 |                                                                                                                          |
-| celery             | set (mixed/unknown elements)               |      9 |      2 |        2 |                                      {*Context.__dict__.keys(), 'lang', 'task', 'argsrepr', 'kwargsrepr', 'compression'} |
-| celery             | binop (one side literal)                   |      8 |      6 |        6 |                                                                                                      request.retries + 1 |
-| celery             | call: module function (annotated)          |      8 |      8 |        5 |                                                                                             _get_commands_of_type(type_) |
-| celery             | subscript: other[...]                      |      7 |      6 |        3 |                                                                                                  fileno_to_inq[ready_fd] |
-| celery             | call: global.method()                      |      7 |      6 |        2 |                                                                                                       NAMESPACES.items() |
-| celery             | empty tuple                                |      6 |      0 |        0 |                                                                                                                          |
-| celery             | compare                                    |      6 |      4 |        4 |                                                                               self.sched_strategy == SCHED_STRATEGY_FAIR |
-| celery             | call: builtin min()                        |      6 |      6 |        6 |                                                   min((minute for minute in self.minute if minute > last_run_at.minute)) |
-| celery             | subscript: self[...]                       |      6 |      5 |        1 |                                                                                                                self[key] |
-| celery             | call: builtin reversed()                   |      5 |      2 |        2 |                                                                                              reversed(_task_stack.stack) |
-| celery             | copy: self                                 |      5 |      4 |        1 |                                                                                                                     self |
-| celery             | list (mixed/unknown elements)              |      5 |      3 |        3 |                                                                                                                   [None] |
-| celery             | copy: moddef                               |      5 |      1 |        1 |                                                                                                          maybe_signature |
-| celery             | copy: builtin                              |      4 |      0 |        0 |                                                                                                                          |
-| celery             | call: builtin type()                       |      3 |      3 |        1 |                                                                                                               type(task) |
-| celery             | GeneratorExp (unknown elements)            |      3 |      3 |        3 |                                     (maybe_signature(task, app=app).clone(partial_args) for i, task in enumerate(tasks)) |
-| celery             | call: builtin property()                   |      3 |      0 |        0 |                                                                                                                          |
-| celery             | SetComp (unknown elements)                 |      3 |      1 |        1 |                                                                                                 {url for url in brokers} |
-| celery             | call: cls.method()                         |      3 |      2 |        0 |                                                                                                                          |
-| celery             | call: builtin max()                        |      3 |      2 |        2 |                                                                              max(self._processes - len(self._queues), 0) |
-| celery             | call: builtin.method()                     |      3 |      3 |        3 |                                                                             object.__getattribute__(self, '__pending__') |
-| celery             | attr: cls.x                                |      2 |      2 |        2 |                                                                                                          cls.from_config |
-| celery             | call: builtin frozenset()                  |      2 |      0 |        0 |                                                                                                                          |
-| celery             | call: builtin iter()                       |      2 |      1 |        0 |                                                                                                                          |
-| celery             | call: builtin sum()                        |      2 |      0 |        0 |                                                                                                                          |
-| celery             | call: builtin len()                        |      2 |      2 |        2 |                                                                                                         len(group.tasks) |
-| celery             | call: modclass.method()                    |      2 |      2 |        0 |                                                                                                                          |
-| celery             | attr: other.x                              |      2 |      2 |        1 |                                                                                                                exc.errno |
-| celery             | subscript: global[...]                     |      2 |      2 |        0 |                                                                                                                          |
-| celery             | attr: builtin.x                            |      2 |      2 |        2 |                                                                                                       object.__setattr__ |
-| celery             | call: builtin object()                     |      2 |      0 |        0 |                                                                                                                          |
-| celery             | call: builtin open()                       |      2 |      2 |        2 |                                                                                                          open(self.path) |
-| celery             | call: builtin sorted()                     |      2 |      2 |        2 |                                                                                                sorted(self.day_of_month) |
-| celery             | JoinedStr                                  |      1 |      1 |        1 |                                                                                       f'{command_name} {info.signature}' |
-| celery             | call: builtin map()                        |      1 |      1 |        1 |                                                                                        map(_ensure_integral_fd, readers) |
-| celery             | call: builtin bytearray()                  |      1 |      0 |        0 |                                                                                                                          |
-| celery             | call: builtin memoryview()                 |      1 |      0 |        0 |                                                                                                                          |
-| celery             | call: str-literal.method()                 |      1 |      1 |        1 |                                '{}({}) args={} kwargs={}'.format(ev.pop('name'), uuid, ev.pop('args'), ev.pop('kwargs')) |
-| celery             | call: builtin __import__()                 |      1 |      1 |        1 |                                                               __import__(self._object_origins[name], None, None, [name]) |
-| celery             | subscript: imported[...]                   |      1 |      1 |        1 |                                                                                                          signals['ALRM'] |
-| celery             | attr: modclass.x                           |      1 |      0 |        0 |                                                                                                                          |
-| celery             | call: cls name                             |      1 |      1 |        1 |                          cls(exc.__class__.__module__, exc.__class__.__name__, getattr(exc, 'args', []), safe_repr(exc)) |
-| optuna             | call: module.func()                        |    280 |    232 |      221 |                                                                                             copy.deepcopy(self.__dict__) |
-| optuna             | call: chained .method()                    |    219 |    165 |      127 |                                                                                                   self._gpr.posterior(x) |
-| optuna             | call: imported.attr()                      |    108 |     41 |       41 | batched_lbfgsb.batched_lbfgsb(func_and_grad=negative_acqf_with_grad, x0_batched=initial_params_batched[:, continuous_ind |
-| optuna             | binop (unknown operands)                   |     89 |     77 |       73 |                                                                    Y_post.unsqueeze(-2) - non_dominated_box_lower_bounds |
-| optuna             | call: imported function                    |     84 |      9 |        7 |                                                             _is_pareto_front(limited_sols, assume_unique_lexsorted=True) |
-| optuna             | call: param.method()                       |     73 |     52 |       46 |                                                          study.get_trials(deepcopy=False, states=(TrialState.COMPLETE,)) |
-| optuna             | empty list                                 |     73 |      0 |        0 |                                                                                                                          |
-| optuna             | attr: param.x                              |     68 |     61 |       53 |                                                                                                         request.study_id |
-| optuna             | call: local.method()                       |     66 |     39 |       33 |                                                                                                         gpr.posterior(x) |
-| optuna             | call: module function (annotated)          |     57 |     51 |       50 |                                                                              _create_scoped_session(self.scoped_session) |
-| optuna             | subscript: other                           |     56 |     43 |       37 |                                                                                          trial.intermediate_values[step] |
-| optuna             | call: imported class                       |     38 |      0 |        0 |                                                                                                                          |
-| optuna             | subscript: param[...]                      |     35 |     35 |       33 |                                                                                                          log['trial_id'] |
-| optuna             | ListComp (unknown elements)                |     35 |     25 |       23 | [torch.cat([Y_baseline, fantasy], dim=0) if fantasy.shape[0] > 0 else Y_baseline for fantasy in fantasy_samples_per_qmc] |
-| optuna             | call: builtin zip()                        |     35 |     24 |       18 |                                                                        zip(c1, c2, parents_params[0], parents_params[1]) |
-| optuna             | subscript: local[...]                      |     32 |     28 |       25 |                                                                                                         statistics[:, 0] |
-| optuna             | attr: chained                              |     31 |     19 |       15 |                                                                      np.array(list(trial.intermediate_values.items())).T |
-| optuna             | attr: local.x                              |     31 |     17 |       13 |                                                                                         indices_of_unique_loss_vals.size |
-| optuna             | binop (one side literal)                   |     30 |     27 |       27 |                                                                                                                  0.5 * z |
-| optuna             | conditional                                |     29 |     22 |       13 |                                                           child1_params_list if rng.rand() < 0.5 else child2_params_list |
-| optuna             | None literal                               |     28 |      5 |        5 |                                                                                                                     None |
-| optuna             | tuple (mixed/unknown elements)             |     24 |     15 |       12 |                                                                                                          (1.0, 1.0, 1.0) |
-| optuna             | copy: local                                |     24 |      8 |        8 |                                                                                                                   trials |
-| optuna             | compare                                    |     23 |     22 |       22 |                                                                                                              x.ndim == 1 |
-| optuna             | empty dict                                 |     21 |      0 |        0 |                                                                                                                          |
-| optuna             | call: global.method()                      |     20 |      0 |        0 |                                                                                                                          |
-| optuna             | call: self.method()                        |     19 |     15 |       13 |                                                                                                      self.kernel(x_, x_) |
-| optuna             | call: builtin enumerate()                  |     16 |      8 |        7 |                                                                                                  enumerate(batched_args) |
-| optuna             | call: other name                           |     13 |      6 |        6 |                                                                                            func_and_grad(x_2d, *args_2d) |
-| optuna             | other constant                             |     13 |      4 |        4 |                                                                                                                      0.0 |
-| optuna             | copy: param (annotated)                    |     12 |      7 |        5 |                                                                                                      search_space_bounds |
-| optuna             | DictComp (unknown elements)                |     11 |      7 |        0 |                                                                                                                          |
-| optuna             | list (mixed/unknown elements)              |     11 |      6 |        6 |                                                                                                                  [study] |
-| optuna             | unaryop USub                               |      9 |      9 |        8 |                                                                                                               -Y.numpy() |
-| optuna             | attr: self.x                               |      9 |      9 |        5 |                                                                                                           self._deferred |
-| optuna             | call: builtin max()                        |      9 |      4 |        2 |                                                                                                             max(n_steps) |
-| optuna             | dict (mixed/unknown elements)              |      7 |      2 |        2 |                                                                                        {current_choice_i: -initial_fval} |
-| optuna             | call: builtin getattr()                    |      6 |      4 |        4 |                                                                                                 getattr(cls, '__init__') |
-| optuna             | call: builtin list()                       |      6 |      1 |        1 |                                                                  list(set((k for t in trials for k in t.distributions))) |
-| optuna             | call: builtin set()                        |      6 |      5 |        5 |                                                                                set((t._trial_id for t in target_trials)) |
-| optuna             | unaryop Invert                             |      5 |      4 |        4 |                                                                                 ~np.any(bounds[1] <= bounds[0], axis=-1) |
-| optuna             | subscript: imported[...]                   |      5 |      0 |        0 |                                                                                                                          |
-| optuna             | boolop (or)                                |      4 |      2 |        2 |                                                                         name or f'{func.__module__}.{func.__qualname__}' |
-| optuna             | copy: other                                |      4 |      3 |        2 |                                                                                                                info_list |
-| optuna             | call: builtin tuple()                      |      4 |      0 |        0 |                                                                                                                          |
-| optuna             | boolop (and)                               |      3 |      2 |        0 |                                                                                                                          |
-| optuna             | call: builtin min()                        |      3 |      1 |        1 |                                                                                 min(past_trials, key=lambda t: t.number) |
-| optuna             | call: builtin sum()                        |      3 |      3 |        3 |                                                             sum((trial.state != TrialState.RUNNING for trial in trials)) |
-| optuna             | call: builtin sorted()                     |      3 |      2 |        2 |                                                                           sorted(trial.params, key=lambda p: p.param_id) |
-| optuna             | copy: global                               |      2 |      1 |        0 |                                                                                                                          |
-| optuna             | subscript: other[...]                      |      2 |      1 |        1 |                                                                                                      mus[sorted_indices] |
-| optuna             | copy: imported                             |      2 |      1 |        1 |                                                                                                   _constrained_dominates |
-| optuna             | call: modclass.method()                    |      2 |      2 |        2 |                                                                       UNDXCrossover._normalized_x1_to_x2(parents_params) |
-| optuna             | call: builtin next()                       |      2 |      2 |        0 |                                                                                                                          |
-| optuna             | attr: imported.x                           |      2 |      1 |        1 |                                                                                                       TrialState.RUNNING |
-| optuna             | call: param name                           |      2 |      2 |        1 |                                                                                                         scoped_session() |
-| optuna             | SetComp (unknown elements)                 |      2 |      1 |        1 |                                                                   {p_name for t in trials for p_name in t.params.keys()} |
-| optuna             | GeneratorExp (unknown elements)            |      1 |      1 |        1 |                                                                                               ([arg] for arg in args_1d) |
-| optuna             | call: other.method()                       |      1 |      1 |        0 |                                                                                                                          |
-| optuna             | attr: modclass.x                           |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: builtin len()                        |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: local name                           |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: other callee                         |      1 |      1 |        1 |                                             (np.log if dist.log else np.asarray)([t.params[param_name] for t in trials]) |
-| optuna             | subscript: builtin[...]                    |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: builtin reversed()                   |      1 |      1 |        0 |                                                                                                                          |
-| optuna             | call: builtin dict()                       |      1 |      1 |        0 |                                                                                                                          |
-| optuna             | call: builtin globals()                    |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | attr: module.x                             |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: moddef.method()                      |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| optuna             | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| dask               | call: module.func()                        |  4,083 |    204 |      189 |                                                                                                           sys.exc_info() |
-| dask               | call: imported function                    |  1,768 |    334 |      248 |                                                                                                          default_timer() |
-| dask               | call: chained .method()                    |  1,452 |    181 |      149 |                                                                                           self.__class__.get_all_slots() |
-| dask               | call: local.method()                       |  1,439 |    160 |      102 |                                                                                                                d.items() |
-| dask               | call: global.method()                      |    912 |     11 |        9 |                                                                                  default_int_args.get(_method, ((), {})) |
-| dask               | call: module function (unannotated)        |    492 |    217 |      155 |                                                                                               grid_points(chunks, sizes) |
-| dask               | call: param.method()                       |    471 |    210 |      141 |                                                                                                           kwargs.items() |
-| dask               | dict (mixed/unknown elements)              |    446 |     55 |       44 |                                                                                                                 {'n': n} |
-| dask               | binop (unknown operands)                   |    410 |    213 |      168 |                                                                                                   y.ndim * [slice(None)] |
-| dask               | copy: param (unannotated)                  |    390 |    156 |      104 |                                                                                                                    stats |
-| dask               | list (mixed/unknown elements)              |    369 |     60 |       35 |                                                                 [('bins', bins), ('range', range), ('weights', weights)] |
-| dask               | ListComp (unknown elements)                |    351 |    194 |      142 | [list(product(*[range(nb) if j != axis else [i] for j, nb in enumerate(x.numblocks)])) for i in range(x.numblocks[axis]) |
-| dask               | subscript: other                           |    335 |     91 |       71 |                                                                                                        self.operands[1:] |
-| dask               | empty list                                 |    296 |      0 |        0 |                                                                                                                          |
-| dask               | tuple (mixed/unknown elements)             |    269 |     85 |       75 |                                                                                 (self.name, self.chunks, self.numblocks) |
-| dask               | subscript: local[...]                      |    247 |     95 |       68 |                                                                                                                  ijs[-1] |
-| dask               | call: builtin zip()                        |    236 |    119 |       92 |                                                                                                            zip(*results) |
-| dask               | copy: local                                |    234 |    108 |       79 |                                                                                                                    b_out |
-| dask               | call: builtin list()                       |    212 |    109 |       82 |                                                                                                           list(a.chunks) |
-| dask               | binop (one side literal)                   |    204 |     28 |       28 |                                                                                                                   1 << b |
-| dask               | empty dict                                 |    193 |      0 |        0 |                                                                                                                          |
-| dask               | subscript: param[...]                      |    180 |    113 |       87 |                                                                                                                  axes[0] |
-| dask               | attr: chained                              |    178 |     71 |       51 |                                                                                                         self.frame._meta |
-| dask               | call: module class                         |    173 |      6 |        5 |                                                                AlignAlignPartitions(self, other, join, axis, fill_value) |
-| dask               | DictComp (unknown elements)                |    168 |     88 |       66 |                                      {(left,) + key[1:]: (getitem, key, 0) for key in core.flatten(tmp.__dask_keys__())} |
-| dask               | attr: self.x                               |    166 |    129 |       61 |                                                                                                               self._name |
-| dask               | call: other callee                         |    152 |     22 |       14 |                                                                   delayed(np.linalg.svd, nout=3)(a, full_matrices=False) |
-| dask               | conditional                                |    149 |     80 |       46 |                                                                                  slice(-k, None) if k > 0 else slice(-k) |
-| dask               | call: builtin getattr()                    |    146 |     33 |       19 |                                                                                                  getattr(out, 'ndim', 0) |
-| dask               | attr: local.x                              |    144 |     70 |       53 |                                                                                                       col.path_in_schema |
-| dask               | call: local name                           |    143 |     24 |       10 |                                                                     einsum(subscripts, *operands, dtype=dtype, **kwargs) |
-| dask               | call: builtin enumerate()                  |    135 |     92 |       68 |                                                   enumerate(zip(idx, array.shape, array.chunks, pad_width, stat_length)) |
-| dask               | call: self.method()                        |    132 |    115 |       68 |                                                                                  self._numeric_only_kwargs(numeric_only) |
-| dask               | call: param name                           |    131 |     25 |       10 |                                                                                                          loads(res_info) |
-| dask               | attr: imported.x                           |    112 |      1 |        1 |                                                                                          array_creation_dispatch.backend |
-| dask               | attr: param.x                              |    109 |     71 |       52 |                                                                                                               data.shape |
-| dask               | call: builtin tuple()                      |     96 |     58 |       44 |                                                                                                  tuple(map(sum, chunks)) |
-| dask               | other constant                             |     95 |     24 |       24 |                                                                                                                        0 |
-| dask               | call: imported.attr()                      |     90 |     33 |       21 |                                                                                 config.get('array.chunk-size-tolerance') |
-| dask               | call: builtin set()                        |     83 |     21 |       15 |                                                                                                     set(map(type, bags)) |
-| dask               | call: builtin staticmethod()               |     79 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin dict()                       |     72 |     19 |        9 |                                                                                                  dict(zip(keys, values)) |
-| dask               | None literal                               |     67 |     36 |       36 |                                                                                                                     None |
-| dask               | call: imported class                       |     65 |     10 |       10 |                                                                                                                 Future() |
-| dask               | attr: module.x                             |     59 |      1 |        1 |                                                                                                               np.float64 |
-| dask               | boolop (or)                                |     56 |     46 |       39 |                                                                                          self.aggregate or (lambda x: x) |
-| dask               | GeneratorExp (unknown elements)            |     53 |     14 |       14 |                                                                                   (zip(*ec) for ec in enumerated_chunks) |
-| dask               | Lambda                                     |     53 |      3 |        3 |                                                                                               lambda k: get(out_axis, k) |
-| dask               | call: other name                           |     51 |     20 |       14 |                                                                                                      get_map_columns(df) |
-| dask               | compare                                    |     48 |     18 |       17 |                                                                                                left_shape == right_shape |
-| dask               | call: module function (annotated)          |     38 |     30 |       11 |                                                                    determine_column_projection(self, parent, dependents) |
-| dask               | call: builtin sorted()                     |     31 |     18 |        9 |                                                                                         sorted(zip(destination, source)) |
-| dask               | call: builtin max()                        |     30 |     23 |       17 |                                                                       max(self.left.npartitions, self.right.npartitions) |
-| dask               | SetComp (unknown elements)                 |     28 |     21 |       16 |                                                                                            {b.npartitions for b in bags} |
-| dask               | copy: other                                |     19 |      6 |        5 |                                                                                                             type_mappers |
-| dask               | call: builtin type()                       |     19 |     13 |        2 |                                                                                                 type(rng._bit_generator) |
-| dask               | call: builtin divmod()                     |     18 |     14 |       14 |                                                                                                        divmod(c, factor) |
-| dask               | await: call: param.method()                |     17 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin sum()                        |     16 |      5 |        5 |                                                                               sum(zip(arrs, itertools.repeat(inds)), ()) |
-| dask               | copy: builtin                              |     15 |      1 |        0 |                                                                                                                          |
-| dask               | copy: param (annotated)                    |     14 |     13 |        7 |                                                                                                                   config |
-| dask               | copy: imported                             |     14 |      5 |        5 |                                                                                                                       np |
-| dask               | call: builtin next()                       |     14 |     12 |        5 |                                                                                                                 next(it) |
-| dask               | call: global name                          |     13 |      4 |        3 |                                                                                       batched(self.args, 2, strict=True) |
-| dask               | copy: modclass                             |     13 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin min()                        |     12 |      8 |        7 |                                                                                  min(a.shape[axis1], a.shape[axis2] - k) |
-| dask               | call: builtin slice()                      |     11 |      5 |        5 |                                                                                                  slice(None, None, None) |
-| dask               | copy: global                               |     11 |      0 |        0 |                                                                                                                          |
-| dask               | call: other.method()                       |     11 |      7 |        4 |                                                                                                        repack_dsk.copy() |
-| dask               | call: cls.method()                         |     10 |      9 |        7 |                                                                 cls._collect_file_parts(file_frags, dataset_info_kwargs) |
-| dask               | subscript: global[...]                     |      9 |      4 |        4 |                                                                                        _out_chunk_fns[kind.rstrip('2n')] |
-| dask               | set (mixed/unknown elements)               |      8 |      4 |        3 |                                                                                                              {self.name} |
-| dask               | copy: moddef                               |      8 |      3 |        3 |                                                                                                       _apply_random_func |
-| dask               | subscript: other[...]                      |      8 |      5 |        4 |                                                                                                     graph_size_effect[k] |
-| dask               | attr: global.x                             |      8 |      0 |        0 |                                                                                                                          |
-| dask               | copy: self                                 |      8 |      6 |        3 |                                                                                                                     self |
-| dask               | call: builtin iter()                       |      7 |      5 |        4 |                                                                                                         iter(population) |
-| dask               | call: capitalised                          |      7 |      1 |        1 |                                                                                                  RandomState(state_data) |
-| dask               | JoinedStr                                  |      7 |      7 |        7 |                                                                                          f'overlap-prepend-{self._name}' |
-| dask               | attr: modclass.x                           |      6 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin.method()                     |      5 |      3 |        2 |                                                                                                   dict.fromkeys(tics, 0) |
-| dask               | empty tuple                                |      5 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin range()                      |      5 |      4 |        4 |                                                                                        range(self.frame.npartitions - 1) |
-| dask               | call: builtin open()                       |      5 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin object()                     |      4 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin int()                        |      3 |      2 |        2 |                                                                                        int(math.ceil(n ** (1 / stages))) |
-| dask               | subscript: self[...]                       |      3 |      3 |        3 |                                                                                                                self[col] |
-| dask               | boolop (and)                               |      3 |      2 |        2 |                                                                           split_row_groups and int(split_row_groups) > 1 |
-| dask               | call: builtin abs()                        |      2 |      2 |        2 |                                                                                                                   abs(k) |
-| dask               | call: builtin vars()                       |      2 |      0 |        0 |                                                                                                                          |
-| dask               | attr: cls.x                                |      2 |      2 |        1 |                                                                                                    cls._accessor_methods |
-| dask               | unaryop USub                               |      2 |      1 |        1 |                                                                                   -(len(state['running']) // -chunksize) |
-| dask               | call: cls name                             |      1 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| dask               | attr: builtin.x                            |      1 |      1 |        1 |                                                                                                                  set.add |
-| dask               | call: builtin any()                        |      1 |      0 |        0 |                                                                                                                          |
-| dask               | await: call: chained .method()             |      1 |      0 |        0 |                                                                                                                          |
-| dask               | call: builtin reversed()                   |      1 |      1 |        1 |                                                                                                           reversed(keys) |
-| dask               | call: builtin len()                        |      1 |      1 |        1 |                                                                                                                 len(dsk) |
-| dask               | call: builtin frozenset()                  |      1 |      1 |        0 |                                                                                                                          |
-| dask               | await: call: local.method()                |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | call: self.method()                        |    612 |    472 |      254 |                                                                                             self.track_incomplete_refs() |
-| mypy               | call: imported function                    |    537 |    352 |      136 |                                                                                                           read_tag(data) |
-| mypy               | call: chained .method()                    |    391 |    270 |      155 |                                                                                                         self.s.zipall(t) |
-| mypy               | copy: local                                |    265 |    179 |      111 |                                                                                                              error_tuple |
-| mypy               | attr: chained                              |    254 |    174 |      137 |                                                                                              right.type.protocol_members |
-| mypy               | empty list                                 |    242 |      0 |        0 |                                                                                                                          |
-| mypy               | attr: param.x                              |    241 |    204 |      106 |                                                                                                                expr.name |
-| mypy               | subscript: other                           |    227 |    144 |       82 |                                                                                                             s.lvalues[0] |
-| mypy               | attr: local.x                              |    226 |    135 |       96 |                                                                                                                 sym.node |
-| mypy               | call: local.method()                       |    196 |    133 |       85 |                                                                                                 tree.local_definitions() |
-| mypy               | call: module function (annotated)          |    130 |     94 |       34 |                                                                                                   read_type(state, data) |
-| mypy               | call: param.method()                       |    107 |     88 |       47 |                                                                                                            names.items() |
-| mypy               | ListComp (unknown elements)                |    105 |     64 |       41 |                                                                                               [arg.kind for arg in args] |
-| mypy               | call: builtin zip()                        |    102 |     74 |       30 |                                                                      zip(repl.arg_kinds, repl.arg_names, repl.arg_types) |
-| mypy               | copy: param (annotated)                    |    102 |     87 |       42 |                                                                                                                     errs |
-| mypy               | conditional                                |    101 |     66 |       36 |                                                   None if options.output is None else OUTPUT_CHOICES.get(options.output) |
-| mypy               | None literal                               |     94 |     69 |       69 |                                                                                                                     None |
-| mypy               | call: module.func()                        |     86 |     35 |       19 |                                                                                             os.path.join(*id.split('.')) |
-| mypy               | binop (unknown operands)                   |     84 |     42 |       35 |                                                                                       time.time() + WORKER_START_TIMEOUT |
-| mypy               | attr: self.x                               |     78 |     67 |       45 |                                                                                                        self.expr_checker |
-| mypy               | subscript: local[...]                      |     69 |     48 |       29 |                                                                                                              checkers[0] |
-| mypy               | subscript: param[...]                      |     66 |     42 |       29 |                                                                                                                graph[id] |
-| mypy               | call: builtin enumerate()                  |     65 |     59 |       25 |                                                                           enumerate(zip(self.arg_types, self.arg_kinds)) |
-| mypy               | boolop (or)                                |     52 |     36 |       31 |                                                                          state.ignore_all or state.options.ignore_errors |
-| mypy               | tuple (mixed/unknown elements)             |     50 |     33 |       25 |                                                                                                             (None, None) |
-| mypy               | other constant                             |     44 |     11 |       11 |                                                                                                                    False |
-| mypy               | call: builtin set()                        |     40 |      8 |        7 |                                                                set(self.dependencies + self.suppressed + self.ancestors) |
-| mypy               | list (mixed/unknown elements)              |     37 |     17 |       11 |                                                                                                                [trigger] |
-| mypy               | call: builtin sorted()                     |     35 |     13 |       12 |                                                                                                         sorted(to_check) |
-| mypy               | boolop (and)                               |     34 |     29 |       28 |                                                                 not self.is_stub_file and self.options.implicit_reexport |
-| mypy               | call: imported.attr()                      |     29 |     21 |       14 |                                                                                                       op_methods.items() |
-| mypy               | empty dict                                 |     28 |      0 |        0 |                                                                                                                          |
-| mypy               | SetComp (unknown elements)                 |     28 |     14 |       13 |                                                                                    {source.module for source in sources} |
-| mypy               | binop (one side literal)                   |     28 |      9 |        9 |                                                                                        iterable_end - iterable_start + 1 |
-| mypy               | call: builtin list()                       |     24 |     13 |        9 |                                                                                                      list(graph.items()) |
-| mypy               | DictComp (unknown elements)                |     22 |     13 |        9 |                                                                                     {k: set(v) for k, v in deps.items()} |
-| mypy               | call: builtin getattr()                    |     21 |     15 |        8 |                                                                                   getattr(module, '__version__', 'none') |
-| mypy               | call: global.method()                      |     17 |      1 |        1 |                                                                                           deserialize_map.get(classname) |
-| mypy               | attr: imported.x                           |     15 |      7 |        7 |                                                                                                   codes.IMPORT_NOT_FOUND |
-| mypy               | copy: imported                             |     15 |      5 |        5 |                                                                                                                COVARIANT |
-| mypy               | call: imported class                       |     14 |     12 |       12 |                                                                                     TypeStrVisitor(options=self.options) |
-| mypy               | call: module class                         |     14 |     12 |       12 |                                                                                                       AliasPrinter(self) |
-| mypy               | dict (mixed/unknown elements)              |     13 |      8 |        5 |                                                                   {'snapshot': meta_snapshot, 'deps_meta': fg_deps_meta} |
-| mypy               | call: other name                           |     13 |     10 |        9 |                                               _make_fake_typeinfo_and_full_name(base_classes, curr_module, self.options) |
-| mypy               | attr: module.x                             |     11 |      0 |        0 |                                                                                                                          |
-| mypy               | call: builtin reversed()                   |     11 |      3 |        0 |                                                                                                                          |
-| mypy               | call: other.method()                       |     10 |     10 |        7 |                                                self.make_fake_typeinfo(curr_module_.fullname, name, name, base_classes_) |
-| mypy               | compare                                    |      9 |      8 |        8 |                                                                          manager.getmtime(meta['path']) == meta['mtime'] |
-| mypy               | copy: global                               |      8 |      2 |        2 |                                                                                                            PY_EXTENSIONS |
-| mypy               | subscript: imported[...]                   |      7 |      6 |        6 |                                                                                                     int_op_to_method[op] |
-| mypy               | call: local name                           |      7 |      2 |        0 |                                                                                                                          |
-| mypy               | call: modclass.method()                    |      7 |      6 |        6 |                                                                              Signature.from_inspect_signature(signature) |
-| mypy               | call: builtin next()                       |      6 |      4 |        3 |                                         next((s for s in self.fg_manager.graph.values() if s.abspath == abs_path), None) |
-| mypy               | call: builtin dict()                       |      6 |      2 |        2 |                                                                                                      dict(substitutions) |
-| mypy               | call: builtin open()                       |      4 |      1 |        1 |                                                       open(os_path_join(self.cache_dir_prefix, name), 'rb', buffering=0) |
-| mypy               | call: builtin tuple()                      |      4 |      2 |        1 |                                                               tuple((t for t in maybe_paramspec_types if t is not None)) |
-| mypy               | subscript: global[...]                     |      4 |      4 |        3 |                                                                                          ARG_CONSTRUCTOR_NAMES[arg_kind] |
-| mypy               | GeneratorExp (unknown elements)            |      4 |      4 |        4 |                                                                                  (info.get(name) for name in info.names) |
-| mypy               | copy: other                                |      3 |      3 |        3 |                                                                                                  strict_flag_assignments |
-| mypy               | call: builtin any()                        |      3 |      3 |        3 |                                        any((isinstance(v, (ParamSpecType, TypeVarTupleType)) for v in callee.variables)) |
-| mypy               | JoinedStr                                  |      3 |      0 |        0 |                                                                                                                          |
-| mypy               | subscript: other[...]                      |      3 |      3 |        2 |                                                                                                                 edges[v] |
-| mypy               | attr: modclass.x                           |      2 |      1 |        1 |                                                                                                    TypeVarId.next_raw_id |
-| mypy               | call: param name                           |      2 |      1 |        0 |                                                                                                                          |
-| mypy               | call: builtin type()                       |      2 |      2 |        1 |                                                                                                            type(runtime) |
-| mypy               | call: builtin.method()                     |      2 |      1 |        0 |                                                                                                                          |
-| mypy               | call: builtin format()                     |      2 |      1 |        1 |                                                                                                     format(typ.fallback) |
-| mypy               | set (mixed/unknown elements)               |      2 |      2 |        2 |                                                                                                                      {s} |
-| mypy               | call: builtin min()                        |      2 |      2 |        2 |                                                                                      min(psutil_cpu_count, os_cpu_count) |
-| mypy               | call: other callee                         |      1 |      1 |        0 |                                                                                                                          |
-| mypy               | call: builtin object()                     |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | attr: other.x                              |      1 |      1 |        1 |                                                                                                                    e.msg |
-| mypy               | copy: builtin                              |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | call: global name                          |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | call: builtin str()                        |      1 |      1 |        1 |                                                                                                            str(stub_sig) |
-| mypy               | call: builtin max()                        |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | call: builtin iter()                       |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | call: builtin property()                   |      1 |      0 |        0 |                                                                                                                          |
-| mypy               | copy: modclass                             |      1 |      0 |        0 |                                                                                                                          |
+| corpus             | shape                                        | no fix | traced | one type |
+| ------------------ | -------------------------------------------- | -----: | -----: | -------: |
+| django             | `call: chained .method()`                    |  1,355 |    959 |      602 |
+| django             | `call: self.method()`                        |    987 |    662 |      425 |
+| django             | `call: param.method()`                       |    657 |    478 |      378 |
+| django             | `call: imported function`                    |    656 |    275 |      201 |
+| django             | `call: local.method()`                       |    546 |    387 |      266 |
+| django             | `empty list`                                 |    452 |      0 |        0 |
+| django             | `copy: local`                                |    435 |    322 |      227 |
+| django             | `attr: chained`                              |    406 |    280 |      183 |
+| django             | `None literal`                               |    365 |    104 |      104 |
+| django             | `copy: param (unannotated)`                  |    348 |    236 |      142 |
+| django             | `attr: self.x`                               |    345 |    268 |      144 |
+| django             | `call: imported.attr()`                      |    301 |    142 |       95 |
+| django             | `other constant`                             |    296 |     22 |       22 |
+| django             | `subscript: other`                           |    265 |    198 |      161 |
+| django             | `dict (mixed/unknown elements)`              |    236 |    104 |       73 |
+| django             | `empty dict`                                 |    201 |      0 |        0 |
+| django             | `call: module function (unannotated)`        |    195 |    142 |      105 |
+| django             | `tuple (mixed/unknown elements)`             |    193 |     95 |       72 |
+| django             | `copy: imported`                             |    179 |      8 |        7 |
+| django             | `call: builtin getattr()`                    |    174 |    154 |       72 |
+| django             | `subscript: local[...]`                      |    173 |    107 |       90 |
+| django             | `attr: local.x`                              |    170 |    129 |       92 |
+| django             | `ListComp (unknown elements)`                |    165 |    118 |       81 |
+| django             | `list (mixed/unknown elements)`              |    157 |     53 |       41 |
+| django             | `conditional`                                |    157 |    127 |       67 |
+| django             | `binop (unknown operands)`                   |    140 |     92 |       85 |
+| django             | `subscript: param[...]`                      |    136 |    111 |       94 |
+| django             | `attr: param.x`                              |    127 |    105 |       76 |
+| django             | `boolop (or)`                                |    112 |     92 |       68 |
+| django             | `call: builtin set()`                        |    109 |     16 |       12 |
+| django             | `attr: imported.x`                           |    105 |     21 |       17 |
+| django             | `call: imported class`                       |     96 |     14 |       14 |
+| django             | `call: module.func()`                        |     96 |     71 |       61 |
+| django             | `call: builtin enumerate()`                  |     85 |     67 |       37 |
+| django             | `call: builtin sorted()`                     |     77 |     64 |       58 |
+| django             | `call: builtin list()`                       |     62 |     47 |       34 |
+| django             | `subscript: imported[...]`                   |     59 |     40 |       36 |
+| django             | `call: builtin zip()`                        |     58 |     38 |       16 |
+| django             | `DictComp (unknown elements)`                |     57 |     37 |       21 |
+| django             | `call: other name`                           |     52 |     36 |       21 |
+| django             | `call: local name`                           |     51 |     36 |       18 |
+| django             | `call: builtin property()`                   |     49 |      0 |        0 |
+| django             | `boolop (and)`                               |     42 |     29 |       22 |
+| django             | `call: global.method()`                      |     42 |     28 |       17 |
+| django             | `binop (one side literal)`                   |     42 |     16 |       16 |
+| django             | `SetComp (unknown elements)`                 |     40 |     21 |       17 |
+| django             | `copy: other`                                |     40 |      7 |        5 |
+| django             | `empty tuple`                                |     39 |      0 |        0 |
+| django             | `compare`                                    |     35 |     20 |       20 |
+| django             | `call: builtin next()`                       |     32 |     31 |       27 |
+| django             | `call: module class`                         |     31 |      7 |        7 |
+| django             | `GeneratorExp (unknown elements)`            |     29 |     26 |       25 |
+| django             | `copy: global`                               |     27 |      6 |        6 |
+| django             | `copy: modclass`                             |     27 |      0 |        0 |
+| django             | `copy: moddef`                               |     26 |      0 |        0 |
+| django             | `call: other callee`                         |     24 |     16 |       12 |
+| django             | `attr: module.x`                             |     21 |      5 |        4 |
+| django             | `call: builtin iter()`                       |     21 |     17 |       16 |
+| django             | `call: builtin reversed()`                   |     19 |     16 |        6 |
+| django             | `await: call: self.method()`                 |     18 |     14 |        6 |
+| django             | `call: builtin tuple()`                      |     18 |     14 |        8 |
+| django             | `attr: modclass.x`                           |     17 |      1 |        1 |
+| django             | `call: builtin type()`                       |     17 |     14 |       10 |
+| django             | `await: call: chained .method()`             |     17 |     17 |        3 |
+| django             | `call: other.method()`                       |     15 |     11 |        6 |
+| django             | `call: builtin object()`                     |     14 |      2 |        2 |
+| django             | `call: modclass.method()`                    |     14 |      5 |        5 |
+| django             | `binop: literal % formatting`                |     13 |      8 |        8 |
+| django             | `attr: cls.x`                                |     12 |     12 |       10 |
+| django             | `copy: builtin`                              |     12 |      1 |        1 |
+| django             | `call: builtin staticmethod()`               |     11 |      0 |        0 |
+| django             | `call: builtin max()`                        |     11 |      7 |        7 |
+| django             | `call: cls.method()`                         |     10 |      6 |        4 |
+| django             | `copy: self`                                 |      9 |      7 |        4 |
+| django             | `call: capitalised`                          |      9 |      6 |        3 |
+| django             | `await: call: other name`                    |      9 |      9 |        8 |
+| django             | `call: builtin dict()`                       |      8 |      7 |        3 |
+| django             | `call: builtin.method()`                     |      8 |      6 |        5 |
+| django             | `call: builtin map()`                        |      7 |      3 |        2 |
+| django             | `call: builtin frozenset()`                  |      7 |      1 |        1 |
+| django             | `set (mixed/unknown elements)`               |      6 |      4 |        4 |
+| django             | `call: builtin min()`                        |      6 |      2 |        2 |
+| django             | `attr: global.x`                             |      6 |      1 |        1 |
+| django             | `await: call: module.func()`                 |      6 |      0 |        0 |
+| django             | `call: param name`                           |      5 |      5 |        1 |
+| django             | `await: call: param name`                    |      4 |      4 |        3 |
+| django             | `call: builtin sum()`                        |      4 |      3 |        3 |
+| django             | `call: builtin filter()`                     |      4 |      4 |        4 |
+| django             | `call: builtin divmod()`                     |      4 |      4 |        4 |
+| django             | `call: builtin str()`                        |      3 |      2 |        2 |
+| django             | `call: builtin len()`                        |      3 |      2 |        2 |
+| django             | `call: str-literal.method()`                 |      3 |      3 |        3 |
+| django             | `attr: other.x`                              |      3 |      3 |        2 |
+| django             | `await: call: param.method()`                |      2 |      2 |        0 |
+| django             | `subscript: self[...]`                       |      2 |      1 |        1 |
+| django             | `call: global name`                          |      2 |      0 |        0 |
+| django             | `call: builtin slice()`                      |      2 |      1 |        1 |
+| django             | `await: call: other callee`                  |      2 |      2 |        2 |
+| django             | `JoinedStr`                                  |      2 |      1 |        1 |
+| django             | `attr: builtin.x`                            |      2 |      1 |        1 |
+| django             | `call: builtin int()`                        |      2 |      1 |        1 |
+| django             | `call: bytes-literal.method()`               |      2 |      1 |        1 |
+| django             | `subscript: global[...]`                     |      2 |      2 |        2 |
+| django             | `await: call: local.method()`                |      1 |      1 |        0 |
+| django             | `await: call: module function (unannotated)` |      1 |      1 |        1 |
+| django             | `call: builtin abs()`                        |      1 |      1 |        1 |
+| django             | `await: call: local name`                    |      1 |      1 |        0 |
+| django             | `await: call: other.method()`                |      1 |      1 |        0 |
+| django             | `call: builtin vars()`                       |      1 |      1 |        0 |
+| django             | `unaryop USub`                               |      1 |      0 |        0 |
+| django             | `call: builtin super()`                      |      1 |      1 |        1 |
+| django             | `subscript: other[...]`                      |      1 |      1 |        0 |
+| django             | `await: call: imported function`             |      1 |      1 |        0 |
+| django             | `call: builtin __import__()`                 |      1 |      1 |        1 |
+| django             | `call: builtin repr()`                       |      1 |      1 |        1 |
+| django             | `call: builtin memoryview()`                 |      1 |      1 |        1 |
+| sqlalchemy         | `call: chained .method()`                    |    961 |    468 |      318 |
+| sqlalchemy         | `other constant`                             |    773 |      8 |        8 |
+| sqlalchemy         | `call: self.method()`                        |    644 |    350 |      202 |
+| sqlalchemy         | `attr: chained`                              |    576 |    287 |      220 |
+| sqlalchemy         | `call: local.method()`                       |    528 |    289 |      184 |
+| sqlalchemy         | `call: param.method()`                       |    458 |    279 |      162 |
+| sqlalchemy         | `attr: self.x`                               |    373 |    290 |      163 |
+| sqlalchemy         | `copy: local`                                |    360 |    222 |      137 |
+| sqlalchemy         | `subscript: other`                           |    357 |    215 |      138 |
+| sqlalchemy         | `call: imported function`                    |    344 |    166 |       97 |
+| sqlalchemy         | `attr: param.x`                              |    337 |    272 |      166 |
+| sqlalchemy         | `call: imported.attr()`                      |    328 |    170 |      115 |
+| sqlalchemy         | `attr: local.x`                              |    264 |    209 |      133 |
+| sqlalchemy         | `tuple (mixed/unknown elements)`             |    206 |    139 |       93 |
+| sqlalchemy         | `copy: param (unannotated)`                  |    183 |    135 |       89 |
+| sqlalchemy         | `subscript: local[...]`                      |    180 |     99 |       59 |
+| sqlalchemy         | `None literal`                               |    173 |     73 |       73 |
+| sqlalchemy         | `ListComp (unknown elements)`                |    159 |    119 |       71 |
+| sqlalchemy         | `copy: modclass`                             |    147 |      1 |        1 |
+| sqlalchemy         | `attr: imported.x`                           |    145 |     17 |       17 |
+| sqlalchemy         | `call: imported class`                       |    129 |     10 |       10 |
+| sqlalchemy         | `call: builtin list()`                       |    120 |     75 |       44 |
+| sqlalchemy         | `copy: imported`                             |    118 |      1 |        1 |
+| sqlalchemy         | `empty list`                                 |    114 |      0 |        0 |
+| sqlalchemy         | `copy: param (annotated)`                    |    110 |     89 |       54 |
+| sqlalchemy         | `call: module.func()`                        |    108 |     49 |       40 |
+| sqlalchemy         | `dict (mixed/unknown elements)`              |    103 |     16 |       14 |
+| sqlalchemy         | `call: builtin getattr()`                    |    102 |     83 |       39 |
+| sqlalchemy         | `binop (unknown operands)`                   |     90 |     48 |       37 |
+| sqlalchemy         | `call: param name`                           |     90 |     36 |       14 |
+| sqlalchemy         | `call: builtin set()`                        |     86 |     37 |       23 |
+| sqlalchemy         | `empty dict`                                 |     82 |      0 |        0 |
+| sqlalchemy         | `boolop (or)`                                |     76 |     62 |       49 |
+| sqlalchemy         | `call: other name`                           |     76 |     57 |       33 |
+| sqlalchemy         | `subscript: param[...]`                      |     76 |     61 |       36 |
+| sqlalchemy         | `conditional`                                |     72 |     42 |       22 |
+| sqlalchemy         | `call: local name`                           |     63 |     51 |       25 |
+| sqlalchemy         | `copy: other`                                |     63 |     19 |       14 |
+| sqlalchemy         | `list (mixed/unknown elements)`              |     62 |     18 |       10 |
+| sqlalchemy         | `DictComp (unknown elements)`                |     61 |     35 |       15 |
+| sqlalchemy         | `call: module function (unannotated)`        |     59 |     49 |       37 |
+| sqlalchemy         | `call: builtin zip()`                        |     57 |     35 |       17 |
+| sqlalchemy         | `copy: global`                               |     50 |      6 |        6 |
+| sqlalchemy         | `call: builtin dict()`                       |     49 |     23 |       12 |
+| sqlalchemy         | `call: builtin enumerate()`                  |     42 |     30 |        8 |
+| sqlalchemy         | `call: builtin tuple()`                      |     38 |     15 |        5 |
+| sqlalchemy         | `call: other.method()`                       |     36 |     20 |       10 |
+| sqlalchemy         | `SetComp (unknown elements)`                 |     35 |     22 |       16 |
+| sqlalchemy         | `call: module class`                         |     35 |     17 |       17 |
+| sqlalchemy         | `call: cls.method()`                         |     34 |     28 |       19 |
+| sqlalchemy         | `call: module function (annotated)`          |     32 |     29 |       14 |
+| sqlalchemy         | `boolop (and)`                               |     26 |     26 |       22 |
+| sqlalchemy         | `call: builtin.method()`                     |     24 |     22 |       10 |
+| sqlalchemy         | `attr: modclass.x`                           |     21 |      0 |        0 |
+| sqlalchemy         | `attr: cls.x`                                |     20 |     19 |        9 |
+| sqlalchemy         | `empty tuple`                                |     16 |      0 |        0 |
+| sqlalchemy         | `compare`                                    |     15 |      9 |        9 |
+| sqlalchemy         | `call: builtin type()`                       |     15 |     10 |        3 |
+| sqlalchemy         | `call: other callee`                         |     15 |     11 |        5 |
+| sqlalchemy         | `await: call: imported function`             |     15 |     13 |        8 |
+| sqlalchemy         | `GeneratorExp (unknown elements)`            |     14 |      7 |        7 |
+| sqlalchemy         | `attr: global.x`                             |     14 |      0 |        0 |
+| sqlalchemy         | `call: builtin sorted()`                     |     13 |      9 |        8 |
+| sqlalchemy         | `call: global.method()`                      |     13 |     11 |       10 |
+| sqlalchemy         | `copy: moddef`                               |     13 |      0 |        0 |
+| sqlalchemy         | `subscript: global[...]`                     |     12 |     11 |        9 |
+| sqlalchemy         | `call: global name`                          |     12 |     12 |        4 |
+| sqlalchemy         | `attr: module.x`                             |     11 |      9 |        9 |
+| sqlalchemy         | `copy: builtin`                              |     11 |      0 |        0 |
+| sqlalchemy         | `attr: other.x`                              |     10 |      7 |        7 |
+| sqlalchemy         | `call: builtin object()`                     |     10 |      6 |        6 |
+| sqlalchemy         | `binop (one side literal)`                   |      9 |      6 |        6 |
+| sqlalchemy         | `call: modclass.method()`                    |      8 |      8 |        5 |
+| sqlalchemy         | `subscript: other[...]`                      |      8 |      8 |        4 |
+| sqlalchemy         | `call: builtin reversed()`                   |      8 |      6 |        6 |
+| sqlalchemy         | `copy: self`                                 |      7 |      6 |        5 |
+| sqlalchemy         | `await: call: chained .method()`             |      6 |      1 |        1 |
+| sqlalchemy         | `set (mixed/unknown elements)`               |      6 |      4 |        2 |
+| sqlalchemy         | `call: builtin __import__()`                 |      5 |      2 |        2 |
+| sqlalchemy         | `await: call: self.method()`                 |      4 |      4 |        4 |
+| sqlalchemy         | `call: self name`                            |      4 |      4 |        2 |
+| sqlalchemy         | `call: builtin frozenset()`                  |      4 |      0 |        0 |
+| sqlalchemy         | `call: builtin int()`                        |      3 |      1 |        1 |
+| sqlalchemy         | `call: builtin bool()`                       |      3 |      3 |        3 |
+| sqlalchemy         | `subscript: imported[...]`                   |      3 |      2 |        1 |
+| sqlalchemy         | `call: builtin staticmethod()`               |      2 |      0 |        0 |
+| sqlalchemy         | `await: call: local.method()`                |      2 |      0 |        0 |
+| sqlalchemy         | `unaryop USub`                               |      2 |      1 |        1 |
+| sqlalchemy         | `call: builtin next()`                       |      2 |      2 |        0 |
+| sqlalchemy         | `call: builtin max()`                        |      2 |      2 |        2 |
+| sqlalchemy         | `call: builtin globals()`                    |      2 |      1 |        1 |
+| sqlalchemy         | `call: builtin eval()`                       |      2 |      2 |        0 |
+| sqlalchemy         | `subscript: self[...]`                       |      2 |      2 |        0 |
+| sqlalchemy         | `call: builtin vars()`                       |      2 |      2 |        2 |
+| sqlalchemy         | `call: builtin sum()`                        |      2 |      0 |        0 |
+| sqlalchemy         | `await: call: module function (unannotated)` |      2 |      2 |        2 |
+| sqlalchemy         | `await: copy: param (annotated)`             |      1 |      0 |        0 |
+| sqlalchemy         | `JoinedStr`                                  |      1 |      1 |        1 |
+| sqlalchemy         | `call: builtin len()`                        |      1 |      1 |        1 |
+| sqlalchemy         | `await: call: module.func()`                 |      1 |      0 |        0 |
+| sqlalchemy         | `await: call: builtin anext()`               |      1 |      0 |        0 |
+| sqlalchemy         | `call: builtin property()`                   |      1 |      0 |        0 |
+| sqlalchemy         | `subscript: modclass[...]`                   |      1 |      0 |        0 |
+| sqlalchemy         | `call: builtin str()`                        |      1 |      1 |        1 |
+| sqlalchemy         | `binop: literal % formatting`                |      1 |      1 |        1 |
+| sqlalchemy         | `call: capitalised`                          |      1 |      1 |        1 |
+| sqlalchemy         | `call: builtin id()`                         |      1 |      1 |        1 |
+| sqlalchemy         | `await: copy: local`                         |      1 |      1 |        0 |
+| sqlalchemy         | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| pydantic           | `call: chained .method()`                    |    126 |     54 |       36 |
+| pydantic           | `call: local.method()`                       |    114 |     58 |       30 |
+| pydantic           | `call: imported function`                    |    112 |     60 |       41 |
+| pydantic           | `call: param.method()`                       |    101 |     59 |       31 |
+| pydantic           | `call: self.method()`                        |     56 |     32 |        9 |
+| pydantic           | `call: builtin getattr()`                    |     53 |     29 |       17 |
+| pydantic           | `call: module function (annotated)`          |     53 |     14 |        8 |
+| pydantic           | `attr: param.x`                              |     49 |     25 |       12 |
+| pydantic           | `conditional`                                |     37 |     18 |       10 |
+| pydantic           | `copy: param (annotated)`                    |     36 |     20 |       12 |
+| pydantic           | `copy: local`                                |     35 |     16 |       12 |
+| pydantic           | `tuple (mixed/unknown elements)`             |     35 |      8 |        6 |
+| pydantic           | `call: imported.attr()`                      |     33 |     28 |       10 |
+| pydantic           | `attr: chained`                              |     33 |      5 |        4 |
+| pydantic           | `subscript: other`                           |     32 |     11 |        3 |
+| pydantic           | `boolop (or)`                                |     27 |     14 |        6 |
+| pydantic           | `attr: local.x`                              |     26 |      9 |        6 |
+| pydantic           | `subscript: param[...]`                      |     26 |     15 |       12 |
+| pydantic           | `empty dict`                                 |     25 |      0 |        0 |
+| pydantic           | `binop (unknown operands)`                   |     23 |      7 |        5 |
+| pydantic           | `call: module class`                         |     23 |      2 |        2 |
+| pydantic           | `dict (mixed/unknown elements)`              |     22 |     15 |       11 |
+| pydantic           | `copy: imported`                             |     21 |      2 |        2 |
+| pydantic           | `attr: cls.x`                                |     20 |      6 |        4 |
+| pydantic           | `call: module.func()`                        |     20 |      9 |        6 |
+| pydantic           | `subscript: imported[...]`                   |     20 |      1 |        0 |
+| pydantic           | `other constant`                             |     20 |      1 |        1 |
+| pydantic           | `None literal`                               |     19 |     10 |       10 |
+| pydantic           | `ListComp (unknown elements)`                |     16 |      7 |        3 |
+| pydantic           | `empty list`                                 |     16 |      0 |        0 |
+| pydantic           | `DictComp (unknown elements)`                |     15 |      2 |        1 |
+| pydantic           | `copy: builtin`                              |     14 |      0 |        0 |
+| pydantic           | `attr: self.x`                               |     13 |      6 |        3 |
+| pydantic           | `call: builtin zip()`                        |     13 |      2 |        2 |
+| pydantic           | `subscript: local[...]`                      |     12 |      4 |        4 |
+| pydantic           | `copy: global`                               |     12 |      5 |        3 |
+| pydantic           | `call: builtin tuple()`                      |     12 |      5 |        4 |
+| pydantic           | `call: builtin enumerate()`                  |     12 |      2 |        1 |
+| pydantic           | `call: builtin dict()`                       |     12 |      1 |        0 |
+| pydantic           | `call: param name`                           |     11 |     11 |        6 |
+| pydantic           | `call: other name`                           |     10 |      5 |        3 |
+| pydantic           | `call: builtin list()`                       |     10 |      7 |        6 |
+| pydantic           | `set (mixed/unknown elements)`               |     10 |      0 |        0 |
+| pydantic           | `call: builtin set()`                        |      8 |      1 |        1 |
+| pydantic           | `GeneratorExp (unknown elements)`            |      8 |      2 |        2 |
+| pydantic           | `call: builtin reversed()`                   |      7 |      6 |        2 |
+| pydantic           | `call: global.method()`                      |      7 |      1 |        0 |
+| pydantic           | `call: builtin object()`                     |      6 |      1 |        1 |
+| pydantic           | `copy: other`                                |      6 |      5 |        5 |
+| pydantic           | `attr: imported.x`                           |      6 |      2 |        2 |
+| pydantic           | `call: cls.method()`                         |      6 |      2 |        1 |
+| pydantic           | `call: local name`                           |      5 |      3 |        2 |
+| pydantic           | `call: capitalised`                          |      5 |      2 |        2 |
+| pydantic           | `list (mixed/unknown elements)`              |      5 |      3 |        2 |
+| pydantic           | `attr: module.x`                             |      4 |      0 |        0 |
+| pydantic           | `-`                                          |      4 |      0 |        0 |
+| pydantic           | `call: builtin type()`                       |      4 |      3 |        0 |
+| pydantic           | `call: other.method()`                       |      4 |      4 |        2 |
+| pydantic           | `call: imported class`                       |      4 |      0 |        0 |
+| pydantic           | `call: builtin next()`                       |      4 |      2 |        1 |
+| pydantic           | `call: global name`                          |      4 |      4 |        4 |
+| pydantic           | `SetComp (unknown elements)`                 |      3 |      2 |        0 |
+| pydantic           | `compare`                                    |      3 |      0 |        0 |
+| pydantic           | `attr: modclass.x`                           |      3 |      2 |        2 |
+| pydantic           | `call: builtin.method()`                     |      3 |      3 |        2 |
+| pydantic           | `NamedExpr`                                  |      2 |      0 |        0 |
+| pydantic           | `call: builtin len()`                        |      2 |      2 |        2 |
+| pydantic           | `attr: builtin.x`                            |      2 |      0 |        0 |
+| pydantic           | `copy: cls`                                  |      2 |      2 |        1 |
+| pydantic           | `subscript: builtin[...]`                    |      2 |      0 |        0 |
+| pydantic           | `attr: other.x`                              |      2 |      0 |        0 |
+| pydantic           | `subscript: global[...]`                     |      2 |      1 |        1 |
+| pydantic           | `call: builtin max()`                        |      2 |      1 |        1 |
+| pydantic           | `call: builtin min()`                        |      2 |      1 |        1 |
+| pydantic           | `call: str-literal.method()`                 |      2 |      0 |        0 |
+| pydantic           | `call: builtin globals()`                    |      1 |      1 |        1 |
+| pydantic           | `copy: moddef`                               |      1 |      0 |        0 |
+| pydantic           | `call: modclass.method()`                    |      1 |      1 |        1 |
+| pydantic           | `binop (one side literal)`                   |      1 |      1 |        1 |
+| pydantic           | `call: builtin iter()`                       |      1 |      0 |        0 |
+| pydantic           | `call: builtin open()`                       |      1 |      0 |        0 |
+| pydantic           | `copy: self`                                 |      1 |      0 |        0 |
+| pandas             | `call: local.method()`                       |  6,252 |  5,163 |    4,816 |
+| pandas             | `call: chained .method()`                    |  4,857 |  3,756 |    3,402 |
+| pandas             | `call: module.func()`                        |  3,635 |  2,468 |    2,328 |
+| pandas             | `copy: param (unannotated)`                  |  1,960 |  1,741 |      800 |
+| pandas             | `call: imported function`                    |  1,616 |  1,188 |    1,026 |
+| pandas             | `subscript: other`                           |  1,515 |  1,230 |    1,101 |
+| pandas             | `call: param.method()`                       |  1,479 |  1,024 |      820 |
+| pandas             | `binop (unknown operands)`                   |  1,123 |    958 |      812 |
+| pandas             | `subscript: local[...]`                      |    948 |    754 |      711 |
+| pandas             | `attr: chained`                              |    805 |    537 |      438 |
+| pandas             | `list (mixed/unknown elements)`              |    798 |    548 |      410 |
+| pandas             | `call: param name`                           |    769 |    726 |      271 |
+| pandas             | `call: imported class`                       |    681 |    576 |      571 |
+| pandas             | `call: self.method()`                        |    618 |    419 |      258 |
+| pandas             | `call: imported.attr()`                      |    607 |    484 |      397 |
+| pandas             | `call: other callee`                         |    503 |    418 |      339 |
+| pandas             | `conditional`                                |    473 |    379 |      199 |
+| pandas             | `attr: local.x`                              |    453 |    342 |      282 |
+| pandas             | `copy: local`                                |    421 |    277 |      199 |
+| pandas             | `subscript: param[...]`                      |    384 |    276 |      165 |
+| pandas             | `ListComp (unknown elements)`                |    377 |    197 |      143 |
+| pandas             | `tuple (mixed/unknown elements)`             |    371 |    225 |      179 |
+| pandas             | `compare`                                    |    345 |    267 |      246 |
+| pandas             | `dict (mixed/unknown elements)`              |    334 |    210 |      184 |
+| pandas             | `attr: self.x`                               |    316 |    232 |      134 |
+| pandas             | `call: builtin zip()`                        |    307 |    207 |      147 |
+| pandas             | `call: builtin getattr()`                    |    307 |    225 |      155 |
+| pandas             | `attr: param.x`                              |    300 |    197 |      110 |
+| pandas             | `call: local name`                           |    296 |    255 |      147 |
+| pandas             | `call: module function (unannotated)`        |    283 |    140 |       87 |
+| pandas             | `binop (one side literal)`                   |    280 |    211 |      190 |
+| pandas             | `empty list`                                 |    278 |      0 |        0 |
+| pandas             | `call: builtin enumerate()`                  |    235 |    157 |      109 |
+| pandas             | `other constant`                             |    176 |     48 |       48 |
+| pandas             | `call: builtin list()`                       |    170 |    126 |       89 |
+| pandas             | `None literal`                               |    157 |    113 |      113 |
+| pandas             | `attr: module.x`                             |    121 |     84 |       82 |
+| pandas             | `Lambda`                                     |    121 |     78 |       78 |
+| pandas             | `call: global.method()`                      |    118 |      4 |        2 |
+| pandas             | `call: other name`                           |    113 |     77 |       55 |
+| pandas             | `call: module function (annotated)`          |    100 |     62 |       37 |
+| pandas             | `attr: imported.x`                           |     94 |     23 |       23 |
+| pandas             | `empty dict`                                 |     90 |      0 |        0 |
+| pandas             | `copy: imported`                             |     89 |     51 |       51 |
+| pandas             | `copy: other`                                |     78 |      8 |        4 |
+| pandas             | `copy: param (annotated)`                    |     76 |     53 |       37 |
+| pandas             | `GeneratorExp (unknown elements)`            |     70 |     60 |       60 |
+| pandas             | `call: capitalised`                          |     60 |     59 |       58 |
+| pandas             | `copy: builtin`                              |     59 |     42 |       42 |
+| pandas             | `DictComp (unknown elements)`                |     58 |     43 |       33 |
+| pandas             | `call: builtin set()`                        |     49 |     19 |       16 |
+| pandas             | `call: other.method()`                       |     47 |     29 |       24 |
+| pandas             | `unaryop Invert`                             |     40 |     28 |       26 |
+| pandas             | `boolop (and)`                               |     37 |     23 |       22 |
+| pandas             | `call: builtin next()`                       |     36 |     29 |       21 |
+| pandas             | `call: builtin divmod()`                     |     35 |     24 |       24 |
+| pandas             | `boolop (or)`                                |     34 |     22 |       22 |
+| pandas             | `call: builtin dict()`                       |     31 |     11 |        6 |
+| pandas             | `call: builtin sorted()`                     |     29 |     23 |       22 |
+| pandas             | `call: builtin type()`                       |     27 |     25 |        6 |
+| pandas             | `call: builtin tuple()`                      |     26 |     16 |        9 |
+| pandas             | `call: builtin slice()`                      |     25 |     22 |       22 |
+| pandas             | `call: cls name`                             |     22 |     15 |        1 |
+| pandas             | `call: builtin max()`                        |     20 |     15 |       13 |
+| pandas             | `call: builtin open()`                       |     20 |     13 |        6 |
+| pandas             | `unaryop USub`                               |     19 |     14 |       14 |
+| pandas             | `copy: self`                                 |     18 |     15 |       10 |
+| pandas             | `subscript: self[...]`                       |     18 |     16 |       11 |
+| pandas             | `subscript: imported[...]`                   |     17 |     13 |       11 |
+| pandas             | `copy: moddef`                               |     17 |      0 |        0 |
+| pandas             | `call: cls.method()`                         |     16 |     12 |       10 |
+| pandas             | `attr: other.x`                              |     14 |      1 |        1 |
+| pandas             | `SetComp (unknown elements)`                 |     14 |     10 |        5 |
+| pandas             | `copy: global`                               |     13 |      7 |        6 |
+| pandas             | `subscript: global[...]`                     |     13 |     11 |        4 |
+| pandas             | `set (mixed/unknown elements)`               |     12 |      5 |        5 |
+| pandas             | `call: builtin min()`                        |     12 |      7 |        7 |
+| pandas             | `call: modclass.method()`                    |     11 |      8 |        8 |
+| pandas             | `call: builtin len()`                        |     11 |      5 |        5 |
+| pandas             | `call: builtin.method()`                     |     10 |      9 |        8 |
+| pandas             | `copy: modclass`                             |     10 |      0 |        0 |
+| pandas             | `JoinedStr`                                  |      8 |      4 |        4 |
+| pandas             | `attr: cls.x`                                |      7 |      5 |        4 |
+| pandas             | `call: builtin map()`                        |      7 |      7 |        7 |
+| pandas             | `call: builtin abs()`                        |      7 |      6 |        6 |
+| pandas             | `call: module class`                         |      7 |      3 |        2 |
+| pandas             | `subscript: other[...]`                      |      6 |      3 |        3 |
+| pandas             | `call: builtin frozenset()`                  |      6 |      2 |        2 |
+| pandas             | `call: builtin iter()`                       |      6 |      4 |        4 |
+| pandas             | `call: builtin property()`                   |      5 |      0 |        0 |
+| pandas             | `call: builtin eval()`                       |      5 |      5 |        5 |
+| pandas             | `call: builtin sum()`                        |      4 |      2 |        2 |
+| pandas             | `call: builtin range()`                      |      4 |      2 |        2 |
+| pandas             | `call: builtin pow()`                        |      4 |      4 |        4 |
+| pandas             | `call: builtin all()`                        |      3 |      2 |        2 |
+| pandas             | `call: global name`                          |      3 |      0 |        0 |
+| pandas             | `call: builtin round()`                      |      3 |      1 |        1 |
+| pandas             | `unaryop UAdd`                               |      3 |      3 |        3 |
+| pandas             | `copy: cls`                                  |      2 |      0 |        0 |
+| pandas             | `call: builtin object()`                     |      2 |      1 |        1 |
+| pandas             | `call: str-literal.method()`                 |      2 |      1 |        1 |
+| pandas             | `call: self name`                            |      1 |      1 |        1 |
+| pandas             | `attr: modclass.x`                           |      1 |      1 |        1 |
+| pandas             | `call: builtin ord()`                        |      1 |      0 |        0 |
+| pandas             | `call: builtin isinstance()`                 |      1 |      1 |        1 |
+| pandas             | `call: builtin float()`                      |      1 |      0 |        0 |
+| pandas             | `call: builtin reversed()`                   |      1 |      0 |        0 |
+| pandas             | `call: builtin bytes()`                      |      1 |      1 |        1 |
+| pandas             | `attr: builtin.x`                            |      1 |      1 |        1 |
+| pandas             | `empty tuple`                                |      1 |      0 |        0 |
+| pandas             | `call: builtin repr()`                       |      1 |      1 |        1 |
+| structlog          | `copy: other`                                |     47 |      2 |        2 |
+| structlog          | `call: param.method()`                       |     27 |     23 |       11 |
+| structlog          | `call: imported.attr()`                      |     16 |     15 |       13 |
+| structlog          | `attr: chained`                              |     12 |      2 |        2 |
+| structlog          | `call: chained .method()`                    |      8 |      6 |        5 |
+| structlog          | `call: module function (annotated)`          |      7 |      2 |        1 |
+| structlog          | `copy: param (annotated)`                    |      5 |      5 |        4 |
+| structlog          | `call: imported function`                    |      5 |      1 |        1 |
+| structlog          | `copy: local`                                |      5 |      4 |        4 |
+| structlog          | `call: self.method()`                        |      4 |      4 |        0 |
+| structlog          | `empty list`                                 |      4 |      0 |        0 |
+| structlog          | `call: module.func()`                        |      4 |      3 |        2 |
+| structlog          | `attr: self.x`                               |      3 |      3 |        1 |
+| structlog          | `boolop (or)`                                |      3 |      3 |        2 |
+| structlog          | `tuple (mixed/unknown elements)`             |      3 |      2 |        1 |
+| structlog          | `subscript: imported[...]`                   |      3 |      3 |        3 |
+| structlog          | `None literal`                               |      3 |      2 |        2 |
+| structlog          | `DictComp (unknown elements)`                |      3 |      3 |        3 |
+| structlog          | `call: builtin object()`                     |      3 |      0 |        0 |
+| structlog          | `copy: global`                               |      3 |      0 |        0 |
+| structlog          | `call: builtin getattr()`                    |      3 |      3 |        1 |
+| structlog          | `await: call: chained .method()`             |      2 |      0 |        0 |
+| structlog          | `dict (mixed/unknown elements)`              |      2 |      1 |        1 |
+| structlog          | `empty dict`                                 |      2 |      0 |        0 |
+| structlog          | `subscript: global[...]`                     |      2 |      2 |        2 |
+| structlog          | `subscript: other`                           |      2 |      2 |        1 |
+| structlog          | `copy: moddef`                               |      1 |      0 |        0 |
+| structlog          | `call: local name`                           |      1 |      1 |        0 |
+| structlog          | `conditional`                                |      1 |      1 |        0 |
+| structlog          | `call: local.method()`                       |      1 |      1 |        1 |
+| structlog          | `other constant`                             |      1 |      1 |        1 |
+| structlog          | `call: builtin type()`                       |      1 |      1 |        1 |
+| structlog          | `binop (unknown operands)`                   |      1 |      1 |        1 |
+| structlog          | `attr: param.x`                              |      1 |      1 |        0 |
+| structlog          | `subscript: local[...]`                      |      1 |      1 |        0 |
+| attrs              | `call: imported function`                    |     35 |      6 |        3 |
+| attrs              | `copy: param (unannotated)`                  |     18 |     17 |        6 |
+| attrs              | `call: module function (annotated)`          |     18 |     15 |       10 |
+| attrs              | `call: module function (unannotated)`        |     16 |     15 |        8 |
+| attrs              | `call: local.method()`                       |     12 |      9 |        2 |
+| attrs              | `empty list`                                 |     11 |      0 |        0 |
+| attrs              | `empty dict`                                 |     11 |      0 |        0 |
+| attrs              | `attr: self.x`                               |     11 |     11 |        7 |
+| attrs              | `call: builtin getattr()`                    |     10 |      7 |        1 |
+| attrs              | `call: module.func()`                        |      8 |      6 |        1 |
+| attrs              | `copy: local`                                |      8 |      8 |        8 |
+| attrs              | `conditional`                                |      8 |      4 |        4 |
+| attrs              | `ListComp (unknown elements)`                |      8 |      4 |        3 |
+| attrs              | `attr: local.x`                              |      8 |      7 |        5 |
+| attrs              | `call: self.method()`                        |      6 |      6 |        0 |
+| attrs              | `compare`                                    |      5 |      0 |        0 |
+| attrs              | `call: param.method()`                       |      5 |      3 |        2 |
+| attrs              | `tuple (mixed/unknown elements)`             |      5 |      4 |        4 |
+| attrs              | `copy: imported`                             |      4 |      0 |        0 |
+| attrs              | `dict (mixed/unknown elements)`              |      4 |      3 |        2 |
+| attrs              | `call: builtin type()`                       |      4 |      3 |        0 |
+| attrs              | `attr: modclass.x`                           |      4 |      3 |        3 |
+| attrs              | `DictComp (unknown elements)`                |      4 |      0 |        0 |
+| attrs              | `boolop (or)`                                |      4 |      3 |        3 |
+| attrs              | `attr: param.x`                              |      3 |      3 |        1 |
+| attrs              | `call: builtin set()`                        |      3 |      1 |        1 |
+| attrs              | `attr: cls.x`                                |      3 |      3 |        2 |
+| attrs              | `attr: chained`                              |      3 |      2 |        1 |
+| attrs              | `call: chained .method()`                    |      3 |      3 |        0 |
+| attrs              | `call: global.method()`                      |      3 |      2 |        2 |
+| attrs              | `call: builtin zip()`                        |      3 |      3 |        2 |
+| attrs              | `subscript: param[...]`                      |      3 |      3 |        2 |
+| attrs              | `copy: moddef`                               |      3 |      1 |        1 |
+| attrs              | `copy: other`                                |      3 |      3 |        1 |
+| attrs              | `call: other name`                           |      2 |      1 |        1 |
+| attrs              | `call: builtin list()`                       |      2 |      2 |        2 |
+| attrs              | `call: builtin object()`                     |      2 |      0 |        0 |
+| attrs              | `binop (unknown operands)`                   |      2 |      1 |        1 |
+| attrs              | `call: other callee`                         |      2 |      2 |        0 |
+| attrs              | `call: builtin tuple()`                      |      2 |      2 |        2 |
+| attrs              | `subscript: other[...]`                      |      2 |      2 |        2 |
+| attrs              | `boolop (and)`                               |      2 |      2 |        2 |
+| attrs              | `call: module class`                         |      2 |      2 |        2 |
+| attrs              | `subscript: imported[...]`                   |      1 |      0 |        0 |
+| attrs              | `call: builtin frozenset()`                  |      1 |      0 |        0 |
+| attrs              | `call: param name`                           |      1 |      0 |        0 |
+| attrs              | `attr: builtin.x`                            |      1 |      0 |        0 |
+| attrs              | `call: imported.attr()`                      |      1 |      0 |        0 |
+| attrs              | `call: builtin compile()`                    |      1 |      1 |        1 |
+| attrs              | `call: builtin reversed()`                   |      1 |      1 |        0 |
+| attrs              | `subscript: other`                           |      1 |      0 |        0 |
+| attrs              | `SetComp (unknown elements)`                 |      1 |      0 |        0 |
+| attrs              | `call: builtin hash()`                       |      1 |      1 |        1 |
+| attrs              | `copy: param (annotated)`                    |      1 |      1 |        1 |
+| attrs              | `other constant`                             |      1 |      1 |        1 |
+| attrs              | `binop (one side literal)`                   |      1 |      1 |        1 |
+| attrs              | `call: builtin dict()`                       |      1 |      0 |        0 |
+| click              | `call: chained .method()`                    |     29 |     23 |       16 |
+| click              | `other constant`                             |     17 |      0 |        0 |
+| click              | `call: imported function`                    |     16 |     12 |        8 |
+| click              | `call: self.method()`                        |     16 |     14 |        4 |
+| click              | `call: local.method()`                       |     12 |      9 |        7 |
+| click              | `conditional`                                |     10 |      8 |        8 |
+| click              | `call: builtin getattr()`                    |      9 |      5 |        3 |
+| click              | `attr: self.x`                               |      9 |      6 |        4 |
+| click              | `empty list`                                 |      9 |      0 |        0 |
+| click              | `call: module.func()`                        |      9 |      4 |        4 |
+| click              | `attr: imported.x`                           |      9 |      6 |        6 |
+| click              | `None literal`                               |      9 |      7 |        7 |
+| click              | `call: param.method()`                       |      7 |      5 |        4 |
+| click              | `call: other name`                           |      6 |      4 |        4 |
+| click              | `attr: global.x`                             |      5 |      0 |        0 |
+| click              | `copy: param (annotated)`                    |      5 |      2 |        2 |
+| click              | `call: module function (annotated)`          |      4 |      4 |        0 |
+| click              | `copy: local`                                |      4 |      2 |        2 |
+| click              | `call: imported class`                       |      4 |      2 |        2 |
+| click              | `call: other callee`                         |      4 |      1 |        1 |
+| click              | `call: capitalised`                          |      4 |      0 |        0 |
+| click              | `GeneratorExp (unknown elements)`            |      4 |      4 |        4 |
+| click              | `boolop (and)`                               |      4 |      4 |        4 |
+| click              | `call: imported.attr()`                      |      3 |      2 |        1 |
+| click              | `subscript: other`                           |      3 |      2 |        2 |
+| click              | `attr: module.x`                             |      3 |      3 |        2 |
+| click              | `boolop (or)`                                |      2 |      2 |        2 |
+| click              | `binop (unknown operands)`                   |      2 |      1 |        1 |
+| click              | `call: other.method()`                       |      2 |      2 |        1 |
+| click              | `list (mixed/unknown elements)`              |      2 |      1 |        1 |
+| click              | `call: global name`                          |      2 |      0 |        0 |
+| click              | `copy: builtin`                              |      2 |      0 |        0 |
+| click              | `copy: imported`                             |      1 |      1 |        1 |
+| click              | `call: builtin dict()`                       |      1 |      1 |        1 |
+| click              | `binop (one side literal)`                   |      1 |      0 |        0 |
+| click              | `call: global.method()`                      |      1 |      0 |        0 |
+| click              | `call: builtin.method()`                     |      1 |      1 |        1 |
+| click              | `empty dict`                                 |      1 |      0 |        0 |
+| click              | `attr: other.x`                              |      1 |      1 |        1 |
+| click              | `DictComp (unknown elements)`                |      1 |      0 |        0 |
+| click              | `JoinedStr`                                  |      1 |      0 |        0 |
+| click              | `attr: param.x`                              |      1 |      1 |        0 |
+| click              | `copy: other`                                |      1 |      0 |        0 |
+| click              | `call: local name`                           |      1 |      1 |        0 |
+| click              | `call: param name`                           |      1 |      1 |        0 |
+| click              | `call: module class`                         |      1 |      1 |        1 |
+| click              | `attr: chained`                              |      1 |      1 |        1 |
+| click              | `ListComp (unknown elements)`                |      1 |      1 |        1 |
+| click              | `subscript: param[...]`                      |      1 |      0 |        0 |
+| hypercorn          | `call: chained .method()`                    |     24 |     15 |       12 |
+| hypercorn          | `call: module.func()`                        |     13 |      8 |        8 |
+| hypercorn          | `attr: param.x`                              |     13 |      8 |        8 |
+| hypercorn          | `call: local.method()`                       |     12 |      2 |        1 |
+| hypercorn          | `call: param.method()`                       |     11 |      2 |        1 |
+| hypercorn          | `None literal`                               |     10 |      3 |        3 |
+| hypercorn          | `binop (unknown operands)`                   |     10 |      2 |        2 |
+| hypercorn          | `call: imported class`                       |      7 |      3 |        3 |
+| hypercorn          | `subscript: param[...]`                      |      6 |      6 |        6 |
+| hypercorn          | `call: other.method()`                       |      5 |      3 |        3 |
+| hypercorn          | `await: call: chained .method()`             |      4 |      1 |        0 |
+| hypercorn          | `binop (one side literal)`                   |      4 |      0 |        0 |
+| hypercorn          | `call: imported function`                    |      4 |      0 |        0 |
+| hypercorn          | `await: call: param name`                    |      3 |      3 |        2 |
+| hypercorn          | `call: self.method()`                        |      3 |      1 |        1 |
+| hypercorn          | `copy: local`                                |      3 |      2 |        2 |
+| hypercorn          | `dict (mixed/unknown elements)`              |      2 |      1 |        1 |
+| hypercorn          | `list (mixed/unknown elements)`              |      2 |      1 |        1 |
+| hypercorn          | `copy: imported`                             |      2 |      0 |        0 |
+| hypercorn          | `empty list`                                 |      2 |      0 |        0 |
+| hypercorn          | `attr: chained`                              |      2 |      1 |        1 |
+| hypercorn          | `call: other callee`                         |      2 |      2 |        2 |
+| hypercorn          | `tuple (mixed/unknown elements)`             |      2 |      0 |        0 |
+| hypercorn          | `call: builtin object()`                     |      1 |      0 |        0 |
+| hypercorn          | `call: builtin bytearray()`                  |      1 |      1 |        1 |
+| hypercorn          | `call: module function (annotated)`          |      1 |      1 |        1 |
+| hypercorn          | `boolop (or)`                                |      1 |      1 |        1 |
+| hypercorn          | `other constant`                             |      1 |      0 |        0 |
+| hypercorn          | `await: call: local.method()`                |      1 |      0 |        0 |
+| hypercorn          | `call: builtin property()`                   |      1 |      0 |        0 |
+| hypercorn          | `attr: self.x`                               |      1 |      0 |        0 |
+| hypercorn          | `subscript: local[...]`                      |      1 |      0 |        0 |
+| hypercorn          | `DictComp (unknown elements)`                |      1 |      1 |        1 |
+| hypercorn          | `call: builtin open()`                       |      1 |      0 |        0 |
+| hypercorn          | `copy: modclass`                             |      1 |      0 |        0 |
+| hypercorn          | `call: builtin next()`                       |      1 |      1 |        1 |
+| hypercorn          | `call: builtin min()`                        |      1 |      1 |        1 |
+| hypercorn          | `copy: other`                                |      1 |      0 |        0 |
+| hypercorn          | `call: builtin eval()`                       |      1 |      0 |        0 |
+| hypercorn          | `call: builtin getattr()`                    |      1 |      0 |        0 |
+| starlette          | `call: param.method()`                       |     33 |     29 |       20 |
+| starlette          | `call: local.method()`                       |     31 |     23 |       18 |
+| starlette          | `call: chained .method()`                    |     26 |     24 |       18 |
+| starlette          | `call: builtin reversed()`                   |     15 |      4 |        2 |
+| starlette          | `call: imported class`                       |     15 |     15 |       14 |
+| starlette          | `subscript: param[...]`                      |     14 |     14 |       13 |
+| starlette          | `attr: self.x`                               |     11 |      8 |        4 |
+| starlette          | `call: self.method()`                        |     11 |     10 |        8 |
+| starlette          | `await: call: self.method()`                 |     10 |      9 |        2 |
+| starlette          | `call: module.func()`                        |      9 |      9 |        7 |
+| starlette          | `other constant`                             |      9 |      0 |        0 |
+| starlette          | `call: imported function`                    |      9 |      9 |        7 |
+| starlette          | `tuple (mixed/unknown elements)`             |      8 |      7 |        6 |
+| starlette          | `call: other callee`                         |      8 |      8 |        8 |
+| starlette          | `await: call: module.func()`                 |      7 |      7 |        6 |
+| starlette          | `attr: chained`                              |      6 |      6 |        5 |
+| starlette          | `conditional`                                |      6 |      6 |        3 |
+| starlette          | `copy: param (annotated)`                    |      6 |      5 |        2 |
+| starlette          | `copy: local`                                |      6 |      5 |        5 |
+| starlette          | `dict (mixed/unknown elements)`              |      6 |      2 |        2 |
+| starlette          | `None literal`                               |      5 |      4 |        4 |
+| starlette          | `subscript: local[...]`                      |      5 |      5 |        4 |
+| starlette          | `binop (unknown operands)`                   |      5 |      2 |        2 |
+| starlette          | `ListComp (unknown elements)`                |      5 |      4 |        4 |
+| starlette          | `call: builtin getattr()`                    |      5 |      5 |        3 |
+| starlette          | `call: builtin dict()`                       |      5 |      2 |        2 |
+| starlette          | `await: call: local.method()`                |      5 |      4 |        3 |
+| starlette          | `call: module class`                         |      4 |      3 |        3 |
+| starlette          | `attr: local.x`                              |      4 |      4 |        4 |
+| starlette          | `boolop (or)`                                |      4 |      4 |        3 |
+| starlette          | `await: call: other name`                    |      4 |      4 |        2 |
+| starlette          | `call: builtin set()`                        |      4 |      3 |        3 |
+| starlette          | `await: call: chained .method()`             |      3 |      3 |        2 |
+| starlette          | `await: call: param name`                    |      3 |      3 |        1 |
+| starlette          | `await: call: local name`                    |      2 |      2 |        2 |
+| starlette          | `subscript: other`                           |      2 |      2 |        1 |
+| starlette          | `binop (one side literal)`                   |      2 |      1 |        1 |
+| starlette          | `attr: param.x`                              |      2 |      2 |        1 |
+| starlette          | `boolop (and)`                               |      2 |      2 |        2 |
+| starlette          | `subscript: imported[...]`                   |      2 |      1 |        0 |
+| starlette          | `call: global.method()`                      |      1 |      1 |        1 |
+| starlette          | `attr: imported.x`                           |      1 |      1 |        1 |
+| starlette          | `copy: imported`                             |      1 |      0 |        0 |
+| starlette          | `await: call: other.method()`                |      1 |      1 |        1 |
+| starlette          | `copy: other`                                |      1 |      1 |        0 |
+| starlette          | `await: call: imported function`             |      1 |      0 |        0 |
+| starlette          | `set (mixed/unknown elements)`               |      1 |      1 |        1 |
+| starlette          | `call: module function (annotated)`          |      1 |      1 |        1 |
+| starlette          | `empty dict`                                 |      1 |      0 |        0 |
+| starlette          | `call: builtin sorted()`                     |      1 |      1 |        1 |
+| starlette          | `empty list`                                 |      1 |      0 |        0 |
+| starlette          | `attr: module.x`                             |      1 |      0 |        0 |
+| starlette          | `call: other.method()`                       |      1 |      1 |        1 |
+| starlette          | `attr: other.x`                              |      1 |      1 |        1 |
+| werkzeug           | `other constant`                             |     81 |      4 |        4 |
+| werkzeug           | `call: chained .method()`                    |     64 |     43 |       29 |
+| werkzeug           | `call: imported function`                    |     36 |     20 |       18 |
+| werkzeug           | `call: local.method()`                       |     34 |     20 |       15 |
+| werkzeug           | `call: param.method()`                       |     33 |     30 |       23 |
+| werkzeug           | `copy: local`                                |     32 |     18 |       13 |
+| werkzeug           | `call: module function (annotated)`          |     27 |     12 |        8 |
+| werkzeug           | `attr: self.x`                               |     26 |     22 |       17 |
+| werkzeug           | `empty list`                                 |     23 |      0 |        0 |
+| werkzeug           | `call: self.method()`                        |     22 |     16 |       12 |
+| werkzeug           | `call: other callee`                         |     20 |      0 |        0 |
+| werkzeug           | `call: module.func()`                        |     17 |     10 |        8 |
+| werkzeug           | `call: builtin getattr()`                    |     16 |     16 |        9 |
+| werkzeug           | `copy: self`                                 |     13 |     11 |        6 |
+| werkzeug           | `call: other name`                           |     11 |      9 |        8 |
+| werkzeug           | `None literal`                               |     11 |     10 |       10 |
+| werkzeug           | `call: builtin set()`                        |     10 |      0 |        0 |
+| werkzeug           | `subscript: other`                           |     10 |      3 |        3 |
+| werkzeug           | `copy: param (annotated)`                    |      9 |      4 |        2 |
+| werkzeug           | `list (mixed/unknown elements)`              |      9 |      8 |        7 |
+| werkzeug           | `call: local name`                           |      8 |      8 |        7 |
+| werkzeug           | `call: builtin enumerate()`                  |      6 |      6 |        2 |
+| werkzeug           | `tuple (mixed/unknown elements)`             |      6 |      4 |        1 |
+| werkzeug           | `subscript: local[...]`                      |      5 |      5 |        4 |
+| werkzeug           | `call: builtin next()`                       |      5 |      5 |        4 |
+| werkzeug           | `attr: chained`                              |      5 |      2 |        2 |
+| werkzeug           | `call: global.method()`                      |      5 |      5 |        3 |
+| werkzeug           | `attr: local.x`                              |      5 |      3 |        3 |
+| werkzeug           | `call: other.method()`                       |      5 |      5 |        5 |
+| werkzeug           | `boolop (or)`                                |      5 |      2 |        2 |
+| werkzeug           | `call: builtin iter()`                       |      4 |      4 |        4 |
+| werkzeug           | `empty dict`                                 |      4 |      0 |        0 |
+| werkzeug           | `call: imported class`                       |      4 |      1 |        1 |
+| werkzeug           | `attr: module.x`                             |      4 |      1 |        1 |
+| werkzeug           | `subscript: param[...]`                      |      4 |      3 |        3 |
+| werkzeug           | `binop (unknown operands)`                   |      4 |      4 |        4 |
+| werkzeug           | `ListComp (unknown elements)`                |      3 |      1 |        1 |
+| werkzeug           | `call: builtin repr()`                       |      3 |      3 |        3 |
+| werkzeug           | `call: imported.attr()`                      |      3 |      3 |        2 |
+| werkzeug           | `copy: imported`                             |      3 |      0 |        0 |
+| werkzeug           | `call: param name`                           |      3 |      2 |        1 |
+| werkzeug           | `dict (mixed/unknown elements)`              |      3 |      3 |        3 |
+| werkzeug           | `subscript: self[...]`                       |      2 |      2 |        0 |
+| werkzeug           | `call: builtin staticmethod()`               |      2 |      0 |        0 |
+| werkzeug           | `call: builtin hash()`                       |      2 |      2 |        2 |
+| werkzeug           | `attr: param.x`                              |      2 |      2 |        1 |
+| werkzeug           | `call: builtin min()`                        |      2 |      1 |        1 |
+| werkzeug           | `conditional`                                |      2 |      2 |        0 |
+| werkzeug           | `call: builtin sorted()`                     |      2 |      0 |        0 |
+| werkzeug           | `call: builtin zip()`                        |      2 |      0 |        0 |
+| werkzeug           | `GeneratorExp (unknown elements)`            |      1 |      1 |        1 |
+| werkzeug           | `call: module class`                         |      1 |      1 |        1 |
+| werkzeug           | `call: builtin object()`                     |      1 |      0 |        0 |
+| werkzeug           | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| werkzeug           | `compare`                                    |      1 |      1 |        1 |
+| werkzeug           | `binop (one side literal)`                   |      1 |      1 |        1 |
+| werkzeug           | `call: builtin max()`                        |      1 |      1 |        1 |
+| werkzeug           | `attr: modclass.x`                           |      1 |      0 |        0 |
+| werkzeug           | `subscript: builtin[...]`                    |      1 |      0 |        0 |
+| werkzeug           | `copy: moddef`                               |      1 |      1 |        1 |
+| werkzeug           | `attr: other.x`                              |      1 |      1 |        0 |
+| werkzeug           | `call: builtin list()`                       |      1 |      1 |        1 |
+| werkzeug           | `copy: other`                                |      1 |      1 |        1 |
+| werkzeug           | `copy: builtin`                              |      1 |      0 |        0 |
+| werkzeug           | `subscript: other[...]`                      |      1 |      0 |        0 |
+| werkzeug           | `call: builtin compile()`                    |      1 |      1 |        1 |
+| werkzeug           | `JoinedStr`                                  |      1 |      0 |        0 |
+| werkzeug           | `call: builtin.method()`                     |      1 |      0 |        0 |
+| werkzeug           | `copy: global`                               |      1 |      0 |        0 |
+| werkzeug           | `call: capitalised`                          |      1 |      1 |        1 |
+| werkzeug           | `call: builtin __import__()`                 |      1 |      1 |        1 |
+| werkzeug           | `call: builtin property()`                   |      1 |      0 |        0 |
+| mkdocs             | `call: imported.attr()`                      |    366 |     46 |       46 |
+| mkdocs             | `call: self.method()`                        |    117 |    108 |      105 |
+| mkdocs             | `call: local.method()`                       |     65 |     37 |       37 |
+| mkdocs             | `dict (mixed/unknown elements)`              |     43 |     33 |       33 |
+| mkdocs             | `call: imported function`                    |     42 |     26 |       25 |
+| mkdocs             | `attr: param.x`                              |     37 |     32 |       31 |
+| mkdocs             | `call: param.method()`                       |     32 |     24 |       21 |
+| mkdocs             | `call: chained .method()`                    |     29 |     19 |       17 |
+| mkdocs             | `tuple (mixed/unknown elements)`             |     29 |     29 |        9 |
+| mkdocs             | `attr: chained`                              |     26 |     22 |       21 |
+| mkdocs             | `copy: local`                                |     25 |     19 |       15 |
+| mkdocs             | `call: module.func()`                        |     24 |     10 |        9 |
+| mkdocs             | `call: module class`                         |     24 |     13 |       13 |
+| mkdocs             | `call: other name`                           |     15 |      0 |        0 |
+| mkdocs             | `call: other callee`                         |     15 |      0 |        0 |
+| mkdocs             | `list (mixed/unknown elements)`              |     13 |     10 |        8 |
+| mkdocs             | `call: imported class`                       |     12 |      9 |        9 |
+| mkdocs             | `attr: self.x`                               |     12 |     12 |        7 |
+| mkdocs             | `copy: param (unannotated)`                  |     10 |     10 |        7 |
+| mkdocs             | `subscript: other`                           |      9 |      7 |        7 |
+| mkdocs             | `call: module function (annotated)`          |      8 |      4 |        2 |
+| mkdocs             | `attr: local.x`                              |      8 |      5 |        5 |
+| mkdocs             | `subscript: param[...]`                      |      7 |      6 |        5 |
+| mkdocs             | `copy: param (annotated)`                    |      6 |      5 |        3 |
+| mkdocs             | `empty list`                                 |      6 |      0 |        0 |
+| mkdocs             | `None literal`                               |      6 |      6 |        6 |
+| mkdocs             | `conditional`                                |      4 |      4 |        4 |
+| mkdocs             | `subscript: imported[...]`                   |      4 |      0 |        0 |
+| mkdocs             | `call: builtin zip()`                        |      4 |      2 |        0 |
+| mkdocs             | `call: other.method()`                       |      4 |      4 |        4 |
+| mkdocs             | `call: module function (unannotated)`        |      3 |      1 |        0 |
+| mkdocs             | `subscript: local[...]`                      |      3 |      1 |        1 |
+| mkdocs             | `empty dict`                                 |      3 |      0 |        0 |
+| mkdocs             | `other constant`                             |      3 |      0 |        0 |
+| mkdocs             | `call: builtin reversed()`                   |      2 |      1 |        1 |
+| mkdocs             | `call: builtin staticmethod()`               |      2 |      0 |        0 |
+| mkdocs             | `call: builtin open()`                       |      2 |      1 |        1 |
+| mkdocs             | `call: capitalised`                          |      2 |      1 |        1 |
+| mkdocs             | `call: builtin sorted()`                     |      1 |      0 |        0 |
+| mkdocs             | `call: builtin dict()`                       |      1 |      1 |        1 |
+| mkdocs             | `call: builtin set()`                        |      1 |      0 |        0 |
+| mkdocs             | `JoinedStr`                                  |      1 |      0 |        0 |
+| mkdocs             | `call: builtin tuple()`                      |      1 |      0 |        0 |
+| mkdocs             | `copy: global`                               |      1 |      0 |        0 |
+| mkdocs             | `call: builtin getattr()`                    |      1 |      1 |        1 |
+| mkdocs             | `call: local name`                           |      1 |      0 |        0 |
+| mkdocs             | `copy: self`                                 |      1 |      1 |        1 |
+| mkdocs             | `boolop (or)`                                |      1 |      1 |        1 |
+| mkdocs             | `ListComp (unknown elements)`                |      1 |      1 |        1 |
+| mkdocs             | `copy: modclass`                             |      1 |      0 |        0 |
+| mkdocs             | `call: builtin enumerate()`                  |      1 |      1 |        1 |
+| mkdocs             | `call: builtin max()`                        |      1 |      1 |        1 |
+| mkdocs             | `attr: builtin.x`                            |      1 |      0 |        0 |
+| mkdocs             | `call: param name`                           |      1 |      0 |        0 |
+| mkdocs             | `SetComp (unknown elements)`                 |      1 |      1 |        1 |
+| mkdocs             | `binop (one side literal)`                   |      1 |      1 |        1 |
+| httpx              | `attr: self.x`                               |     26 |     22 |       16 |
+| httpx              | `call: param.method()`                       |     26 |     19 |       12 |
+| httpx              | `call: local.method()`                       |     24 |     18 |       16 |
+| httpx              | `call: chained .method()`                    |     24 |     22 |       18 |
+| httpx              | `subscript: imported[...]`                   |     18 |      0 |        0 |
+| httpx              | `subscript: other`                           |     17 |      2 |        2 |
+| httpx              | `call: imported class`                       |     11 |      9 |        9 |
+| httpx              | `call: self.method()`                        |     11 |      8 |        5 |
+| httpx              | `boolop (or)`                                |     11 |      9 |        9 |
+| httpx              | `ListComp (unknown elements)`                |      9 |      7 |        7 |
+| httpx              | `attr: chained`                              |      8 |      6 |        6 |
+| httpx              | `dict (mixed/unknown elements)`              |      8 |      7 |        7 |
+| httpx              | `subscript: param[...]`                      |      8 |      4 |        4 |
+| httpx              | `copy: local`                                |      7 |      2 |        2 |
+| httpx              | `None literal`                               |      7 |      7 |        7 |
+| httpx              | `conditional`                                |      5 |      5 |        3 |
+| httpx              | `call: module class`                         |      5 |      5 |        5 |
+| httpx              | `call: module.func()`                        |      4 |      2 |        2 |
+| httpx              | `empty list`                                 |      4 |      0 |        0 |
+| httpx              | `copy: param (annotated)`                    |      4 |      4 |        3 |
+| httpx              | `Yield`                                      |      3 |      3 |        3 |
+| httpx              | `tuple (mixed/unknown elements)`             |      3 |      3 |        3 |
+| httpx              | `attr: param.x`                              |      3 |      2 |        2 |
+| httpx              | `call: other name`                           |      2 |      2 |        2 |
+| httpx              | `list (mixed/unknown elements)`              |      2 |      2 |        2 |
+| httpx              | `await: call: chained .method()`             |      2 |      1 |        1 |
+| httpx              | `call: builtin reversed()`                   |      2 |      1 |        1 |
+| httpx              | `call: builtin locals()`                     |      1 |      0 |        0 |
+| httpx              | `await: call: local.method()`                |      1 |      0 |        0 |
+| httpx              | `call: builtin list()`                       |      1 |      1 |        1 |
+| httpx              | `call: builtin dict()`                       |      1 |      1 |        1 |
+| httpx              | `other constant`                             |      1 |      1 |        1 |
+| httpx              | `call: builtin.method()`                     |      1 |      1 |        1 |
+| httpx              | `copy: modclass`                             |      1 |      0 |        0 |
+| httpx              | `await: call: other.method()`                |      1 |      0 |        0 |
+| black              | `attr: param.x`                              |     59 |     56 |       31 |
+| black              | `subscript: other`                           |     36 |     31 |       16 |
+| black              | `attr: local.x`                              |     34 |     31 |       22 |
+| black              | `call: local.method()`                       |     32 |     30 |       21 |
+| black              | `call: chained .method()`                    |     21 |     15 |       13 |
+| black              | `attr: chained`                              |     19 |     15 |       12 |
+| black              | `copy: local`                                |     18 |     15 |       12 |
+| black              | `copy: builtin`                              |     16 |      0 |        0 |
+| black              | `call: imported function`                    |     13 |      5 |        4 |
+| black              | `subscript: local[...]`                      |     12 |     11 |       11 |
+| black              | `boolop (and)`                               |     11 |      9 |        7 |
+| black              | `empty list`                                 |     11 |      0 |        0 |
+| black              | `conditional`                                |     10 |     10 |        6 |
+| black              | `call: builtin enumerate()`                  |      8 |      8 |        3 |
+| black              | `call: module function (annotated)`          |      7 |      5 |        5 |
+| black              | `call: module.func()`                        |      7 |      4 |        4 |
+| black              | `binop (unknown operands)`                   |      7 |      7 |        7 |
+| black              | `copy: param (annotated)`                    |      7 |      6 |        6 |
+| black              | `call: param.method()`                       |      6 |      6 |        4 |
+| black              | `binop (one side literal)`                   |      5 |      5 |        5 |
+| black              | `attr: imported.x`                           |      4 |      4 |        4 |
+| black              | `list (mixed/unknown elements)`              |      4 |      4 |        3 |
+| black              | `tuple (mixed/unknown elements)`             |      4 |      3 |        1 |
+| black              | `call: builtin next()`                       |      4 |      4 |        4 |
+| black              | `attr: self.x`                               |      4 |      3 |        3 |
+| black              | `call: builtin set()`                        |      3 |      1 |        1 |
+| black              | `compare`                                    |      3 |      2 |        2 |
+| black              | `call: builtin list()`                       |      3 |      3 |        3 |
+| black              | `None literal`                               |      3 |      3 |        3 |
+| black              | `copy: imported`                             |      2 |      1 |        1 |
+| black              | `call: builtin getattr()`                    |      2 |      2 |        0 |
+| black              | `SetComp (unknown elements)`                 |      2 |      2 |        2 |
+| black              | `ListComp (unknown elements)`                |      2 |      1 |        1 |
+| black              | `boolop (or)`                                |      2 |      2 |        2 |
+| black              | `call: other name`                           |      2 |      2 |        2 |
+| black              | `call: builtin min()`                        |      1 |      1 |        1 |
+| black              | `call: imported class`                       |      1 |      1 |        1 |
+| black              | `call: builtin.method()`                     |      1 |      1 |        1 |
+| black              | `call: builtin max()`                        |      1 |      1 |        1 |
+| black              | `DictComp (unknown elements)`                |      1 |      1 |        1 |
+| black              | `dict (mixed/unknown elements)`              |      1 |      1 |        1 |
+| black              | `call: builtin iter()`                       |      1 |      1 |        1 |
+| black              | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| black              | `attr: module.x`                             |      1 |      1 |        1 |
+| black              | `call: other.method()`                       |      1 |      1 |        1 |
+| black              | `call: param name`                           |      1 |      1 |        1 |
+| black              | `unaryop USub`                               |      1 |      1 |        1 |
+| black              | `empty dict`                                 |      1 |      0 |        0 |
+| black              | `call: builtin sorted()`                     |      1 |      1 |        1 |
+| black              | `call: module class`                         |      1 |      1 |        1 |
+| black              | `call: global.method()`                      |      1 |      1 |        1 |
+| black              | `other constant`                             |      1 |      0 |        0 |
+| black              | `subscript: imported[...]`                   |      1 |      0 |        0 |
+| black              | `subscript: global[...]`                     |      1 |      0 |        0 |
+| black              | `attr: other.x`                              |      1 |      1 |        1 |
+| fastapi            | `call: chained .method()`                    |     42 |     40 |       20 |
+| fastapi            | `call: module function (annotated)`          |     41 |     26 |       13 |
+| fastapi            | `call: imported function`                    |     39 |     32 |        9 |
+| fastapi            | `call: local.method()`                       |     28 |     20 |       16 |
+| fastapi            | `call: param.method()`                       |     28 |     25 |       12 |
+| fastapi            | `call: builtin getattr()`                    |     25 |     22 |       18 |
+| fastapi            | `copy: local`                                |     18 |     17 |       11 |
+| fastapi            | `attr: local.x`                              |     13 |     13 |        7 |
+| fastapi            | `attr: self.x`                               |     12 |     11 |        6 |
+| fastapi            | `dict (mixed/unknown elements)`              |     11 |      5 |        2 |
+| fastapi            | `conditional`                                |     11 |     11 |        6 |
+| fastapi            | `call: imported class`                       |     11 |     11 |       11 |
+| fastapi            | `empty dict`                                 |      9 |      0 |        0 |
+| fastapi            | `boolop (or)`                                |      9 |      7 |        4 |
+| fastapi            | `DictComp (unknown elements)`                |      6 |      4 |        3 |
+| fastapi            | `None literal`                               |      6 |      6 |        6 |
+| fastapi            | `copy: param (annotated)`                    |      6 |      5 |        2 |
+| fastapi            | `call: module.func()`                        |      6 |      6 |        5 |
+| fastapi            | `call: self.method()`                        |      6 |      6 |        6 |
+| fastapi            | `ListComp (unknown elements)`                |      5 |      4 |        1 |
+| fastapi            | `attr: param.x`                              |      5 |      4 |        4 |
+| fastapi            | `call: other callee`                         |      5 |      5 |        5 |
+| fastapi            | `call: global.method()`                      |      5 |      3 |        2 |
+| fastapi            | `call: builtin dict()`                       |      5 |      2 |        0 |
+| fastapi            | `call: other.method()`                       |      4 |      4 |        3 |
+| fastapi            | `await: call: module function (annotated)`   |      4 |      4 |        1 |
+| fastapi            | `attr: modclass.x`                           |      4 |      0 |        0 |
+| fastapi            | `tuple (mixed/unknown elements)`             |      3 |      3 |        0 |
+| fastapi            | `attr: chained`                              |      3 |      3 |        1 |
+| fastapi            | `call: builtin reversed()`                   |      3 |      2 |        0 |
+| fastapi            | `binop (unknown operands)`                   |      3 |      3 |        2 |
+| fastapi            | `list (mixed/unknown elements)`              |      3 |      3 |        2 |
+| fastapi            | `await: call: other name`                    |      3 |      3 |        1 |
+| fastapi            | `call: other name`                           |      3 |      3 |        2 |
+| fastapi            | `copy: other`                                |      3 |      1 |        0 |
+| fastapi            | `copy: imported`                             |      2 |      0 |        0 |
+| fastapi            | `SetComp (unknown elements)`                 |      2 |      2 |        1 |
+| fastapi            | `subscript: param[...]`                      |      2 |      1 |        0 |
+| fastapi            | `call: builtin set()`                        |      2 |      2 |        2 |
+| fastapi            | `empty list`                                 |      2 |      0 |        0 |
+| fastapi            | `await: call: imported function`             |      2 |      2 |        1 |
+| fastapi            | `call: local name`                           |      2 |      2 |        1 |
+| fastapi            | `call: builtin tuple()`                      |      2 |      2 |        1 |
+| fastapi            | `subscript: local[...]`                      |      2 |      2 |        2 |
+| fastapi            | `copy: global`                               |      1 |      1 |        1 |
+| fastapi            | `subscript: other`                           |      1 |      0 |        0 |
+| fastapi            | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| fastapi            | `boolop (and)`                               |      1 |      1 |        0 |
+| fastapi            | `await: call: param.method()`                |      1 |      1 |        1 |
+| fastapi            | `await: call: other.method()`                |      1 |      1 |        1 |
+| fastapi            | `await: call: local.method()`                |      1 |      1 |        1 |
+| fastapi            | `call: builtin object()`                     |      1 |      0 |        0 |
+| fastapi            | `other constant`                             |      1 |      0 |        0 |
+| fastapi            | `call: imported.attr()`                      |      1 |      1 |        1 |
+| fastapi            | `call: builtin type()`                       |      1 |      1 |        0 |
+| fastapi            | `call: module class`                         |      1 |      0 |        0 |
+| fastapi            | `compare`                                    |      1 |      1 |        1 |
+| fastapi            | `attr: other.x`                              |      1 |      1 |        0 |
+| cattrs             | `call: imported function`                    |     54 |     43 |       12 |
+| cattrs             | `attr: local.x`                              |     20 |     18 |       12 |
+| cattrs             | `empty dict`                                 |     20 |      0 |        0 |
+| cattrs             | `copy: local`                                |     19 |     19 |       10 |
+| cattrs             | `call: builtin getattr()`                    |     18 |     17 |        4 |
+| cattrs             | `empty list`                                 |     18 |      0 |        0 |
+| cattrs             | `call: chained .method()`                    |     15 |     13 |        8 |
+| cattrs             | `attr: param.x`                              |     15 |     15 |        7 |
+| cattrs             | `call: param.method()`                       |     12 |     10 |        9 |
+| cattrs             | `copy: imported`                             |     11 |      3 |        3 |
+| cattrs             | `conditional`                                |     10 |     10 |        5 |
+| cattrs             | `attr: global.x`                             |      9 |      1 |        1 |
+| cattrs             | `call: builtin set()`                        |      8 |      3 |        0 |
+| cattrs             | `subscript: local[...]`                      |      8 |      7 |        5 |
+| cattrs             | `call: local.method()`                       |      8 |      8 |        4 |
+| cattrs             | `boolop (or)`                                |      7 |      7 |        3 |
+| cattrs             | `SetComp (unknown elements)`                 |      7 |      7 |        3 |
+| cattrs             | `copy: builtin`                              |      6 |      4 |        4 |
+| cattrs             | `subscript: other`                           |      6 |      5 |        0 |
+| cattrs             | `call: builtin zip()`                        |      6 |      6 |        3 |
+| cattrs             | `subscript: param[...]`                      |      6 |      6 |        4 |
+| cattrs             | `copy: param (annotated)`                    |      6 |      5 |        2 |
+| cattrs             | `None literal`                               |      6 |      5 |        5 |
+| cattrs             | `call: module function (annotated)`          |      6 |      6 |        2 |
+| cattrs             | `attr: imported.x`                           |      5 |      4 |        0 |
+| cattrs             | `attr: chained`                              |      5 |      5 |        5 |
+| cattrs             | `DictComp (unknown elements)`                |      5 |      2 |        1 |
+| cattrs             | `ListComp (unknown elements)`                |      5 |      4 |        3 |
+| cattrs             | `call: other.method()`                       |      5 |      5 |        3 |
+| cattrs             | `dict (mixed/unknown elements)`              |      5 |      5 |        0 |
+| cattrs             | `call: builtin enumerate()`                  |      4 |      4 |        2 |
+| cattrs             | `attr: self.x`                               |      4 |      4 |        1 |
+| cattrs             | `binop (one side literal)`                   |      4 |      4 |        4 |
+| cattrs             | `call: self.method()`                        |      3 |      2 |        1 |
+| cattrs             | `call: local name`                           |      3 |      3 |        0 |
+| cattrs             | `call: builtin tuple()`                      |      3 |      3 |        0 |
+| cattrs             | `binop (unknown operands)`                   |      2 |      2 |        1 |
+| cattrs             | `copy: param (unannotated)`                  |      2 |      2 |        0 |
+| cattrs             | `call: builtin.method()`                     |      2 |      2 |        2 |
+| cattrs             | `compare`                                    |      2 |      2 |        2 |
+| cattrs             | `list (mixed/unknown elements)`              |      2 |      2 |        2 |
+| cattrs             | `tuple (mixed/unknown elements)`             |      2 |      2 |        2 |
+| cattrs             | `call: other name`                           |      2 |      2 |        2 |
+| cattrs             | `subscript: imported[...]`                   |      2 |      2 |        2 |
+| cattrs             | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| cattrs             | `call: builtin frozenset()`                  |      1 |      0 |        0 |
+| cattrs             | `call: builtin type()`                       |      1 |      0 |        0 |
+| cattrs             | `empty tuple`                                |      1 |      0 |        0 |
+| cattrs             | `subscript: builtin[...]`                    |      1 |      1 |        1 |
+| cattrs             | `boolop (and)`                               |      1 |      1 |        0 |
+| cattrs             | `call: imported class`                       |      1 |      1 |        1 |
+| cattrs             | `call: builtin sorted()`                     |      1 |      1 |        1 |
+| cattrs             | `copy: moddef`                               |      1 |      0 |        0 |
+| cattrs             | `call: builtin dict()`                       |      1 |      1 |        0 |
+| cattrs             | `call: param name`                           |      1 |      1 |        0 |
+| cattrs             | `call: other callee`                         |      1 |      1 |        0 |
+| pytest             | `call: chained .method()`                    |    159 |    126 |       99 |
+| pytest             | `call: self.method()`                        |     87 |     78 |       63 |
+| pytest             | `attr: chained`                              |     68 |     52 |       46 |
+| pytest             | `copy: local`                                |     62 |     48 |       38 |
+| pytest             | `attr: param.x`                              |     61 |     51 |       38 |
+| pytest             | `call: local.method()`                       |     57 |     44 |       38 |
+| pytest             | `call: param.method()`                       |     53 |     46 |       41 |
+| pytest             | `empty list`                                 |     52 |      0 |        0 |
+| pytest             | `call: builtin getattr()`                    |     51 |     45 |       30 |
+| pytest             | `call: module.func()`                        |     46 |     32 |       25 |
+| pytest             | `attr: local.x`                              |     46 |     36 |       25 |
+| pytest             | `subscript: other`                           |     44 |     32 |       21 |
+| pytest             | `binop (unknown operands)`                   |     29 |     20 |       19 |
+| pytest             | `attr: self.x`                               |     29 |     27 |       17 |
+| pytest             | `None literal`                               |     27 |     23 |       23 |
+| pytest             | `conditional`                                |     27 |     21 |       14 |
+| pytest             | `tuple (mixed/unknown elements)`             |     25 |     24 |       22 |
+| pytest             | `call: module function (annotated)`          |     24 |     23 |        9 |
+| pytest             | `copy: param (annotated)`                    |     23 |     16 |        9 |
+| pytest             | `other constant`                             |     22 |      5 |        5 |
+| pytest             | `call: imported class`                       |     22 |      4 |        4 |
+| pytest             | `boolop (or)`                                |     17 |     11 |       10 |
+| pytest             | `call: other callee`                         |     17 |      4 |        4 |
+| pytest             | `ListComp (unknown elements)`                |     16 |     11 |        9 |
+| pytest             | `call: imported.attr()`                      |     15 |     10 |        9 |
+| pytest             | `call: other name`                           |     14 |     12 |        9 |
+| pytest             | `call: builtin list()`                       |     12 |     10 |        9 |
+| pytest             | `call: module class`                         |     12 |      7 |        7 |
+| pytest             | `call: builtin enumerate()`                  |     11 |      8 |        3 |
+| pytest             | `call: imported function`                    |     11 |      9 |        7 |
+| pytest             | `binop (one side literal)`                   |     10 |      9 |        9 |
+| pytest             | `Yield`                                      |     10 |      7 |        7 |
+| pytest             | `copy: other`                                |     10 |      1 |        1 |
+| pytest             | `subscript: local[...]`                      |      9 |      7 |        5 |
+| pytest             | `DictComp (unknown elements)`                |      9 |      5 |        2 |
+| pytest             | `list (mixed/unknown elements)`              |      9 |      7 |        6 |
+| pytest             | `call: builtin reversed()`                   |      9 |      7 |        5 |
+| pytest             | `dict (mixed/unknown elements)`              |      8 |      4 |        4 |
+| pytest             | `call: module function (unannotated)`        |      8 |      5 |        5 |
+| pytest             | `call: builtin sorted()`                     |      8 |      7 |        7 |
+| pytest             | `compare`                                    |      7 |      7 |        7 |
+| pytest             | `unaryop USub`                               |      7 |      1 |        1 |
+| pytest             | `attr: module.x`                             |      7 |      5 |        2 |
+| pytest             | `subscript: global[...]`                     |      7 |      7 |        7 |
+| pytest             | `subscript: param[...]`                      |      6 |      4 |        2 |
+| pytest             | `-`                                          |      6 |      0 |        0 |
+| pytest             | `copy: param (unannotated)`                  |      5 |      5 |        2 |
+| pytest             | `empty dict`                                 |      5 |      0 |        0 |
+| pytest             | `call: builtin dict()`                       |      4 |      3 |        3 |
+| pytest             | `GeneratorExp (unknown elements)`            |      4 |      4 |        4 |
+| pytest             | `call: builtin type()`                       |      4 |      3 |        0 |
+| pytest             | `call: builtin zip()`                        |      4 |      4 |        3 |
+| pytest             | `call: other.method()`                       |      4 |      4 |        3 |
+| pytest             | `call: modclass.method()`                    |      4 |      4 |        4 |
+| pytest             | `call: builtin.method()`                     |      4 |      2 |        1 |
+| pytest             | `call: builtin max()`                        |      3 |      3 |        3 |
+| pytest             | `copy: modclass`                             |      3 |      0 |        0 |
+| pytest             | `call: builtin set()`                        |      3 |      2 |        0 |
+| pytest             | `call: builtin compile()`                    |      3 |      3 |        3 |
+| pytest             | `copy: self`                                 |      2 |      2 |        2 |
+| pytest             | `call: builtin str()`                        |      2 |      2 |        2 |
+| pytest             | `JoinedStr`                                  |      2 |      2 |        2 |
+| pytest             | `boolop (and)`                               |      2 |      2 |        0 |
+| pytest             | `call: cls.method()`                         |      2 |      2 |        2 |
+| pytest             | `copy: imported`                             |      2 |      2 |        2 |
+| pytest             | `call: global.method()`                      |      2 |      2 |        2 |
+| pytest             | `call: builtin abs()`                        |      2 |      0 |        0 |
+| pytest             | `call: builtin sum()`                        |      2 |      2 |        2 |
+| pytest             | `call: builtin property()`                   |      1 |      0 |        0 |
+| pytest             | `Lambda`                                     |      1 |      1 |        1 |
+| pytest             | `call: builtin frozenset()`                  |      1 |      0 |        0 |
+| pytest             | `call: builtin ascii()`                      |      1 |      0 |        0 |
+| pytest             | `call: builtin repr()`                       |      1 |      1 |        1 |
+| pytest             | `attr: global.x`                             |      1 |      0 |        0 |
+| pytest             | `call: builtin open()`                       |      1 |      1 |        1 |
+| pytest             | `call: global name`                          |      1 |      1 |        1 |
+| pytest             | `SetComp (unknown elements)`                 |      1 |      1 |        0 |
+| pytest             | `call: builtin object()`                     |      1 |      1 |        1 |
+| pytest             | `copy: builtin`                              |      1 |      0 |        0 |
+| pytest             | `call: builtin staticmethod()`               |      1 |      0 |        0 |
+| pytest             | `call: param name`                           |      1 |      1 |        1 |
+| pytest             | `subscript: other[...]`                      |      1 |      1 |        1 |
+| pytest             | `call: builtin tuple()`                      |      1 |      0 |        0 |
+| pytest             | `attr: modclass.x`                           |      1 |      0 |        0 |
+| pytest             | `call: cls name`                             |      1 |      1 |        1 |
+| pytest             | `call: local name`                           |      1 |      1 |        1 |
+| pytest             | `call: builtin len()`                        |      1 |      1 |        1 |
+| pytest             | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| pytest             | `call: builtin hasattr()`                    |      1 |      1 |        1 |
+| pytest             | `call: builtin eval()`                       |      1 |      1 |        1 |
+| pytest             | `call: builtin min()`                        |      1 |      0 |        0 |
+| botocore           | `call: self.method()`                        |    373 |    329 |      211 |
+| botocore           | `call: chained .method()`                    |    348 |    299 |      189 |
+| botocore           | `call: param.method()`                       |    253 |    223 |      150 |
+| botocore           | `call: local.method()`                       |    236 |    200 |      124 |
+| botocore           | `copy: param (unannotated)`                  |    100 |     92 |       66 |
+| botocore           | `subscript: other`                           |     97 |     77 |       62 |
+| botocore           | `attr: param.x`                              |     86 |     81 |       41 |
+| botocore           | `call: imported function`                    |     85 |     67 |       55 |
+| botocore           | `subscript: local[...]`                      |     76 |     70 |       48 |
+| botocore           | `empty dict`                                 |     76 |      0 |        0 |
+| botocore           | `copy: local`                                |     71 |     66 |       51 |
+| botocore           | `dict (mixed/unknown elements)`              |     70 |     36 |       27 |
+| botocore           | `subscript: param[...]`                      |     65 |     53 |       32 |
+| botocore           | `attr: self.x`                               |     60 |     57 |       31 |
+| botocore           | `attr: chained`                              |     55 |     38 |       32 |
+| botocore           | `empty list`                                 |     50 |      0 |        0 |
+| botocore           | `call: module.func()`                        |     44 |     33 |       21 |
+| botocore           | `call: module function (unannotated)`        |     33 |     26 |       19 |
+| botocore           | `binop (unknown operands)`                   |     31 |     27 |       23 |
+| botocore           | `None literal`                               |     29 |     20 |       20 |
+| botocore           | `tuple (mixed/unknown elements)`             |     25 |     16 |       16 |
+| botocore           | `attr: local.x`                              |     24 |     22 |       17 |
+| botocore           | `list (mixed/unknown elements)`              |     23 |     16 |       14 |
+| botocore           | `call: builtin getattr()`                    |     20 |     13 |        8 |
+| botocore           | `ListComp (unknown elements)`                |     20 |     17 |       15 |
+| botocore           | `boolop (or)`                                |     17 |     13 |        9 |
+| botocore           | `call: global.method()`                      |     17 |     12 |       11 |
+| botocore           | `call: local name`                           |     16 |     13 |        5 |
+| botocore           | `call: imported.attr()`                      |     15 |     11 |       11 |
+| botocore           | `other constant`                             |     14 |      4 |        4 |
+| botocore           | `call: builtin enumerate()`                  |     13 |     11 |        6 |
+| botocore           | `call: other.method()`                       |     13 |     11 |        9 |
+| botocore           | `compare`                                    |     13 |      9 |        9 |
+| botocore           | `boolop (and)`                               |     11 |      8 |        8 |
+| botocore           | `call: builtin sorted()`                     |     10 |     10 |        9 |
+| botocore           | `copy: modclass`                             |     10 |      0 |        0 |
+| botocore           | `call: imported class`                       |     10 |      1 |        1 |
+| botocore           | `copy: global`                               |      9 |      1 |        1 |
+| botocore           | `call: modclass.method()`                    |      9 |      9 |        9 |
+| botocore           | `copy: other`                                |      9 |      0 |        0 |
+| botocore           | `binop (one side literal)`                   |      8 |      7 |        7 |
+| botocore           | `call: builtin type()`                       |      8 |      8 |        3 |
+| botocore           | `attr: module.x`                             |      8 |      1 |        1 |
+| botocore           | `copy: imported`                             |      7 |      1 |        1 |
+| botocore           | `conditional`                                |      6 |      4 |        2 |
+| botocore           | `call: builtin iter()`                       |      6 |      5 |        5 |
+| botocore           | `DictComp (unknown elements)`                |      6 |      3 |        3 |
+| botocore           | `call: builtin list()`                       |      5 |      3 |        3 |
+| botocore           | `call: builtin zip()`                        |      5 |      5 |        2 |
+| botocore           | `copy: builtin`                              |      5 |      0 |        0 |
+| botocore           | `call: builtin next()`                       |      4 |      2 |        2 |
+| botocore           | `call: module class`                         |      3 |      3 |        3 |
+| botocore           | `call: param name`                           |      3 |      2 |        1 |
+| botocore           | `call: builtin object()`                     |      3 |      0 |        0 |
+| botocore           | `call: other name`                           |      3 |      1 |        0 |
+| botocore           | `call: cls name`                             |      2 |      2 |        2 |
+| botocore           | `call: other callee`                         |      2 |      2 |        0 |
+| botocore           | `attr: imported.x`                           |      2 |      2 |        1 |
+| botocore           | `JoinedStr`                                  |      2 |      1 |        1 |
+| botocore           | `copy: self`                                 |      2 |      2 |        1 |
+| botocore           | `call: builtin min()`                        |      2 |      2 |        1 |
+| botocore           | `call: builtin dict()`                       |      1 |      1 |        0 |
+| botocore           | `subscript: other[...]`                      |      1 |      1 |        1 |
+| botocore           | `SetComp (unknown elements)`                 |      1 |      1 |        1 |
+| botocore           | `attr: modclass.x`                           |      1 |      1 |        1 |
+| botocore           | `subscript: global[...]`                     |      1 |      1 |        0 |
+| botocore           | `call: builtin tuple()`                      |      1 |      0 |        0 |
+| botocore           | `call: capitalised`                          |      1 |      1 |        1 |
+| uvicorn            | `call: chained .method()`                    |     34 |     32 |       26 |
+| uvicorn            | `call: param.method()`                       |     31 |     26 |       17 |
+| uvicorn            | `binop (unknown operands)`                   |     24 |     17 |       14 |
+| uvicorn            | `conditional`                                |      9 |      8 |        5 |
+| uvicorn            | `subscript: param[...]`                      |      7 |      7 |        6 |
+| uvicorn            | `copy: local`                                |      6 |      5 |        5 |
+| uvicorn            | `dict (mixed/unknown elements)`              |      6 |      2 |        2 |
+| uvicorn            | `call: self.method()`                        |      6 |      5 |        1 |
+| uvicorn            | `call: local.method()`                       |      6 |      6 |        5 |
+| uvicorn            | `attr: chained`                              |      6 |      6 |        6 |
+| uvicorn            | `attr: local.x`                              |      6 |      6 |        6 |
+| uvicorn            | `attr: self.x`                               |      6 |      5 |        4 |
+| uvicorn            | `ListComp (unknown elements)`                |      6 |      3 |        3 |
+| uvicorn            | `call: module.func()`                        |      5 |      0 |        0 |
+| uvicorn            | `copy: imported`                             |      4 |      3 |        3 |
+| uvicorn            | `await: call: param name`                    |      4 |      4 |        0 |
+| uvicorn            | `boolop (or)`                                |      4 |      3 |        3 |
+| uvicorn            | `await: call: self.method()`                 |      4 |      2 |        0 |
+| uvicorn            | `call: imported function`                    |      3 |      2 |        2 |
+| uvicorn            | `call: module function (annotated)`          |      3 |      3 |        1 |
+| uvicorn            | `empty list`                                 |      3 |      0 |        0 |
+| uvicorn            | `list (mixed/unknown elements)`              |      3 |      3 |        3 |
+| uvicorn            | `attr: module.x`                             |      2 |      1 |        1 |
+| uvicorn            | `subscript: global[...]`                     |      2 |      2 |        2 |
+| uvicorn            | `call: builtin getattr()`                    |      2 |      2 |        2 |
+| uvicorn            | `copy: param (annotated)`                    |      2 |      1 |        1 |
+| uvicorn            | `call: builtin max()`                        |      2 |      2 |        2 |
+| uvicorn            | `tuple (mixed/unknown elements)`             |      2 |      0 |        0 |
+| uvicorn            | `DictComp (unknown elements)`                |      2 |      1 |        1 |
+| uvicorn            | `copy: global`                               |      2 |      2 |        2 |
+| uvicorn            | `subscript: builtin[...]`                    |      1 |      0 |        0 |
+| uvicorn            | `call: builtin hasattr()`                    |      1 |      0 |        0 |
+| uvicorn            | `await: call: other name`                    |      1 |      1 |        0 |
+| uvicorn            | `other constant`                             |      1 |      1 |        1 |
+| uvicorn            | `subscript: local[...]`                      |      1 |      1 |        1 |
+| uvicorn            | `call: local name`                           |      1 |      1 |        0 |
+| uvicorn            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
+| uvicorn            | `copy: self`                                 |      1 |      1 |        0 |
+| uvicorn            | `call: builtin list()`                       |      1 |      1 |        1 |
+| mcp                | `call: chained .method()`                    |     81 |     75 |       42 |
+| mcp                | `call: other callee`                         |     50 |     44 |       44 |
+| mcp                | `call: imported function`                    |     46 |     39 |       20 |
+| mcp                | `call: param.method()`                       |     43 |     42 |       16 |
+| mcp                | `call: module.func()`                        |     41 |     36 |       19 |
+| mcp                | `conditional`                                |     41 |     39 |       18 |
+| mcp                | `copy: local`                                |     37 |     31 |       22 |
+| mcp                | `call: local.method()`                       |     36 |     32 |       12 |
+| mcp                | `await: call: param.method()`                |     25 |     22 |       19 |
+| mcp                | `call: imported class`                       |     23 |     11 |       11 |
+| mcp                | `attr: param.x`                              |     20 |     20 |       10 |
+| mcp                | `call: module function (annotated)`          |     20 |     19 |        8 |
+| mcp                | `call: imported.attr()`                      |     17 |     17 |       13 |
+| mcp                | `await: call: self.method()`                 |     16 |     16 |        7 |
+| mcp                | `await: call: local.method()`                |     15 |     13 |       10 |
+| mcp                | `attr: local.x`                              |     14 |     14 |        9 |
+| mcp                | `boolop (or)`                                |     13 |     10 |        9 |
+| mcp                | `attr: self.x`                               |     12 |     12 |        7 |
+| mcp                | `attr: chained`                              |     12 |     12 |        6 |
+| mcp                | `await: call: chained .method()`             |     12 |     12 |        5 |
+| mcp                | `None literal`                               |     11 |      8 |        8 |
+| mcp                | `call: self.method()`                        |     11 |      8 |        6 |
+| mcp                | `tuple (mixed/unknown elements)`             |     11 |      8 |        6 |
+| mcp                | `subscript: other`                           |     10 |     10 |        8 |
+| mcp                | `call: builtin getattr()`                    |     10 |      7 |        3 |
+| mcp                | `copy: param (annotated)`                    |     10 |      9 |        8 |
+| mcp                | `ListComp (unknown elements)`                |     10 |      8 |        7 |
+| mcp                | `Yield`                                      |     10 |      9 |        9 |
+| mcp                | `dict (mixed/unknown elements)`              |     10 |      9 |        9 |
+| mcp                | `copy: other`                                |      9 |      7 |        7 |
+| mcp                | `call: global.method()`                      |      9 |      7 |        3 |
+| mcp                | `call: module class`                         |      6 |      6 |        6 |
+| mcp                | `await: call: param name`                    |      5 |      5 |        2 |
+| mcp                | `call: other.method()`                       |      5 |      4 |        3 |
+| mcp                | `binop (unknown operands)`                   |      5 |      2 |        1 |
+| mcp                | `copy: imported`                             |      4 |      1 |        1 |
+| mcp                | `boolop (and)`                               |      4 |      4 |        3 |
+| mcp                | `subscript: local[...]`                      |      4 |      3 |        3 |
+| mcp                | `SetComp (unknown elements)`                 |      4 |      4 |        4 |
+| mcp                | `-`                                          |      4 |      0 |        0 |
+| mcp                | `await: call: module function (annotated)`   |      4 |      4 |        0 |
+| mcp                | `call: builtin next()`                       |      4 |      4 |        1 |
+| mcp                | `call: builtin enumerate()`                  |      4 |      4 |        4 |
+| mcp                | `list (mixed/unknown elements)`              |      3 |      3 |        3 |
+| mcp                | `call: module function (unannotated)`        |      3 |      0 |        0 |
+| mcp                | `await: call: other name`                    |      3 |      3 |        0 |
+| mcp                | `call: modclass.method()`                    |      3 |      3 |        3 |
+| mcp                | `await: call: local name`                    |      3 |      3 |        1 |
+| mcp                | `copy: builtin`                              |      3 |      0 |        0 |
+| mcp                | `binop (one side literal)`                   |      2 |      1 |        1 |
+| mcp                | `other constant`                             |      2 |      0 |        0 |
+| mcp                | `call: builtin tuple()`                      |      2 |      1 |        0 |
+| mcp                | `subscript: imported[...]`                   |      2 |      2 |        2 |
+| mcp                | `attr: other.x`                              |      2 |      2 |        1 |
+| mcp                | `await: call: module.func()`                 |      2 |      0 |        0 |
+| mcp                | `await: call: imported function`             |      2 |      2 |        0 |
+| mcp                | `call: builtin dict()`                       |      2 |      1 |        1 |
+| mcp                | `call: builtin reversed()`                   |      2 |      2 |        0 |
+| mcp                | `DictComp (unknown elements)`                |      2 |      1 |        1 |
+| mcp                | `call: builtin object()`                     |      2 |      1 |        1 |
+| mcp                | `empty dict`                                 |      1 |      0 |        0 |
+| mcp                | `set (mixed/unknown elements)`               |      1 |      1 |        1 |
+| mcp                | `call: param name`                           |      1 |      1 |        1 |
+| mcp                | `await: copy: param (annotated)`             |      1 |      1 |        1 |
+| mcp                | `copy: global`                               |      1 |      0 |        0 |
+| mcp                | `call: builtin set()`                        |      1 |      1 |        1 |
+| mcp                | `call: other name`                           |      1 |      1 |        0 |
+| mcp                | `call: builtin sorted()`                     |      1 |      0 |        0 |
+| mcp                | `compare`                                    |      1 |      1 |        1 |
+| mcp                | `await: call: other.method()`                |      1 |      1 |        0 |
+| mcp                | `call: builtin frozenset()`                  |      1 |      1 |        1 |
+| mcp                | `subscript: param[...]`                      |      1 |      0 |        0 |
+| pdm                | `call: chained .method()`                    |    175 |    144 |      119 |
+| pdm                | `call: local.method()`                       |    123 |     97 |       83 |
+| pdm                | `attr: chained`                              |     72 |     59 |       44 |
+| pdm                | `call: param.method()`                       |     69 |     59 |       44 |
+| pdm                | `call: module.func()`                        |     60 |     39 |       36 |
+| pdm                | `conditional`                                |     57 |     50 |       30 |
+| pdm                | `call: imported function`                    |     56 |     49 |       47 |
+| pdm                | `tuple (mixed/unknown elements)`             |     41 |     12 |        8 |
+| pdm                | `copy: local`                                |     40 |     34 |       26 |
+| pdm                | `attr: param.x`                              |     37 |     30 |       21 |
+| pdm                | `call: imported.attr()`                      |     35 |     32 |       26 |
+| pdm                | `attr: local.x`                              |     34 |     28 |       12 |
+| pdm                | `boolop (or)`                                |     33 |     30 |       24 |
+| pdm                | `subscript: other`                           |     30 |     24 |       22 |
+| pdm                | `ListComp (unknown elements)`                |     20 |     14 |       12 |
+| pdm                | `attr: self.x`                               |     20 |     17 |        7 |
+| pdm                | `call: builtin list()`                       |     19 |     14 |       11 |
+| pdm                | `call: builtin sorted()`                     |     19 |     14 |       13 |
+| pdm                | `dict (mixed/unknown elements)`              |     19 |     11 |       10 |
+| pdm                | `other constant`                             |     18 |      4 |        4 |
+| pdm                | `binop (unknown operands)`                   |     17 |     10 |        9 |
+| pdm                | `copy: param (annotated)`                    |     16 |     13 |        5 |
+| pdm                | `list (mixed/unknown elements)`              |     15 |     12 |       12 |
+| pdm                | `call: self.method()`                        |     15 |     14 |       12 |
+| pdm                | `call: builtin next()`                       |     14 |     12 |        9 |
+| pdm                | `call: module function (annotated)`          |     14 |     11 |        9 |
+| pdm                | `empty dict`                                 |     13 |      0 |        0 |
+| pdm                | `empty list`                                 |     13 |      0 |        0 |
+| pdm                | `DictComp (unknown elements)`                |     13 |      9 |        8 |
+| pdm                | `call: cls.method()`                         |     12 |     12 |        0 |
+| pdm                | `call: imported class`                       |     10 |      5 |        5 |
+| pdm                | `subscript: local[...]`                      |      9 |      7 |        7 |
+| pdm                | `call: other name`                           |      9 |      6 |        5 |
+| pdm                | `binop (one side literal)`                   |      8 |      8 |        8 |
+| pdm                | `call: builtin getattr()`                    |      7 |      7 |        5 |
+| pdm                | `call: builtin zip()`                        |      7 |      3 |        3 |
+| pdm                | `call: builtin enumerate()`                  |      6 |      6 |        5 |
+| pdm                | `call: module function (unannotated)`        |      5 |      2 |        2 |
+| pdm                | `None literal`                               |      5 |      3 |        3 |
+| pdm                | `call: builtin set()`                        |      4 |      2 |        1 |
+| pdm                | `compare`                                    |      4 |      3 |        3 |
+| pdm                | `subscript: param[...]`                      |      4 |      2 |        2 |
+| pdm                | `SetComp (unknown elements)`                 |      4 |      4 |        4 |
+| pdm                | `call: builtin frozenset()`                  |      4 |      2 |        2 |
+| pdm                | `call: moddef.method()`                      |      4 |      0 |        0 |
+| pdm                | `boolop (and)`                               |      3 |      3 |        1 |
+| pdm                | `call: local name`                           |      3 |      3 |        1 |
+| pdm                | `call: other.method()`                       |      3 |      2 |        2 |
+| pdm                | `empty tuple`                                |      2 |      0 |        0 |
+| pdm                | `copy: imported`                             |      2 |      1 |        1 |
+| pdm                | `call: builtin iter()`                       |      2 |      2 |        2 |
+| pdm                | `call: other callee`                         |      2 |      2 |        1 |
+| pdm                | `call: builtin dict()`                       |      2 |      2 |        2 |
+| pdm                | `call: builtin min()`                        |      2 |      2 |        1 |
+| pdm                | `call: builtin object()`                     |      2 |      1 |        1 |
+| pdm                | `call: global.method()`                      |      2 |      2 |        2 |
+| pdm                | `call: str-literal.method()`                 |      2 |      2 |        2 |
+| pdm                | `call: module class`                         |      2 |      2 |        2 |
+| pdm                | `JoinedStr`                                  |      1 |      1 |        1 |
+| pdm                | `call: builtin max()`                        |      1 |      1 |        1 |
+| pdm                | `copy: global`                               |      1 |      1 |        1 |
+| pdm                | `call: builtin filter()`                     |      1 |      1 |        1 |
+| pdm                | `subscript: imported[...]`                   |      1 |      0 |        0 |
+| pdm                | `attr: other.x`                              |      1 |      0 |        0 |
+| pdm                | `call: builtin open()`                       |      1 |      0 |        0 |
+| pdm                | `set (mixed/unknown elements)`               |      1 |      1 |        1 |
+| pdm                | `call: builtin reversed()`                   |      1 |      1 |        1 |
+| pdm                | `attr: imported.x`                           |      1 |      0 |        0 |
+| strawberry-graphql | `call: chained .method()`                    |     89 |     64 |       41 |
+| strawberry-graphql | `call: imported function`                    |     64 |     48 |       13 |
+| strawberry-graphql | `attr: chained`                              |     58 |     45 |       33 |
+| strawberry-graphql | `call: self.method()`                        |     53 |     20 |       15 |
+| strawberry-graphql | `attr: param.x`                              |     51 |     43 |       30 |
+| strawberry-graphql | `call: builtin getattr()`                    |     43 |     31 |       14 |
+| strawberry-graphql | `attr: local.x`                              |     42 |     35 |       21 |
+| strawberry-graphql | `conditional`                                |     41 |     33 |        9 |
+| strawberry-graphql | `call: local.method()`                       |     40 |     24 |       11 |
+| strawberry-graphql | `subscript: other`                           |     36 |     23 |       19 |
+| strawberry-graphql | `copy: local`                                |     29 |     20 |       13 |
+| strawberry-graphql | `call: module function (annotated)`          |     24 |     17 |        2 |
+| strawberry-graphql | `call: module.func()`                        |     23 |     17 |       11 |
+| strawberry-graphql | `ListComp (unknown elements)`                |     22 |     13 |        8 |
+| strawberry-graphql | `call: param.method()`                       |     21 |     11 |        4 |
+| strawberry-graphql | `empty list`                                 |     19 |      0 |        0 |
+| strawberry-graphql | `copy: imported`                             |     16 |      1 |        1 |
+| strawberry-graphql | `attr: self.x`                               |     14 |     12 |        4 |
+| strawberry-graphql | `tuple (mixed/unknown elements)`             |     14 |      4 |        2 |
+| strawberry-graphql | `boolop (or)`                                |     14 |     12 |        9 |
+| strawberry-graphql | `copy: param (annotated)`                    |     14 |      8 |        4 |
+| strawberry-graphql | `empty dict`                                 |     13 |      0 |        0 |
+| strawberry-graphql | `await: call: self.method()`                 |     12 |      0 |        0 |
+| strawberry-graphql | `call: param name`                           |     12 |      9 |        6 |
+| strawberry-graphql | `None literal`                               |     12 |     12 |       12 |
+| strawberry-graphql | `subscript: local[...]`                      |     11 |      4 |        3 |
+| strawberry-graphql | `DictComp (unknown elements)`                |     11 |      8 |        5 |
+| strawberry-graphql | `GeneratorExp (unknown elements)`            |     10 |     10 |       10 |
+| strawberry-graphql | `binop (unknown operands)`                   |      9 |      4 |        3 |
+| strawberry-graphql | `dict (mixed/unknown elements)`              |      9 |      2 |        2 |
+| strawberry-graphql | `call: builtin list()`                       |      9 |      5 |        3 |
+| strawberry-graphql | `other constant`                             |      8 |      1 |        1 |
+| strawberry-graphql | `copy: modclass`                             |      8 |      0 |        0 |
+| strawberry-graphql | `await: call: chained .method()`             |      8 |      0 |        0 |
+| strawberry-graphql | `call: imported class`                       |      8 |      5 |        5 |
+| strawberry-graphql | `call: builtin sorted()`                     |      8 |      2 |        1 |
+| strawberry-graphql | `call: builtin enumerate()`                  |      8 |      8 |        6 |
+| strawberry-graphql | `call: other name`                           |      8 |      6 |        3 |
+| strawberry-graphql | `subscript: param[...]`                      |      6 |      2 |        1 |
+| strawberry-graphql | `attr: module.x`                             |      6 |      0 |        0 |
+| strawberry-graphql | `SetComp (unknown elements)`                 |      6 |      5 |        5 |
+| strawberry-graphql | `call: builtin tuple()`                      |      5 |      5 |        1 |
+| strawberry-graphql | `await: call: imported function`             |      5 |      5 |        2 |
+| strawberry-graphql | `boolop (and)`                               |      4 |      4 |        4 |
+| strawberry-graphql | `call: local name`                           |      3 |      2 |        1 |
+| strawberry-graphql | `call: other callee`                         |      3 |      2 |        2 |
+| strawberry-graphql | `call: builtin type()`                       |      3 |      3 |        1 |
+| strawberry-graphql | `call: builtin zip()`                        |      3 |      3 |        1 |
+| strawberry-graphql | `copy: other`                                |      3 |      2 |        0 |
+| strawberry-graphql | `call: builtin next()`                       |      3 |      1 |        0 |
+| strawberry-graphql | `await: call: local.method()`                |      2 |      1 |        1 |
+| strawberry-graphql | `call: builtin object()`                     |      2 |      0 |        0 |
+| strawberry-graphql | `subscript: imported[...]`                   |      2 |      1 |        0 |
+| strawberry-graphql | `binop (one side literal)`                   |      2 |      2 |        2 |
+| strawberry-graphql | `await: call: other.method()`                |      2 |      0 |        0 |
+| strawberry-graphql | `copy: moddef`                               |      2 |      0 |        0 |
+| strawberry-graphql | `call: global.method()`                      |      2 |      2 |        2 |
+| strawberry-graphql | `attr: cls.x`                                |      2 |      2 |        0 |
+| strawberry-graphql | `compare`                                    |      2 |      1 |        1 |
+| strawberry-graphql | `call: builtin eval()`                       |      2 |      1 |        1 |
+| strawberry-graphql | `await: copy: local`                         |      1 |      0 |        0 |
+| strawberry-graphql | `list (mixed/unknown elements)`              |      1 |      0 |        0 |
+| strawberry-graphql | `call: builtin min()`                        |      1 |      0 |        0 |
+| strawberry-graphql | `JoinedStr`                                  |      1 |      1 |        1 |
+| strawberry-graphql | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| strawberry-graphql | `await: call: param.method()`                |      1 |      1 |        0 |
+| strawberry-graphql | `call: builtin frozenset()`                  |      1 |      0 |        0 |
+| strawberry-graphql | `call: builtin set()`                        |      1 |      0 |        0 |
+| strawberry-graphql | `attr: other.x`                              |      1 |      0 |        0 |
+| strawberry-graphql | `call: cls.method()`                         |      1 |      1 |        0 |
+| strawberry-graphql | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| strawberry-graphql | `call: module class`                         |      1 |      0 |        0 |
+| strawberry-graphql | `call: builtin dict()`                       |      1 |      1 |        0 |
+| strawberry-graphql | `copy: cls`                                  |      1 |      1 |        0 |
+| strawberry-graphql | `copy: self`                                 |      1 |      1 |        1 |
+| strawberry-graphql | `attr: imported.x`                           |      1 |      0 |        0 |
+| pygments           | `other constant`                             |  2,314 |      0 |        0 |
+| pygments           | `list (mixed/unknown elements)`              |  1,586 |      6 |        6 |
+| pygments           | `dict (mixed/unknown elements)`              |    563 |      2 |        2 |
+| pygments           | `tuple (mixed/unknown elements)`             |    352 |     11 |       10 |
+| pygments           | `empty list`                                 |    161 |      0 |        0 |
+| pygments           | `binop (unknown operands)`                   |    128 |      9 |        9 |
+| pygments           | `binop (one side literal)`                   |    114 |     25 |       25 |
+| pygments           | `call: imported.attr()`                      |    109 |    100 |       98 |
+| pygments           | `copy: param (unannotated)`                  |     97 |     88 |       88 |
+| pygments           | `call: local.method()`                       |     94 |     70 |       65 |
+| pygments           | `call: imported function`                    |     91 |     25 |       19 |
+| pygments           | `call: param.method()`                       |     82 |     78 |       74 |
+| pygments           | `JoinedStr`                                  |     78 |      0 |        0 |
+| pygments           | `call: chained .method()`                    |     72 |     59 |       41 |
+| pygments           | `set (mixed/unknown elements)`               |     65 |      0 |        0 |
+| pygments           | `attr: module.x`                             |     64 |      0 |        0 |
+| pygments           | `copy: local`                                |     61 |     46 |       42 |
+| pygments           | `call: module.func()`                        |     54 |      8 |        8 |
+| pygments           | `call: self.method()`                        |     52 |     42 |       37 |
+| pygments           | `attr: self.x`                               |     42 |     35 |       24 |
+| pygments           | `call: builtin set()`                        |     39 |      0 |        0 |
+| pygments           | `empty dict`                                 |     38 |      0 |        0 |
+| pygments           | `None literal`                               |     31 |     17 |       17 |
+| pygments           | `subscript: local[...]`                      |     29 |     23 |       23 |
+| pygments           | `copy: global`                               |     27 |      1 |        1 |
+| pygments           | `call: module function (unannotated)`        |     23 |     14 |       10 |
+| pygments           | `call: other name`                           |     23 |      3 |        1 |
+| pygments           | `subscript: other`                           |     19 |     13 |       13 |
+| pygments           | `call: str-literal.method()`                 |     19 |      0 |        0 |
+| pygments           | `subscript: global[...]`                     |     17 |      5 |        3 |
+| pygments           | `copy: modclass`                             |     17 |      2 |        2 |
+| pygments           | `attr: imported.x`                           |     16 |      3 |        3 |
+| pygments           | `call: modclass.method()`                    |     16 |     16 |       16 |
+| pygments           | `attr: chained`                              |     15 |      8 |        8 |
+| pygments           | `attr: param.x`                              |     14 |     14 |        9 |
+| pygments           | `attr: global.x`                             |     14 |      0 |        0 |
+| pygments           | `call: builtin sorted()`                     |     13 |      3 |        3 |
+| pygments           | `call: builtin enumerate()`                  |     13 |      9 |        9 |
+| pygments           | `empty tuple`                                |     13 |      0 |        0 |
+| pygments           | `boolop (or)`                                |     11 |      9 |        8 |
+| pygments           | `call: other.method()`                       |     10 |      5 |        5 |
+| pygments           | `attr: local.x`                              |      9 |      4 |        4 |
+| pygments           | `call: global.method()`                      |      9 |      3 |        1 |
+| pygments           | `subscript: param[...]`                      |      8 |      7 |        6 |
+| pygments           | `copy: other`                                |      8 |      2 |        2 |
+| pygments           | `copy: imported`                             |      8 |      2 |        2 |
+| pygments           | `conditional`                                |      7 |      6 |        6 |
+| pygments           | `call: builtin getattr()`                    |      6 |      3 |        1 |
+| pygments           | `ListComp (unknown elements)`                |      5 |      3 |        3 |
+| pygments           | `DictComp (unknown elements)`                |      5 |      0 |        0 |
+| pygments           | `call: builtin __import__()`                 |      4 |      2 |        2 |
+| pygments           | `call: builtin list()`                       |      4 |      3 |        3 |
+| pygments           | `call: local name`                           |      4 |      3 |        1 |
+| pygments           | `attr: modclass.x`                           |      4 |      0 |        0 |
+| pygments           | `attr: cls.x`                                |      3 |      3 |        2 |
+| pygments           | `call: cls.method()`                         |      3 |      2 |        1 |
+| pygments           | `boolop (and)`                               |      2 |      2 |        2 |
+| pygments           | `call: builtin dict()`                       |      2 |      0 |        0 |
+| pygments           | `call: builtin next()`                       |      2 |      2 |        2 |
+| pygments           | `call: builtin max()`                        |      2 |      1 |        1 |
+| pygments           | `call: builtin zip()`                        |      2 |      0 |        0 |
+| pygments           | `call: builtin open()`                       |      1 |      1 |        1 |
+| pygments           | `call: imported class`                       |      1 |      0 |        0 |
+| pygments           | `subscript: imported[...]`                   |      1 |      0 |        0 |
+| pygments           | `call: builtin staticmethod()`               |      1 |      0 |        0 |
+| pygments           | `call: module class`                         |      1 |      1 |        1 |
+| pygments           | `call: builtin sum()`                        |      1 |      0 |        0 |
+| pygments           | `SetComp (unknown elements)`                 |      1 |      0 |        0 |
+| pygments           | `call: builtin tuple()`                      |      1 |      0 |        0 |
+| pygments           | `call: builtin min()`                        |      1 |      1 |        1 |
+| pygments           | `call: builtin.method()`                     |      1 |      1 |        0 |
+| streamlink         | `call: chained .method()`                    |    482 |     67 |       56 |
+| streamlink         | `other constant`                             |    211 |      6 |        6 |
+| streamlink         | `copy: local`                                |    198 |     27 |       23 |
+| streamlink         | `call: self.method()`                        |    191 |     41 |       37 |
+| streamlink         | `call: local.method()`                       |    118 |     31 |       27 |
+| streamlink         | `Yield`                                      |    118 |      6 |        5 |
+| streamlink         | `call: imported function`                    |     74 |     41 |       38 |
+| streamlink         | `call: imported.attr()`                      |     74 |      8 |        8 |
+| streamlink         | `call: module.func()`                        |     66 |     14 |       13 |
+| streamlink         | `dict (mixed/unknown elements)`              |     51 |      2 |        2 |
+| streamlink         | `call: param.method()`                       |     38 |     23 |        7 |
+| streamlink         | `boolop (or)`                                |     37 |     19 |       17 |
+| streamlink         | `subscript: other`                           |     36 |      6 |        3 |
+| streamlink         | `subscript: local[...]`                      |     32 |      6 |        5 |
+| streamlink         | `attr: chained`                              |     29 |     17 |       16 |
+| streamlink         | `tuple (mixed/unknown elements)`             |     24 |     18 |       16 |
+| streamlink         | `copy: param (unannotated)`                  |     20 |      6 |        5 |
+| streamlink         | `attr: self.x`                               |     19 |     11 |       10 |
+| streamlink         | `empty dict`                                 |     17 |      0 |        0 |
+| streamlink         | `attr: param.x`                              |     17 |     14 |        7 |
+| streamlink         | `binop (unknown operands)`                   |     15 |     15 |       12 |
+| streamlink         | `conditional`                                |     15 |     11 |        5 |
+| streamlink         | `None literal`                               |     13 |      3 |        3 |
+| streamlink         | `call: builtin next()`                       |     13 |      1 |        0 |
+| streamlink         | `binop (one side literal)`                   |     12 |      2 |        2 |
+| streamlink         | `list (mixed/unknown elements)`              |     11 |      3 |        3 |
+| streamlink         | `empty list`                                 |     11 |      0 |        0 |
+| streamlink         | `await: call: chained .method()`             |     10 |     10 |        8 |
+| streamlink         | `boolop (and)`                               |      9 |      0 |        0 |
+| streamlink         | `attr: local.x`                              |      8 |      7 |        7 |
+| streamlink         | `call: builtin sorted()`                     |      8 |      2 |        1 |
+| streamlink         | `call: builtin getattr()`                    |      8 |      8 |        5 |
+| streamlink         | `call: other callee`                         |      7 |      2 |        1 |
+| streamlink         | `ListComp (unknown elements)`                |      6 |      3 |        1 |
+| streamlink         | `call: builtin dict()`                       |      6 |      2 |        2 |
+| streamlink         | `DictComp (unknown elements)`                |      5 |      0 |        0 |
+| streamlink         | `call: imported class`                       |      5 |      3 |        3 |
+| streamlink         | `call: other.method()`                       |      5 |      5 |        3 |
+| streamlink         | `call: cls.method()`                         |      5 |      5 |        4 |
+| streamlink         | `call: modclass.method()`                    |      4 |      1 |        1 |
+| streamlink         | `call: builtin list()`                       |      4 |      3 |        3 |
+| streamlink         | `call: builtin enumerate()`                  |      4 |      2 |        1 |
+| streamlink         | `call: module function (unannotated)`        |      4 |      2 |        0 |
+| streamlink         | `call: builtin type()`                       |      4 |      4 |        1 |
+| streamlink         | `subscript: other[...]`                      |      3 |      3 |        0 |
+| streamlink         | `set (mixed/unknown elements)`               |      3 |      2 |        2 |
+| streamlink         | `call: local name`                           |      3 |      2 |        1 |
+| streamlink         | `call: builtin set()`                        |      3 |      0 |        0 |
+| streamlink         | `attr: module.x`                             |      2 |      0 |        0 |
+| streamlink         | `attr: global.x`                             |      2 |      0 |        0 |
+| streamlink         | `call: global.method()`                      |      2 |      0 |        0 |
+| streamlink         | `attr: cls.x`                                |      2 |      2 |        2 |
+| streamlink         | `call: builtin max()`                        |      2 |      2 |        2 |
+| streamlink         | `attr: other.x`                              |      2 |      1 |        0 |
+| streamlink         | `JoinedStr`                                  |      2 |      0 |        0 |
+| streamlink         | `call: module class`                         |      2 |      1 |        1 |
+| streamlink         | `call: param name`                           |      2 |      2 |        1 |
+| streamlink         | `call: builtin reversed()`                   |      2 |      2 |        2 |
+| streamlink         | `call: builtin divmod()`                     |      2 |      2 |        0 |
+| streamlink         | `await: call: self.method()`                 |      2 |      2 |        2 |
+| streamlink         | `call: builtin len()`                        |      1 |      1 |        1 |
+| streamlink         | `call: builtin min()`                        |      1 |      1 |        1 |
+| streamlink         | `copy: param (annotated)`                    |      1 |      1 |        1 |
+| streamlink         | `call: builtin memoryview()`                 |      1 |      1 |        1 |
+| streamlink         | `-`                                          |      1 |      0 |        0 |
+| streamlink         | `unaryop USub`                               |      1 |      0 |        0 |
+| streamlink         | `call: str-literal.method()`                 |      1 |      0 |        0 |
+| streamlink         | `call: other name`                           |      1 |      0 |        0 |
+| streamlink         | `compare`                                    |      1 |      1 |        1 |
+| streamlink         | `call: builtin super()`                      |      1 |      1 |        1 |
+| streamlink         | `attr: modclass.x`                           |      1 |      1 |        1 |
+| streamlink         | `call: builtin filter()`                     |      1 |      1 |        1 |
+| streamlink         | `copy: other`                                |      1 |      1 |        1 |
+| streamlink         | `await: call: param.method()`                |      1 |      1 |        1 |
+| streamlink         | `await: call: module.func()`                 |      1 |      0 |        0 |
+| streamlink         | `attr: imported.x`                           |      1 |      0 |        0 |
+| streamlink         | `call: cls name`                             |      1 |      1 |        1 |
+| sphinx             | `call: chained .method()`                    |    452 |    341 |      269 |
+| sphinx             | `other constant`                             |    357 |      5 |        5 |
+| sphinx             | `call: imported function`                    |    242 |    112 |       92 |
+| sphinx             | `call: local.method()`                       |    233 |    163 |      135 |
+| sphinx             | `call: imported.attr()`                      |    193 |     77 |       66 |
+| sphinx             | `attr: chained`                              |    182 |    140 |      126 |
+| sphinx             | `copy: local`                                |    178 |    141 |      122 |
+| sphinx             | `call: param.method()`                       |    123 |    103 |       70 |
+| sphinx             | `subscript: other`                           |    110 |     85 |       73 |
+| sphinx             | `empty list`                                 |    105 |      0 |        0 |
+| sphinx             | `binop (unknown operands)`                   |    104 |     68 |       67 |
+| sphinx             | `list (mixed/unknown elements)`              |     90 |     51 |       51 |
+| sphinx             | `attr: self.x`                               |     83 |     65 |       63 |
+| sphinx             | `subscript: local[...]`                      |     76 |     61 |       58 |
+| sphinx             | `attr: local.x`                              |     73 |     63 |       48 |
+| sphinx             | `call: self.method()`                        |     72 |     45 |       34 |
+| sphinx             | `attr: param.x`                              |     71 |     51 |       38 |
+| sphinx             | `copy: other`                                |     69 |      2 |        2 |
+| sphinx             | `tuple (mixed/unknown elements)`             |     69 |     28 |       23 |
+| sphinx             | `subscript: param[...]`                      |     66 |     59 |       55 |
+| sphinx             | `dict (mixed/unknown elements)`              |     64 |     19 |       17 |
+| sphinx             | `call: module.func()`                        |     61 |     50 |       47 |
+| sphinx             | `call: builtin list()`                       |     55 |     37 |       35 |
+| sphinx             | `binop (one side literal)`                   |     42 |     30 |       30 |
+| sphinx             | `call: builtin getattr()`                    |     42 |     30 |       13 |
+| sphinx             | `None literal`                               |     42 |     32 |       32 |
+| sphinx             | `call: module function (annotated)`          |     42 |     36 |       14 |
+| sphinx             | `boolop (or)`                                |     37 |     28 |       25 |
+| sphinx             | `copy: imported`                             |     34 |      9 |        8 |
+| sphinx             | `ListComp (unknown elements)`                |     32 |     24 |       22 |
+| sphinx             | `copy: param (annotated)`                    |     29 |     21 |       11 |
+| sphinx             | `conditional`                                |     29 |     25 |       20 |
+| sphinx             | `call: other name`                           |     24 |     17 |        9 |
+| sphinx             | `call: param name`                           |     24 |     20 |       18 |
+| sphinx             | `empty dict`                                 |     21 |      0 |        0 |
+| sphinx             | `call: imported class`                       |     19 |     17 |       17 |
+| sphinx             | `attr: imported.x`                           |     18 |      5 |        5 |
+| sphinx             | `call: builtin sorted()`                     |     17 |     16 |       14 |
+| sphinx             | `call: local name`                           |     17 |      9 |        9 |
+| sphinx             | `call: global.method()`                      |     15 |     13 |       10 |
+| sphinx             | `call: builtin enumerate()`                  |     13 |     10 |        7 |
+| sphinx             | `copy: global`                               |     13 |      3 |        3 |
+| sphinx             | `call: builtin object()`                     |     13 |      5 |        5 |
+| sphinx             | `call: builtin set()`                        |     12 |      4 |        4 |
+| sphinx             | `compare`                                    |     12 |     10 |       10 |
+| sphinx             | `DictComp (unknown elements)`                |     12 |      8 |        8 |
+| sphinx             | `call: builtin zip()`                        |     12 |      7 |        7 |
+| sphinx             | `call: builtin frozenset()`                  |     12 |      6 |        6 |
+| sphinx             | `boolop (and)`                               |     11 |     10 |       10 |
+| sphinx             | `GeneratorExp (unknown elements)`            |      9 |      8 |        8 |
+| sphinx             | `subscript: imported[...]`                   |      9 |      6 |        6 |
+| sphinx             | `call: module class`                         |      8 |      6 |        6 |
+| sphinx             | `subscript: global[...]`                     |      7 |      4 |        4 |
+| sphinx             | `call: builtin reversed()`                   |      6 |      1 |        0 |
+| sphinx             | `JoinedStr`                                  |      6 |      3 |        3 |
+| sphinx             | `subscript: self[...]`                       |      5 |      5 |        4 |
+| sphinx             | `copy: modclass`                             |      5 |      0 |        0 |
+| sphinx             | `attr: cls.x`                                |      5 |      3 |        1 |
+| sphinx             | `call: builtin next()`                       |      5 |      3 |        1 |
+| sphinx             | `call: builtin type()`                       |      5 |      4 |        2 |
+| sphinx             | `call: builtin dict()`                       |      5 |      3 |        2 |
+| sphinx             | `call: other.method()`                       |      5 |      5 |        3 |
+| sphinx             | `call: builtin tuple()`                      |      5 |      3 |        3 |
+| sphinx             | `SetComp (unknown elements)`                 |      4 |      3 |        3 |
+| sphinx             | `attr: module.x`                             |      4 |      2 |        2 |
+| sphinx             | `attr: modclass.x`                           |      4 |      4 |        2 |
+| sphinx             | `set (mixed/unknown elements)`               |      3 |      2 |        2 |
+| sphinx             | `call: str-literal.method()`                 |      3 |      2 |        2 |
+| sphinx             | `call: builtin max()`                        |      2 |      2 |        2 |
+| sphinx             | `call: builtin divmod()`                     |      2 |      2 |        2 |
+| sphinx             | `unaryop USub`                               |      2 |      0 |        0 |
+| sphinx             | `call: builtin eval()`                       |      2 |      1 |        1 |
+| sphinx             | `copy: builtin`                              |      2 |      0 |        0 |
+| sphinx             | `call: builtin round()`                      |      1 |      0 |        0 |
+| sphinx             | `call: builtin vars()`                       |      1 |      1 |        1 |
+| sphinx             | `call: builtin compile()`                    |      1 |      1 |        1 |
+| sphinx             | `call: builtin filter()`                     |      1 |      1 |        1 |
+| sphinx             | `call: builtin dir()`                        |      1 |      1 |        1 |
+| sphinx             | `copy: moddef`                               |      1 |      1 |        1 |
+| sphinx             | `call: cls.method()`                         |      1 |      0 |        0 |
+| sphinx             | `call: other callee`                         |      1 |      1 |        0 |
+| sphinx             | `call: builtin map()`                        |      1 |      1 |        1 |
+| sphinx             | `call: builtin bool()`                       |      1 |      1 |        1 |
+| tox                | `call: chained .method()`                    |    135 |    121 |      102 |
+| tox                | `call: param.method()`                       |     45 |     41 |       28 |
+| tox                | `call: local.method()`                       |     45 |     37 |       29 |
+| tox                | `tuple (mixed/unknown elements)`             |     31 |     21 |       17 |
+| tox                | `conditional`                                |     30 |     27 |       22 |
+| tox                | `subscript: other`                           |     27 |     22 |       21 |
+| tox                | `attr: chained`                              |     27 |     23 |       22 |
+| tox                | `call: imported function`                    |     25 |     20 |       17 |
+| tox                | `copy: local`                                |     25 |     19 |       18 |
+| tox                | `call: builtin getattr()`                    |     22 |     17 |       13 |
+| tox                | `call: self.method()`                        |     20 |     19 |       13 |
+| tox                | `call: module.func()`                        |     17 |     12 |        6 |
+| tox                | `attr: self.x`                               |     16 |     15 |        6 |
+| tox                | `copy: param (annotated)`                    |     16 |     14 |        8 |
+| tox                | `boolop (or)`                                |     14 |     13 |        9 |
+| tox                | `call: builtin set()`                        |     13 |     10 |       10 |
+| tox                | `attr: local.x`                              |     13 |     13 |       11 |
+| tox                | `ListComp (unknown elements)`                |     11 |      8 |        8 |
+| tox                | `call: imported class`                       |     10 |      7 |        7 |
+| tox                | `subscript: local[...]`                      |     10 |      8 |        3 |
+| tox                | `dict (mixed/unknown elements)`              |      8 |      5 |        5 |
+| tox                | `empty list`                                 |      6 |      0 |        0 |
+| tox                | `call: builtin list()`                       |      6 |      5 |        5 |
+| tox                | `DictComp (unknown elements)`                |      6 |      3 |        3 |
+| tox                | `attr: imported.x`                           |      6 |      4 |        4 |
+| tox                | `binop (unknown operands)`                   |      6 |      6 |        6 |
+| tox                | `call: builtin sorted()`                     |      5 |      4 |        4 |
+| tox                | `attr: param.x`                              |      5 |      5 |        5 |
+| tox                | `binop (one side literal)`                   |      5 |      5 |        5 |
+| tox                | `attr: module.x`                             |      5 |      1 |        1 |
+| tox                | `call: global.method()`                      |      4 |      2 |        1 |
+| tox                | `call: builtin enumerate()`                  |      4 |      4 |        2 |
+| tox                | `None literal`                               |      4 |      2 |        2 |
+| tox                | `call: other name`                           |      4 |      2 |        1 |
+| tox                | `call: builtin.method()`                     |      4 |      3 |        2 |
+| tox                | `other constant`                             |      4 |      0 |        0 |
+| tox                | `call: builtin next()`                       |      3 |      1 |        1 |
+| tox                | `GeneratorExp (unknown elements)`            |      3 |      3 |        3 |
+| tox                | `subscript: param[...]`                      |      3 |      3 |        1 |
+| tox                | `Yield`                                      |      3 |      3 |        3 |
+| tox                | `compare`                                    |      3 |      3 |        3 |
+| tox                | `call: module function (annotated)`          |      3 |      3 |        2 |
+| tox                | `call: imported.attr()`                      |      3 |      3 |        3 |
+| tox                | `call: builtin object()`                     |      2 |      0 |        0 |
+| tox                | `call: str-literal.method()`                 |      2 |      1 |        1 |
+| tox                | `empty dict`                                 |      2 |      0 |        0 |
+| tox                | `call: builtin reversed()`                   |      2 |      0 |        0 |
+| tox                | `call: module class`                         |      2 |      0 |        0 |
+| tox                | `SetComp (unknown elements)`                 |      1 |      1 |        1 |
+| tox                | `call: builtin type()`                       |      1 |      0 |        0 |
+| tox                | `copy: self`                                 |      1 |      1 |        1 |
+| tox                | `copy: imported`                             |      1 |      0 |        0 |
+| tox                | `empty tuple`                                |      1 |      0 |        0 |
+| tox                | `copy: modclass`                             |      1 |      0 |        0 |
+| tox                | `call: builtin max()`                        |      1 |      0 |        0 |
+| tox                | `subscript: other[...]`                      |      1 |      1 |        1 |
+| tox                | `boolop (and)`                               |      1 |      1 |        1 |
+| tox                | `call: local name`                           |      1 |      1 |        1 |
+| tox                | `call: builtin id()`                         |      1 |      1 |        1 |
+| tox                | `list (mixed/unknown elements)`              |      1 |      1 |        1 |
+| tox                | `JoinedStr`                                  |      1 |      1 |        1 |
+| tox                | `call: builtin vars()`                       |      1 |      0 |        0 |
+| tox                | `call: cls.method()`                         |      1 |      1 |        1 |
+| tox                | `call: other.method()`                       |      1 |      1 |        1 |
+| pint               | `call: self.method()`                        |    274 |     40 |       34 |
+| pint               | `call: local.method()`                       |    164 |     26 |       22 |
+| pint               | `call: imported class`                       |    151 |      3 |        3 |
+| pint               | `call: chained .method()`                    |    151 |     48 |       39 |
+| pint               | `binop (unknown operands)`                   |    135 |     14 |        9 |
+| pint               | `tuple (mixed/unknown elements)`             |    128 |      2 |        1 |
+| pint               | `copy: param (unannotated)`                  |    127 |      5 |        3 |
+| pint               | `call: module.func()`                        |    106 |      4 |        3 |
+| pint               | `call: param.method()`                       |    104 |     27 |       25 |
+| pint               | `call: imported function`                    |     88 |     40 |       28 |
+| pint               | `binop (one side literal)`                   |     80 |      2 |        2 |
+| pint               | `attr: self.x`                               |     65 |     13 |       13 |
+| pint               | `call: imported.attr()`                      |     65 |     13 |       11 |
+| pint               | `attr: chained`                              |     64 |     22 |       20 |
+| pint               | `call: module function (unannotated)`        |     37 |     28 |       23 |
+| pint               | `call: other callee`                         |     34 |      0 |        0 |
+| pint               | `attr: local.x`                              |     29 |      4 |        3 |
+| pint               | `call: builtin zip()`                        |     27 |      6 |        3 |
+| pint               | `attr: param.x`                              |     26 |      6 |        6 |
+| pint               | `call: other name`                           |     26 |     11 |        3 |
+| pint               | `call: param name`                           |     23 |      5 |        3 |
+| pint               | `copy: local`                                |     21 |     11 |       10 |
+| pint               | `subscript: local[...]`                      |     21 |     17 |       15 |
+| pint               | `list (mixed/unknown elements)`              |     19 |      1 |        1 |
+| pint               | `call: capitalised`                          |     19 |      0 |        0 |
+| pint               | `call: builtin tuple()`                      |     17 |      7 |        7 |
+| pint               | `call: builtin dict()`                       |     16 |      3 |        2 |
+| pint               | `call: local name`                           |     16 |      1 |        1 |
+| pint               | `subscript: other`                           |     15 |      4 |        2 |
+| pint               | `call: builtin getattr()`                    |     14 |     10 |        7 |
+| pint               | `attr: imported.x`                           |     14 |      1 |        1 |
+| pint               | `empty list`                                 |     13 |      0 |        0 |
+| pint               | `call: module function (annotated)`          |     12 |     10 |        8 |
+| pint               | `call: builtin enumerate()`                  |     12 |      8 |        7 |
+| pint               | `ListComp (unknown elements)`                |     12 |      9 |        6 |
+| pint               | `copy: param (annotated)`                    |     11 |      6 |        5 |
+| pint               | `None literal`                               |     10 |      3 |        3 |
+| pint               | `call: builtin set()`                        |     10 |      0 |        0 |
+| pint               | `GeneratorExp (unknown elements)`            |      9 |      6 |        6 |
+| pint               | `Lambda`                                     |      9 |      1 |        1 |
+| pint               | `subscript: param[...]`                      |      9 |      5 |        4 |
+| pint               | `empty dict`                                 |      8 |      0 |        0 |
+| pint               | `call: builtin divmod()`                     |      8 |      2 |        0 |
+| pint               | `call: builtin next()`                       |      7 |      2 |        2 |
+| pint               | `call: global.method()`                      |      7 |      1 |        1 |
+| pint               | `copy: other`                                |      6 |      4 |        2 |
+| pint               | `conditional`                                |      6 |      6 |        3 |
+| pint               | `copy: moddef`                               |      6 |      1 |        1 |
+| pint               | `DictComp (unknown elements)`                |      6 |      3 |        1 |
+| pint               | `call: builtin list()`                       |      6 |      3 |        2 |
+| pint               | `attr: module.x`                             |      5 |      0 |        0 |
+| pint               | `copy: imported`                             |      4 |      2 |        2 |
+| pint               | `dict (mixed/unknown elements)`              |      4 |      1 |        1 |
+| pint               | `boolop (or)`                                |      4 |      1 |        1 |
+| pint               | `other constant`                             |      4 |      3 |        3 |
+| pint               | `copy: self`                                 |      4 |      4 |        4 |
+| pint               | `call: module class`                         |      4 |      4 |        4 |
+| pint               | `call: builtin.method()`                     |      4 |      2 |        1 |
+| pint               | `compare`                                    |      3 |      1 |        0 |
+| pint               | `attr: builtin.x`                            |      3 |      0 |        0 |
+| pint               | `empty tuple`                                |      3 |      0 |        0 |
+| pint               | `call: builtin frozenset()`                  |      2 |      2 |        2 |
+| pint               | `subscript: imported[...]`                   |      2 |      0 |        0 |
+| pint               | `call: other.method()`                       |      2 |      2 |        2 |
+| pint               | `SetComp (unknown elements)`                 |      2 |      2 |        1 |
+| pint               | `call: builtin sorted()`                     |      2 |      2 |        2 |
+| pint               | `call: builtin iter()`                       |      1 |      1 |        1 |
+| pint               | `copy: modclass`                             |      1 |      0 |        0 |
+| pint               | `call: builtin any()`                        |      1 |      1 |        1 |
+| pint               | `subscript: builtin[...]`                    |      1 |      0 |        0 |
+| pint               | `call: builtin object()`                     |      1 |      0 |        0 |
+| pint               | `copy: global`                               |      1 |      1 |        1 |
+| pint               | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| pint               | `call: builtin sum()`                        |      1 |      1 |        1 |
+| pint               | `await: copy: local`                         |      1 |      0 |        0 |
+| pint               | `call: builtin type()`                       |      1 |      0 |        0 |
+| pint               | `copy: builtin`                              |      1 |      1 |        1 |
+| pint               | `call: builtin max()`                        |      1 |      1 |        1 |
+| altair             | `dict (mixed/unknown elements)`              |    472 |      6 |        2 |
+| altair             | `other constant`                             |    203 |      0 |        0 |
+| altair             | `call: self.method()`                        |    104 |     55 |       44 |
+| altair             | `call: chained .method()`                    |     58 |     27 |       15 |
+| altair             | `call: param.method()`                       |     46 |     42 |       32 |
+| altair             | `call: local.method()`                       |     46 |     38 |       17 |
+| altair             | `call: module function (annotated)`          |     30 |     18 |       12 |
+| altair             | `call: module.func()`                        |     21 |     13 |       12 |
+| altair             | `copy: param (annotated)`                    |     21 |     15 |        9 |
+| altair             | `call: imported function`                    |     20 |     14 |       14 |
+| altair             | `conditional`                                |     17 |     12 |       10 |
+| altair             | `call: builtin getattr()`                    |     15 |     13 |        5 |
+| altair             | `call: imported.attr()`                      |     12 |      8 |        7 |
+| altair             | `attr: param.x`                              |     12 |     11 |        8 |
+| altair             | `copy: local`                                |     11 |      9 |        4 |
+| altair             | `attr: local.x`                              |     10 |      6 |        5 |
+| altair             | `empty list`                                 |     10 |      0 |        0 |
+| altair             | `subscript: other`                           |      9 |      7 |        6 |
+| altair             | `GeneratorExp (unknown elements)`            |      9 |      8 |        8 |
+| altair             | `subscript: local[...]`                      |      9 |      5 |        2 |
+| altair             | `tuple (mixed/unknown elements)`             |      8 |      7 |        5 |
+| altair             | `attr: chained`                              |      7 |      5 |        4 |
+| altair             | `empty dict`                                 |      7 |      0 |        0 |
+| altair             | `attr: imported.x`                           |      7 |      0 |        0 |
+| altair             | `call: module function (unannotated)`        |      7 |      7 |        4 |
+| altair             | `binop (unknown operands)`                   |      6 |      4 |        3 |
+| altair             | `ListComp (unknown elements)`                |      6 |      4 |        3 |
+| altair             | `subscript: param[...]`                      |      5 |      5 |        5 |
+| altair             | `attr: self.x`                               |      5 |      4 |        2 |
+| altair             | `call: imported class`                       |      4 |      0 |        0 |
+| altair             | `call: builtin set()`                        |      4 |      1 |        1 |
+| altair             | `boolop (or)`                                |      4 |      4 |        2 |
+| altair             | `DictComp (unknown elements)`                |      4 |      4 |        1 |
+| altair             | `binop (one side literal)`                   |      3 |      0 |        0 |
+| altair             | `call: builtin list()`                       |      3 |      1 |        1 |
+| altair             | `subscript: imported[...]`                   |      3 |      2 |        2 |
+| altair             | `None literal`                               |      3 |      2 |        2 |
+| altair             | `call: local name`                           |      3 |      2 |        1 |
+| altair             | `call: builtin tuple()`                      |      2 |      1 |        1 |
+| altair             | `subscript: self[...]`                       |      2 |      2 |        2 |
+| altair             | `copy: self`                                 |      2 |      1 |        0 |
+| altair             | `call: builtin dict()`                       |      2 |      0 |        0 |
+| altair             | `call: builtin next()`                       |      2 |      2 |        0 |
+| altair             | `call: other.method()`                       |      2 |      2 |        2 |
+| altair             | `set (mixed/unknown elements)`               |      2 |      2 |        2 |
+| altair             | `call: other name`                           |      2 |      1 |        1 |
+| altair             | `subscript: other[...]`                      |      2 |      0 |        0 |
+| altair             | `list (mixed/unknown elements)`              |      2 |      2 |        0 |
+| altair             | `compare`                                    |      2 |      2 |        2 |
+| altair             | `call: other callee`                         |      1 |      0 |        0 |
+| altair             | `copy: modclass`                             |      1 |      0 |        0 |
+| altair             | `call: builtin enumerate()`                  |      1 |      1 |        1 |
+| altair             | `copy: imported`                             |      1 |      0 |        0 |
+| altair             | `call: builtin compile()`                    |      1 |      1 |        1 |
+| altair             | `call: global.method()`                      |      1 |      1 |        1 |
+| altair             | `call: builtin zip()`                        |      1 |      1 |        1 |
+| altair             | `call: builtin min()`                        |      1 |      1 |        1 |
+| altair             | `call: builtin sorted()`                     |      1 |      1 |        1 |
+| altair             | `call: cls.method()`                         |      1 |      1 |        1 |
+| altair             | `call: modclass.method()`                    |      1 |      1 |        0 |
+| altair             | `SetComp (unknown elements)`                 |      1 |      0 |        0 |
+| altair             | `copy: global`                               |      1 |      0 |        0 |
+| altair             | `call: builtin iter()`                       |      1 |      1 |        1 |
+| altair             | `attr: modclass.x`                           |      1 |      0 |        0 |
+| altair             | `call: module class`                         |      1 |      0 |        0 |
+| seaborn            | `call: self.method()`                        |    151 |    139 |      104 |
+| seaborn            | `call: module.func()`                        |    148 |    131 |      126 |
+| seaborn            | `call: param.method()`                       |    132 |    124 |       75 |
+| seaborn            | `call: local.method()`                       |    128 |    112 |       92 |
+| seaborn            | `call: chained .method()`                    |    125 |    112 |       95 |
+| seaborn            | `call: imported function`                    |     92 |     76 |       58 |
+| seaborn            | `tuple (mixed/unknown elements)`             |     81 |     58 |       48 |
+| seaborn            | `binop (unknown operands)`                   |     79 |     71 |       58 |
+| seaborn            | `subscript: other`                           |     70 |     62 |       51 |
+| seaborn            | `copy: param (unannotated)`                  |     68 |     48 |       34 |
+| seaborn            | `copy: local`                                |     59 |     49 |       35 |
+| seaborn            | `empty list`                                 |     56 |      0 |        0 |
+| seaborn            | `attr: self.x`                               |     49 |     47 |       20 |
+| seaborn            | `conditional`                                |     48 |     42 |       23 |
+| seaborn            | `ListComp (unknown elements)`                |     46 |     44 |       40 |
+| seaborn            | `attr: chained`                              |     42 |     35 |       32 |
+| seaborn            | `subscript: local[...]`                      |     42 |     39 |       28 |
+| seaborn            | `call: local name`                           |     39 |     39 |       36 |
+| seaborn            | `subscript: imported[...]`                   |     33 |      1 |        0 |
+| seaborn            | `dict (mixed/unknown elements)`              |     32 |     30 |       12 |
+| seaborn            | `empty dict`                                 |     30 |      0 |        0 |
+| seaborn            | `call: builtin zip()`                        |     30 |     29 |       24 |
+| seaborn            | `binop (one side literal)`                   |     30 |     22 |       20 |
+| seaborn            | `call: builtin getattr()`                    |     29 |     23 |        9 |
+| seaborn            | `call: builtin enumerate()`                  |     29 |     25 |       21 |
+| seaborn            | `subscript: param[...]`                      |     26 |     25 |       22 |
+| seaborn            | `None literal`                               |     25 |     12 |       12 |
+| seaborn            | `call: param name`                           |     25 |     25 |       20 |
+| seaborn            | `list (mixed/unknown elements)`              |     25 |     21 |       19 |
+| seaborn            | `DictComp (unknown elements)`                |     25 |     22 |       18 |
+| seaborn            | `call: builtin dict()`                       |     24 |     22 |       10 |
+| seaborn            | `other constant`                             |     20 |      9 |        9 |
+| seaborn            | `call: imported.attr()`                      |     19 |     14 |       13 |
+| seaborn            | `call: module function (unannotated)`        |     16 |     15 |        5 |
+| seaborn            | `compare`                                    |     14 |     12 |       12 |
+| seaborn            | `attr: local.x`                              |     13 |     13 |       13 |
+| seaborn            | `call: other name`                           |     12 |      7 |        6 |
+| seaborn            | `attr: param.x`                              |     10 |      8 |        7 |
+| seaborn            | `boolop (or)`                                |      9 |      9 |        7 |
+| seaborn            | `call: builtin min()`                        |      8 |      8 |        4 |
+| seaborn            | `boolop (and)`                               |      7 |      6 |        5 |
+| seaborn            | `call: builtin tuple()`                      |      7 |      7 |        2 |
+| seaborn            | `subscript: self[...]`                       |      7 |      3 |        3 |
+| seaborn            | `call: builtin list()`                       |      6 |      6 |        5 |
+| seaborn            | `attr: module.x`                             |      6 |      6 |        6 |
+| seaborn            | `copy: param (annotated)`                    |      5 |      5 |        3 |
+| seaborn            | `call: builtin max()`                        |      5 |      5 |        3 |
+| seaborn            | `call: other.method()`                       |      4 |      3 |        2 |
+| seaborn            | `SetComp (unknown elements)`                 |      3 |      3 |        3 |
+| seaborn            | `call: other callee`                         |      3 |      2 |        1 |
+| seaborn            | `call: imported class`                       |      3 |      2 |        2 |
+| seaborn            | `copy: imported`                             |      3 |      3 |        3 |
+| seaborn            | `call: builtin sorted()`                     |      3 |      2 |        1 |
+| seaborn            | `copy: other`                                |      2 |      1 |        1 |
+| seaborn            | `unaryop Invert`                             |      2 |      1 |        0 |
+| seaborn            | `copy: modclass`                             |      2 |      2 |        2 |
+| seaborn            | `call: capitalised`                          |      2 |      2 |        0 |
+| seaborn            | `copy: moddef`                               |      2 |      1 |        1 |
+| seaborn            | `copy: global`                               |      2 |      0 |        0 |
+| seaborn            | `call: builtin staticmethod()`               |      2 |      0 |        0 |
+| seaborn            | `call: module class`                         |      1 |      0 |        0 |
+| seaborn            | `call: builtin sum()`                        |      1 |      1 |        0 |
+| seaborn            | `GeneratorExp (unknown elements)`            |      1 |      1 |        1 |
+| seaborn            | `call: builtin set()`                        |      1 |      1 |        1 |
+| seaborn            | `call: builtin reversed()`                   |      1 |      1 |        1 |
+| seaborn            | `call: builtin slice()`                      |      1 |      1 |        1 |
+| seaborn            | `copy: builtin`                              |      1 |      0 |        0 |
+| seaborn            | `call: builtin str()`                        |      1 |      0 |        0 |
+| seaborn            | `call: builtin map()`                        |      1 |      1 |        1 |
+| seaborn            | `call: self name`                            |      1 |      1 |        1 |
+| aiohttp            | `call: chained .method()`                    |    110 |    104 |       72 |
+| aiohttp            | `attr: self.x`                               |     84 |     80 |       45 |
+| aiohttp            | `other constant`                             |     74 |      2 |        2 |
+| aiohttp            | `call: local.method()`                       |     69 |     62 |       46 |
+| aiohttp            | `call: module.func()`                        |     43 |     29 |       28 |
+| aiohttp            | `attr: local.x`                              |     36 |     34 |       22 |
+| aiohttp            | `conditional`                                |     29 |     27 |       17 |
+| aiohttp            | `attr: param.x`                              |     28 |     26 |       10 |
+| aiohttp            | `copy: local`                                |     27 |     27 |       21 |
+| aiohttp            | `attr: chained`                              |     26 |     15 |       13 |
+| aiohttp            | `call: self.method()`                        |     21 |     19 |       12 |
+| aiohttp            | `subscript: other`                           |     19 |     18 |       17 |
+| aiohttp            | `tuple (mixed/unknown elements)`             |     19 |     12 |       10 |
+| aiohttp            | `await: call: chained .method()`             |     19 |     14 |        8 |
+| aiohttp            | `call: param.method()`                       |     17 |     17 |       11 |
+| aiohttp            | `await: call: self.method()`                 |     16 |     16 |        9 |
+| aiohttp            | `binop (unknown operands)`                   |     16 |     10 |        8 |
+| aiohttp            | `copy: param (annotated)`                    |     15 |     14 |        9 |
+| aiohttp            | `call: imported class`                       |     15 |     11 |       10 |
+| aiohttp            | `await: call: local.method()`                |     15 |      6 |        2 |
+| aiohttp            | `None literal`                               |     14 |      8 |        8 |
+| aiohttp            | `empty list`                                 |     12 |      0 |        0 |
+| aiohttp            | `subscript: imported[...]`                   |     12 |      0 |        0 |
+| aiohttp            | `copy: imported`                             |     11 |      0 |        0 |
+| aiohttp            | `boolop (or)`                                |     10 |      6 |        5 |
+| aiohttp            | `call: global.method()`                      |      9 |      7 |        7 |
+| aiohttp            | `dict (mixed/unknown elements)`              |      8 |      5 |        5 |
+| aiohttp            | `call: imported function`                    |      8 |      7 |        6 |
+| aiohttp            | `attr: module.x`                             |      8 |      1 |        1 |
+| aiohttp            | `call: builtin getattr()`                    |      8 |      8 |        6 |
+| aiohttp            | `subscript: local[...]`                      |      7 |      7 |        6 |
+| aiohttp            | `boolop (and)`                               |      6 |      5 |        2 |
+| aiohttp            | `attr: imported.x`                           |      4 |      0 |        0 |
+| aiohttp            | `call: capitalised`                          |      4 |      4 |        4 |
+| aiohttp            | `call: builtin frozenset()`                  |      4 |      0 |        0 |
+| aiohttp            | `DictComp (unknown elements)`                |      4 |      0 |        0 |
+| aiohttp            | `ListComp (unknown elements)`                |      3 |      3 |        3 |
+| aiohttp            | `set (mixed/unknown elements)`               |      3 |      0 |        0 |
+| aiohttp            | `copy: global`                               |      3 |      0 |        0 |
+| aiohttp            | `call: builtin list()`                       |      3 |      3 |        1 |
+| aiohttp            | `call: imported.attr()`                      |      3 |      2 |        1 |
+| aiohttp            | `binop (one side literal)`                   |      3 |      1 |        1 |
+| aiohttp            | `empty dict`                                 |      3 |      0 |        0 |
+| aiohttp            | `compare`                                    |      3 |      0 |        0 |
+| aiohttp            | `call: local name`                           |      3 |      3 |        2 |
+| aiohttp            | `call: other name`                           |      3 |      1 |        0 |
+| aiohttp            | `subscript: builtin[...]`                    |      3 |      0 |        0 |
+| aiohttp            | `copy: moddef`                               |      2 |      0 |        0 |
+| aiohttp            | `copy: modclass`                             |      2 |      1 |        1 |
+| aiohttp            | `attr: global.x`                             |      2 |      1 |        1 |
+| aiohttp            | `call: builtin reversed()`                   |      2 |      2 |        2 |
+| aiohttp            | `SetComp (unknown elements)`                 |      2 |      2 |        2 |
+| aiohttp            | `GeneratorExp (unknown elements)`            |      2 |      2 |        2 |
+| aiohttp            | `subscript: param[...]`                      |      2 |      1 |        1 |
+| aiohttp            | `call: builtin sorted()`                     |      2 |      2 |        2 |
+| aiohttp            | `attr: builtin.x`                            |      1 |      0 |        0 |
+| aiohttp            | `copy: builtin`                              |      1 |      0 |        0 |
+| aiohttp            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
+| aiohttp            | `call: builtin.method()`                     |      1 |      0 |        0 |
+| aiohttp            | `await: call: param.method()`                |      1 |      1 |        1 |
+| aiohttp            | `copy: other`                                |      1 |      1 |        0 |
+| aiohttp            | `JoinedStr`                                  |      1 |      1 |        1 |
+| aiohttp            | `call: builtin memoryview()`                 |      1 |      1 |        1 |
+| aiohttp            | `list (mixed/unknown elements)`              |      1 |      1 |        1 |
+| aiohttp            | `await: call: module.func()`                 |      1 |      0 |        0 |
+| aiohttp            | `call: module function (annotated)`          |      1 |      1 |        1 |
+| aiohttp            | `call: builtin open()`                       |      1 |      1 |        1 |
+| aiohttp            | `call: builtin int()`                        |      1 |      1 |        1 |
+| aiohttp            | `call: builtin dict()`                       |      1 |      1 |        1 |
+| aiohttp            | `call: builtin set()`                        |      1 |      1 |        1 |
+| aiohttp            | `unaryop Not`                                |      1 |      0 |        0 |
+| aiohttp            | `call: global name`                          |      1 |      1 |        1 |
+| aiohttp            | `call: builtin min()`                        |      1 |      1 |        1 |
+| aiohttp            | `call: module class`                         |      1 |      1 |        1 |
+| aiohttp            | `call: module function (unannotated)`        |      1 |      0 |        0 |
+| aiohttp            | `call: param name`                           |      1 |      0 |        0 |
+| aiohttp            | `call: builtin tuple()`                      |      1 |      0 |        0 |
+| aiohttp            | `call: other callee`                         |      1 |      0 |        0 |
+| aiohttp            | `copy: self`                                 |      1 |      1 |        1 |
+| aiohttp            | `unaryop USub`                               |      1 |      0 |        0 |
+| aiohttp            | `await: call: param name`                    |      1 |      1 |        0 |
+| aiohttp            | `await: copy: local`                         |      1 |      1 |        1 |
+| aiohttp            | `await: call: local name`                    |      1 |      1 |        1 |
+| websockets         | `call: local.method()`                       |     41 |     29 |       27 |
+| websockets         | `call: chained .method()`                    |     33 |     21 |       16 |
+| websockets         | `call: module.func()`                        |     33 |     24 |       24 |
+| websockets         | `call: param.method()`                       |     17 |      9 |        5 |
+| websockets         | `tuple (mixed/unknown elements)`             |     13 |      7 |        7 |
+| websockets         | `YieldFrom`                                  |     12 |     11 |       11 |
+| websockets         | `attr: modclass.x`                           |     12 |      0 |        0 |
+| websockets         | `call: imported class`                       |     11 |      8 |        8 |
+| websockets         | `attr: self.x`                               |     10 |      7 |        6 |
+| websockets         | `call: self.method()`                        |     10 |      9 |        6 |
+| websockets         | `copy: param (annotated)`                    |      9 |      8 |        2 |
+| websockets         | `attr: local.x`                              |      9 |      9 |        7 |
+| websockets         | `call: other name`                           |      8 |      8 |        4 |
+| websockets         | `subscript: other`                           |      8 |      6 |        6 |
+| websockets         | `copy: local`                                |      8 |      6 |        6 |
+| websockets         | `await: call: chained .method()`             |      7 |      6 |        5 |
+| websockets         | `attr: chained`                              |      6 |      2 |        2 |
+| websockets         | `await: call: imported function`             |      6 |      5 |        5 |
+| websockets         | `binop (unknown operands)`                   |      6 |      3 |        2 |
+| websockets         | `copy: moddef`                               |      5 |      0 |        0 |
+| websockets         | `subscript: param[...]`                      |      5 |      5 |        5 |
+| websockets         | `dict (mixed/unknown elements)`              |      4 |      0 |        0 |
+| websockets         | `call: builtin iter()`                       |      4 |      3 |        3 |
+| websockets         | `call: builtin next()`                       |      4 |      3 |        0 |
+| websockets         | `None literal`                               |      4 |      4 |        4 |
+| websockets         | `subscript: other[...]`                      |      4 |      4 |        4 |
+| websockets         | `other constant`                             |      4 |      0 |        0 |
+| websockets         | `copy: self`                                 |      3 |      3 |        3 |
+| websockets         | `attr: other.x`                              |      3 |      3 |        3 |
+| websockets         | `call: capitalised`                          |      3 |      3 |        3 |
+| websockets         | `call: param name`                           |      3 |      3 |        0 |
+| websockets         | `subscript: local[...]`                      |      3 |      3 |        3 |
+| websockets         | `binop (one side literal)`                   |      3 |      3 |        3 |
+| websockets         | `await: call: self.method()`                 |      3 |      3 |        3 |
+| websockets         | `await: call: local.method()`                |      2 |      0 |        0 |
+| websockets         | `call: builtin aiter()`                      |      2 |      2 |        2 |
+| websockets         | `list (mixed/unknown elements)`              |      2 |      2 |        2 |
+| websockets         | `ListComp (unknown elements)`                |      2 |      1 |        1 |
+| websockets         | `attr: param.x`                              |      2 |      2 |        2 |
+| websockets         | `set (mixed/unknown elements)`               |      2 |      0 |        0 |
+| websockets         | `call: builtin reversed()`                   |      2 |      1 |        1 |
+| websockets         | `empty list`                                 |      2 |      0 |        0 |
+| websockets         | `copy: modclass`                             |      2 |      0 |        0 |
+| websockets         | `await: call: param name`                    |      2 |      2 |        2 |
+| websockets         | `await: call: module function (annotated)`   |      2 |      2 |        2 |
+| websockets         | `await: call: other name`                    |      1 |      0 |        0 |
+| websockets         | `call: builtin.method()`                     |      1 |      0 |        0 |
+| websockets         | `empty dict`                                 |      1 |      0 |        0 |
+| websockets         | `conditional`                                |      1 |      0 |        0 |
+| websockets         | `call: builtin int()`                        |      1 |      0 |        0 |
+| websockets         | `call: cls name`                             |      1 |      1 |        1 |
+| websockets         | `call: builtin __import__()`                 |      1 |      1 |        1 |
+| websockets         | `call: builtin dict()`                       |      1 |      1 |        1 |
+| websockets         | `call: imported.attr()`                      |      1 |      1 |        1 |
+| websockets         | `call: local name`                           |      1 |      0 |        0 |
+| websockets         | `await: call: imported.attr()`               |      1 |      1 |        1 |
+| websockets         | `await: copy: local`                         |      1 |      1 |        0 |
+| websockets         | `binop: literal % formatting`                |      1 |      1 |        1 |
+| websockets         | `call: builtin memoryview()`                 |      1 |      1 |        1 |
+| websockets         | `await: call: param.method()`                |      1 |      1 |        1 |
+| websockets         | `compare`                                    |      1 |      1 |        1 |
+| zarr               | `call: imported function`                    |     98 |     86 |       49 |
+| zarr               | `call: chained .method()`                    |     98 |     75 |       60 |
+| zarr               | `call: param.method()`                       |     70 |     41 |       28 |
+| zarr               | `call: module.func()`                        |     64 |     49 |       49 |
+| zarr               | `call: local.method()`                       |     63 |     55 |       35 |
+| zarr               | `binop (unknown operands)`                   |     63 |     37 |       32 |
+| zarr               | `copy: local`                                |     53 |     38 |       29 |
+| zarr               | `call: param name`                           |     53 |     52 |       37 |
+| zarr               | `call: self.method()`                        |     51 |     33 |       18 |
+| zarr               | `attr: chained`                              |     41 |     18 |       17 |
+| zarr               | `call: builtin tuple()`                      |     32 |     26 |       24 |
+| zarr               | `subscript: param[...]`                      |     31 |     30 |       27 |
+| zarr               | `subscript: other`                           |     30 |     22 |       21 |
+| zarr               | `subscript: local[...]`                      |     27 |     22 |       13 |
+| zarr               | `call: module function (annotated)`          |     27 |     20 |        6 |
+| zarr               | `other constant`                             |     23 |      9 |        9 |
+| zarr               | `attr: param.x`                              |     22 |     18 |        9 |
+| zarr               | `await: call: chained .method()`             |     22 |     14 |        2 |
+| zarr               | `ListComp (unknown elements)`                |     20 |      8 |        7 |
+| zarr               | `copy: param (annotated)`                    |     20 |     14 |        9 |
+| zarr               | `conditional`                                |     19 |     12 |        9 |
+| zarr               | `attr: self.x`                               |     14 |     14 |        4 |
+| zarr               | `await: call: module.func()`                 |     14 |      0 |        0 |
+| zarr               | `empty list`                                 |     13 |      0 |        0 |
+| zarr               | `await: call: param.method()`                |     13 |     13 |       11 |
+| zarr               | `call: builtin zip()`                        |     13 |     12 |        7 |
+| zarr               | `call: builtin sorted()`                     |     13 |     10 |       10 |
+| zarr               | `call: imported.attr()`                      |     11 |     10 |        9 |
+| zarr               | `await: call: imported function`             |     11 |      9 |        8 |
+| zarr               | `dict (mixed/unknown elements)`              |     11 |      6 |        4 |
+| zarr               | `tuple (mixed/unknown elements)`             |     10 |     10 |        6 |
+| zarr               | `call: builtin list()`                       |     10 |      7 |        7 |
+| zarr               | `None literal`                               |      9 |      8 |        8 |
+| zarr               | `binop (one side literal)`                   |      9 |      5 |        5 |
+| zarr               | `attr: local.x`                              |      8 |      7 |        7 |
+| zarr               | `compare`                                    |      7 |      7 |        7 |
+| zarr               | `empty dict`                                 |      6 |      0 |        0 |
+| zarr               | `boolop (or)`                                |      6 |      5 |        3 |
+| zarr               | `call: builtin enumerate()`                  |      6 |      5 |        5 |
+| zarr               | `call: global.method()`                      |      6 |      6 |        5 |
+| zarr               | `list (mixed/unknown elements)`              |      6 |      3 |        3 |
+| zarr               | `JoinedStr`                                  |      6 |      2 |        2 |
+| zarr               | `await: copy: local`                         |      5 |      5 |        2 |
+| zarr               | `await: call: local.method()`                |      5 |      2 |        1 |
+| zarr               | `SetComp (unknown elements)`                 |      4 |      4 |        2 |
+| zarr               | `call: other.method()`                       |      4 |      2 |        0 |
+| zarr               | `call: builtin dict()`                       |      4 |      4 |        2 |
+| zarr               | `call: builtin slice()`                      |      4 |      4 |        4 |
+| zarr               | `call: builtin getattr()`                    |      3 |      3 |        1 |
+| zarr               | `call: builtin max()`                        |      3 |      3 |        3 |
+| zarr               | `await: call: imported.attr()`               |      3 |      2 |        2 |
+| zarr               | `DictComp (unknown elements)`                |      3 |      1 |        1 |
+| zarr               | `boolop (and)`                               |      3 |      3 |        3 |
+| zarr               | `call: cls name`                             |      3 |      3 |        3 |
+| zarr               | `subscript: self[...]`                       |      3 |      3 |        3 |
+| zarr               | `call: builtin sum()`                        |      3 |      2 |        2 |
+| zarr               | `copy: self`                                 |      3 |      2 |        0 |
+| zarr               | `GeneratorExp (unknown elements)`            |      3 |      1 |        1 |
+| zarr               | `await: call: self.method()`                 |      3 |      3 |        3 |
+| zarr               | `call: other name`                           |      2 |      1 |        1 |
+| zarr               | `call: builtin set()`                        |      2 |      2 |        2 |
+| zarr               | `call: builtin.method()`                     |      2 |      2 |        2 |
+| zarr               | `call: builtin next()`                       |      2 |      0 |        0 |
+| zarr               | `call: imported class`                       |      2 |      0 |        0 |
+| zarr               | `call: cls.method()`                         |      2 |      2 |        2 |
+| zarr               | `call: module class`                         |      2 |      2 |        2 |
+| zarr               | `copy: global`                               |      2 |      0 |        0 |
+| zarr               | `subscript: imported[...]`                   |      2 |      0 |        0 |
+| zarr               | `copy: builtin`                              |      1 |      0 |        0 |
+| zarr               | `call: builtin object()`                     |      1 |      1 |        1 |
+| zarr               | `await: call: modclass.method()`             |      1 |      1 |        1 |
+| zarr               | `call: modclass.method()`                    |      1 |      1 |        1 |
+| zarr               | `copy: imported`                             |      1 |      1 |        1 |
+| zarr               | `attr: modclass.x`                           |      1 |      1 |        1 |
+| zarr               | `attr: cls.x`                                |      1 |      1 |        1 |
+| zarr               | `await: call: cls.method()`                  |      1 |      0 |        0 |
+| zarr               | `await: call: module function (annotated)`   |      1 |      1 |        1 |
+| zarr               | `attr: module.x`                             |      1 |      0 |        0 |
+| zarr               | `await: copy: param (annotated)`             |      1 |      0 |        0 |
+| zarr               | `call: builtin min()`                        |      1 |      1 |        1 |
+| joblib             | `call: imported function`                    |    121 |     19 |       16 |
+| joblib             | `call: local.method()`                       |    110 |      8 |        6 |
+| joblib             | `call: imported.attr()`                      |    109 |      7 |        4 |
+| joblib             | `call: chained .method()`                    |     93 |     38 |       33 |
+| joblib             | `attr: chained`                              |     79 |      4 |        3 |
+| joblib             | `call: module.func()`                        |     78 |     17 |       17 |
+| joblib             | `call: module function (unannotated)`        |     56 |     23 |       13 |
+| joblib             | `other constant`                             |     42 |      2 |        2 |
+| joblib             | `call: other callee`                         |     41 |      0 |        0 |
+| joblib             | `call: param.method()`                       |     39 |     14 |       10 |
+| joblib             | `call: self.method()`                        |     33 |     27 |       24 |
+| joblib             | `copy: param (unannotated)`                  |     32 |      9 |        7 |
+| joblib             | `copy: local`                                |     32 |      8 |        5 |
+| joblib             | `binop (unknown operands)`                   |     32 |     13 |       13 |
+| joblib             | `None literal`                               |     31 |     11 |       11 |
+| joblib             | `list (mixed/unknown elements)`              |     26 |      4 |        4 |
+| joblib             | `call: other name`                           |     26 |      1 |        0 |
+| joblib             | `attr: self.x`                               |     25 |     18 |       14 |
+| joblib             | `call: local name`                           |     25 |      2 |        0 |
+| joblib             | `tuple (mixed/unknown elements)`             |     24 |      8 |        8 |
+| joblib             | `empty list`                                 |     22 |      0 |        0 |
+| joblib             | `ListComp (unknown elements)`                |     19 |      3 |        3 |
+| joblib             | `attr: param.x`                              |     18 |      9 |        8 |
+| joblib             | `call: builtin list()`                       |     18 |      3 |        3 |
+| joblib             | `subscript: other`                           |     17 |      7 |        6 |
+| joblib             | `attr: local.x`                              |     17 |      3 |        3 |
+| joblib             | `call: builtin getattr()`                    |     16 |      9 |        5 |
+| joblib             | `dict (mixed/unknown elements)`              |     16 |      3 |        2 |
+| joblib             | `call: param name`                           |     16 |      0 |        0 |
+| joblib             | `call: builtin zip()`                        |     15 |      1 |        1 |
+| joblib             | `call: imported class`                       |     15 |      1 |        1 |
+| joblib             | `call: builtin dict()`                       |     14 |      7 |        6 |
+| joblib             | `empty dict`                                 |     14 |      0 |        0 |
+| joblib             | `attr: module.x`                             |     13 |      0 |        0 |
+| joblib             | `subscript: local[...]`                      |     13 |      2 |        2 |
+| joblib             | `binop (one side literal)`                   |      9 |      3 |        3 |
+| joblib             | `call: builtin set()`                        |      7 |      0 |        0 |
+| joblib             | `compare`                                    |      7 |      1 |        1 |
+| joblib             | `boolop (or)`                                |      6 |      4 |        4 |
+| joblib             | `call: builtin max()`                        |      6 |      4 |        4 |
+| joblib             | `conditional`                                |      6 |      4 |        3 |
+| joblib             | `copy: global`                               |      6 |      0 |        0 |
+| joblib             | `call: global.method()`                      |      6 |      2 |        2 |
+| joblib             | `call: builtin open()`                       |      6 |      0 |        0 |
+| joblib             | `call: other.method()`                       |      5 |      3 |        3 |
+| joblib             | `copy: imported`                             |      5 |      1 |        1 |
+| joblib             | `attr: global.x`                             |      5 |      0 |        0 |
+| joblib             | `call: builtin staticmethod()`               |      4 |      0 |        0 |
+| joblib             | `call: builtin enumerate()`                  |      4 |      2 |        2 |
+| joblib             | `DictComp (unknown elements)`                |      4 |      1 |        1 |
+| joblib             | `subscript: param[...]`                      |      4 |      2 |        0 |
+| joblib             | `call: builtin iter()`                       |      4 |      1 |        1 |
+| joblib             | `await: call: local.method()`                |      4 |      0 |        0 |
+| joblib             | `call: builtin sum()`                        |      3 |      2 |        2 |
+| joblib             | `call: builtin min()`                        |      3 |      3 |        3 |
+| joblib             | `copy: builtin`                              |      3 |      0 |        0 |
+| joblib             | `boolop (and)`                               |      3 |      2 |        2 |
+| joblib             | `subscript: global[...]`                     |      3 |      2 |        1 |
+| joblib             | `copy: other`                                |      3 |      0 |        0 |
+| joblib             | `call: builtin eval()`                       |      3 |      0 |        0 |
+| joblib             | `await: call: other name`                    |      3 |      0 |        0 |
+| joblib             | `await: call: other.method()`                |      2 |      0 |        0 |
+| joblib             | `call: builtin type()`                       |      2 |      0 |        0 |
+| joblib             | `call: str-literal.method()`                 |      2 |      1 |        1 |
+| joblib             | `call: builtin vars()`                       |      2 |      0 |        0 |
+| joblib             | `SetComp (unknown elements)`                 |      1 |      0 |        0 |
+| joblib             | `unaryop USub`                               |      1 |      0 |        0 |
+| joblib             | `call: builtin abs()`                        |      1 |      1 |        0 |
+| joblib             | `call: builtin RuntimeError()`               |      1 |      0 |        0 |
+| joblib             | `call: builtin tuple()`                      |      1 |      1 |        1 |
+| joblib             | `copy: modclass`                             |      1 |      0 |        0 |
+| joblib             | `call: modclass.method()`                    |      1 |      1 |        1 |
+| joblib             | `call: module class`                         |      1 |      1 |        1 |
+| joblib             | `await: call: self.method()`                 |      1 |      0 |        0 |
+| joblib             | `call: builtin.method()`                     |      1 |      1 |        1 |
+| joblib             | `subscript: imported[...]`                   |      1 |      1 |        1 |
+| joblib             | `call: builtin next()`                       |      1 |      1 |        1 |
+| joblib             | `Lambda`                                     |      1 |      0 |        0 |
+| joblib             | `call: moddef.method()`                      |      1 |      0 |        0 |
+| joblib             | `await: call: param name`                    |      1 |      0 |        0 |
+| joblib             | `await: call: local name`                    |      1 |      0 |        0 |
+| joblib             | `empty tuple`                                |      1 |      0 |        0 |
+| joblib             | `attr: imported.x`                           |      1 |      0 |        0 |
+| joblib             | `call: builtin sorted()`                     |      1 |      0 |        0 |
+| joblib             | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| networkx           | `call: module.func()`                        |  4,478 |    582 |      502 |
+| networkx           | `call: local.method()`                       |    820 |    407 |      313 |
+| networkx           | `call: imported function`                    |    726 |    200 |      141 |
+| networkx           | `copy: local`                                |    668 |    465 |      336 |
+| networkx           | `call: param.method()`                       |    643 |    517 |      407 |
+| networkx           | `copy: param (unannotated)`                  |    504 |    370 |      208 |
+| networkx           | `call: module function (unannotated)`        |    476 |    347 |      258 |
+| networkx           | `call: chained .method()`                    |    468 |    215 |      160 |
+| networkx           | `binop (unknown operands)`                   |    391 |    325 |      287 |
+| networkx           | `call: builtin list()`                       |    373 |    150 |      103 |
+| networkx           | `call: self.method()`                        |    334 |    113 |       58 |
+| networkx           | `subscript: other`                           |    326 |    213 |      151 |
+| networkx           | `subscript: local[...]`                      |    307 |    263 |      194 |
+| networkx           | `attr: self.x`                               |    297 |     75 |       34 |
+| networkx           | `list (mixed/unknown elements)`              |    276 |     97 |       59 |
+| networkx           | `call: builtin set()`                        |    274 |    121 |       82 |
+| networkx           | `ListComp (unknown elements)`                |    267 |    158 |      110 |
+| networkx           | `call: builtin sorted()`                     |    256 |     42 |       35 |
+| networkx           | `empty dict`                                 |    220 |      0 |        0 |
+| networkx           | `DictComp (unknown elements)`                |    219 |    118 |       55 |
+| networkx           | `tuple (mixed/unknown elements)`             |    218 |    126 |       85 |
+| networkx           | `empty list`                                 |    201 |      0 |        0 |
+| networkx           | `dict (mixed/unknown elements)`              |    170 |     74 |       46 |
+| networkx           | `call: global.method()`                      |    170 |      0 |        0 |
+| networkx           | `call: local name`                           |    168 |     73 |       62 |
+| networkx           | `call: imported.attr()`                      |    157 |      4 |        4 |
+| networkx           | `call: param name`                           |    157 |     21 |       15 |
+| networkx           | `call: builtin zip()`                        |    144 |     72 |       51 |
+| networkx           | `subscript: param[...]`                      |    142 |    113 |       85 |
+| networkx           | `attr: local.x`                              |    139 |     56 |       52 |
+| networkx           | `call: builtin dict()`                       |    137 |     71 |       38 |
+| networkx           | `call: builtin sum()`                        |    126 |     80 |       73 |
+| networkx           | `conditional`                                |    126 |     85 |       48 |
+| networkx           | `call: other name`                           |    123 |     93 |       55 |
+| networkx           | `binop (one side literal)`                   |    110 |     86 |       85 |
+| networkx           | `GeneratorExp (unknown elements)`            |    106 |     74 |       73 |
+| networkx           | `attr: param.x`                              |    105 |     91 |       71 |
+| networkx           | `SetComp (unknown elements)`                 |     95 |     51 |       33 |
+| networkx           | `attr: module.x`                             |     91 |     28 |       28 |
+| networkx           | `call: builtin enumerate()`                  |     87 |     71 |       49 |
+| networkx           | `call: builtin next()`                       |     79 |     67 |       45 |
+| networkx           | `attr: chained`                              |     79 |     30 |       25 |
+| networkx           | `other constant`                             |     71 |     55 |       55 |
+| networkx           | `call: builtin.method()`                     |     62 |     41 |       28 |
+| networkx           | `call: builtin min()`                        |     60 |     56 |       43 |
+| networkx           | `None literal`                               |     60 |     50 |       50 |
+| networkx           | `copy: global`                               |     58 |      0 |        0 |
+| networkx           | `call: capitalised`                          |     53 |      6 |        5 |
+| networkx           | `call: builtin max()`                        |     47 |     43 |       39 |
+| networkx           | `set (mixed/unknown elements)`               |     45 |     29 |       13 |
+| networkx           | `copy: other`                                |     32 |     19 |        9 |
+| networkx           | `call: other.method()`                       |     32 |     25 |       17 |
+| networkx           | `subscript: other[...]`                      |     28 |     28 |        7 |
+| networkx           | `call: other callee`                         |     28 |     11 |        8 |
+| networkx           | `call: builtin iter()`                       |     27 |     17 |       17 |
+| networkx           | `copy: moddef`                               |     25 |     14 |       14 |
+| networkx           | `compare`                                    |     22 |     11 |       11 |
+| networkx           | `copy: modclass`                             |     21 |      0 |        0 |
+| networkx           | `call: imported class`                       |     17 |     12 |       11 |
+| networkx           | `call: builtin staticmethod()`               |     16 |      0 |        0 |
+| networkx           | `boolop (or)`                                |     14 |     10 |        8 |
+| networkx           | `call: builtin object()`                     |     13 |      1 |        1 |
+| networkx           | `subscript: global[...]`                     |     11 |      6 |        6 |
+| networkx           | `copy: imported`                             |     11 |      2 |        2 |
+| networkx           | `call: global name`                          |     10 |      3 |        3 |
+| networkx           | `call: builtin tuple()`                      |      9 |      8 |        7 |
+| networkx           | `copy: builtin`                              |      9 |      0 |        0 |
+| networkx           | `call: builtin frozenset()`                  |      8 |      5 |        3 |
+| networkx           | `boolop (and)`                               |      7 |      2 |        2 |
+| networkx           | `attr: imported.x`                           |      6 |      0 |        0 |
+| networkx           | `call: module class`                         |      6 |      1 |        1 |
+| networkx           | `call: modclass.method()`                    |      5 |      3 |        3 |
+| networkx           | `call: builtin round()`                      |      4 |      3 |        3 |
+| networkx           | `call: builtin map()`                        |      4 |      4 |        2 |
+| networkx           | `call: builtin reversed()`                   |      3 |      3 |        3 |
+| networkx           | `copy: self`                                 |      3 |      3 |        3 |
+| networkx           | `call: builtin len()`                        |      2 |      1 |        1 |
+| networkx           | `unaryop USub`                               |      2 |      2 |        2 |
+| networkx           | `call: cls.method()`                         |      2 |      2 |        2 |
+| networkx           | `call: builtin float()`                      |      1 |      1 |        1 |
+| networkx           | `attr: global.x`                             |      1 |      0 |        0 |
+| networkx           | `call: builtin range()`                      |      1 |      1 |        1 |
+| networkx           | `subscript: self[...]`                       |      1 |      1 |        1 |
+| networkx           | `call: builtin abs()`                        |      1 |      0 |        0 |
+| networkx           | `empty tuple`                                |      1 |      0 |        0 |
+| networkx           | `attr: cls.x`                                |      1 |      0 |        0 |
+| networkx           | `call: builtin type()`                       |      1 |      1 |        0 |
+| networkx           | `copy: cls`                                  |      1 |      1 |        0 |
+| networkx           | `call: builtin compile()`                    |      1 |      1 |        1 |
+| networkx           | `call: builtin getattr()`                    |      1 |      0 |        0 |
+| networkx           | `call: cls name`                             |      1 |      0 |        0 |
+| nibabel            | `call: module.func()`                        |    656 |    169 |      152 |
+| nibabel            | `call: chained .method()`                    |    414 |    126 |      113 |
+| nibabel            | `call: imported function`                    |    378 |     49 |       36 |
+| nibabel            | `tuple (mixed/unknown elements)`             |    343 |     69 |       35 |
+| nibabel            | `call: local.method()`                       |    336 |     72 |       65 |
+| nibabel            | `call: self.method()`                        |    275 |     88 |       61 |
+| nibabel            | `subscript: other`                           |    218 |    113 |      105 |
+| nibabel            | `call: imported.attr()`                      |    216 |      7 |        6 |
+| nibabel            | `binop (unknown operands)`                   |    211 |     89 |       70 |
+| nibabel            | `attr: self.x`                               |    178 |     73 |       61 |
+| nibabel            | `call: module function (unannotated)`        |    168 |     72 |       47 |
+| nibabel            | `copy: local`                                |    123 |     36 |       24 |
+| nibabel            | `attr: local.x`                              |    114 |     23 |       18 |
+| nibabel            | `copy: imported`                             |    107 |      3 |        1 |
+| nibabel            | `call: local name`                           |    105 |      4 |        2 |
+| nibabel            | `call: param.method()`                       |    104 |     75 |       63 |
+| nibabel            | `subscript: local[...]`                      |     95 |     52 |       45 |
+| nibabel            | `other constant`                             |     89 |      9 |        9 |
+| nibabel            | `list (mixed/unknown elements)`              |     84 |      4 |        4 |
+| nibabel            | `attr: chained`                              |     83 |     15 |       10 |
+| nibabel            | `copy: global`                               |     78 |      4 |        4 |
+| nibabel            | `attr: param.x`                              |     76 |     47 |       39 |
+| nibabel            | `binop (one side literal)`                   |     72 |     30 |       27 |
+| nibabel            | `call: builtin zip()`                        |     67 |     19 |       19 |
+| nibabel            | `ListComp (unknown elements)`                |     62 |     18 |       15 |
+| nibabel            | `copy: param (unannotated)`                  |     58 |     47 |       28 |
+| nibabel            | `subscript: param[...]`                      |     57 |     42 |       30 |
+| nibabel            | `call: param name`                           |     55 |      4 |        0 |
+| nibabel            | `empty list`                                 |     54 |      0 |        0 |
+| nibabel            | `empty dict`                                 |     52 |      0 |        0 |
+| nibabel            | `call: builtin enumerate()`                  |     46 |     30 |       20 |
+| nibabel            | `call: imported class`                       |     46 |      5 |        5 |
+| nibabel            | `conditional`                                |     44 |     25 |       19 |
+| nibabel            | `call: global name`                          |     38 |      0 |        0 |
+| nibabel            | `dict (mixed/unknown elements)`              |     36 |      3 |        2 |
+| nibabel            | `call: capitalised`                          |     32 |      0 |        0 |
+| nibabel            | `None literal`                               |     31 |     12 |       12 |
+| nibabel            | `compare`                                    |     30 |     14 |       14 |
+| nibabel            | `call: builtin dict()`                       |     27 |      5 |        4 |
+| nibabel            | `attr: module.x`                             |     26 |      3 |        3 |
+| nibabel            | `call: global.method()`                      |     25 |      3 |        1 |
+| nibabel            | `copy: modclass`                             |     24 |      0 |        0 |
+| nibabel            | `call: builtin list()`                       |     22 |      3 |        3 |
+| nibabel            | `attr: imported.x`                           |     20 |      0 |        0 |
+| nibabel            | `call: builtin getattr()`                    |     18 |      8 |        4 |
+| nibabel            | `attr: modclass.x`                           |     17 |      0 |        0 |
+| nibabel            | `call: other.method()`                       |     16 |      5 |        5 |
+| nibabel            | `call: builtin tuple()`                      |     16 |     10 |       10 |
+| nibabel            | `subscript: imported[...]`                   |     16 |      1 |        0 |
+| nibabel            | `subscript: global[...]`                     |     14 |      3 |        2 |
+| nibabel            | `copy: other`                                |     12 |      2 |        1 |
+| nibabel            | `copy: self`                                 |     11 |     11 |        5 |
+| nibabel            | `copy: param (annotated)`                    |     11 |     10 |        7 |
+| nibabel            | `call: builtin next()`                       |     10 |      8 |        8 |
+| nibabel            | `call: builtin sorted()`                     |      9 |      4 |        4 |
+| nibabel            | `call: other name`                           |      8 |      0 |        0 |
+| nibabel            | `call: other callee`                         |      8 |      3 |        2 |
+| nibabel            | `GeneratorExp (unknown elements)`            |      8 |      5 |        5 |
+| nibabel            | `attr: other.x`                              |      6 |      2 |        1 |
+| nibabel            | `boolop (and)`                               |      6 |      3 |        2 |
+| nibabel            | `boolop (or)`                                |      6 |      3 |        2 |
+| nibabel            | `call: cls.method()`                         |      6 |      6 |        4 |
+| nibabel            | `call: builtin __import__()`                 |      6 |      3 |        3 |
+| nibabel            | `call: builtin set()`                        |      6 |      1 |        1 |
+| nibabel            | `call: builtin open()`                       |      6 |      0 |        0 |
+| nibabel            | `SetComp (unknown elements)`                 |      5 |      1 |        1 |
+| nibabel            | `call: builtin.method()`                     |      5 |      1 |        1 |
+| nibabel            | `DictComp (unknown elements)`                |      5 |      3 |        3 |
+| nibabel            | `call: builtin min()`                        |      4 |      1 |        1 |
+| nibabel            | `call: modclass.method()`                    |      4 |      4 |        4 |
+| nibabel            | `empty tuple`                                |      4 |      0 |        0 |
+| nibabel            | `call: module function (annotated)`          |      4 |      4 |        3 |
+| nibabel            | `call: builtin max()`                        |      3 |      1 |        1 |
+| nibabel            | `call: builtin sum()`                        |      3 |      2 |        2 |
+| nibabel            | `call: builtin type()`                       |      3 |      0 |        0 |
+| nibabel            | `call: builtin slice()`                      |      3 |      1 |        1 |
+| nibabel            | `call: builtin staticmethod()`               |      3 |      0 |        0 |
+| nibabel            | `call: module class`                         |      2 |      1 |        1 |
+| nibabel            | `call: builtin property()`                   |      2 |      0 |        0 |
+| nibabel            | `copy: builtin`                              |      2 |      0 |        0 |
+| nibabel            | `unaryop Invert`                             |      2 |      1 |        1 |
+| nibabel            | `call: builtin iter()`                       |      2 |      1 |        1 |
+| nibabel            | `copy: moddef`                               |      2 |      2 |        2 |
+| nibabel            | `call: str-literal.method()`                 |      2 |      2 |        2 |
+| nibabel            | `subscript: other[...]`                      |      2 |      2 |        2 |
+| nibabel            | `attr: global.x`                             |      2 |      0 |        0 |
+| nibabel            | `call: builtin abs()`                        |      1 |      1 |        0 |
+| nibabel            | `call: builtin range()`                      |      1 |      1 |        1 |
+| nibabel            | `call: builtin len()`                        |      1 |      0 |        0 |
+| nibabel            | `unaryop USub`                               |      1 |      0 |        0 |
+| nibabel            | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
+| nibabel            | `Lambda`                                     |      1 |      0 |        0 |
+| nibabel            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
+| narwhals           | `call: chained .method()`                    |    224 |    179 |      156 |
+| narwhals           | `call: imported function`                    |    205 |    128 |       91 |
+| narwhals           | `conditional`                                |    138 |    123 |       75 |
+| narwhals           | `attr: chained`                              |    138 |    115 |       90 |
+| narwhals           | `call: module.func()`                        |    134 |    114 |      108 |
+| narwhals           | `call: self.method()`                        |    113 |     94 |       74 |
+| narwhals           | `attr: self.x`                               |    109 |     99 |       84 |
+| narwhals           | `call: local.method()`                       |    102 |     92 |       75 |
+| narwhals           | `call: param.method()`                       |     80 |     51 |       31 |
+| narwhals           | `ListComp (unknown elements)`                |     65 |     49 |       37 |
+| narwhals           | `tuple (mixed/unknown elements)`             |     64 |     55 |       32 |
+| narwhals           | `attr: param.x`                              |     55 |     51 |       41 |
+| narwhals           | `call: module function (annotated)`          |     55 |     34 |       32 |
+| narwhals           | `call: imported class`                       |     46 |      8 |        8 |
+| narwhals           | `binop (unknown operands)`                   |     38 |     31 |       31 |
+| narwhals           | `attr: local.x`                              |     28 |     24 |       23 |
+| narwhals           | `GeneratorExp (unknown elements)`            |     28 |     22 |       22 |
+| narwhals           | `call: other.method()`                       |     25 |     23 |       10 |
+| narwhals           | `attr: imported.x`                           |     24 |      1 |        1 |
+| narwhals           | `copy: local`                                |     19 |     17 |       13 |
+| narwhals           | `call: builtin list()`                       |     19 |     15 |       15 |
+| narwhals           | `copy: param (annotated)`                    |     18 |     18 |        9 |
+| narwhals           | `call: builtin tuple()`                      |     18 |     18 |       14 |
+| narwhals           | `subscript: other`                           |     17 |     15 |       13 |
+| narwhals           | `DictComp (unknown elements)`                |     15 |     14 |        5 |
+| narwhals           | `subscript: local[...]`                      |     13 |     12 |        9 |
+| narwhals           | `subscript: imported[...]`                   |     13 |      1 |        1 |
+| narwhals           | `dict (mixed/unknown elements)`              |     12 |      6 |        6 |
+| narwhals           | `binop (one side literal)`                   |     12 |     11 |       11 |
+| narwhals           | `attr: other.x`                              |     12 |     12 |       12 |
+| narwhals           | `call: builtin zip()`                        |     11 |     10 |        7 |
+| narwhals           | `call: local name`                           |     11 |     11 |       10 |
+| narwhals           | `call: other name`                           |     10 |     10 |        5 |
+| narwhals           | `call: builtin len()`                        |     10 |      9 |        9 |
+| narwhals           | `boolop (or)`                                |      9 |      5 |        4 |
+| narwhals           | `call: imported.attr()`                      |      9 |      5 |        5 |
+| narwhals           | `empty list`                                 |      9 |      0 |        0 |
+| narwhals           | `call: builtin getattr()`                    |      9 |      5 |        4 |
+| narwhals           | `compare`                                    |      7 |      6 |        5 |
+| narwhals           | `call: builtin next()`                       |      6 |      5 |        3 |
+| narwhals           | `attr: module.x`                             |      6 |      1 |        1 |
+| narwhals           | `other constant`                             |      6 |      4 |        4 |
+| narwhals           | `call: global.method()`                      |      6 |      6 |        3 |
+| narwhals           | `unaryop Invert`                             |      5 |      4 |        4 |
+| narwhals           | `boolop (and)`                               |      5 |      5 |        5 |
+| narwhals           | `call: param name`                           |      5 |      5 |        2 |
+| narwhals           | `subscript: param[...]`                      |      5 |      4 |        3 |
+| narwhals           | `call: other callee`                         |      5 |      4 |        3 |
+| narwhals           | `call: builtin enumerate()`                  |      4 |      4 |        3 |
+| narwhals           | `list (mixed/unknown elements)`              |      4 |      3 |        2 |
+| narwhals           | `SetComp (unknown elements)`                 |      4 |      4 |        4 |
+| narwhals           | `call: builtin dict()`                       |      3 |      1 |        0 |
+| narwhals           | `call: capitalised`                          |      3 |      3 |        2 |
+| narwhals           | `copy: other`                                |      2 |      0 |        0 |
+| narwhals           | `empty tuple`                                |      2 |      0 |        0 |
+| narwhals           | `call: builtin max()`                        |      2 |      2 |        2 |
+| narwhals           | `call: builtin type()`                       |      2 |      1 |        1 |
+| narwhals           | `call: builtin iter()`                       |      2 |      1 |        1 |
+| narwhals           | `subscript: other[...]`                      |      2 |      1 |        1 |
+| narwhals           | `attr: modclass.x`                           |      2 |      1 |        1 |
+| narwhals           | `set (mixed/unknown elements)`               |      2 |      0 |        0 |
+| narwhals           | `copy: imported`                             |      2 |      0 |        0 |
+| narwhals           | `call: builtin sorted()`                     |      2 |      1 |        1 |
+| narwhals           | `call: builtin all()`                        |      1 |      1 |        1 |
+| narwhals           | `call: global name`                          |      1 |      1 |        0 |
+| narwhals           | `copy: self`                                 |      1 |      1 |        0 |
+| narwhals           | `call: builtin sum()`                        |      1 |      1 |        1 |
+| narwhals           | `attr: cls.x`                                |      1 |      1 |        1 |
+| narwhals           | `call: builtin slice()`                      |      1 |      1 |        1 |
+| narwhals           | `call: modclass.method()`                    |      1 |      1 |        1 |
+| narwhals           | `call: builtin str()`                        |      1 |      1 |        1 |
+| narwhals           | `call: builtin object()`                     |      1 |      1 |        1 |
+| narwhals           | `copy: global`                               |      1 |      0 |        0 |
+| narwhals           | `call: builtin.method()`                     |      1 |      1 |        1 |
+| xarray             | `call: module.func()`                        |  2,171 |    124 |      110 |
+| xarray             | `call: chained .method()`                    |  1,611 |    220 |      150 |
+| xarray             | `call: local.method()`                       |  1,346 |    119 |       81 |
+| xarray             | `call: imported function`                    |  1,256 |    180 |      123 |
+| xarray             | `call: imported class`                       |    901 |      8 |        7 |
+| xarray             | `binop (unknown operands)`                   |    738 |     95 |       79 |
+| xarray             | `call: self.method()`                        |    573 |    158 |      125 |
+| xarray             | `call: module function (unannotated)`        |    406 |     71 |       46 |
+| xarray             | `call: imported.attr()`                      |    398 |     59 |       37 |
+| xarray             | `call: param.method()`                       |    360 |    156 |      109 |
+| xarray             | `subscript: local[...]`                      |    300 |     30 |       23 |
+| xarray             | `attr: chained`                              |    253 |     52 |       41 |
+| xarray             | `subscript: other`                           |    251 |     42 |       35 |
+| xarray             | `list (mixed/unknown elements)`              |    228 |     20 |       18 |
+| xarray             | `dict (mixed/unknown elements)`              |    227 |     10 |        8 |
+| xarray             | `ListComp (unknown elements)`                |    214 |     79 |       64 |
+| xarray             | `call: param name`                           |    177 |      8 |        5 |
+| xarray             | `DictComp (unknown elements)`                |    157 |     60 |       44 |
+| xarray             | `copy: local`                                |    156 |     57 |       43 |
+| xarray             | `conditional`                                |    153 |     57 |       39 |
+| xarray             | `call: module function (annotated)`          |    152 |     42 |       31 |
+| xarray             | `call: builtin zip()`                        |    150 |     50 |       36 |
+| xarray             | `attr: local.x`                              |    142 |     46 |       36 |
+| xarray             | `copy: param (unannotated)`                  |    128 |     40 |       29 |
+| xarray             | `empty dict`                                 |    124 |      0 |        0 |
+| xarray             | `binop (one side literal)`                   |    119 |     12 |       12 |
+| xarray             | `call: local name`                           |    116 |      6 |        3 |
+| xarray             | `attr: self.x`                               |     93 |     44 |       34 |
+| xarray             | `empty list`                                 |     86 |      0 |        0 |
+| xarray             | `call: builtin tuple()`                      |     86 |     43 |       38 |
+| xarray             | `attr: param.x`                              |     83 |     34 |       26 |
+| xarray             | `call: builtin getattr()`                    |     80 |     30 |       17 |
+| xarray             | `call: other name`                           |     80 |     10 |       10 |
+| xarray             | `call: builtin dict()`                       |     78 |     17 |        6 |
+| xarray             | `subscript: param[...]`                      |     76 |     28 |       12 |
+| xarray             | `tuple (mixed/unknown elements)`             |     66 |      9 |        7 |
+| xarray             | `call: other callee`                         |     65 |      9 |        3 |
+| xarray             | `call: builtin set()`                        |     57 |     22 |       17 |
+| xarray             | `other constant`                             |     54 |      1 |        1 |
+| xarray             | `copy: imported`                             |     54 |      0 |        0 |
+| xarray             | `compare`                                    |     53 |     17 |       15 |
+| xarray             | `copy: param (annotated)`                    |     48 |     26 |       19 |
+| xarray             | `call: builtin enumerate()`                  |     46 |     20 |       10 |
+| xarray             | `call: builtin list()`                       |     45 |     20 |       16 |
+| xarray             | `call: global.method()`                      |     43 |      3 |        3 |
+| xarray             | `attr: global.x`                             |     36 |      0 |        0 |
+| xarray             | `Lambda`                                     |     35 |     21 |       21 |
+| xarray             | `None literal`                               |     30 |     16 |       16 |
+| xarray             | `attr: module.x`                             |     26 |      0 |        0 |
+| xarray             | `SetComp (unknown elements)`                 |     25 |     16 |       13 |
+| xarray             | `subscript: imported[...]`                   |     21 |     13 |       13 |
+| xarray             | `boolop (or)`                                |     18 |      8 |        7 |
+| xarray             | `call: other.method()`                       |     18 |      3 |        3 |
+| xarray             | `call: builtin.method()`                     |     17 |      9 |        8 |
+| xarray             | `call: builtin next()`                       |     16 |     11 |        6 |
+| xarray             | `boolop (and)`                               |     12 |      4 |        3 |
+| xarray             | `call: builtin sorted()`                     |     11 |      5 |        4 |
+| xarray             | `call: modclass.method()`                    |     10 |      0 |        0 |
+| xarray             | `copy: other`                                |     10 |      2 |        2 |
+| xarray             | `copy: self`                                 |     10 |      7 |        6 |
+| xarray             | `GeneratorExp (unknown elements)`            |      9 |      5 |        5 |
+| xarray             | `copy: global`                               |      9 |      0 |        0 |
+| xarray             | `subscript: global[...]`                     |      8 |      4 |        1 |
+| xarray             | `subscript: other[...]`                      |      8 |      5 |        5 |
+| xarray             | `copy: modclass`                             |      7 |      0 |        0 |
+| xarray             | `call: builtin open()`                       |      7 |      0 |        0 |
+| xarray             | `call: builtin type()`                       |      6 |      2 |        2 |
+| xarray             | `await: call: chained .method()`             |      6 |      1 |        1 |
+| xarray             | `call: capitalised`                          |      6 |      0 |        0 |
+| xarray             | `call: builtin staticmethod()`               |      6 |      0 |        0 |
+| xarray             | `call: builtin max()`                        |      5 |      4 |        3 |
+| xarray             | `call: global name`                          |      5 |      3 |        3 |
+| xarray             | `call: builtin slice()`                      |      5 |      2 |        2 |
+| xarray             | `attr: imported.x`                           |      5 |      3 |        3 |
+| xarray             | `call: builtin abs()`                        |      4 |      0 |        0 |
+| xarray             | `unaryop Invert`                             |      4 |      2 |        2 |
+| xarray             | `call: module class`                         |      4 |      3 |        3 |
+| xarray             | `call: builtin iter()`                       |      4 |      3 |        3 |
+| xarray             | `call: builtin min()`                        |      4 |      4 |        4 |
+| xarray             | `copy: builtin`                              |      3 |      0 |        0 |
+| xarray             | `copy: moddef`                               |      3 |      2 |        2 |
+| xarray             | `attr: modclass.x`                           |      3 |      0 |        0 |
+| xarray             | `subscript: self[...]`                       |      3 |      3 |        3 |
+| xarray             | `await: call: local.method()`                |      3 |      0 |        0 |
+| xarray             | `call: builtin object()`                     |      3 |      0 |        0 |
+| xarray             | `call: cls name`                             |      3 |      2 |        2 |
+| xarray             | `call: builtin reversed()`                   |      3 |      1 |        0 |
+| xarray             | `set (mixed/unknown elements)`               |      2 |      2 |        2 |
+| xarray             | `attr: other.x`                              |      2 |      2 |        2 |
+| xarray             | `call: builtin locals()`                     |      2 |      0 |        0 |
+| xarray             | `unaryop USub`                               |      2 |      0 |        0 |
+| xarray             | `empty tuple`                                |      1 |      0 |        0 |
+| xarray             | `await: call: imported.attr()`               |      1 |      0 |        0 |
+| xarray             | `JoinedStr`                                  |      1 |      1 |        1 |
+| xarray             | `call: builtin property()`                   |      1 |      0 |        0 |
+| xarray             | `call: cls.method()`                         |      1 |      1 |        1 |
+| xarray             | `call: builtin compile()`                    |      1 |      1 |        1 |
+| xarray             | `call: builtin any()`                        |      1 |      1 |        1 |
+| xarray             | `await: call: param name`                    |      1 |      0 |        0 |
+| xarray             | `await: call: module.func()`                 |      1 |      0 |        0 |
+| xarray             | `await: copy: local`                         |      1 |      0 |        0 |
+| litestar           | `call: chained .method()`                    |     96 |     80 |       53 |
+| litestar           | `call: imported function`                    |     82 |     61 |       42 |
+| litestar           | `conditional`                                |     64 |     60 |       37 |
+| litestar           | `call: local.method()`                       |     59 |     45 |       30 |
+| litestar           | `subscript: other`                           |     58 |     52 |       35 |
+| litestar           | `call: param.method()`                       |     55 |     37 |       22 |
+| litestar           | `call: self.method()`                        |     50 |     46 |       30 |
+| litestar           | `call: builtin getattr()`                    |     47 |     43 |       15 |
+| litestar           | `attr: chained`                              |     40 |     35 |       20 |
+| litestar           | `attr: self.x`                               |     36 |     34 |       14 |
+| litestar           | `await: call: self.method()`                 |     34 |     32 |       25 |
+| litestar           | `copy: local`                                |     31 |     24 |       19 |
+| litestar           | `attr: param.x`                              |     31 |     21 |        8 |
+| litestar           | `attr: local.x`                              |     31 |     23 |       15 |
+| litestar           | `boolop (or)`                                |     25 |     22 |       17 |
+| litestar           | `ListComp (unknown elements)`                |     25 |     21 |       16 |
+| litestar           | `call: module function (annotated)`          |     25 |     22 |        6 |
+| litestar           | `copy: param (annotated)`                    |     21 |     17 |       11 |
+| litestar           | `subscript: imported[...]`                   |     19 |      0 |        0 |
+| litestar           | `dict (mixed/unknown elements)`              |     18 |     10 |        8 |
+| litestar           | `DictComp (unknown elements)`                |     16 |     13 |       12 |
+| litestar           | `empty list`                                 |     14 |      0 |        0 |
+| litestar           | `await: call: chained .method()`             |     14 |     14 |       12 |
+| litestar           | `GeneratorExp (unknown elements)`            |     13 |     13 |       12 |
+| litestar           | `copy: imported`                             |     13 |      6 |        6 |
+| litestar           | `empty dict`                                 |     12 |      0 |        0 |
+| litestar           | `call: builtin list()`                       |     12 |     12 |        7 |
+| litestar           | `subscript: local[...]`                      |     12 |     11 |        8 |
+| litestar           | `call: module.func()`                        |     12 |      9 |        8 |
+| litestar           | `subscript: param[...]`                      |     11 |     10 |        5 |
+| litestar           | `await: call: param.method()`                |     11 |     11 |        4 |
+| litestar           | `call: builtin set()`                        |     10 |      5 |        5 |
+| litestar           | `attr: imported.x`                           |     10 |      4 |        4 |
+| litestar           | `call: cls.method()`                         |     10 |      9 |        5 |
+| litestar           | `call: imported class`                       |      9 |      8 |        8 |
+| litestar           | `SetComp (unknown elements)`                 |      8 |      4 |        4 |
+| litestar           | `binop (unknown operands)`                   |      8 |      7 |        7 |
+| litestar           | `call: other callee`                         |      7 |      7 |        6 |
+| litestar           | `copy: modclass`                             |      7 |      0 |        0 |
+| litestar           | `list (mixed/unknown elements)`              |      6 |      4 |        4 |
+| litestar           | `call: builtin tuple()`                      |      6 |      6 |        2 |
+| litestar           | `call: imported.attr()`                      |      5 |      4 |        4 |
+| litestar           | `set (mixed/unknown elements)`               |      5 |      2 |        2 |
+| litestar           | `other constant`                             |      5 |      2 |        2 |
+| litestar           | `None literal`                               |      4 |      2 |        2 |
+| litestar           | `call: builtin dict()`                       |      4 |      4 |        3 |
+| litestar           | `tuple (mixed/unknown elements)`             |      4 |      0 |        0 |
+| litestar           | `call: modclass.method()`                    |      3 |      2 |        1 |
+| litestar           | `call: global.method()`                      |      3 |      3 |        2 |
+| litestar           | `call: other name`                           |      3 |      2 |        2 |
+| litestar           | `await: call: local.method()`                |      3 |      3 |        2 |
+| litestar           | `call: builtin next()`                       |      2 |      2 |        2 |
+| litestar           | `await: call: imported function`             |      2 |      1 |        0 |
+| litestar           | `attr: other.x`                              |      2 |      1 |        0 |
+| litestar           | `binop (one side literal)`                   |      2 |      2 |        2 |
+| litestar           | `await: call: local name`                    |      2 |      2 |        1 |
+| litestar           | `call: local name`                           |      2 |      2 |        1 |
+| litestar           | `subscript: global[...]`                     |      2 |      2 |        1 |
+| litestar           | `subscript: other[...]`                      |      1 |      1 |        1 |
+| litestar           | `JoinedStr`                                  |      1 |      0 |        0 |
+| litestar           | `call: module class`                         |      1 |      1 |        1 |
+| litestar           | `call: builtin enumerate()`                  |      1 |      1 |        0 |
+| litestar           | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| litestar           | `call: builtin sorted()`                     |      1 |      1 |        1 |
+| litestar           | `await: call: other name`                    |      1 |      1 |        0 |
+| litestar           | `call: builtin compile()`                    |      1 |      1 |        1 |
+| litestar           | `call: param name`                           |      1 |      1 |        1 |
+| litestar           | `call: builtin reversed()`                   |      1 |      1 |        0 |
+| litestar           | `attr: cls.x`                                |      1 |      1 |        1 |
+| litestar           | `boolop (and)`                               |      1 |      1 |        1 |
+| litestar           | `await: call: param name`                    |      1 |      1 |        0 |
+| litestar           | `copy: other`                                |      1 |      1 |        0 |
+| litestar           | `copy: builtin`                              |      1 |      0 |        0 |
+| celery             | `None literal`                               |    296 |     40 |       40 |
+| celery             | `call: chained .method()`                    |    209 |    141 |      105 |
+| celery             | `call: imported function`                    |    192 |     80 |       55 |
+| celery             | `call: self.method()`                        |    186 |    138 |      102 |
+| celery             | `attr: self.x`                               |    167 |    142 |      111 |
+| celery             | `tuple (mixed/unknown elements)`             |    155 |     76 |       61 |
+| celery             | `call: local.method()`                       |    104 |     68 |       45 |
+| celery             | `attr: chained`                              |     97 |     71 |       60 |
+| celery             | `call: param.method()`                       |     93 |     81 |       60 |
+| celery             | `other constant`                             |     93 |      4 |        4 |
+| celery             | `copy: local`                                |     62 |     44 |       33 |
+| celery             | `conditional`                                |     62 |     48 |       33 |
+| celery             | `attr: param.x`                              |     61 |     58 |       43 |
+| celery             | `boolop (or)`                                |     60 |     45 |       34 |
+| celery             | `copy: other`                                |     57 |      1 |        0 |
+| celery             | `call: module.func()`                        |     56 |     23 |       15 |
+| celery             | `call: module function (unannotated)`        |     55 |     37 |       23 |
+| celery             | `subscript: other`                           |     51 |     34 |       27 |
+| celery             | `copy: param (unannotated)`                  |     49 |     41 |       26 |
+| celery             | `attr: local.x`                              |     44 |     39 |       32 |
+| celery             | `dict (mixed/unknown elements)`              |     42 |     21 |       13 |
+| celery             | `attr: imported.x`                           |     33 |     10 |       10 |
+| celery             | `call: builtin getattr()`                    |     30 |     22 |       10 |
+| celery             | `call: param name`                           |     29 |     21 |       18 |
+| celery             | `binop (unknown operands)`                   |     29 |     19 |       16 |
+| celery             | `call: builtin set()`                        |     27 |      5 |        5 |
+| celery             | `copy: imported`                             |     27 |      1 |        1 |
+| celery             | `empty dict`                                 |     24 |      0 |        0 |
+| celery             | `call: imported.attr()`                      |     23 |     18 |       13 |
+| celery             | `call: local name`                           |     23 |     19 |        9 |
+| celery             | `empty list`                                 |     22 |      0 |        0 |
+| celery             | `copy: modclass`                             |     21 |      0 |        0 |
+| celery             | `call: global name`                          |     20 |      0 |        0 |
+| celery             | `call: other name`                           |     20 |     10 |        7 |
+| celery             | `call: builtin next()`                       |     19 |      9 |        5 |
+| celery             | `subscript: local[...]`                      |     19 |     14 |       10 |
+| celery             | `call: imported class`                       |     17 |      6 |        5 |
+| celery             | `call: builtin list()`                       |     16 |     11 |       10 |
+| celery             | `subscript: param[...]`                      |     15 |     10 |       10 |
+| celery             | `call: builtin dict()`                       |     15 |      9 |        5 |
+| celery             | `call: capitalised`                          |     14 |      8 |        6 |
+| celery             | `boolop (and)`                               |     13 |     10 |        5 |
+| celery             | `call: builtin enumerate()`                  |     12 |     10 |        5 |
+| celery             | `DictComp (unknown elements)`                |     12 |      5 |        3 |
+| celery             | `attr: global.x`                             |     11 |      0 |        0 |
+| celery             | `ListComp (unknown elements)`                |     11 |      7 |        5 |
+| celery             | `call: builtin tuple()`                      |     10 |      8 |        7 |
+| celery             | `call: other.method()`                       |      9 |      5 |        1 |
+| celery             | `copy: global`                               |      9 |      3 |        3 |
+| celery             | `call: other callee`                         |      9 |      6 |        2 |
+| celery             | `attr: module.x`                             |      9 |      0 |        0 |
+| celery             | `set (mixed/unknown elements)`               |      9 |      2 |        2 |
+| celery             | `binop (one side literal)`                   |      8 |      6 |        6 |
+| celery             | `call: module function (annotated)`          |      8 |      8 |        5 |
+| celery             | `subscript: other[...]`                      |      7 |      6 |        3 |
+| celery             | `call: global.method()`                      |      7 |      6 |        2 |
+| celery             | `empty tuple`                                |      6 |      0 |        0 |
+| celery             | `compare`                                    |      6 |      4 |        4 |
+| celery             | `call: builtin min()`                        |      6 |      6 |        6 |
+| celery             | `subscript: self[...]`                       |      6 |      5 |        1 |
+| celery             | `call: builtin reversed()`                   |      5 |      2 |        2 |
+| celery             | `copy: self`                                 |      5 |      4 |        1 |
+| celery             | `list (mixed/unknown elements)`              |      5 |      3 |        3 |
+| celery             | `copy: moddef`                               |      5 |      1 |        1 |
+| celery             | `copy: builtin`                              |      4 |      0 |        0 |
+| celery             | `call: builtin type()`                       |      3 |      3 |        1 |
+| celery             | `GeneratorExp (unknown elements)`            |      3 |      3 |        3 |
+| celery             | `call: builtin property()`                   |      3 |      0 |        0 |
+| celery             | `SetComp (unknown elements)`                 |      3 |      1 |        1 |
+| celery             | `call: cls.method()`                         |      3 |      2 |        0 |
+| celery             | `call: builtin max()`                        |      3 |      2 |        2 |
+| celery             | `call: builtin.method()`                     |      3 |      3 |        3 |
+| celery             | `attr: cls.x`                                |      2 |      2 |        2 |
+| celery             | `call: builtin frozenset()`                  |      2 |      0 |        0 |
+| celery             | `call: builtin iter()`                       |      2 |      1 |        0 |
+| celery             | `call: builtin sum()`                        |      2 |      0 |        0 |
+| celery             | `call: builtin len()`                        |      2 |      2 |        2 |
+| celery             | `call: modclass.method()`                    |      2 |      2 |        0 |
+| celery             | `attr: other.x`                              |      2 |      2 |        1 |
+| celery             | `subscript: global[...]`                     |      2 |      2 |        0 |
+| celery             | `attr: builtin.x`                            |      2 |      2 |        2 |
+| celery             | `call: builtin object()`                     |      2 |      0 |        0 |
+| celery             | `call: builtin open()`                       |      2 |      2 |        2 |
+| celery             | `call: builtin sorted()`                     |      2 |      2 |        2 |
+| celery             | `JoinedStr`                                  |      1 |      1 |        1 |
+| celery             | `call: builtin map()`                        |      1 |      1 |        1 |
+| celery             | `call: builtin bytearray()`                  |      1 |      0 |        0 |
+| celery             | `call: builtin memoryview()`                 |      1 |      0 |        0 |
+| celery             | `call: str-literal.method()`                 |      1 |      1 |        1 |
+| celery             | `call: builtin __import__()`                 |      1 |      1 |        1 |
+| celery             | `subscript: imported[...]`                   |      1 |      1 |        1 |
+| celery             | `attr: modclass.x`                           |      1 |      0 |        0 |
+| celery             | `call: cls name`                             |      1 |      1 |        1 |
+| optuna             | `call: module.func()`                        |    280 |    232 |      221 |
+| optuna             | `call: chained .method()`                    |    219 |    165 |      127 |
+| optuna             | `call: imported.attr()`                      |    108 |     41 |       41 |
+| optuna             | `binop (unknown operands)`                   |     89 |     77 |       73 |
+| optuna             | `call: imported function`                    |     84 |      9 |        7 |
+| optuna             | `call: param.method()`                       |     73 |     52 |       46 |
+| optuna             | `empty list`                                 |     73 |      0 |        0 |
+| optuna             | `attr: param.x`                              |     68 |     61 |       53 |
+| optuna             | `call: local.method()`                       |     66 |     39 |       33 |
+| optuna             | `call: module function (annotated)`          |     57 |     51 |       50 |
+| optuna             | `subscript: other`                           |     56 |     43 |       37 |
+| optuna             | `call: imported class`                       |     38 |      0 |        0 |
+| optuna             | `subscript: param[...]`                      |     35 |     35 |       33 |
+| optuna             | `ListComp (unknown elements)`                |     35 |     25 |       23 |
+| optuna             | `call: builtin zip()`                        |     35 |     24 |       18 |
+| optuna             | `subscript: local[...]`                      |     32 |     28 |       25 |
+| optuna             | `attr: chained`                              |     31 |     19 |       15 |
+| optuna             | `attr: local.x`                              |     31 |     17 |       13 |
+| optuna             | `binop (one side literal)`                   |     30 |     27 |       27 |
+| optuna             | `conditional`                                |     29 |     22 |       13 |
+| optuna             | `None literal`                               |     28 |      5 |        5 |
+| optuna             | `tuple (mixed/unknown elements)`             |     24 |     15 |       12 |
+| optuna             | `copy: local`                                |     24 |      8 |        8 |
+| optuna             | `compare`                                    |     23 |     22 |       22 |
+| optuna             | `empty dict`                                 |     21 |      0 |        0 |
+| optuna             | `call: global.method()`                      |     20 |      0 |        0 |
+| optuna             | `call: self.method()`                        |     19 |     15 |       13 |
+| optuna             | `call: builtin enumerate()`                  |     16 |      8 |        7 |
+| optuna             | `call: other name`                           |     13 |      6 |        6 |
+| optuna             | `other constant`                             |     13 |      4 |        4 |
+| optuna             | `copy: param (annotated)`                    |     12 |      7 |        5 |
+| optuna             | `DictComp (unknown elements)`                |     11 |      7 |        0 |
+| optuna             | `list (mixed/unknown elements)`              |     11 |      6 |        6 |
+| optuna             | `unaryop USub`                               |      9 |      9 |        8 |
+| optuna             | `attr: self.x`                               |      9 |      9 |        5 |
+| optuna             | `call: builtin max()`                        |      9 |      4 |        2 |
+| optuna             | `dict (mixed/unknown elements)`              |      7 |      2 |        2 |
+| optuna             | `call: builtin getattr()`                    |      6 |      4 |        4 |
+| optuna             | `call: builtin list()`                       |      6 |      1 |        1 |
+| optuna             | `call: builtin set()`                        |      6 |      5 |        5 |
+| optuna             | `unaryop Invert`                             |      5 |      4 |        4 |
+| optuna             | `subscript: imported[...]`                   |      5 |      0 |        0 |
+| optuna             | `boolop (or)`                                |      4 |      2 |        2 |
+| optuna             | `copy: other`                                |      4 |      3 |        2 |
+| optuna             | `call: builtin tuple()`                      |      4 |      0 |        0 |
+| optuna             | `boolop (and)`                               |      3 |      2 |        0 |
+| optuna             | `call: builtin min()`                        |      3 |      1 |        1 |
+| optuna             | `call: builtin sum()`                        |      3 |      3 |        3 |
+| optuna             | `call: builtin sorted()`                     |      3 |      2 |        2 |
+| optuna             | `copy: global`                               |      2 |      1 |        0 |
+| optuna             | `subscript: other[...]`                      |      2 |      1 |        1 |
+| optuna             | `copy: imported`                             |      2 |      1 |        1 |
+| optuna             | `call: modclass.method()`                    |      2 |      2 |        2 |
+| optuna             | `call: builtin next()`                       |      2 |      2 |        0 |
+| optuna             | `attr: imported.x`                           |      2 |      1 |        1 |
+| optuna             | `call: param name`                           |      2 |      2 |        1 |
+| optuna             | `SetComp (unknown elements)`                 |      2 |      1 |        1 |
+| optuna             | `GeneratorExp (unknown elements)`            |      1 |      1 |        1 |
+| optuna             | `call: other.method()`                       |      1 |      1 |        0 |
+| optuna             | `attr: modclass.x`                           |      1 |      0 |        0 |
+| optuna             | `call: builtin len()`                        |      1 |      0 |        0 |
+| optuna             | `call: local name`                           |      1 |      0 |        0 |
+| optuna             | `call: other callee`                         |      1 |      1 |        1 |
+| optuna             | `subscript: builtin[...]`                    |      1 |      0 |        0 |
+| optuna             | `call: builtin reversed()`                   |      1 |      1 |        0 |
+| optuna             | `call: builtin dict()`                       |      1 |      1 |        0 |
+| optuna             | `call: builtin globals()`                    |      1 |      0 |        0 |
+| optuna             | `attr: module.x`                             |      1 |      0 |        0 |
+| optuna             | `call: moddef.method()`                      |      1 |      0 |        0 |
+| optuna             | `call: builtin property()`                   |      1 |      0 |        0 |
+| optuna             | `call: builtin object()`                     |      1 |      0 |        0 |
+| dask               | `call: module.func()`                        |  4,083 |    204 |      189 |
+| dask               | `call: imported function`                    |  1,768 |    334 |      248 |
+| dask               | `call: chained .method()`                    |  1,452 |    181 |      149 |
+| dask               | `call: local.method()`                       |  1,439 |    160 |      102 |
+| dask               | `call: global.method()`                      |    912 |     11 |        9 |
+| dask               | `call: module function (unannotated)`        |    492 |    217 |      155 |
+| dask               | `call: param.method()`                       |    471 |    210 |      141 |
+| dask               | `dict (mixed/unknown elements)`              |    446 |     55 |       44 |
+| dask               | `binop (unknown operands)`                   |    410 |    213 |      168 |
+| dask               | `copy: param (unannotated)`                  |    390 |    156 |      104 |
+| dask               | `list (mixed/unknown elements)`              |    369 |     60 |       35 |
+| dask               | `ListComp (unknown elements)`                |    351 |    194 |      142 |
+| dask               | `subscript: other`                           |    335 |     91 |       71 |
+| dask               | `empty list`                                 |    296 |      0 |        0 |
+| dask               | `tuple (mixed/unknown elements)`             |    269 |     85 |       75 |
+| dask               | `subscript: local[...]`                      |    247 |     95 |       68 |
+| dask               | `call: builtin zip()`                        |    236 |    119 |       92 |
+| dask               | `copy: local`                                |    234 |    108 |       79 |
+| dask               | `call: builtin list()`                       |    212 |    109 |       82 |
+| dask               | `binop (one side literal)`                   |    204 |     28 |       28 |
+| dask               | `empty dict`                                 |    193 |      0 |        0 |
+| dask               | `subscript: param[...]`                      |    180 |    113 |       87 |
+| dask               | `attr: chained`                              |    178 |     71 |       51 |
+| dask               | `call: module class`                         |    173 |      6 |        5 |
+| dask               | `DictComp (unknown elements)`                |    168 |     88 |       66 |
+| dask               | `attr: self.x`                               |    166 |    129 |       61 |
+| dask               | `call: other callee`                         |    152 |     22 |       14 |
+| dask               | `conditional`                                |    149 |     80 |       46 |
+| dask               | `call: builtin getattr()`                    |    146 |     33 |       19 |
+| dask               | `attr: local.x`                              |    144 |     70 |       53 |
+| dask               | `call: local name`                           |    143 |     24 |       10 |
+| dask               | `call: builtin enumerate()`                  |    135 |     92 |       68 |
+| dask               | `call: self.method()`                        |    132 |    115 |       68 |
+| dask               | `call: param name`                           |    131 |     25 |       10 |
+| dask               | `attr: imported.x`                           |    112 |      1 |        1 |
+| dask               | `attr: param.x`                              |    109 |     71 |       52 |
+| dask               | `call: builtin tuple()`                      |     96 |     58 |       44 |
+| dask               | `other constant`                             |     95 |     24 |       24 |
+| dask               | `call: imported.attr()`                      |     90 |     33 |       21 |
+| dask               | `call: builtin set()`                        |     83 |     21 |       15 |
+| dask               | `call: builtin staticmethod()`               |     79 |      0 |        0 |
+| dask               | `call: builtin dict()`                       |     72 |     19 |        9 |
+| dask               | `None literal`                               |     67 |     36 |       36 |
+| dask               | `call: imported class`                       |     65 |     10 |       10 |
+| dask               | `attr: module.x`                             |     59 |      1 |        1 |
+| dask               | `boolop (or)`                                |     56 |     46 |       39 |
+| dask               | `GeneratorExp (unknown elements)`            |     53 |     14 |       14 |
+| dask               | `Lambda`                                     |     53 |      3 |        3 |
+| dask               | `call: other name`                           |     51 |     20 |       14 |
+| dask               | `compare`                                    |     48 |     18 |       17 |
+| dask               | `call: module function (annotated)`          |     38 |     30 |       11 |
+| dask               | `call: builtin sorted()`                     |     31 |     18 |        9 |
+| dask               | `call: builtin max()`                        |     30 |     23 |       17 |
+| dask               | `SetComp (unknown elements)`                 |     28 |     21 |       16 |
+| dask               | `copy: other`                                |     19 |      6 |        5 |
+| dask               | `call: builtin type()`                       |     19 |     13 |        2 |
+| dask               | `call: builtin divmod()`                     |     18 |     14 |       14 |
+| dask               | `await: call: param.method()`                |     17 |      0 |        0 |
+| dask               | `call: builtin sum()`                        |     16 |      5 |        5 |
+| dask               | `copy: builtin`                              |     15 |      1 |        0 |
+| dask               | `copy: param (annotated)`                    |     14 |     13 |        7 |
+| dask               | `copy: imported`                             |     14 |      5 |        5 |
+| dask               | `call: builtin next()`                       |     14 |     12 |        5 |
+| dask               | `call: global name`                          |     13 |      4 |        3 |
+| dask               | `copy: modclass`                             |     13 |      0 |        0 |
+| dask               | `call: builtin min()`                        |     12 |      8 |        7 |
+| dask               | `call: builtin slice()`                      |     11 |      5 |        5 |
+| dask               | `copy: global`                               |     11 |      0 |        0 |
+| dask               | `call: other.method()`                       |     11 |      7 |        4 |
+| dask               | `call: cls.method()`                         |     10 |      9 |        7 |
+| dask               | `subscript: global[...]`                     |      9 |      4 |        4 |
+| dask               | `set (mixed/unknown elements)`               |      8 |      4 |        3 |
+| dask               | `copy: moddef`                               |      8 |      3 |        3 |
+| dask               | `subscript: other[...]`                      |      8 |      5 |        4 |
+| dask               | `attr: global.x`                             |      8 |      0 |        0 |
+| dask               | `copy: self`                                 |      8 |      6 |        3 |
+| dask               | `call: builtin iter()`                       |      7 |      5 |        4 |
+| dask               | `call: capitalised`                          |      7 |      1 |        1 |
+| dask               | `JoinedStr`                                  |      7 |      7 |        7 |
+| dask               | `attr: modclass.x`                           |      6 |      0 |        0 |
+| dask               | `call: builtin.method()`                     |      5 |      3 |        2 |
+| dask               | `empty tuple`                                |      5 |      0 |        0 |
+| dask               | `call: builtin range()`                      |      5 |      4 |        4 |
+| dask               | `call: builtin open()`                       |      5 |      0 |        0 |
+| dask               | `call: builtin object()`                     |      4 |      0 |        0 |
+| dask               | `call: builtin int()`                        |      3 |      2 |        2 |
+| dask               | `subscript: self[...]`                       |      3 |      3 |        3 |
+| dask               | `boolop (and)`                               |      3 |      2 |        2 |
+| dask               | `call: builtin abs()`                        |      2 |      2 |        2 |
+| dask               | `call: builtin vars()`                       |      2 |      0 |        0 |
+| dask               | `attr: cls.x`                                |      2 |      2 |        1 |
+| dask               | `unaryop USub`                               |      2 |      1 |        1 |
+| dask               | `call: cls name`                             |      1 |      0 |        0 |
+| dask               | `call: builtin property()`                   |      1 |      0 |        0 |
+| dask               | `attr: builtin.x`                            |      1 |      1 |        1 |
+| dask               | `call: builtin any()`                        |      1 |      0 |        0 |
+| dask               | `await: call: chained .method()`             |      1 |      0 |        0 |
+| dask               | `call: builtin reversed()`                   |      1 |      1 |        1 |
+| dask               | `call: builtin len()`                        |      1 |      1 |        1 |
+| dask               | `call: builtin frozenset()`                  |      1 |      1 |        0 |
+| dask               | `await: call: local.method()`                |      1 |      0 |        0 |
+| mypy               | `call: self.method()`                        |    612 |    472 |      254 |
+| mypy               | `call: imported function`                    |    537 |    352 |      136 |
+| mypy               | `call: chained .method()`                    |    391 |    270 |      155 |
+| mypy               | `copy: local`                                |    265 |    179 |      111 |
+| mypy               | `attr: chained`                              |    254 |    174 |      137 |
+| mypy               | `empty list`                                 |    242 |      0 |        0 |
+| mypy               | `attr: param.x`                              |    241 |    204 |      106 |
+| mypy               | `subscript: other`                           |    227 |    144 |       82 |
+| mypy               | `attr: local.x`                              |    226 |    135 |       96 |
+| mypy               | `call: local.method()`                       |    196 |    133 |       85 |
+| mypy               | `call: module function (annotated)`          |    130 |     94 |       34 |
+| mypy               | `call: param.method()`                       |    107 |     88 |       47 |
+| mypy               | `ListComp (unknown elements)`                |    105 |     64 |       41 |
+| mypy               | `call: builtin zip()`                        |    102 |     74 |       30 |
+| mypy               | `copy: param (annotated)`                    |    102 |     87 |       42 |
+| mypy               | `conditional`                                |    101 |     66 |       36 |
+| mypy               | `None literal`                               |     94 |     69 |       69 |
+| mypy               | `call: module.func()`                        |     86 |     35 |       19 |
+| mypy               | `binop (unknown operands)`                   |     84 |     42 |       35 |
+| mypy               | `attr: self.x`                               |     78 |     67 |       45 |
+| mypy               | `subscript: local[...]`                      |     69 |     48 |       29 |
+| mypy               | `subscript: param[...]`                      |     66 |     42 |       29 |
+| mypy               | `call: builtin enumerate()`                  |     65 |     59 |       25 |
+| mypy               | `boolop (or)`                                |     52 |     36 |       31 |
+| mypy               | `tuple (mixed/unknown elements)`             |     50 |     33 |       25 |
+| mypy               | `other constant`                             |     44 |     11 |       11 |
+| mypy               | `call: builtin set()`                        |     40 |      8 |        7 |
+| mypy               | `list (mixed/unknown elements)`              |     37 |     17 |       11 |
+| mypy               | `call: builtin sorted()`                     |     35 |     13 |       12 |
+| mypy               | `boolop (and)`                               |     34 |     29 |       28 |
+| mypy               | `call: imported.attr()`                      |     29 |     21 |       14 |
+| mypy               | `empty dict`                                 |     28 |      0 |        0 |
+| mypy               | `SetComp (unknown elements)`                 |     28 |     14 |       13 |
+| mypy               | `binop (one side literal)`                   |     28 |      9 |        9 |
+| mypy               | `call: builtin list()`                       |     24 |     13 |        9 |
+| mypy               | `DictComp (unknown elements)`                |     22 |     13 |        9 |
+| mypy               | `call: builtin getattr()`                    |     21 |     15 |        8 |
+| mypy               | `call: global.method()`                      |     17 |      1 |        1 |
+| mypy               | `attr: imported.x`                           |     15 |      7 |        7 |
+| mypy               | `copy: imported`                             |     15 |      5 |        5 |
+| mypy               | `call: imported class`                       |     14 |     12 |       12 |
+| mypy               | `call: module class`                         |     14 |     12 |       12 |
+| mypy               | `dict (mixed/unknown elements)`              |     13 |      8 |        5 |
+| mypy               | `call: other name`                           |     13 |     10 |        9 |
+| mypy               | `attr: module.x`                             |     11 |      0 |        0 |
+| mypy               | `call: builtin reversed()`                   |     11 |      3 |        0 |
+| mypy               | `call: other.method()`                       |     10 |     10 |        7 |
+| mypy               | `compare`                                    |      9 |      8 |        8 |
+| mypy               | `copy: global`                               |      8 |      2 |        2 |
+| mypy               | `subscript: imported[...]`                   |      7 |      6 |        6 |
+| mypy               | `call: local name`                           |      7 |      2 |        0 |
+| mypy               | `call: modclass.method()`                    |      7 |      6 |        6 |
+| mypy               | `call: builtin next()`                       |      6 |      4 |        3 |
+| mypy               | `call: builtin dict()`                       |      6 |      2 |        2 |
+| mypy               | `call: builtin open()`                       |      4 |      1 |        1 |
+| mypy               | `call: builtin tuple()`                      |      4 |      2 |        1 |
+| mypy               | `subscript: global[...]`                     |      4 |      4 |        3 |
+| mypy               | `GeneratorExp (unknown elements)`            |      4 |      4 |        4 |
+| mypy               | `copy: other`                                |      3 |      3 |        3 |
+| mypy               | `call: builtin any()`                        |      3 |      3 |        3 |
+| mypy               | `JoinedStr`                                  |      3 |      0 |        0 |
+| mypy               | `subscript: other[...]`                      |      3 |      3 |        2 |
+| mypy               | `attr: modclass.x`                           |      2 |      1 |        1 |
+| mypy               | `call: param name`                           |      2 |      1 |        0 |
+| mypy               | `call: builtin type()`                       |      2 |      2 |        1 |
+| mypy               | `call: builtin.method()`                     |      2 |      1 |        0 |
+| mypy               | `call: builtin format()`                     |      2 |      1 |        1 |
+| mypy               | `set (mixed/unknown elements)`               |      2 |      2 |        2 |
+| mypy               | `call: builtin min()`                        |      2 |      2 |        2 |
+| mypy               | `call: other callee`                         |      1 |      1 |        0 |
+| mypy               | `call: builtin object()`                     |      1 |      0 |        0 |
+| mypy               | `attr: other.x`                              |      1 |      1 |        1 |
+| mypy               | `copy: builtin`                              |      1 |      0 |        0 |
+| mypy               | `call: global name`                          |      1 |      0 |        0 |
+| mypy               | `call: builtin str()`                        |      1 |      1 |        1 |
+| mypy               | `call: builtin max()`                        |      1 |      0 |        0 |
+| mypy               | `call: builtin iter()`                       |      1 |      0 |        0 |
+| mypy               | `call: builtin property()`                   |      1 |      0 |        0 |
+| mypy               | `copy: modclass`                             |      1 |      0 |        0 |
 
 Each package's own tests, as released and after each fix: the failures every fixed run has and no
 released run, those gone, and the differences in tests its catalog entry names:

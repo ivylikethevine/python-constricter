@@ -506,6 +506,14 @@ def test_the_bindings_with_no_fix_are_held_to_what_the_traced_tests_saw(tmp_path
         ["standard library", "rc+dev", "call", 3, 2, 1, "f"],
         ["standard library", "rc+dev", "attr", 1, 0, 0, ""],
     ]
+    # Its counts, not its sources: Python, which Markdown misreads.
+    laid: str = render.markdown(records).split("`tables/one-type.csv`):\n\n", 1)[1].split("\n\n", 1)[0]
+    assert laid.splitlines() == [
+        "| corpus           | shape  | no fix | traced | one type |",
+        "| ---------------- | ------ | -----: | -----: | -------: |",
+        "| standard library | `call` |      3 |      2 |        1 |",
+        "| standard library | `attr` |      1 |      0 |        0 |",
+    ]
 
 
 def test_a_hinted_step_whose_rounds_came_from_the_store_is_noted(tmp_path: Path) -> None:

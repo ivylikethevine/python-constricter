@@ -203,6 +203,17 @@ def _one_type(records: Records) -> Rows:
     return rows
 
 
+def _one_type_counts(records: Records) -> Rows:
+    """`_one_type` without its sources: Python, which Markdown tables and spell checks misread.
+
+    Returns:
+      Its rows, less their last column, each shape a code span (`builtin __import__()`).
+
+    """
+    rows: Rows = _one_type(records)
+    return [rows[0][:-1], *([*row[:2], f"`{row[2]}`", *row[3:-1]] for row in rows[1:])]
+
+
 def _bound(each: Record) -> _Bound:
     return str(each["path"]), cast("int", each["line"]), str(each["name"])
 
@@ -599,9 +610,10 @@ SECTIONS: Final[tuple[_Section, ...]] = (
     (
         (
             "The bindings with neither a fix nor a guess, by shape: those a traced test reached, and "
-            "those it saw hold one type, the most any inference could type, with the commonest source:"
+            "those it saw hold one type, the most any inference could type (each shape's commonest "
+            "source is in `tables/one-type.csv`):"
         ),
-        _one_type,
+        _one_type_counts,
         3,
     ),
     (

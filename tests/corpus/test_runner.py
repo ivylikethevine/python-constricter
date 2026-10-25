@@ -477,7 +477,11 @@ def test_a_fix_whose_constricter_crashed_fails_its_step(
     def faked(_version: str, _where: launch.Place, _options: list[str], _jobs: int) -> launch.Ran:
         return ran[0]
 
+    def unlocked(_lock: object) -> None:  # in place of `fcntl`'s lock, which Windows lacks
+        pass
+
     monkeypatch.setattr(launch, "run", faked)
+    monkeypatch.setattr(pipeline, "_hold", unlocked)
     step: str = "infer-basedpyright"
     with pytest.raises(RuntimeError, match=f"{step} crashed \\(1\\): Traceback"):
         _ = pipeline.fix(job, step, ["--infer-with=basedpyright"])

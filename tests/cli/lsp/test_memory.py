@@ -144,8 +144,12 @@ def test_a_file_an_earlier_run_hung_on_has_no_hints_from_the_start(
     }
 
 
-def test_a_turn_with_no_file_to_ask_about_stops_no_server(tmp_path: Path) -> None:
+def test_a_turn_with_no_file_to_ask_about_stops_no_server(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """Its checker started none: there's none to stop."""
+    _fake(monkeypatch)
     session: hints.Session
     with hints.Session([_TY, _CHECKER], tmp_path, how=hints.Asking(kept=False, in_turn=True)) as session:
         assert session.hints({}) == {}
