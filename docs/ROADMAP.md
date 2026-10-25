@@ -126,7 +126,10 @@ measure before building.
    narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
    with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
    seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
-   `local/research/type-sources-2026-10-23.md`). Done when a super run gives sphinx, seaborn,
+   `local/research/type-sources-2026-10-23.md`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
+   certain fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from
+   982, no new type error (narwhals's certain tier 19 from 23): the chains estimated didn't come.
+   Done when a super run gives sphinx, seaborn,
    altair and narwhals the stubs' fixes, no new type error. Coverage up to 0.2%. The 0.4.3-rc.2
    super run already ran on `44c05d5`: sphinx's certain fixes 3,128 to 3,230 (+102) against the
    0.4.3-rc.1 mega run (`264d149`), unsafe 3,949 to 4,130, rc.3 the same again; seaborn, altair and
@@ -158,7 +161,8 @@ measure before building.
    0.4.3-rc.2 super run (`44c05d5`, 16CPU/60GB) django's `traced` step took 65.1s, from 643s on the
    0.4.0-rc.3 mega run, its tests 52.8s against 48.2s untraced, 482 fixes resting on the trace.
    celery's 13 parts are now traced side by side too, as its tests run (`corpus_suite.traced`), each
-   writing a trace of its own, merged in the parts' order. Done when a mega run's celery `traced`
+   writing a trace of its own, merged in the parts' order. On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) celery's `traced` took 85s, from
+   163s and 182s on rc.1's two, its released tests 59s there. Done when a mega run's celery `traced`
    step takes about its `tests` step's time, the fixes resting on the trace the same. Coverage
    unchanged.
 6. **sqlalchemy's tests in a fixed order.** A part stands for another only where its counts equal
@@ -182,7 +186,9 @@ measure before building.
    outcome for each of its 3,259 tests with 2 workers and with 8, 2,971 passed and 288 skipped, in
    6.3s and 6.9s; the whole suite (`test/`, 30,448 tests on 16CPU/60GB) the same outcome for each
    test with 13 workers and with 4, 29,457 passed and 991 skipped, in 88s and 112s (the released
-   tests' 90s on 13 under `load`). Done when a run's `infer-union` part stands for sqlalchemy's
+   tests' 90s on 13 under `load`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) the released tests ran again (114s) and the union's
+   part (112s) stood for every fixed tree (`tests-fix-likely` 0s, implied). Done when a run's
+   `infer-union` part stands for sqlalchemy's
    fixed trees again and its `tests` stage takes about rc.3's 12 minutes. Coverage unchanged.
 7. **The hinted steps' servers, sized by the memory free.** On the 0.4.3-rc.2 super run (48
    minutes, 54% of its CPU seconds) memory, not CPUs, kept steps waiting: each `infer-*` step held 12
@@ -210,7 +216,12 @@ measure before building.
    GB, it wanted 3 CPUs and started on 2, so 5.33 GiB, one server of pandas (3.25 GiB each) where
    8 GiB holds two, for its `--fix` (496s) and `--diff` (~360s) runs both. A short start's budget
    is since rounded up to whole servers of its largest checker, one a CPU held, as many as the
-   default holds (`Wanted.server`); not yet run. Done when pandas's `infer-union` holds under 18 GB
+   default holds (`Wanted.server`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) pandas's `infer-basedpyright` took 265s and 8.0 GB, from
+   738s and 1,515s on rc.1's two, but the steps that started on one CPU ran far longer: stripe's
+   2,167s (0.57 GB given, waited 1,408s; rc.1 1,068s and 1,236s on 3 CPUs), dask's 555s (137s and
+   159s on 4), xarray's 404s (115s and 164s): a short start keeps its CPUs, and its servers, for
+   the whole step, and stripe's 36 minutes on one held the run's end. The run used 73% of its CPU
+   seconds (rc.1 76%). Done when pandas's `infer-union` holds under 18 GB
    and a super run uses 75% of its CPU seconds, its hints the same. Coverage unchanged.
 8. **basedpyright's heap, capped: in the tree, to measure.** Node 24's own cap was 4.2 GB whatever a
    server's share (basedpyright empties its caches near it, and says so: "Emptying type cache").
@@ -292,52 +303,55 @@ measure before building.
    pandas 46.9s from 57.5s. The 0.4.3-rc.3 super run's tail, a stage of its own, took 3.9 minutes,
    its 29 timed steps 210s (rc.2's 212s; the standard library 59s, pandas 65s), and rc.4's
    3.9 minutes too. Done when a mega
-   run's tail is under 5 minutes with that noise unchanged. About 1 hour beside the run; coverage unchanged.
-3. **The runner's scheduling, measured.** Every corpus's steps wait for the machine alone, the one
-   with the most seconds behind it first, and a running step's hold follows what it uses
-   (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a suite's measured
-   tests hold the CPUs they kept busy with a margin over, an unmeasured part takes its kind's
-   largest measured part, and an unmeasured `infer-union`, its checkers asked in turn, the largest
-   checker's step's memory. `scratch/run_timeline.py` lays a run out from its records and
-   `scratch/schedule_sim.py` replays it. The 0.4.0-rc.1 mega run took 134 minutes on 16CPU/60GB and
-   used 77.5% of its CPU seconds (83.3% before its timed checks), within a tenth of the 123 minutes
-   no schedule of its steps goes under; with the union's steps 0.4.0-rc.2 took 91 minutes, and rc.3
-   105, its pandas steps resumed apart, so its share can't be read. The 0.4.3-rc.1 mega run took 95
-   minutes and used 76% (69,792 of 91,728 CPU seconds): its last 15 minutes ran at 8.2 and then 0.8
-   CPUs, the union's steps and then the timed tail. The 0.4.3-rc.3 super run, in stages, used 52%
-   (23,773 of 46,106), rc.2's 54%: its steps waited 1,141 minutes in all for memory, the hinted
-   steps of its first 15 minutes 8 to 16 minutes each. Replayed on 2026-10-24 (`schedule_sim.py
---sweep`, the rc.2 to rc.4 super runs on 16 CPUs and 29 GB, the memory rc.4's runner shared, no
-   stages): the runner's order replays rc.4 in 38.5 minutes against its 51.8 in stages (pauses left
-   out), so the stages' barriers, not the order, cost most; ordering by most CPU seconds with
-   `_PATIENCE` 600s and `_BESIDE` 60s replays the three in 87.6 minutes summed, the runner's rules
-   (300s, 300s) about 102. The rules order only the steps no run has measured, the planner the
-   rest, so they're left as they are. Done when a mega run uses 85% of
-   its CPU seconds, and one with no earlier run under its output takes within a tenth of one sized
-   by its own. About 2 hours beside the runs; coverage unchanged.
-4. **The runner's order, from a solver.** No library runs subprocess steps in a graph under CPUs and
-   memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready jobs as
-   a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and Ray's
-   resources are their workers' Python tasks'. Where OR-Tools is installed, the runner plans its
-   steps with CP-SAT before it starts (`tests/corpus/planning.py`: each step held to what the runner
-   will hold for it, `sizing.Plan.wanted`, ports, each step after those it reads), and of the steps
-   that could start, starts the one planned first; a step no run has measured keeps the rules (the
-   longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a finished
+   run's tail is under 5 minutes with that noise unchanged (0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes): 5.4 minutes, its 47 timed
+   steps 326s, from rc.1's 6.2 and 371s). About 1 hour beside the run; coverage unchanged.
+3. **The runner's schedule, held to the solver's shortest.** Every corpus's steps wait for the
+   machine alone, the one with the most seconds behind it first, and a running step's hold follows
+   what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a
+   suite's measured tests hold the CPUs they kept busy with a margin over, an unmeasured part takes
+   its kind's largest measured part, and an unmeasured `infer-union`, its checkers asked in turn,
+   the largest checker's step's memory. `scratch/run_timeline.py` lays a run out from its records
+   and `scratch/schedule_sim.py` replays it. The 0.4.0-rc.1 mega run took 134 minutes on 16CPU/60GB
+   and used 77.5% of its CPU seconds (83.3% before its timed checks), within a tenth of the 123
+   minutes no schedule of its steps goes under; with the union's steps 0.4.0-rc.2 took 91 minutes,
+   and rc.3 105, its pandas steps resumed apart, so its share can't be read. The 0.4.3-rc.1 mega run
+   took 95 minutes and used 76% (69,792 of 91,728 CPU seconds): its last 15 minutes ran at 8.2 and
+   then 0.8 CPUs, the union's steps and then the timed tail. The 0.4.3-rc.3 super run, in stages,
+   used 52% (23,773 of 46,106), rc.2's 54%: its steps waited 1,141 minutes in all for memory, the
+   hinted steps of its first 15 minutes 8 to 16 minutes each. Replayed on 2026-10-24
+   (`schedule_sim.py --sweep`, the rc.2 to rc.4 super runs on 16 CPUs and 29 GB, the memory rc.4's
+   runner shared, no stages): the runner's order replays rc.4 in 38.5 minutes against its 51.8 in
+   stages (pauses left out), so the stages' barriers, not the order, cost most; ordering by most CPU
+   seconds with `_PATIENCE` 600s and `_BESIDE` 60s replays the three in 87.6 minutes summed, the
+   runner's rules (300s, 300s) about 102. The rules order only the steps no run has measured, the
+   planner the rest, so they're left as they are. No library runs subprocess steps in a graph under
+   CPUs and memory as the runner does: Snakemake's scheduler comes nearest, choosing among its ready
+   jobs as a knapsack, greedily or by PuLP's solver, but is a workflow engine whole, and Dask's and
+   Ray's resources are their workers' Python tasks'. Where OR-Tools is installed, the runner plans
+   its steps with CP-SAT before it starts (`tests/corpus/planning.py`: each step held to what the
+   runner will hold for it, `sizing.Plan.wanted`, ports, each step after those it reads), and of the
+   steps that could start, starts the one planned first; a step no run has measured keeps the rules
+   (the longest chain first, `_PATIENCE`, backfilling). `scratch/schedule_solve.py` plans a finished
    run's steps the same way and proves how short any schedule of them can be: a mega run of 154
    minutes had a shortest schedule of 129 by the solver, 147 held to what the runner gave each, and
    a proved floor of 57. On the 0.4.3-rc.1 runs (16 CPUs and 36 GB to the solver), the mega run's
    95.2 minutes against a shortest 85.2 (11.7% over; 89.3 held to what the runner gave each step,
    6.6%), and mega-fast's 56.2 against 45.6 (23%). OR-Tools is in the `corpus` group, which CI's
-   corpus setup installs, and `dev`. Read on 2026-10-24 (16 CPUs and 29 GB to the solver): the
-   rc.2 super run, in one sitting, 47.6 minutes against a shortest 47.7, its pandas `infer-union`
-   of 630s the floor; rc.3 and rc.4, in stages, 47.7 and 51.8 (its 4.5 minutes of pauses left out)
-   against 30.5 and 35.7 with no stages, and 35.4 and 45.8 held to them
-   (`schedule_solve.py --staged`): 35% and 13% over. A run in stages planned every stage's steps
-   at once, ranking a stage's own by a schedule mixing them with the later stages'; a stage plans
-   its own steps alone since (`planning.ranks`'s `chosen`); not yet run. Done when a super and a
-   mega run each take within a tenth of the solver's shortest schedule of their own steps. About 2
-   hours beside the runs; coverage unchanged.
-5. **Signatures from a sampled run.** RightTyper runs a package's tests
+   corpus setup installs, and `dev`. Read on 2026-10-24 (16 CPUs and 29 GB to the solver): the rc.2
+   super run, in one sitting, 47.6 minutes against a shortest 47.7, its pandas `infer-union` of 630s
+   the floor; rc.3 and rc.4, in stages, 47.7 and 51.8 (its 4.5 minutes of pauses left out) against
+   30.5 and 35.7 with no stages, and 35.4 and 45.8 held to them (`schedule_solve.py --staged`): 35%
+   and 13% over. A run in stages planned every stage's steps at once, ranking a stage's own by a
+   schedule mixing them with the later stages'; on the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), in one sitting, 81.3 minutes against a
+   shortest 66.0 with 36 GB (23% over; a proved floor of 41.6), stripe's one-CPU step its last.
+   A stage plans its own steps alone since
+   (`planning.ranks`'s `chosen`); not yet run. A run's share of its CPU seconds isn't the measure
+   (85% was the target before): memory and the timed tail bound it whatever the order, and the
+   0.4.0-rc.1 mega run, within a tenth of its floor, used 77.5%. Done when a super and a mega run
+   each take within a tenth of the solver's shortest schedule of their own steps, and one with no
+   earlier run under its output takes within a tenth of one sized by its own. About 3 hours beside
+   the runs; coverage unchanged.
+4. **Signatures from a sampled run.** RightTyper runs a package's tests
    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
    parameters' types as `callers`' seeds brought more errors than fixes (see the trace's item under
@@ -368,7 +382,7 @@ measure before building.
    one process), for whether the returns alone help where there are none. Done when django is
    measured too; a corpus step only if it brings more fixes than the trace for no more errors.
    About 2 hours left; coverage unchanged.
-6. **A check's peak, past the resumed files.** The standard library's check in one process
+5. **A check's peak, past the resumed files.** The standard library's check in one process
    (2026-10-24, 16CPU/60GB, `scratch/peak_rss.py`) peaked at 2.65 GiB: every file's tree, and its
    whole finished check (scopes, bindings, inferences: 84,624 scopes), kept for a second round that
    resumes 242 of its 1,867 files. Both are now kept only for a module with an open function, the
@@ -381,8 +395,18 @@ measure before building.
    3.43 GiB for 52.4s (each tree parsed again and the resumes lost). Under 1.5 GB needs a resume
    from less than the whole check (its functions' scopes rebuilt from their findings), or the
    index's records without its trees. Also weighed and left: `msgspec` or `orjson` for the pickled
-   index, more `__slots__`, `sys.intern` of the annotations' text. About 4 hours; coverage
-   unchanged.
+   index, more `__slots__`, `sys.intern` of the annotations' text. Measured by phase on 2026-10-24
+   (`scratch/peak_phases.py`, its memory sampled each quarter second, one process beside a mega
+   run, so its seconds don't count): the index ends at 1.59 GiB, the first check round at 2.00;
+   with the index keeping no tree (`--no-index-trees`) the index ends at 0.57 GiB, but the first
+   round still reaches 2.02, with no resume kept. Of what the first round allocates, 0.74 GiB is
+   still held as it ends (`--trace-check`, tracemalloc): the index's modules copied as each round
+   links what its files return (`linked.with_returned`, 0.09), each file's results and source
+   text (0.10), the order's class edges (`loose.needs`, 0.06). The rest of the 1.45 GiB the round
+   adds is the allocator's: a file's tree freed among its results, allocated beside it, leaves its
+   arenas held, so a tree kept or not costs the same. Under 1.5 GB then needs a file's check done
+   where its tree can't pin what outlives it: in a worker process returning its results (as
+   `--jobs` does), or its results built after its tree is freed. About 6 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 

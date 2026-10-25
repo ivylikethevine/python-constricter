@@ -89,6 +89,9 @@ goes under `local/scratch/`.
 - `schedule_solve.py FOLDER... [--given] [--seconds N] [--staged [--pauses SECONDS]]`: the shortest
   schedule of finished runs' steps by OR-Tools' CP-SAT, and the least it proves any can take;
   `--staged` holds the runner's stages one after another, as a run in stages does.
+- `peak_phases.py PATH [--no-index-trees] [--trace-check] [-- OPTIONS]`, from the checkout: a
+  one-process check's memory over time by phase (the index, its settling, each check round), with
+  the index keeping no trees, or what the first round still holds as it ends, by tracemalloc.
 - `stage_compare.py BEFORE AFTER [--stage tests] [--top N]`: one stage's steps in two runs, from
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
