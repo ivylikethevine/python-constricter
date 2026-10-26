@@ -124,22 +124,7 @@ measure before building.
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between.
-3. **basedpyright's heap, capped: in the tree, to measure.** Node 24's own cap was 4.2 GB whatever a
-   server's share (basedpyright empties its caches near it, and says so: "Emptying type cache").
-   Each server's heap is now capped at nine tenths of its share of the memory
-   (`NODE_OPTIONS=--max-old-space-size`, `Checker.share`), and a capped server that exits is
-   restarted and asked about its files alone, as a hung one is (`ExitedError`), a file it exits on
-   again left without hints and not remembered. The hints on the standard library's `email` are the
-   same as before. On the 0.4.3-rc.3 super run (`ac48774`) the standard library's
-   `infer-basedpyright` took 490s and 14.6 GB, from 579s and 13.5 GB. pandas's stopped at a
-   `KeyError`, its patch empty: a file a server hung on in an earlier run (`remembered`) was left
-   out of every server's work with no entry in the answers (fixed since: `Session.hints` gives each
-   abandoned file none). The runner recorded the step as made, and its 76s and 5.9 GB; a fix or
-   census step whose constricter ends at an exception fails since (`pipeline._crashed`), its
-   traceback in the step's log. On the 0.4.3-rc.4 super run (`46bdc27`) every stage exited 0, no
-   hinted process crashed, and pandas's `infer-basedpyright` fixed 47,038 (rc.2 47,035), one file
-   hung on twice (`tests/apply/test_series_apply.py`). Left: its hints against rc.2's.
-4. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
+3. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
    annotation as its package's traced tests bind it (`tests/corpus/witness`). A value of a class a
    test module defines tells nothing of the annotation, as a mock or a `SimpleNamespace` doesn't,
    nor of an annotation naming a test's class outside the tests (django's `datetime`, patched to
@@ -163,14 +148,21 @@ measure before building.
    `self.names` given `None`, starlette's `path_params: dict[str, str]` given a `datetime` and an
    `int`, xarray's `Mapping[str, TreeNode]` given an `int` by a test of its `TypeError`); and one
    wrong fix: narwhals's `impl = self.implementation` typed `_Implementation`, a descriptor whose
-   `__get__` gives an `Implementation` through an instance. Built on 2026-10-23, run since on
-   the 0.4.3-rc.5 to rc.8 mega runs, their differing certain fixes not yet read: an attribute a class
-   body annotates with a descriptor class (its body defines `__get__`), the module's or another
-   checked file's, is read through an instance as `__get__` declares it returns, and is no fix where
+   `__get__` gives an `Implementation` through an instance. Since: an attribute a class body
+   annotates with a descriptor class (its body defines `__get__`), the module's or another checked
+   file's, is read through an instance as `__get__` declares it returns, and is no fix where
    `__get__` is overloaded (narwhals's 16, chosen by the instance's type), declares no return or
-   names a type variable (`declarations.descriptors`, `members.through_instance`). Done when the
-   0.4.3-rc.8 mega run's certain fixes that differ (`scratch/witness_diff.py`) are declarations the
-   tests contradict alone. Under an hour; coverage unchanged.
+   names a type variable (`declarations.descriptors`, `members.through_instance`). On the 0.4.3-rc.8
+   mega run (`7a075e4`) 192 certain fixes differed against rc.1's 186, 182 in both
+   (`witness_diff.py`): narwhals's `impl` is no fix now, and of rc.1's other 3 one is no longer
+   told of. Of the 10 new, 7 are declarations the tests contradict (pandas's numpy scalars where
+   `bool` and `float | np.ndarray` are declared, 3; sphinx's types-docutils stubs,
+   `get_source_line -> tuple[str, int]` given `None` and `Element.get`'s `failobj: _T -> _T` given an
+   `int`, 3; sqlalchemy's `_CursorKeyMapRecType`, the value one the trace couldn't name), and 3 look
+   like the witness's: pdm's `url: str` and `dep: str` (given a `str`, and tomlkit's `String`, a
+   `str` subclass) and strawberry's `node: GQLFieldNode` (graphql's `FieldNode` imported under that
+   name, given a `FieldNode`). Done when those 3 are read through and the witness fixed where it's
+   wrong. Under an hour; coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -196,7 +188,8 @@ measure before building.
    its 29 timed steps 210s (rc.2's 212s; the standard library 59s, pandas 65s), and rc.4's
    3.9 minutes too. Done when a mega
    run's tail is under 5 minutes with that noise unchanged (0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes): 5.4 minutes, its 47 timed
-   steps 326s, from rc.1's 6.2 and 371s; rc.6's the same, 5.4 and 327s). About 1 hour beside the run;
+   steps 326s, from rc.1's 6.2 and 371s; rc.6's and rc.7's the same, 5.4 and 327s; rc.8's 5.7 and 340s, its machine running other
+   work). About 1 hour beside the run;
    coverage unchanged.
 2. **Signatures from a sampled run.** RightTyper runs a package's tests
    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
@@ -436,7 +429,7 @@ What to measure before building, smallest first.
    failure ids two ways between runs. pytest's `--junitxml` or `--report-log` (and unittest's
    verbose output, for django's runner) in `corpus_suite.tested` gives exact test and skip ids, skip
    reasons and per-test durations: sqlalchemy's skip-count flake by name, with no rerun, and what
-   test-level sampling or sharding would later need. Built, not yet run (2026-10-21): each part
+   test-level sampling or sharding would later need. Built (2026-10-21): each part
    pytest runs writes a JUnit report (`--junitxml`, the `xunit1` family, whose `file` gives each
    test's node id back), read into `records/<corpus>/<version>/tests-<run>.tests.jsonl`, a line a
    test with its id, outcome, seconds and skip reason, and the failed tests are the reports' where
@@ -472,8 +465,14 @@ What to measure before building, smallest first.
    passes the bars, and not what a guess rests on: `unsafe-fix-select` trusts it by `checker` as
    before. On the 0.4.3-rc.8 mega run (`7a075e4`, 16CPU/60GB, 70 minutes): 14,941 of
    `infer-union`'s 26,590 checker fixes rest on an agreement, read from its records; the mechanisms
-   table now lists the union step's sets, from the next run. Left: those sets held to LIKELY.md's
-   bars. About 2 hours; coverage unchanged (`--likely` gains what passes).
+   table now lists the union step's sets, from the next run. The bars can't be read from a run yet:
+   the witness judges `fix-unsafe`'s fixes alone (`traced.verdicts.jsonl`) and no type check runs
+   after `infer-union`. Held by name to what the trace saw instead (`scratch/agreed_seen.py`: every
+   type seen named in the annotation), `agreed+checker` held 86.2% of the 9,635 the trace told of
+   and `checker` alone 73.7% of 5,321, where the union's certain fixes held 90.2% by name (99.5% by
+   the witness: a subclass or a protocol differs by name). Left: the witness judging the union's
+   fixes too, and a type check after it, then the sets held to the bars. About 3 hours beside a
+   run; coverage unchanged (`--likely` gains what passes).
 6. **pyrefly's `stubgen` for untyped packages.** For an installed package with no types, pyrefly
    writes stubs from what it infers (experimental; `Incomplete` where it can't tell): the calls
    declared types would reach plus the returns no source declares (tlz, botocore, kombu), perhaps
@@ -495,8 +494,11 @@ What to measure before building, smallest first.
 9. **typeshed's third-party stubs, not installed.** basedpyright ships them
    (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
    (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain where
-   the installed version matches `METADATA.toml`'s, a guess where not. About 60 to 100 calls in the
-   corpora; its reach is users' code. Done when measured. About 4 hours; coverage under 0.1%.
+   the installed version matches `METADATA.toml`'s, a guess where not. Its reach is users' code.
+   Measured on the 0.4.3-rc.8 mega run's census (`scratch/typeshed_reach.py`): of 7,955 third-party
+   bindings with no fix, 137 at most call into a package a stub set covers (docutils 43, pywin32
+   35, PyYAML 13, python-dateutil 7), some of them where the stubs are installed already. Done when
+   decided: built for users' code, or left at under 0.1% on the corpora. About 4 hours to build.
 10. **numpydoc Returns sections.** A docstring's `Returns` section names what a function with no
     return annotation returns (docstub and docs2stubs read them): networkx has 2,301 such
     functions, 868 with a Returns section and 485 naming one plain type; pandas 1,787 (360, 108),

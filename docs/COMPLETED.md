@@ -682,6 +682,16 @@ What constricter does today and what was measured on the way, by scope. What's n
   only one whose last run took 300s at most starts short (`sizing._BRIEF`), as a short start keeps
   its CPUs for the whole step. On the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes)
   pandas's `infer-union` held 14.3 GB, and the run used 77% of its CPU seconds (rc.7 75%).
+- **basedpyright's heap, capped**: Node 24's own cap was 4.2 GB whatever a server's share, and
+  basedpyright empties its caches near it. Each server's heap is capped at nine tenths of its share
+  of the memory (`NODE_OPTIONS=--max-old-space-size`, `Checker.share`), and a capped server that
+  exits is restarted and asked about its files alone, as a hung one is (`ExitedError`), a file it
+  exits on again left without hints and not remembered. A file a server hung on in an earlier run
+  gets no hints rather than none of its answers (`Session.hints`), and a fix or census step whose
+  constricter ends at an exception fails (`pipeline._crashed`). On the 0.4.3-rc.4 super run
+  (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
+  `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
+  pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
 
 ## CI, security and releases
 
