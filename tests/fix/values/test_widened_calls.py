@@ -9,9 +9,8 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter import Checks, FixPolicy, Offence, annotation_coverage, check_source
-from constricter.cli import schedule
 from constricter.fix.core import fixes
-from constricter.fix.index import linked, project
+from constricter.fix.index import across, linked, project
 from constricter.noqa import lines
 from constricter.offences import WIDEN_KINDS
 from constricter.rules.checker import Coverage
@@ -205,6 +204,20 @@ def test_each_call_kind_is_asked_for_alone() -> None:
         assert {fix[2] for fix in _found(CALLS, checks).values() if fix[0] == _SPELLED} == {frozenset({kind})}
     unnamed: str = "Any = typing = 1\ndef helper(x):\n    return x.y\ndef f(o):\n    a = helper(o)\n"
     assert [fix[0] for fix in _found(unnamed, _CALLS).values()] == [None]
+
+
+def test_a_method_is_found_through_bases_that_cycle_or_share_one() -> None:
+    """Each base is looked in once: a cycle ends, no method found, and a base two share gives its own."""
+    source: str = (
+        "class A(B):\n    def f(self):\n        a = self.m()\n"
+        "class B(A):\n    pass\n"
+        "class Root:\n    def m(self):\n        return x.y\n"
+        "class Left(Root):\n    pass\n"
+        "class Right(Root):\n    pass\n"
+        "class Both(Left, Right):\n    def g(self):\n        b = self.m()\n"
+    )
+    found: _Found = _found(source, _CALLS)
+    assert (found["a"], found["b"]) == (_UNKNOWN, _UNTYPED)  # the cycle's, no method found
 
 
 def test_a_widened_calls_mark_ends_its_statement() -> None:
@@ -404,7 +417,7 @@ def test_another_checked_files_function_declaring_no_return_is_an_untyped_call(t
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
         checks=_CALLS,
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     fixed: _Found = {o.name: (o.fix, o.unsafe, o.edit.kinds if o.edit else frozenset()) for o in found}
     assert {name for name, fix in fixed.items() if fix == _UNTYPED} == {"a", "b", "h"}

@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter import Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import crossed, project
+from constricter.fix.index import across, crossed, project
 
 # Each offence's fix and whether it's a guess.
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -165,7 +164,7 @@ def test_another_files_class_is_called_by_its_declared_call(tmp_path: Path) -> N
     assert crossed.imported(catalog, using).classes.methods == {
         "Handler": {"__call__": "int", "__enter__": "bytes"},
     }
-    found: list[Offence] = check_source(_USING, outside=schedule.outside(catalog, using, {}))
+    found: list[Offence] = check_source(_USING, outside=across.outside(catalog, using, {}))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {
         "schema": ("int", False),
         "entered": ("bytes", False),
@@ -241,7 +240,7 @@ def test_a_call_of_a_new_type_gives_it(tmp_path: Path) -> None:
         _ = path.write_text(source, encoding="utf-8")
     using: Path = tmp_path / "using.py"
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    found: list[Offence] = check_source(_USING_NEW_TYPES, outside=schedule.outside(catalog, using, {}))
+    found: list[Offence] = check_source(_USING_NEW_TYPES, outside=across.outside(catalog, using, {}))
     assert {o.name: (o.fix, o.unsafe) for o in found} == {"a": ("Ref", False), "b": ("refs.Count", False)}
 
 

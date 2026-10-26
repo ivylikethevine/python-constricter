@@ -7,8 +7,7 @@ from typing import Final
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.cli import schedule
-from constricter.fix.index import modules, project
+from constricter.fix.index import across, modules, project, spelling
 from constricter.fix.index.stubs import chained
 from constricter.fix.index.stubs.declared import Class, declarations
 
@@ -150,7 +149,7 @@ def test_a_modules_members_are_found_by_the_names_the_file_writes(tmp_path: Path
         ("pkg.util", "", "util"),
         ("pkg.util.load", ".util", "load"),
     ]
-    assert dict(project.spellings(catalog, target, "function")) == {
+    assert dict(spelling.spellings(catalog, target, "function")) == {
         "u.load": ("pkg.util", "load"),
         "pkg.util.load": ("pkg.util", "load"),
     }
@@ -159,6 +158,6 @@ def test_a_modules_members_are_found_by_the_names_the_file_writes(tmp_path: Path
     }
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {o.name: o.fix for o in found} == {"name": "str", "count": "int", "other": "int"}

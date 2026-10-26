@@ -29,6 +29,7 @@ from ortools.sat.python import cp_model
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 import schedule_sim  # noqa: E402  # the sibling script that reads a run's steps
+
 from tests.corpus import stages  # noqa: E402  # the runner's built-in stages, for `--staged`
 
 _TENTHS = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers

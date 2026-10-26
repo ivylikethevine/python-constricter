@@ -26,18 +26,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Final, cast
 
-from constricter import __version__
-from constricter.fix.index.modules import STUB, SUFFIX, Index, Memo, Module, read
+from constricter._version import __version__  # not the package's: it imports the rules
+from constricter.fix.index.modules import PACKAGE, STUB, SUFFIX, Index, Memo, Module, read
+from constricter.fix.index.project import HOPS, STDLIB
 
 LIMIT: Final = 2000  # the most installed modules one run reads
-_HOPS: Final = 5  # re-exports followed to a type variable
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
 _PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
-_PACKAGE: Final = "__init__"
 _UNDERSCORE: Final = "_"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"
-_STDLIB: Final = sys.stdlib_module_names
 _CACHE_HOME: Final = "XDG_CACHE_HOME"
 _LOCAL_APP_DATA: Final = "LOCALAPPDATA"  # Windows'
 _CACHE: Final = "constricter"
@@ -60,10 +58,10 @@ def search_path() -> tuple[Path, ...]:
     """
     stdlib: set[Path] = {Path(sysconfig.get_paths()[key]).resolve() for key in ("stdlib", "platstdlib")}
     active: str | None = os.environ.get(_VIRTUAL_ENV)
-    extra: list[str] = (
-        [] if active is None else [str(p) for p in sorted(Path(active).glob("lib/python3*/site-packages"))]
-    )
-    extra += [] if active is None else [str(Path(active) / "Lib" / "site-packages")]  # Windows
+    extra: list[str] = []
+    if active is not None:
+        extra = [str(p) for p in sorted(Path(active).glob("lib/python3*/site-packages"))]
+        extra.append(str(Path(active) / "Lib" / "site-packages"))  # Windows
     found: dict[Path, None] = {}
     entry: str
     for entry in (*extra, *sys.path):
@@ -87,16 +85,13 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
     for name in wanted:
         if len(found) >= LIMIT:
             break
-        path: Path | None
-        module: Module | None
-        if (
-            name in seen
-            or (path := locate(name, tuple(search))) is None
-            or (module := cached(path, name)) is None
-        ):
-            seen.add(name)
+        if name in seen:
             continue
         seen.add(name)
+        path: Path | None
+        module: Module | None
+        if (path := locate(name, tuple(search))) is None or (module := cached(path, name)) is None:
+            continue
         found[name] = module
         top: str = name.partition(".")[0].lstrip(_UNDERSCORE)
         # Walked as it grows: the modules this one re-exports from, its package's private twin's
@@ -130,7 +125,7 @@ def _generics(modules: Mapping[str, Module], module: Module) -> Module:
     return replace(module, generics=module.generics - bound) if bound else module
 
 
-def _is_type_var(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+def _is_type_var(modules: Mapping[str, Module], module: Module, name: str, hops: int = HOPS) -> bool:
     """Check whether `name` is a type variable in `module`: its own, or one it imports from an indexed module.
 
     Returns:
@@ -313,7 +308,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
     for module in found:
         origin: tuple[str, str | None]
         for origin in (*module.names.values(), *module.guarded.values()):
-            if origin[0].partition(".")[0] not in _STDLIB and origin[0] != module.name:
+            if origin[0].partition(".")[0] not in STDLIB and origin[0] != module.name:
                 names[origin[0]] = None
                 if origin[1] is not None:
                     names[f"{origin[0]}.{origin[1]}"] = None
@@ -323,7 +318,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
             parts: list[str]
             head, *parts = callee.split(".")
             through: tuple[str, str | None] = module.names[head]
-            if through[1] is None and through[0].partition(".")[0] not in _STDLIB:
+            if through[1] is None and through[0].partition(".")[0] not in STDLIB:
                 names.update(
                     dict.fromkeys(".".join([through[0], *parts[:end]]) for end in range(1, len(parts))),
                 )
@@ -392,7 +387,7 @@ def unseen(name: str) -> Module | None:
       one that isn't installed.
 
     """
-    if not name or name.partition(".")[0] in _STDLIB:
+    if not name or name.partition(".")[0] in STDLIB:
         return None
     return _unseen(name, _searched(tuple(sys.path), os.environ.get(_VIRTUAL_ENV)))
 
@@ -443,8 +438,8 @@ def _module_file(base: Path) -> Path | None:
 
     """
     candidates: tuple[Path, ...] = (
-        base / f"{_PACKAGE}{STUB}",
-        base / f"{_PACKAGE}{SUFFIX}",
+        base / f"{PACKAGE}{STUB}",
+        base / f"{PACKAGE}{SUFFIX}",
         base.with_name(f"{base.name}{STUB}"),
         base.with_name(f"{base.name}{SUFFIX}"),
     )

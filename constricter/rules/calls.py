@@ -10,7 +10,6 @@ A name the calling function binds itself isn't the module's function, whatever i
 """
 
 import ast
-import builtins
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Final, cast
@@ -32,16 +31,15 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values import reads
 from constricter.fix.values.guesses import guessing
 from constricter.fix.values.inference import inference, scalar
-from constricter.rules.annotations import dotted
-from constricter.rules.decorators import FIXTURES, is_fixture
-from constricter.rules.decorators import spelled as decorated_as
-from constricter.rules.flow import members
 from constricter.rules.scope import Scope, guesses_in
 from constricter.rules.scoped import Seeded, Settings
-from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
-from constricter.rules.walked import classes, of_type
+from constricter.source.annotations import dotted
+from constricter.source.decorators import FIXTURES, is_fixture
+from constricter.source.decorators import spelled as decorated_as
+from constricter.source.flow import members
+from constricter.source.syntax import FunctionDef, Start, has_within, own_nodes
+from constricter.source.walked import classes, of_type
 
-_BUILTINS: Final = frozenset(dir(builtins))
 _TEST: Final = "test"  # how pytest's test functions' names start
 _NONE: Final = "None"  # says nothing of what the parameter's other callers pass, nor what it's for
 _DEFINED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)  # what binds a name, inside
@@ -215,7 +213,7 @@ def plain(annotation: str, known: Known) -> bool:
         annotation != _NONE
         and len(members(annotation) or ()) == 1
         and all(
-            isinstance(node, ast.Name) and node.id in _BUILTINS and known.is_builtin(node.id)
+            isinstance(node, ast.Name) and known.is_builtin(node.id)
             for node in ast.walk(tree)
             if isinstance(node, ast.Name | ast.Attribute)
         )
@@ -394,8 +392,17 @@ def _varied(func: FunctionDef) -> Passed | None:
         if keyword.arg == _PARAMS
     ]
     cases: list[ast.expr] = list(params[0].elts) if params and isinstance(params[0], ast.List) else []
-    types: set[str | None] = {scalar(case) for case in cases}
-    only: str | None = types.pop() if len(types) == 1 else None
+    return _one_scalar({scalar(case) for case in cases})
+
+
+def _one_scalar(types: set[str | None]) -> Passed | None:
+    """Type values of one scalar type, as a guess resting on `fixture`.
+
+    Returns:
+      It; `None` where they're of several types, of one not known, or `None`.
+
+    """
+    only: str | None = next(iter(types)) if len(types) == 1 else None
     return None if only is None or only == _NONE else (only, frozenset({fixtures.KIND}))
 
 
@@ -417,10 +424,11 @@ def _parametrized(decorators: Sequence[ast.expr]) -> dict[str, Passed]:
         at: int
         name: str
         for at, name in enumerate(names):
-            types: set[str | None] = {scalar(row[at]) if len(row) == len(names) else None for row in rows}
-            only: str | None = types.pop() if len(types) == 1 else None
-            if only is not None and only != _NONE:
-                found[name] = (only, frozenset({fixtures.KIND}))
+            passed: Passed | None = _one_scalar(
+                {scalar(row[at]) if len(row) == len(names) else None for row in rows},
+            )
+            if passed is not None:
+                found[name] = passed
     return found
 
 

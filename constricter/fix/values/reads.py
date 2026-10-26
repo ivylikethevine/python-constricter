@@ -17,8 +17,8 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.known import Classes
 from constricter.fix.libraries import stdlib
 from constricter.overrides import override
-from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import of_type
+from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.walked import of_type
 
 KIND: Final = "reads"  # the guessing mechanism (`FIX_KINDS`)
 _LEAST: Final = 2  # names read: one alone (`p.name`) fits too many classes

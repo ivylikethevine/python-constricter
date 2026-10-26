@@ -20,17 +20,18 @@ from constricter.fix.core.known import ImportPlan, Inference, Known, Partial
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import displays
 from constricter.fix.values.members import keyed, may_miss, parsed, partial_method
-from constricter.rules.annotations import dotted
-from constricter.rules.flow import members
+from constricter.fix.values.narrowed import READS
+from constricter.source.annotations import dotted
+from constricter.source.flow import members
 
 Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
+COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _NONE: Final = "None"
 # The builtin classes an `isinstance` check names that say all there is of a value so checked.
 _SCALARS: Final = frozenset({"bool", "bytes", "complex", "float", "int", "str"})
-_NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first
+NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first
 _HOLDS_NONE: Final = re.compile(r"\b(?:None|Optional)\b")
-_READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
 _CONDITIONAL: Final = "conditional"  # the fix kind of `a if c else b`
 _BOOLEAN: Final = "boolean"  # the fix kind of `a or b`
 _BUILTIN: Final = "builtin"
@@ -46,10 +47,9 @@ _TYPING_ANY: Final = "typing.Any"
 _WITH_DEFAULT: Final = 2  # `getattr(obj, name)`'s arguments; a third is its default
 _MODULE_TEXTS: Final = frozenset({"__file__", "__name__"})  # a module's own names that hold a `str`
 _CLASS_TEXTS: Final = frozenset({"__module__", "__name__", "__qualname__"})  # what a class holds a `str` in
-_CLASS: Final = "__class__"
 
 
-def is_none(node: ast.expr) -> bool:
+def is_none(node: ast.AST) -> bool:
     """Check whether a value is the literal `None`.
 
     Returns:
@@ -67,7 +67,7 @@ def typed(node: ast.expr, infer: Infer) -> Inference | None:
 
     """
     found: Inference | None = infer(node)
-    if found is None or not isinstance(node, _READS):
+    if found is None or not isinstance(node, READS):
         return found
     if len((members(found.annotation) or frozenset()) - {_NONE}) > 1:
         return None
@@ -97,7 +97,7 @@ def optional(value: ast.IfExp, infer: Infer) -> Inference | None:
 
     """
     sides: list[ast.expr] = [side for side in (value.body, value.orelse) if not is_none(side)]
-    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, READS)}
     known: bool = len(sides) == 1 and ast.unparse(sides[0]) not in tested
     found: Inference | None = typed(sides[0], infer) if known else None
     annotation: str | None = None if found is None else or_none(found.annotation)
@@ -321,11 +321,11 @@ def emptied(value: ast.IfExp, infer: Infer) -> Inference | None:
     if found is None or len(types - {_NONE}) != 1 or not container.startswith(f"{built}["):
         return None
     annotation: str = found.annotation
-    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, _READS)}
+    tested: set[str] = {ast.unparse(node) for node in ast.walk(value.test) if isinstance(node, READS)}
     held: bool = any(
         ast.unparse(node) in tested
         for node in ast.walk(sides[0])
-        if node is not sides[0] and isinstance(node, _READS)
+        if node is not sides[0] and isinstance(node, READS)
     )
     if held and _HOLDS_NONE.search(container):  # `[a] if a else []`: `a` is narrowed in the display
         return None
@@ -366,13 +366,12 @@ def _classed(value: ast.expr, known: Known) -> ast.expr | None:
 
     """
     arg: ast.expr
-    attr: str
     match value:
         case ast.Call(func=ast.Name(id="type"), args=[arg], keywords=[]) if known.is_builtin(
             _TYPE,
         ) and not isinstance(arg, ast.Starred):
             return arg
-        case ast.Attribute(value=arg, attr=attr) if attr == _CLASS:
+        case ast.Attribute(value=arg, attr="__class__"):
             return arg
         case _:
             return None
@@ -552,8 +551,8 @@ def _joined(first: str, second: str) -> str | None:
     """
     if first == second:
         return first
-    if first in _NUMBERS and second in _NUMBERS:
-        return max(first, second, key=_NUMBERS.index)
+    if first in NUMBERS and second in NUMBERS:
+        return max(first, second, key=NUMBERS.index)
     return displays.union([first, second])
 
 

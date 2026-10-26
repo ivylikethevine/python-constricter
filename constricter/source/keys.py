@@ -3,7 +3,7 @@
 import ast
 from typing import Final
 
-from constricter.rules.quoted import written
+from constricter.source.quoted import written
 
 _REQUIRED: Final = "Required"
 _NOT_REQUIRED: Final = "NotRequired"

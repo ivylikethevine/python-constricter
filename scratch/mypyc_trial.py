@@ -3,8 +3,8 @@
   local/.venv-mypyc/bin/python -m scratch.mypyc_trial [--opt 0] [--exclude PATH ...] [-- PYTEST_ARGS]
 
 `local/.venv-mypyc` needs mypy (the version `uv.lock` pins) and setuptools, on this checkout's
-Python. The copy goes in `local/scratch/mypyc/` (made fresh): `constricter/`, its `rules` and `fix`
-packages compiled but for each `--exclude`d file (`constricter/fix/core/known.py`), as the
+Python. The copy goes in `local/scratch/mypyc/` (made fresh): `constricter/`, the packages
+the hook includes compiled but for each `--exclude`d file (`constricter/fix/core/known.py`), as the
 `[tool.hatch.build.targets.wheel.hooks.mypyc]` table of `pyproject.toml` lists them, split into a
 C file per module and built on every CPU, at `--opt` (0, for a quick check; the wheel's is 3). Then
 `local/.venv/bin/pytest` runs this checkout's tests on the copy (`--import-mode=append`, from the
@@ -35,12 +35,21 @@ print("compiled:", checker.__file__)
 """
 
 
-def configured_excludes() -> list[str]:
-    """The files `pyproject.toml`'s mypyc hook leaves interpreted, as paths from the root."""
+def _hook() -> dict:
+    """`pyproject.toml`'s mypyc hook table."""
     with (ROOT / "pyproject.toml").open("rb") as file:
         wheel = tomllib.load(file)["tool"]["hatch"]["build"]["targets"]["wheel"]
-    hook = wheel.get("hooks", {}).get("mypyc", {})
-    return [pattern.lstrip("/") for pattern in hook.get("exclude", [])]
+    return wheel.get("hooks", {}).get("mypyc", {})
+
+
+def configured_excludes() -> list[str]:
+    """The files `pyproject.toml`'s mypyc hook leaves interpreted, as paths from the root."""
+    return [pattern.lstrip("/") for pattern in _hook().get("exclude", [])]
+
+
+def configured_packages() -> list[str]:
+    """The directories `pyproject.toml`'s mypyc hook compiles, as paths from the root."""
+    return [pattern.strip("/") for pattern in _hook().get("include", [])]
 
 
 def main(argv: list[str]) -> int:
@@ -54,8 +63,8 @@ def main(argv: list[str]) -> int:
     shutil.copytree(ROOT / "constricter", COPY / "constricter", ignore=shutil.ignore_patterns("__pycache__"))
     files = sorted(
         path.relative_to(COPY).as_posix()
-        for package in ("rules", "fix")
-        for path in (COPY / "constricter" / package).rglob("*.py")
+        for package in configured_packages()
+        for path in (COPY / package).rglob("*.py")
         if path.relative_to(COPY).as_posix() not in excluded
     )
     (COPY / "setup.py").write_text(_SETUP.format(files=files, opt=opt), encoding="utf-8")

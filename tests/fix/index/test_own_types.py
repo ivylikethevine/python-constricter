@@ -6,8 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from constricter import Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import crossed, own_types, project
+from constricter.fix.index import across, crossed, own_types, project, spelling
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -188,7 +187,7 @@ def test_a_class_a_package_re_exports_is_worked_out_by_the_name_the_file_takes(t
     assert found == {"shelf.Frame": line, "shelf.frames.Frame": line}
     assert hash(found) == hash(own_types.lineages(catalog, main, {}))
     spelled: list[tuple[str, Origin]] = list(
-        project.spellings(catalog._replace(memo=None), catalog.modules["main"], project.CLASS),
+        spelling.spellings(catalog._replace(memo=None), catalog.modules["main"], project.CLASS),
     )
     assert ("shelf.Frame", ("shelf.frames", "Frame")) in spelled
 
@@ -214,7 +213,7 @@ def test_an_overload_is_picked_by_the_checked_files_classes(tmp_path: Path) -> N
     catalog, main = _package(tmp_path)
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {o.name: o.fix for o in found} == {
         "frames": "DataFrame",

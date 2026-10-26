@@ -7,8 +7,8 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import at
-from constricter.rules.walked import children as child_nodes
-from constricter.rules.walked import classes, of_type
+from constricter.source.walked import children as child_nodes
+from constricter.source.walked import classes, of_type
 
 # A `# type:` comment, as an assignment or a loop or `with` header writes one.
 _TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
@@ -67,16 +67,16 @@ def python2_compatible(tree: ast.Module) -> bool:
     )
 
 
-def collect_functions(body: list[ast.stmt], into: list[FunctionDef]) -> None:
-    """Collect functions in a module or class body, through compound statements and classes."""
+def collect_functions(body: list[ast.stmt], into: list[FunctionDef], *, nested: bool = True) -> None:
+    """Collect functions in a module or class body, through compound statements and (`nested`) classes."""
     stmt: ast.stmt
     for stmt in body:
         if isinstance(stmt, FUNCTION_DEFS):
             into.append(stmt)
-        elif isinstance(stmt, ast.ClassDef):
+        elif not isinstance(stmt, ast.ClassDef):
+            collect_functions(child_statements(stmt), into, nested=nested)
+        elif nested:
             collect_functions(stmt.body, into)
-        else:
-            collect_functions(child_statements(stmt), into)
 
 
 def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int, str]:
@@ -98,7 +98,7 @@ def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int
     method: FunctionDef
     for node in classes(tree):
         methods = []
-        _direct_methods(node.body, methods)
+        collect_functions(node.body, methods, nested=False)
         for method in methods:
             found[id(method)] = node.name
             if (
@@ -120,11 +120,7 @@ def _self_bindings(tree: ast.Module) -> list[Start]:
     return sorted(
         (node.lineno, node.col_offset)
         for node in cast("list[ast.Name | ast.alias]", of_type(tree, ast.Name, ast.alias))
-        if (
-            (node.id == _SELF and not isinstance(node.ctx, ast.Load))
-            if isinstance(node, ast.Name)
-            else (node.asname or node.name) == _SELF
-        )
+        if _names_self(node)
     )
 
 
@@ -149,7 +145,7 @@ def _self_readers(function: FunctionDef, bindings: Sequence[Start]) -> Iterator[
 
     """
     nested: list[FunctionDef] = []
-    _direct_methods(function.body, nested)
+    collect_functions(function.body, nested, nested=False)
     inner: FunctionDef
     for inner in nested:
         args: ast.arguments = inner.args
@@ -178,24 +174,19 @@ def _binds_self(function: FunctionDef, bindings: Sequence[Start]) -> bool:
       Whether it does.
 
     """
-    return has_within(bindings, function) and any(
-        (isinstance(node, ast.Name) and node.id == _SELF and not isinstance(node.ctx, ast.Load))
-        or (isinstance(node, ast.alias) and (node.asname or node.name) == _SELF)
-        for node in own_nodes(function.body)
-    )
+    return has_within(bindings, function) and any(_names_self(node) for node in own_nodes(function.body))
 
 
-def _direct_methods(body: list[ast.stmt], into: list[FunctionDef]) -> None:
-    """Collect the functions directly in a class's body, through compound statements.
+def _names_self(node: ast.AST) -> bool:
+    """Check whether `node` binds the name `self`: stores or deletes it, or imports a name as it.
 
-    A nested class's own methods aren't included.
+    Returns:
+      Whether it does.
+
     """
-    stmt: ast.stmt
-    for stmt in body:
-        if isinstance(stmt, FUNCTION_DEFS):
-            into.append(stmt)
-        elif not isinstance(stmt, ast.ClassDef):
-            _direct_methods(child_statements(stmt), into)
+    return (isinstance(node, ast.Name) and node.id == _SELF and not isinstance(node.ctx, ast.Load)) or (
+        isinstance(node, ast.alias) and (node.asname or node.name) == _SELF
+    )
 
 
 def import_bindings(body: Iterable[ast.stmt]) -> Iterator[tuple[str, str, str]]:
@@ -321,6 +312,23 @@ def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
         yield stmt
         if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
             yield from top_level(child_statements(stmt))
+
+
+def own_returns(body: Sequence[ast.stmt]) -> list[ast.Return]:
+    """Find a function's own `return` statements, in its `body`: not a nested function's or class's.
+
+    Returns:
+      Them, in source order.
+
+    """
+    found: list[ast.Return] = []
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, ast.Return):
+            found.append(stmt)
+        elif not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            found.extend(own_returns(child_statements(stmt)))
+    return found
 
 
 def child_statements(stmt: ast.stmt) -> list[ast.stmt]:

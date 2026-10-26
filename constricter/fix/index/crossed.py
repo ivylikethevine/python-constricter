@@ -1,10 +1,10 @@
 """What crosses into a file from the other checked files it imports, for `--fix`.
 
-`imported` gives a file the return types of the functions it imports (see `project.calls`), and
+`imported` gives a file the return types of the functions it imports (see `spelling.calls`), and
 each imported class's attributes and methods' returns, its plain classes' variables, which are
 generic and which are descriptors, each keyed as the file spells the class (`spelled_classes`):
 only where every name in a type means the same in the file as where it was written (see
-`project.portable`).
+`spelling.portable`).
 """
 
 from collections.abc import Iterator, Mapping
@@ -12,24 +12,10 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Returns
-from constricter.fix.index.modules import (
-    SUFFIX,
-    Index,
-    Memo,
-    Module,
-    classes_under,
-    exported,
-    module_name,
-)
-from constricter.fix.index.project import (
-    BUILTINS,
-    CLASS,
-    HOPS,
-    NO_TYPE,
-    PARTIAL,
-    Imported,
+from constricter.fix.index.modules import Index, Memo, Module, classes_under, exported, module_at
+from constricter.fix.index.project import BUILTINS, CLASS, HOPS, NO_TYPE, PARTIAL, Imported, definition
+from constricter.fix.index.spelling import (
     calls,
-    definition,
     generic_portable,
     is_generic,
     portable,
@@ -37,8 +23,8 @@ from constricter.fix.index.project import (
     returned,
     typed_calls,
 )
-from constricter.rules.annotations import roots
-from constricter.rules.declarations import GenericClass
+from constricter.source.annotations import roots
+from constricter.source.declarations import GenericClass
 
 _Named: TypeAlias = tuple[Mapping[str, Origin], frozenset[str] | None]  # see `spelled_classes`
 _GET: Final = "__get__"
@@ -62,10 +48,10 @@ def imported(
       for a file `catalog` doesn't have (a notebook, standard input).
 
     """
-    taken: _Taken = _Taken({}, {}, {}, {}, set(), {}, {})
+    taken: _Taken = _taking({}, {})
     guarded: dict[str, Guarded] = {} if seeded is None else dict(seeded[0])
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return Imported({}, Classes(taken.attributes, taken.methods))
     # Its own attributes as they are where the fixtures' add none: the index keeps what they find.
     attributes: frozenset[str] = (
@@ -76,7 +62,6 @@ def imported(
     checking: dict[str, Origin] = {
         name: found.origin for name, found in guarded.items() if name not in target.names
     }
-    named: _Named = ({**checking, **target.names}, attributes)
     _take(catalog, target, (checking, attributes), taken, guarded)
     _take(catalog, target, (target.names, attributes), taken, guarded)
     found: tuple[dict[str, str], Returns, dict[str, str]] = (
@@ -84,7 +69,7 @@ def imported(
         returned(catalog, path, guarded),
         {name: each for name, each, _ in typed_calls(catalog, path, PARTIAL, guarded)},
     )
-    known: set[str] = set(named[0])
+    known: set[str] = {*checking, *target.names}
     for _ in range(HOPS):  # a class those types need imported is a receiver's too, needing more in turn
         fresh: dict[str, Origin] = {name: each.origin for name, each in guarded.items() if name not in known}
         # Any class their packages re-export: the types naming them aren't written in the file yet.
@@ -115,7 +100,7 @@ def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mappin
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return found.classes
     fresh: dict[str, Origin] = {
         name: each.origin
@@ -124,14 +109,9 @@ def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mappin
     }
     if not fresh:
         return found.classes
-    taken: _Taken = _Taken(
+    taken: _Taken = _taking(
         {key: dict(each) for key, each in found.classes.attributes.items()},
         {key: dict(each) for key, each in found.classes.methods.items()},
-        {},
-        {},
-        set(),
-        {},
-        {},
     )
     _take(catalog, target, (fresh, None), taken, dict(guarded))
     return Classes(taken.attributes, taken.methods)
@@ -147,6 +127,16 @@ class _Taken(NamedTuple):
     generics: set[str]
     generic: dict[str, GenericClass]
     descriptors: dict[str, str | None]
+
+
+def _taking(attributes: dict[str, dict[str, str]], methods: dict[str, dict[str, str]]) -> _Taken:
+    """Start what `imported` takes, from classes' attributes and methods taken already.
+
+    Returns:
+      It, nothing else taken yet.
+
+    """
+    return _Taken(attributes, methods, {}, {}, set(), {}, {})
 
 
 def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
@@ -342,6 +332,6 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
     module: Module | None = modules.get(name)
     reexported: str
     origin: Origin
-    for reexported, origin in ({} if module is None else {**module.guarded, **module.names}).items():
+    for reexported, origin in () if module is None else exported(module).items():
         if origin[1] is not None and origin[0] != name and is_generic(modules, origin):
             yield f"{local}.{reexported}"

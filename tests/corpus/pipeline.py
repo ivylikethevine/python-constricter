@@ -27,7 +27,6 @@ Every count of typed bindings is this checkout's `--coverage`, whatever the vers
 """
 
 import difflib
-import importlib
 import json
 import os
 import re
@@ -45,11 +44,13 @@ from functools import partial
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
+from filelock import FileLock
+
 from constricter import Level
 from constricter.cli import paths
 from constricter.offences import Tier, errs, reports
-from tests.corpus import corpus_profile, corpus_table, corpus_untyped, launch
-from tests.corpus.run_config import DEV, FIXES, Run, scrubbed
+from tests.corpus import corpus_profile, corpus_table, corpus_untyped, jsonl, launch
+from tests.corpus.run_config import DEV, FIXES, UNSAFE, Run, directory, scrubbed
 from tests.corpus.trees import Tree
 
 Record: TypeAlias = dict[str, object]
@@ -77,6 +78,11 @@ UNION: Final = (
     "union"  # after `INFER`: the fix step with every source at once, for a suite's tests (`united`)
 )
 RELEASED: Final = "released"  # names the part of a suite's tests or type checks with no fix (`part`)
+FIX_UNSAFE: Final = (
+    f"{FIX}{UNSAFE}"  # the fix step that makes every guess: the tiers' fixes are among its own
+)
+INFER_TRACE: Final = f"{INFER}{TRACE}"  # the fix step by the traced tests, which holds the guesses' fixes
+INFER_UNION: Final = f"{INFER}{UNION}"  # the fix step with every source at once
 GUESS: Final = "guess"
 IMPLIED: Final = "implied"  # in a suite's part's record after a fix: the fix step whose part stands for it
 PATCH: Final = "patch"  # and how that fix's patch relates to its own: the same, or one that holds it
@@ -84,6 +90,9 @@ FROM: Final = "from"  # in a record taken from an earlier run: that run's folder
 TESTED: Final = ".tests.jsonl"  # beside a suite part's record: its tests, a line each (`corpus_suite.Test`)
 ROWS: Final = ".rows.jsonl"  # beside the census's record: its bindings, a line each
 _SUFFOCATE: Final = "--level=suffocate"
+# A check that only takes its time: every code, nothing written.
+_CHECKING: Final = (_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull)
+TAIL: Final = 2000  # the characters kept of a failure's output: its end
 _SHARED: Final = "suffocate"  # where a job's one check at `suffocate` runs, and is kept (`suffocated`)
 SHARING: Final = frozenset({CHECK, CENSUS})  # the steps that read it: the first to start runs it
 _NAME: Final = re.compile(r"'([^']+)'")  # the name an offence's message quotes
@@ -111,7 +120,7 @@ class Store(NamedTuple):
           The path.
 
         """
-        return self.root / "records" / corpus.replace(" ", "-") / version / f"{step}{suffix}"
+        return self.root / "records" / directory(corpus) / version / f"{step}{suffix}"
 
     def read(self, corpus: str, version: str, step: str) -> Record | None:
         """Read a step's record.
@@ -139,7 +148,7 @@ class Store(NamedTuple):
           The path.
 
         """
-        path: Path = self.root / "logs" / corpus.replace(" ", "-") / version / f"{step}.log"
+        path: Path = self.root / "logs" / directory(corpus) / version / f"{step}.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -172,7 +181,7 @@ class Job(NamedTuple):
           The path.
 
         """
-        return self.store.root / "work" / self.tree.name.replace(" ", "-") / self.recorded / step
+        return self.store.root / "work" / directory(self.tree.name) / self.recorded / step
 
 
 def tier(offered: _Entry) -> str:
@@ -210,7 +219,7 @@ def _crashed(ran: launch.Ran, what: str) -> None:
 
     """
     if _TRACEBACK in ran.errors and _entries(ran) is None:
-        message: str = f"{what} crashed ({ran.status}): {ran.errors[-2000:]}"
+        message: str = f"{what} crashed ({ran.status}): {ran.errors[-TAIL:]}"
         raise RuntimeError(message)
 
 
@@ -226,15 +235,6 @@ def _typed(job: Job, where: launch.Place) -> list[int] | None:
     return [int(found[1]), int(found[2])] if found else None
 
 
-def _hold(lock: IO[str]) -> None:
-    """Wait for `lock`'s file to be free, and hold it until it's closed.
-
-    By `fcntl`, found as it's called: Windows has none, where the tests import this and no step runs.
-    """
-    exclusive: int = cast("int", importlib.import_module("fcntl").LOCK_EX)
-    cast("Callable[[IO[str], int], None]", importlib.import_module("fcntl").flock)(lock, exclusive)
-
-
 def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
     """Check the corpus at `suffocate` once for a job's steps: `check` and `census` both read it.
 
@@ -246,9 +246,7 @@ def suffocated(job: Job) -> tuple[launch.Place, launch.Ran]:
     """
     where: launch.Place = launch.place(job.tree, job.work(_SHARED))
     kept: Path = job.work(_SHARED) / "check.json"
-    lock: IO[str]
-    with (job.work(_SHARED) / "lock").open("w", encoding="utf-8") as lock:
-        _hold(lock)
+    with FileLock(job.work(_SHARED) / "lock"):  # held until the run is kept, by whichever asked first
         if kept.exists():
             had: _Entry = cast("_Entry", json.loads(kept.read_text(encoding="utf-8")))
             return where, launch.Ran(
@@ -305,7 +303,7 @@ def check(job: Job) -> Record:
     for level, ran in zip(Level, runs if every else runs * len(Level), strict=True):
         listed: list[_Entry] | None
         if (listed := _entries(ran)) is None:
-            message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-2000:]}"
+            message: str = f"the check at {level.name.lower()} crashed ({ran.status}): {ran.errors[-TAIL:]}"
             raise RuntimeError(message)
         entries = listed  # the last level's are `suffocate`'s: every code
         levels[level.name.lower()] = counted(entries, None if every else level)
@@ -525,7 +523,7 @@ def census(job: Job) -> Record:
         json.dumps(entries),
     )
     _ = job.store.path(job.tree.name, job.recorded, CENSUS, ROWS).write_text(
-        "".join(f"{json.dumps(binding._asdict())}\n" for binding in bindings),
+        jsonl.text(binding._asdict() for binding in bindings),
         encoding="utf-8",
     )
     return {
@@ -559,7 +557,7 @@ def fixing(run: Run) -> list[str]:
     """
     tiers: list[str] = [f"{FIX}{mode}" for mode in run.steps.fix]
     hinted: list[str] = [f"{INFER}{checker}" for checker in run.steps.infer]
-    return [*tiers, *hinted, *([f"{INFER}{TRACE}"] if run.steps.traced else [])]
+    return [*tiers, *hinted, *([INFER_TRACE] if run.steps.traced else [])]
 
 
 def part(kind: str, step: str) -> str:
@@ -572,6 +570,9 @@ def part(kind: str, step: str) -> str:
 
     """
     return f"{kind}-{step}"
+
+
+TESTS_RELEASED: Final = part(TESTS, RELEASED)  # a suite's tests as released
 
 
 def parts(run: Run, kind: str) -> list[str]:
@@ -591,7 +592,7 @@ def united(run: Run) -> bool:
     """Check whether a run fixes a copy with every source at once (`infer-union`), for a suite's tests.
 
     Where the tests run after each checker's hints: one run after every fix's at once stands for
-    each fix's where it's the released tests' (`suite_steps.standing`); with no checker, the
+    each fix's where it's the released tests' (`suite_checkouts.standing`); with no checker, the
     guesses' fix is that already. Not among `fixing`'s or `parts`': only the mechanisms table lists
     it, where its hints can agree.
 
@@ -623,7 +624,7 @@ def timing(job: Job) -> Record:
 
     """
     where: launch.Place = launch.place(job.tree, job.work(TIMING))
-    options: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    options: list[str] = list(_CHECKING)
     hyperfine: str | None = shutil.which(_HYPERFINE, path=launch.environment(where)["PATH"])
     ways: dict[str, Timed] = (
         _looped(job, where, options) if hyperfine is None else _by_hyperfine(job, where, options, hyperfine)
@@ -669,7 +670,7 @@ def _by_hyperfine(job: Job, where: launch.Place, options: list[str], hyperfine: 
             env=launch.environment(where),
         )
         if done.returncode:
-            failed: str = f"{_HYPERFINE} failed ({done.returncode}): {done.stderr[-2000:]}"
+            failed: str = f"{_HYPERFINE} failed ({done.returncode}): {done.stderr[-TAIL:]}"
             raise RuntimeError(failed)
         found[way] = hyperfined(cast("Record", json.loads(exported.read_text(encoding="utf-8"))))
     return found
@@ -715,7 +716,7 @@ def profile(job: Job) -> Record:
     samples.unlink(missing_ok=True)
     recording: list[str] = [spy, "record", "--format", "raw", "--function", "--full-filenames"]
     recording += ["--subprocesses", "--rate", str(_RATE), "--output", str(samples), "--"]
-    checking: list[str] = [_SUFFOCATE, "--exit-zero", "-q", "--output-file", os.devnull]
+    checking: list[str] = list(_CHECKING)
     start: float = time.perf_counter()
     done: subprocess.CompletedProcess[str] = subprocess.run(
         [*recording, *launch.command(job.version, where, checking, 1)],
@@ -727,7 +728,7 @@ def profile(job: Job) -> Record:
     )
     seconds: float = time.perf_counter() - start
     if not samples.exists():  # it exits non-zero for a worker it lost track of, with the samples written
-        failed: str = f"{_PY_SPY} wrote no samples ({done.returncode}): {done.stderr[-2000:]}"
+        failed: str = f"{_PY_SPY} wrote no samples ({done.returncode}): {done.stderr[-TAIL:]}"
         raise RuntimeError(failed)
     found: list[corpus_profile.Row] = corpus_profile.rows(samples)
     _ = job.store.path(job.tree.name, job.recorded, PROFILE, ".md").write_text(

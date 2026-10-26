@@ -13,7 +13,7 @@ from typing import Final, NamedTuple
 from constricter.fix.core.known import Inference
 from constricter.fix.values.hinted import KINDS as HINTED
 from constricter.offences import UNIONS, Edit, Fix, Offence
-from constricter.rules.flow import Binding, Hierarchy, members
+from constricter.source.flow import Binding, Hierarchy, members
 
 _NONE: Final = "None"
 _ONLY_NONE: Final = frozenset({_NONE})

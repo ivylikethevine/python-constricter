@@ -5,7 +5,6 @@ The files it has open, the hint requests sent and not yet answered, and what it 
 
 import contextlib
 import itertools
-import json
 import os
 import queue
 import re
@@ -329,7 +328,7 @@ class Connection:
 
         """
         self.last += 1
-        self._send({"jsonrpc": "2.0", _ID: self.last, _METHOD: method, "params": params})
+        self._send({_ID: self.last, _METHOD: method, "params": params})
         return self.last
 
     def _collect(self, numbers: set[int], method: str) -> dict[int, _Json]:
@@ -444,7 +443,7 @@ class Connection:
     def _answer(self, message: _Object) -> None:
         """Answer one of the server's own requests: its settings, and nothing else it asks for."""
         method: str = str(message[_METHOD])
-        reply: _Object = {"jsonrpc": "2.0", _ID: message[_ID]}
+        reply: _Object = {_ID: message[_ID]}
         if method == _CONFIGURATION:
             items: list[_Json] = cast("list[_Json]", cast("_Object", message["params"])["items"])
             reply["result"] = [protocol.settings(cast("_Object", item).get("section")) for item in items]
@@ -456,22 +455,18 @@ class Connection:
 
     def notify(self, method: str, params: _Json) -> None:
         """Send a notification: no answer comes."""
-        self._send({"jsonrpc": "2.0", "method": method, "params": params})
+        self._send({"method": method, "params": params})
 
     def _send(self, message: _Object) -> None:
-        """Frame and send one message.
+        """Frame and send one message (see `protocol.write`).
 
         Raises:
           ExitedError: The server has exited.
 
         """
-        body: bytes = json.dumps(message).encode()
         with self.writing:  # one message at a time: the reader answers the server's own meanwhile
             try:
-                protocol.write(
-                    cast("IO[bytes]", self.process.stdin),
-                    f"Content-Length: {len(body)}\r\n\r\n".encode() + body,
-                )
+                protocol.write(cast("IO[bytes]", self.process.stdin), message)
             except (OSError, ValueError) as error:  # it has gone, or its input was closed to stop it
                 failure: str = f"{self.name} exited: {error}"
                 raise ExitedError(failure) from error

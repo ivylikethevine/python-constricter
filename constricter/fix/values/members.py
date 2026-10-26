@@ -18,10 +18,10 @@ from constricter.fix.libraries import generics, overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
 from constricter.fix.values.returns import METHOD_RETURNS, element_method, uniform_method
 from constricter.fix.values.targets import sole
-from constricter.rules.annotations import dotted, node_name, roots, vague_fits, words
-from constricter.rules.declarations import GenericClass
-from constricter.rules.keys import key, optional
-from constricter.rules.quoted import unqualified
+from constricter.source.annotations import dotted, node_name, roots, vague_fits, words
+from constricter.source.declarations import GenericClass
+from constricter.source.keys import key, optional
+from constricter.source.quoted import unqualified
 
 if TYPE_CHECKING:
     from constricter.fix.core.inherited import Lineage
@@ -40,7 +40,7 @@ _SELF_TYPE: Final = "Self"  # a generic class's method returning its receiver (s
 _DEEPEST: Final = 8  # how many generic bases up a member is looked for
 # One way to type a member: given the receiver's type as text, the member's name, and the call
 # (`None` for an attribute), its inference, or `None` if this source doesn't know it.
-MemberSource: TypeAlias = Callable[[str, str, ast.Call | None, Known], Inference | None]
+_MemberSource: TypeAlias = Callable[[str, str, ast.Call | None, Known], Inference | None]
 
 
 @lru_cache(maxsize=4096)
@@ -188,26 +188,16 @@ def _attribute(found: str, owner: str, name: str, known: Known) -> Inference | N
     """Offer an attribute's declared type, less the `ClassVar` or `Final` around it, read through an instance.
 
     The tables keep those: a subclass's variable a base declares a `ClassVar` isn't one to annotate.
-    A descriptor's is what its `__get__` gives (see `through_instance`).
+    A descriptor's is what its `__get__` gives (see `Known.descriptors`).
 
     Returns:
       The inference; `None` for a bare `Final`, which leaves the type to the value, and for a
-      descriptor whose `__get__` can't be read.
+      descriptor whose `__get__` can't be read (overloaded, say).
 
     """
-    text: str | None = through_instance(unqualified(parsed(found)), known)
+    annotation: str = unqualified(parsed(found))
+    text: str | None = known.descriptors.get(annotation, annotation)
     return Inference(text, _annotation_of(owner, name), frozenset({_ATTRIBUTE})) if text else None
-
-
-def through_instance(annotation: str, known: Known) -> str | None:
-    """Read an attribute of type `annotation` through an instance: a descriptor's is its `__get__`'s return.
-
-    Returns:
-      The type: `annotation` but for a descriptor's (see `Known.descriptors`); `None` for one whose
-      `__get__` can't be read (overloaded, say), whose instance's attribute is no fix.
-
-    """
-    return known.descriptors.get(annotation, annotation)
 
 
 def awaited(value: ast.expr, known: Known, infer: Callable[[ast.expr], Inference | None]) -> Inference | None:
@@ -445,12 +435,7 @@ def _deduplicated(annotation: str) -> str:
       It.
 
     """
-    parts: list[str] = []
-    text: str
-    for text in (ast.unparse(node) for node in _union_members(parsed(annotation))):
-        if text not in parts:
-            parts.append(text)
-    return " | ".join(parts)
+    return " | ".join(dict.fromkeys(ast.unparse(node) for node in _union_members(parsed(annotation))))
 
 
 def _union_members(node: ast.expr) -> list[ast.expr]:  # a union's members, left to right; else the type
@@ -505,7 +490,7 @@ def _inherited(
 
 
 # Where a member's type can come from, in the order they're asked: the one place to add another.
-SOURCES: Final[tuple[MemberSource, ...]] = (
+SOURCES: Final[tuple[_MemberSource, ...]] = (
     _class_side,
     _fixed,
     _own_generic,
@@ -524,7 +509,7 @@ def member(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inf
       The first of `SOURCES`' inferences, or `None` if none knows it.
 
     """
-    source: MemberSource
+    source: _MemberSource
     found: Inference | None
     for source in SOURCES:
         if (found := source(receiver, name, call, known)) is not None:

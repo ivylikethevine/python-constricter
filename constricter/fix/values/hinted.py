@@ -53,7 +53,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Known, Offered
 from constricter.fix.libraries import stdlib
-from constricter.rules.annotations import ABSTRACT, depth, dotted, length, vague_fits
+from constricter.source.annotations import ABSTRACT, depth, dotted, length, vague_fits
 
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
 TRACED: Final = "traced"  # the same, for a traced run's types (`--infer-from`)
@@ -70,7 +70,7 @@ _UNPACK_ORIGINS: Final = frozenset({"typing.Unpack", "typing_extensions.Unpack"}
 # `collections.abc`'s classes, which a checker prints bare (not `Set`: that's `AbstractSet` to it).
 _ABSTRACT: Final = sorted(ABSTRACT | {"Hashable", "MappingView", "Sized"})
 # Classes a checker prints by their bare names, and where each is from.
-WELL_KNOWN: Final = {
+_WELL_KNOWN: Final = {
     **{name: f"collections.abc.{name}" for name in _ABSTRACT},
     **{
         name: f"collections.{name}" for name in ("ChainMap", "Counter", "OrderedDict", "defaultdict", "deque")
@@ -142,7 +142,7 @@ _DOT: Final = "."
 # How one unbound name of a hint can be written: through a guarded import, or `ImportPlan.spell`.
 _OWN: Final = "own"  # the module imports it under `if TYPE_CHECKING:`
 _OFFERED: Final = "offered"  # the hint's edits import it
-_KNOWN: Final = "known"  # `WELL_KNOWN` says where it's from
+_KNOWN: Final = "known"  # `_WELL_KNOWN` says where it's from
 # The builtins that take type arguments: another of a builtin's names given some is another class.
 _GENERIC_BUILTINS: Final = frozenset(
     {
@@ -472,7 +472,7 @@ def _misnamed(root: ast.expr, plan: ImportPlan) -> bool:
         match node:
             case ast.Name(id=name) if id(node) not in roots and (
                 plan.bound.get(name) == name
-                or (name in WELL_KNOWN and name in plan.defined and not _imported(name, plan))
+                or (name in _WELL_KNOWN and name in plan.defined and not _imported(name, plan))
             ):
                 return True
             case ast.Subscript(value=ast.Name(id=name)) if (
@@ -658,7 +658,7 @@ def _way(name: str, plan: ImportPlan, origins: _Origins, *, lone: bool) -> str |
     _, module, attribute = origins.get(name, ("", "", ""))
     # A standard-library class a checker prints bare is imported to run, as `--fix`'s own are.
     standard: bool = name not in origins or module.partition(_RELATIVE)[0] in _STDLIB
-    if name in WELL_KNOWN and standard:
+    if name in _WELL_KNOWN and standard:
         return _KNOWN
     if name not in origins:
         return None
@@ -679,7 +679,7 @@ def _named(name: str, way: str | None, plan: ImportPlan, origins: _Origins) -> s
 
     """
     if way == _KNOWN:
-        return plan.spell(WELL_KNOWN[name])
+        return plan.spell(_WELL_KNOWN[name])
     if way == _OWN:
         return name
     statement: str
@@ -864,7 +864,7 @@ def _holds(head: ast.expr) -> bool:
       Whether it is.
 
     """
-    return isinstance(head, ast.Name) and (head.id in _BUILTINS or head.id in WELL_KNOWN)
+    return isinstance(head, ast.Name) and (head.id in _BUILTINS or head.id in _WELL_KNOWN)
 
 
 def _joined(node: ast.BinOp) -> ast.expr | None:

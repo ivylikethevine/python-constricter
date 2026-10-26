@@ -75,6 +75,8 @@ _FILE_METHODS: Final = ("read", "write", "close")
 _IN_MEMORY: Final = (io.StringIO, io.BytesIO)
 _FILE_MODULES: Final = frozenset({"io", "_io", "typing"})
 _UNSET: Final = object()
+# What a test passes in a value's place: a mock, and `mock.sentinel`'s named objects.
+_STAND_INS: Final = (mock.NonCallableMock, type(cast("object", mock.sentinel.witness)))
 _FIRST: Final = 100  # how many of an ordered container's elements are held to its annotation's arguments
 # The containers read without running anything of the value's own: these classes themselves, no subclass.
 _SETS: Final = (set, frozenset)
@@ -130,7 +132,7 @@ def holds(value: object, hint: object) -> bool | None:
     """
     if hint is typing.Any or hint is object:
         return True
-    if isinstance(value, mock.NonCallableMock):  # a test's stand-in: it says nothing of the annotation
+    if isinstance(value, _STAND_INS):  # a test's stand-in: it says nothing of the annotation
         return None
     if hint is None or hint is types.NoneType:
         return value is None

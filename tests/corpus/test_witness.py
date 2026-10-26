@@ -10,7 +10,7 @@ import types
 import typing
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final, TypeAlias, TypeVar
+from typing import Final, TypeAlias, TypeVar, cast
 from unittest import mock
 
 import pytest
@@ -49,6 +49,7 @@ _HELD: Final[tuple[_Case, ...]] = (
     ((1, "a"), tuple, True),
     # What can't be told of an element can't be told of its container, unless another differs.
     ([mock.MagicMock()], list[int], None),
+    (cast("object", mock.sentinel.dist_info), str, None),  # `mock.sentinel`'s, a test's stand-in as a mock is
     (["a"], types.GenericAlias(list, (_T,)), None),  # `list[_T]`, written where no function binds `_T`
     ([mock.MagicMock(), "a"], list[int], False),
     # A container whose arguments aren't its elements' types is held to its class alone.

@@ -9,8 +9,8 @@ from constricter.fix.core.imports import rebound_names, taken_names
 from constricter.fix.core.inherited import Lineage, lineage
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values.targets import aliased_unions, named_tuples
-from constricter.rules import walked
-from constricter.rules.declarations import (
+from constricter.source import walked
+from constricter.source.declarations import (
     class_methods,
     classes,
     held,
@@ -21,8 +21,8 @@ from constricter.rules.declarations import (
     returns,
     self_returns,
 )
-from constricter.rules.decorators import Held, Pass, passes
-from constricter.rules.syntax import import_bindings
+from constricter.source.decorators import Held, Pass, passes
+from constricter.source.syntax import import_bindings
 
 _NEW_TYPES: Final = frozenset({"typing.NewType", "typing_extensions.NewType"})
 

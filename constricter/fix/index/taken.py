@@ -2,15 +2,15 @@
 
 Found through the calling file's imports and the re-exports between them (`add(names, "a")`,
 `util.add(names, "a")`); a parameter the function declares a builtin container (`names: list[str]`)
-types what's passed to it, where the file can write that type (see `project.portable`, and
+types what's passed to it, where the file can write that type (see `spelling.portable`, and
 `constricter.fix.values.fills`).
 """
 
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Takers
-from constricter.fix.index import project, sides
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index import project, spelling
+from constricter.fix.index.modules import Index, Module, module_at
 
 
 def calls(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, Takers]:
@@ -24,15 +24,19 @@ def calls(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, 
       each type as the file can write it; none for a file `catalog` doesn't have.
 
     """
-    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
+    target: Module | None = module_at(catalog, path)
     found: dict[str, Takers] = {}
     if target is None:
         return found
     spelled: str
     defined: tuple[Module, str]
-    for spelled, defined in sides.called(catalog.modules, target, lambda module, name: name in module.takers):
+    for spelled, defined in project.called(
+        catalog.modules,
+        target,
+        lambda module, name: name in module.takers,
+    ):
         declared: Takers = defined[0].takers[defined[1]]
-        kept: dict[str, str] = project.portable(
+        kept: dict[str, str] = spelling.portable(
             catalog.modules,
             (target, defined),
             spelled,

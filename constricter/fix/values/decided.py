@@ -15,8 +15,8 @@ from typing import Final, NamedTuple, TypeAlias
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.values.shapes import Infer, is_none, or_none, typed
 from constricter.fix.values.targets import dict_parts, iterator_call
-from constricter.rules.annotations import dotted
-from constricter.rules.flow import members
+from constricter.source.annotations import dotted
+from constricter.source.flow import members
 
 _KIND: Final = "builtin"  # the fix kind
 _INT: Final = "int"

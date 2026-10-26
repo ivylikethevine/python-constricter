@@ -1,7 +1,7 @@
 """What an annotation says (LVA005, LVA006, LVA011).
 
 An annotation's vague parts, nesting depth and longest fixed-length tuple, the names it's written
-with, and whether it's free of some. What a module declares is `constricter.rules.declarations`.
+with, and whether it's free of some. What a module declares is `constricter.source.declarations`.
 """
 
 import ast
@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from functools import lru_cache
 from typing import Final
 
-from constricter.rules.quoted import parsed
+from constricter.source.quoted import parsed
 
 _VAGUE: Final = frozenset({"Any", "object"})
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments

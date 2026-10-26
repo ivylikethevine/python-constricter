@@ -17,7 +17,8 @@ from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 
-from constricter.rules.walked import walk
+from constricter.source.syntax import NESTED_SCOPES
+from constricter.source.walked import walk
 
 # What a test leaves of a union's members: those it keeps (by class, `None` for all of them), less
 # those it drops; `None` where it narrows otherwise (a comparison, a `TypeGuard`, a `match`).
@@ -38,8 +39,7 @@ class Region(NamedTuple):
 Regions: TypeAlias = Mapping[str, tuple[Region, ...]]
 _LEAVING: Final = (ast.Return, ast.Raise, ast.Continue, ast.Break)
 _GUARDS: Final = frozenset({"isinstance", "issubclass", "callable", "hasattr"})
-_READS: Final = (ast.Name, ast.Attribute, ast.Subscript)
-_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # the reads a test can narrow
 
 
 def regions(tree: ast.Module) -> Regions:
@@ -66,7 +66,7 @@ def narrowed_at(found: Regions, value: ast.expr, line: int, *, union: bool) -> b
       Whether it is.
 
     """
-    return isinstance(value, _READS) and read_narrowed(found, ast.unparse(value), line, union=union)
+    return isinstance(value, READS) and read_narrowed(found, ast.unparse(value), line, union=union)
 
 
 def read_narrowed(found: Regions, read: str, line: int, *, union: bool) -> bool:
@@ -169,7 +169,7 @@ def _stores(function: ast.AST) -> Mapping[str, tuple[int, ...]]:
     inside: set[int] = {
         id(node)
         for nested in walk(function)
-        if nested is not function and isinstance(nested, _SCOPES)
+        if nested is not function and isinstance(nested, NESTED_SCOPES)
         for node in walk(nested)
     }
     found: dict[str, set[int]] = {}
@@ -196,9 +196,11 @@ def _stored(node: ast.AST) -> list[str]:
     match node:
         case ast.Name() | ast.Attribute() | ast.Subscript() if not isinstance(node.ctx, ast.Load):
             return [ast.unparse(node)]
-        case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
-            return [name]
-        case ast.MatchStar(name=str() as name):
+        case (
+            ast.ExceptHandler(name=str() as name)
+            | ast.MatchAs(name=str() as name)
+            | ast.MatchStar(name=str() as name)
+        ):
             return [name]
         case ast.Import(names=names) | ast.ImportFrom(names=names):
             return [(each.asname or each.name).split(".", 1)[0] for each in names]
@@ -304,7 +306,7 @@ def _tested(stmt: ast.stmt) -> frozenset[tuple[str, bool]]:
     match stmt:
         case ast.If(test=test) | ast.While(test=test) | ast.Assert(test=test):
             return frozenset(_narrows(test))
-        case ast.Match(subject=subject) if isinstance(subject, _READS):
+        case ast.Match(subject=subject) if isinstance(subject, READS):
             return frozenset({(ast.unparse(subject), True)})
         case _:
             return frozenset()
@@ -330,12 +332,12 @@ def _narrows(test: ast.expr) -> Iterator[tuple[str, bool]]:
             yield from _narrows(operand)
         case ast.BoolOp(values=values):
             yield from (found for value in values for found in _narrows(value))
-        case ast.Compare(left=left) if isinstance(left, _READS):
+        case ast.Compare(left=left) if isinstance(left, READS):
             yield ast.unparse(left), False
         case ast.Call(func=ast.Name(id=name), args=args) if name in _GUARDS:
-            yield from ((ast.unparse(arg), True) for arg in args[:1] if isinstance(arg, _READS))
+            yield from ((ast.unparse(arg), True) for arg in args[:1] if isinstance(arg, READS))
         case ast.Call(args=args):  # a `TypeGuard` or `TypeIs` function may narrow any it's passed
-            yield from ((ast.unparse(arg), True) for arg in args if isinstance(arg, _READS))
+            yield from ((ast.unparse(arg), True) for arg in args if isinstance(arg, READS))
         case _:
             pass
 

@@ -15,6 +15,7 @@ Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | 
 Object: TypeAlias = dict[str, Json]
 _HEADER_END: Final = b"\r\n"
 _LENGTH: Final = "content-length"
+_JSONRPC: Final = "2.0"  # the version every message names, first
 _TYPE_HINT: Final = 1  # `InlayHintKind.Type`
 # Only variable types: argument names and return types are hints too, but nothing here.
 _BASEDPYRIGHT_SECTION: Final = "basedpyright.analysis"
@@ -91,14 +92,7 @@ def executable(checker: str) -> str | None:
       Its path, or `None` if it isn't installed.
 
     """
-    name: str = SERVERS[checker].executable
-    found: list[str] = list(
-        dict.fromkeys(
-            path
-            for path in (shutil.which(name), shutil.which(name, path=str(Path(sys.executable).parent)))
-            if path is not None
-        ),
-    )
+    found: list[str] = _found(checker)
     return next((path for path in found if _runs(path)), found[0] if found else None)
 
 
@@ -106,11 +100,27 @@ def runs(checker: str) -> bool:
     """Check that `checker` is installed, and runs.
 
     Returns:
-      Whether it does.
+      Whether it does: any of its servers found runs.
 
     """
-    found: str | None = executable(checker)
-    return found is not None and _runs(found)
+    return any(_runs(path) for path in _found(checker))
+
+
+def _found(checker: str) -> list[str]:
+    """Find `checker`'s language servers: on `PATH`, then beside this Python.
+
+    Returns:
+      Their paths, each once.
+
+    """
+    name: str = SERVERS[checker].executable
+    return list(
+        dict.fromkeys(
+            path
+            for path in (shutil.which(name), shutil.which(name, path=str(Path(sys.executable).parent)))
+            if path is not None
+        ),
+    )
 
 
 def _runs(path: str) -> bool:
@@ -144,9 +154,10 @@ class ExitedError(HintError):
     """The type checker's server exited while it was being asked: past its heap's cap, say."""
 
 
-def write(stream: IO[bytes], data: bytes) -> None:
-    """Write `data` to `stream`, and flush it: the server reads it now."""
-    _ = stream.write(data)
+def write(stream: IO[bytes], sent: Object) -> None:
+    """Frame `sent` (see `message`), write it to `stream`, and flush it: the server reads it now."""
+    body: bytes = json.dumps({"jsonrpc": _JSONRPC, **sent}).encode()
+    _ = stream.write(f"Content-Length: {len(body)}\r\n\r\n".encode() + body)
     stream.flush()
 
 

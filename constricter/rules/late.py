@@ -10,10 +10,10 @@ its function's use of the name makes an error of, dropped), and `finals` (LVA012
 import ast
 import bisect
 import re
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import replace
 from functools import lru_cache
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from constricter.fix.core.imports import imports_of
 from constricter.fix.core.known import ImportPlan, Inference
@@ -29,7 +29,6 @@ from constricter.offences import (
     MIXED_CONTAINERS,
     UNANNOTATED,
     UNANNOTATED_MEMBER,
-    UNIONS,
     UNKNOWN_CALLS,
     UNTYPED_CALLS,
     UNTYPED_TARGET,
@@ -41,12 +40,13 @@ from constricter.offences import (
     at,
 )
 from constricter.rules import widened
-from constricter.rules.annotations import node_name, roots
-from constricter.rules.flow import Binding, Lifetime, members
 from constricter.rules.rebinding import Refit, refit
+from constricter.rules.rebound import apart, converted, emptied, heads, looped, operated, unites
 from constricter.rules.scope import FINAL_KIND, Scope, guesses_in
-from constricter.rules.syntax import FunctionDef
-from constricter.rules.walked import children, walk
+from constricter.source.annotations import node_name, roots
+from constricter.source.flow import Binding, Lifetime, members
+from constricter.source.syntax import FunctionDef
+from constricter.source.walked import children
 
 if TYPE_CHECKING:
     from constricter.rules.scoped import Late, Plain
@@ -57,7 +57,7 @@ _DECLARING: Final = frozenset({UNANNOTATED, UNTYPED_TARGET})  # the codes whose 
 _FILLED: Final = "filled"  # the fix kind (and guessing mechanism) of an empty container filled later
 _CONTAINER: Final = "container"  # the fix kind of a display
 _DICT: Final = "dict"
-_FILLABLE: Final = frozenset({"list", "set", _DICT})  # the displays `extended` widens
+_FILLABLE: Final = frozenset({"list", "set"})  # the displays `extended` widens, with `dict`'s
 # The builtin numbers, narrowest first: each takes the ones before it, as a type checker has it.
 _NUMBERS: Final = ("bool", "int", "float", "complex")
 _BAR: Final = " | "
@@ -66,7 +66,6 @@ _NONE: Final = "None"
 _FINAL: Final = "Final"
 _TYPING_FINAL: Final = "typing.Final"
 _FINALS: Final = frozenset({_TYPING_FINAL, "typing_extensions.Final"})
-_NO_ALIASES: Final = frozenset[str]()
 _INNER: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)  # what reads a name later
 _IGNORE: Final = re.compile(r"#\s*type:\s*ignore")  # a comment excusing its line to a type checker
 _WORD: Final = re.compile(r"[A-Za-z_]\w*")
@@ -76,8 +75,6 @@ _UNCHECKED: Final = hinted.KINDS | {RETURNED}
 _LATE_WIDENINGS: Final = frozenset(
     {VAGUE_KIND, EMPTY_CONTAINERS, MIXED_CONTAINERS, UNTYPED_CALLS, UNKNOWN_CALLS},
 )
-# The arms a binding is in: each branching statement around it (by `id()`), and which of its arms.
-_Arms: TypeAlias = tuple[tuple[int, int], ...]
 
 
 def optionals(scope: Scope) -> None:
@@ -185,29 +182,20 @@ def rebinds(scope: Scope) -> None:
             binding.value is None
             and binding.guess is None
             and (
-                binding.at in _converted(function)
-                or (fix.annotation in _NUMBERS and binding.at in _operated(function))
-                or _emptied(function).get(binding.at) not in {None, *_heads(fix.annotation)}
+                binding.at in converted(function)
+                or (fix.annotation in _NUMBERS and binding.at in operated(function))
+                or emptied(function).get(binding.at) not in {None, *heads(fix.annotation)}
+                or apart(function, first.at, binding.at)
+                or binding.at[0] > looped(function).get(first.at, binding.at[0])
             )
             for binding in rest
         ):
             # Bound again to a call on itself, or a number by an operator with an operand, of a type
             # that isn't known: a conversion, as often as not (`factor *= other`, a `Quantity` once
             # `other` is one). A text or a container stays one by `+=`. Or to an empty display, whose
-            # class the fix doesn't name: a checker holds it to the fix's.
-            scope.offences[index] = replace(o, edit=None)
-            continue
-        if function is not None and any(
-            binding.value is None
-            and binding.guess is None
-            and (
-                _apart(function, first.at, binding.at)
-                or binding.at[0] > _looped(function).get(first.at, binding.at[0])
-            )
-            for binding in rest
-        ):
-            # Bound in one arm of an `if` to a known type, in another to one that isn't: a checker
-            # that knows the other's holds it to the first. Or a loop's target, past the loop.
+            # class the fix doesn't name: a checker holds it to the fix's. Or bound in one arm of an
+            # `if` to a known type, in another to one that isn't: a checker that knows the other's
+            # holds it to the first. Or a loop's target, past the loop.
             scope.offences[index] = replace(o, edit=None)
             continue
         found: Refit | Fix | None = refit(
@@ -215,7 +203,7 @@ def rebinds(scope: Scope) -> None:
             fix,
             rest,
             scope.settings.hierarchy,
-            (self_type, _unites(scope, o.name)),
+            (self_type, unites(scope, o.name)),
         )
         refitted: Fix | None = _offered(scope, found) if isinstance(found, Refit) else found
         scope.offences[index] = replace(o, edit=refitted)
@@ -335,7 +323,7 @@ def _contained(annotation: str) -> tuple[str, list[str]] | None:
     match node:
         case ast.Subscript(value=ast.Name(id=kind), slice=ast.Tuple(elts=[key, value])) if kind == _DICT:
             return kind, [ast.unparse(key), ast.unparse(value)]
-        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE - {_DICT}:
+        case ast.Subscript(value=ast.Name(id=kind), slice=element) if kind in _FILLABLE:
             return kind, [ast.unparse(element)]
         case _:
             return None
@@ -610,7 +598,7 @@ def finals(scope: Scope) -> list[Offence]:
         where: tuple[int, int] = lifetime.bindings[0].at
         if scope.assignments.found.get(name) == [(where, False)] and (
             lifetime.declared is None
-            or (lifetime.declared_at == where and not is_final(lifetime.declared, aliases))
+            or (lifetime.declared_at == where and not _is_final(lifetime.declared, aliases))
         ):
             found.append(Offence(*where, name, CAN_BE_FINAL, _final(scope, name, lifetime)))
     return [scope.evaluated(o) for o in found]
@@ -662,7 +650,7 @@ def _final(scope: Scope, name: str, lifetime: Lifetime) -> Fix | None:
     return _final_fix(Fix(spelled, reason, kinds=kinds), plan)
 
 
-def is_final(annotation: str, aliases: frozenset[str] = _NO_ALIASES) -> bool:
+def _is_final(annotation: str, aliases: frozenset[str]) -> bool:
     """Check whether an annotation is `Final` (`Final[T]`, `typing.Final`, ...), or one of `aliases` for it.
 
     Returns:
@@ -682,279 +670,6 @@ def _final_fix(fix: Fix, plan: ImportPlan) -> Fix:
 
     """
     return fix._replace(imports=imports_of(fix.annotation, plan), after=plan.after)
-
-
-def _unites(scope: Scope, name: str) -> bool:
-    """Check whether `name`'s values of several types may be declared their union (`fix-widen`'s `unions`).
-
-    Returns:
-      Whether they may: where it's asked for, in a function, of a name it doesn't change in place
-      (`name += more`, which no union of its types need take).
-
-    """
-    function: FunctionDef | None = scope.kind.function
-    return (
-        UNIONS in scope.settings.checks.fixes.widen
-        and function is not None
-        and name not in _augmented(function)
-    )
-
-
-@lru_cache(maxsize=64)  # asked of each of a function's names bound again
-def _augmented(function: FunctionDef) -> frozenset[str]:
-    """Name what a function changes in place: `name += more`.
-
-    Returns:
-      Each such name.
-
-    """
-    return frozenset(
-        node.target.id
-        for node in walk(function)
-        if isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
-    )
-
-
-@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
-def _converted(function: FunctionDef) -> frozenset[tuple[int, int]]:
-    """Find where a function binds a name to a call on the name itself.
-
-    One that takes it (`item = proper(item)`) or is its method (`match = match.groupdict()`), alone
-    or as an operand of `or` or of a conditional expression (`code = table.get(code) or SYNTAX`).
-
-    Returns:
-      Where each such name is bound.
-
-    """
-    found: set[tuple[int, int]] = set()
-    node: ast.AST
-    target: ast.expr
-    for node in walk(function):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and _on_itself(target.id, node.value):
-                    found.add(at(target))
-    return frozenset(found)
-
-
-def _on_itself(name: str, value: ast.expr) -> bool:
-    """Check whether `value` is a call on `name` (see `_converted`), or an operand of one is.
-
-    Returns:
-      Whether it is.
-
-    """
-    values: list[ast.expr]
-    body: ast.expr
-    orelse: ast.expr
-    func: ast.expr
-    args: list[ast.expr]
-    keywords: list[ast.keyword]
-    match value:
-        case ast.BoolOp(values=values):
-            return any(_on_itself(name, each) for each in values)
-        case ast.IfExp(body=body, orelse=orelse):
-            return _on_itself(name, body) or _on_itself(name, orelse)
-        case ast.Call(func=func, args=args, keywords=keywords):
-            return any(
-                isinstance(each, ast.Name) and each.id == name
-                for each in (_base(func), *args, *(keyword.value for keyword in keywords))
-            )
-        case _:
-            return False
-
-
-def _base(node: ast.expr) -> ast.expr:
-    """Find what a chain of attributes is read from: `self` in `self.table.get`.
-
-    Returns:
-      It; `node` itself, if it isn't an attribute.
-
-    """
-    return _base(node.value) if isinstance(node, ast.Attribute) else node
-
-
-# The classes whose call with no arguments is an empty display.
-_EMPTY: Final = frozenset({"dict", "list", "set", "tuple"})
-
-
-@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
-def _emptied(function: FunctionDef) -> Mapping[tuple[int, int], str]:
-    """Find where a function binds a name to an empty display: `{}`, `[]`, `()` or `set()`, `dict()`.
-
-    Returns:
-      Where each such name is bound, and the display's class.
-
-    """
-    found: dict[tuple[int, int], str] = {}
-    node: ast.AST
-    target: ast.expr
-    kind: str | None
-    for node in walk(function):
-        if isinstance(node, ast.Assign) and (kind := _empty(node.value)) is not None:
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    found[at(target)] = kind
-    return found
-
-
-def _empty(value: ast.expr) -> str | None:
-    """Name the class of an empty display, or of a call of its class with no arguments.
-
-    Returns:
-      It, or `None` for any other value.
-
-    """
-    name: str
-    match value:
-        case ast.Dict(keys=[]):
-            return "dict"
-        case ast.List(elts=[]):
-            return "list"
-        case ast.Tuple(elts=[]):
-            return "tuple"
-        case ast.Call(func=ast.Name(id=name), args=[], keywords=[]) if name in _EMPTY:
-            return name
-        case _:
-            return None
-
-
-def _heads(annotation: str) -> frozenset[str]:
-    """Name the classes of an annotation's union's members: `dict` for `dict[str, int] | None`.
-
-    Returns:
-      Them; none, if it can't be read.
-
-    """
-    return frozenset(member.split("[", 1)[0] for member in members(annotation) or ())
-
-
-@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
-def _operated(function: FunctionDef) -> frozenset[tuple[int, int]]:
-    """Find where a function binds a name by an augmented assignment: `factor *= other`.
-
-    Returns:
-      Where each such name is bound.
-
-    """
-    node: ast.AST
-    target: ast.Name
-    found: set[tuple[int, int]] = set()
-    for node in walk(function):
-        match node:
-            case ast.AugAssign(target=ast.Name() as target):
-                found.add(at(target))
-            case _:
-                pass
-    return frozenset(found)
-
-
-@lru_cache(maxsize=1024)  # asked of each of a function's names bound again
-def _looped(function: FunctionDef) -> Mapping[tuple[int, int], int]:
-    """Find a function's loops' targets: `for name in names`, `for key, value in pairs`.
-
-    Returns:
-      Where each target name is bound, and its loop's last line.
-
-    """
-    found: dict[tuple[int, int], int] = {}
-    node: ast.AST
-    target: ast.AST
-    for node in walk(function):
-        if isinstance(node, ast.For | ast.AsyncFor):
-            for target in ast.walk(node.target):
-                if isinstance(target, ast.Name):
-                    found[at(target)] = node.end_lineno or node.lineno
-    return found
-
-
-def _apart(function: FunctionDef, first: tuple[int, int], later: tuple[int, int]) -> bool:
-    """Check whether two bindings of a function's are in different arms of one statement.
-
-    Returns:
-      Whether they are: only one of them runs.
-
-    """
-    arms: Mapping[tuple[int, int], _Arms] = _arms(function)
-    taken: dict[int, int] = dict(arms.get(first, ()))
-    return any(taken.get(branch, arm) != arm for branch, arm in arms.get(later, ()))
-
-
-@lru_cache(maxsize=64)  # asked of each of a function's names bound again
-def _arms(function: FunctionDef) -> Mapping[tuple[int, int], _Arms]:
-    """Find, for each name a function's branches bind, the arms its binding is in.
-
-    An `if`'s body and its `else`, a `try`'s body and each handler, a `match`'s cases.
-
-    Returns:
-      Where each such name is bound, and each branching statement around it (by `id()`) with which
-      of its arms that's in.
-
-    """
-    found: dict[tuple[int, int], _Arms] = {}
-    # Each statement still to read, and the arms it's in; `None` ends it.
-    waiting: list[tuple[ast.stmt, _Arms] | None] = [
-        None,
-        *((stmt, ()) for stmt in function.body),
-    ]
-    stmt: ast.stmt
-    inside: _Arms
-    for stmt, inside in iter(waiting.pop, None):
-        if isinstance(stmt, (*_INNER, ast.ClassDef)):
-            continue
-        if inside:
-            found.update(
-                (at(name), inside)
-                for target in _targets(stmt)
-                for name in ast.walk(target)
-                if isinstance(name, ast.Name)
-            )
-        blocks: list[list[ast.stmt]] = _blocks(stmt)
-        arm: int
-        block: list[ast.stmt]
-        for arm, block in enumerate(blocks):
-            within: tuple[tuple[int, int], ...] = (
-                (*inside, (id(stmt), arm)) if _alternatives(stmt) else inside
-            )
-            waiting.extend([(child, within) for child in block])
-    return found
-
-
-def _alternatives(stmt: ast.stmt) -> bool:  # whether only one of its blocks runs, of those `_blocks` lists
-    return isinstance(stmt, ast.If | ast.Match | ast.Try | ast.TryStar)
-
-
-def _targets(stmt: ast.stmt) -> list[ast.expr]:  # what a statement assigns to
-    match stmt:
-        case ast.Assign():
-            return stmt.targets
-        case ast.AnnAssign() | ast.AugAssign():
-            return [stmt.target]
-        case _:
-            return []
-
-
-def _blocks(stmt: ast.stmt) -> list[list[ast.stmt]]:
-    """List a statement's blocks, those of which only one runs each as an arm.
-
-    Returns:
-      An `if`'s body and its `else`, a `try`'s body (with its `else`) and each handler's, a
-      `match`'s cases; any other statement's blocks.
-
-    """
-    match stmt:
-        case ast.If():
-            return [stmt.body, stmt.orelse]
-        case ast.Try() | ast.TryStar():
-            return [[*stmt.body, *stmt.orelse], *(handler.body for handler in stmt.handlers), stmt.finalbody]
-        case ast.Match():
-            return [case.body for case in stmt.cases]
-        case ast.For() | ast.AsyncFor() | ast.While():
-            return [stmt.body, stmt.orelse]
-        case ast.With() | ast.AsyncWith():
-            return [stmt.body]
-        case _:
-            return []
 
 
 @lru_cache(maxsize=1024)  # a function is finished twice: as it's checked, and with its module

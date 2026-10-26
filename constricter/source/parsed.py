@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Final, TypeAlias
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from constricter.rules.tables import Tables
+    from constricter.fix.values.tables import Tables
 
 _FLOOR: Final = 40 << 20  # bytes of source whose trees any run may keep (about 1 GB of them)
 _TREE: Final = 26  # bytes of memory a tree takes for each byte of its source

@@ -6,7 +6,7 @@ from typing import Final, cast
 
 from constricter.fix.core.known import PARAM, Inference, Known, stood
 from constricter.fix.libraries import stdlib, walks
-from constricter.fix.libraries.library import installed_method, library_class
+from constricter.fix.libraries.library import library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.libraries.overloads import TEXT
 from constricter.fix.values import called, decided, displays, shapes
@@ -15,11 +15,13 @@ from constricter.fix.values.inference import (
     RETURNED,
     inference,
     inferred,
+    inferring,
     joined,
+    library_method,
     scalar,
     texted,
 )
-from constricter.fix.values.loops import COMPREHENSIONS, dict_view, targets_typed
+from constricter.fix.values.loops import dict_view, targets_typed
 from constricter.fix.values.members import (
     assigned_owner,
     awaited,
@@ -33,8 +35,8 @@ from constricter.fix.values.members import (
 from constricter.fix.values.returns import BUILTIN_RETURNS
 from constricter.fix.values.targets import DICT_VIEWS, ITERATORS
 from constricter.offences import CONSTRUCTOR, MEMBER
-from constricter.rules.annotations import dotted
-from constricter.rules.walked import children
+from constricter.source.annotations import dotted
+from constricter.source.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
 _CERTAIN_BUILTINS: Final = frozenset(
@@ -102,7 +104,7 @@ def fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -
 
     Returns:
       Whether it is: a fixed-return builtin the module doesn't rebind, a function declaring its
-      return (`Known.calls`), or a method a certain source types (see `certain_method`).
+      return (`Known.calls`), or a method a certain source types (see `_certain_method`).
 
     """
     name: str
@@ -115,7 +117,7 @@ def fixed_by_callee(call: ast.Call, known: Known, declared: Mapping[str, str]) -
         ):
             return True
         case _:
-            return certain_method(call, known, declared)
+            return _certain_method(call, known, declared)
 
 
 def guessing(
@@ -138,7 +140,7 @@ def guessing(
     # One walk, for both: the comprehensions whose targets the rest may use, then each node.
     walked: list[ast.AST] = list(_deciding(stood(value, declared), known, declared))
     inside: Mapping[str, str] = targets_typed(
-        [node for node in walked if isinstance(node, COMPREHENSIONS)],
+        [node for node in walked if isinstance(node, shapes.COMPREHENSIONS)],
         known,
         declared,
         inference,
@@ -194,7 +196,7 @@ def _receiving(receiver: ast.expr, method: str, known: Known, declared: Mapping[
     return None if typed is None else present(typed, method)
 
 
-def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) -> bool:
+def _certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call` is a method call a certain source types on its receiver's type.
 
     A member `members.member` knows (or one declared to return a vague part, see `Partial`), or a
@@ -225,7 +227,7 @@ def certain_method(call: ast.expr, known: Known, declared: Mapping[str, str]) ->
 def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]) -> bool:
     """Check whether `call` calls a method its arguments type: the standard library's, or `dict.get`.
 
-    See `stdlib.overloaded_method` and `shapes.defaulted`. Its arguments are walked as its parts: a
+    See `inference.library_method` and `shapes.defaulted`. Its arguments are walked as its parts: a
     guessed one makes it a guess.
 
     Returns:
@@ -237,14 +239,9 @@ def _overloaded_method(call: ast.Call, known: Known, declared: Mapping[str, str]
     match call:
         case ast.Call(func=ast.Attribute(value=receiver, attr=method)):
             typed: str | None = _receiving(receiver, method, known, declared)
-            base: str = known.class_side.lineage.definer(typed or "", method) or typed or ""
             return typed is not None and (
-                stdlib.overloaded_method(typed, method, known) is not None
-                or stdlib.overloaded_method(base, method, known) is not None  # a library base's
-                or installed_method(typed, method, known) is not None
-                or installed_method(base, method, known) is not None
-                or shapes.defaulted(typed, call, lambda arg: inference(arg, known, declared), known)
-                is not None
+                library_method(typed, method, known) is not None
+                or shapes.defaulted(typed, call, inferring(known, declared), known) is not None
                 or opened_path(typed, call, known) is not None
             )
         case _:
@@ -267,7 +264,7 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
     defined: tuple[str, str] | None
     rests: frozenset[str] | None
     match call:
-        case _ if rests := awaited_origins(call, known, lambda arg: inference(arg, known, declared)):
+        case _ if rests := awaited_origins(call, known, inferring(known, declared)):
             return rests
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
             callee := dotted(func)
@@ -318,30 +315,27 @@ def _is_guess(
 ) -> bool:
     name: str
     func: ast.expr
+    infer: shapes.Infer = inferring(known, declared)
     match node:
         case ast.Call(func=ast.Name(id=name)) if (
             name in _CERTAIN_BUILTINS and known.is_builtin(name)
         ) or name in known.indirect.awaits:
             return False
         # But an `async def`'s call typed by `return`s that are guesses, awaited: as they are.
-        case ast.Call(func=func) if not awaited_origins(
-            node,
-            known,
-            lambda arg: inference(arg, known, declared),
-        ) and (
+        case ast.Call(func=func) if not awaited_origins(node, known, infer) and (
             _returned_certainly(func, known)
             or decided.decides(func, known)
             or dotted(func) in known.names.casts
             or stdlib.resolved(func, known.names.stdlib) in stdlib.KNOWN
             or dotted(func) in known.names.installed
             or opened(node, known) is not None
-            or walks.walked(node, known, lambda arg: inference(arg, known, declared)) is not None
-            or certain_method(node, known, declared)
+            or walks.walked(node, known, infer) is not None
+            or _certain_method(node, known, declared)
             or _overloaded_method(node, known, declared)
-            or called.result(node, known, declared, lambda arg: inference(arg, known, declared)) is not None
-            or shapes.partly(node, known, lambda arg: inference(arg, known, declared)) is not None
+            or called.result(node, known, declared, infer) is not None
+            or shapes.partly(node, known, infer) is not None
             # A standard-library coroutine's: awaited, what it declares.
-            or awaited(ast.Await(node), known, lambda arg: inference(arg, known, declared)) is not None
+            or awaited(ast.Await(node), known, infer) is not None
         ):
             return False
         case ast.Call(func=func):

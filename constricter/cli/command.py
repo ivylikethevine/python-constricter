@@ -17,7 +17,7 @@ from constricter.cli import baseline, collecting, schedule
 from constricter.cli.lsp.protocol import HintError
 from constricter.cli.options import Mode, Options, Output
 from constricter.cli.paths import STDIN, python_files
-from constricter.cli.reading import encoding_of, read_text
+from constricter.cli.reading import READ_ERRORS, encoding_of, read_text
 from constricter.cli.report import Format, Result, fix_reasons, render, statistics
 from constricter.cli.rounds import checked_all, settled
 from constricter.cli.runs import Added, BaselineRun, CheckRun, CoverageRun, FileRun
@@ -31,8 +31,8 @@ from constricter.offences import (
     Edit,
     Offence,
 )
-from constricter.rules import parsed
 from constricter.rules.checker import Checked, Coverage, annotation_coverage, checked_source
+from constricter.source import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
     from types import ModuleType
@@ -42,7 +42,6 @@ if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
 EXIT_CLEAN: Final = 0
 EXIT_FOUND: Final = 1
 EXIT_ERROR: Final = 2
-_ALL: Final = 100  # percent
 
 
 def _source(raw: str, name: Path) -> tuple[str, list[notebook.Line]]:
@@ -199,9 +198,19 @@ def _read_checked(
     checked: Checked
     try:
         raw, checked = _checked(path, name, checks, outside)
-    except (OSError, ValueError, SyntaxError) as error:  # UnicodeDecodeError is a ValueError
-        return "", Checked([], Returns()), f"{name}: error: {error}"
+    except READ_ERRORS as error:
+        return "", Checked([], Returns()), _error(name, error)
     return raw, checked, ""
+
+
+def _error(name: Path, error: Exception) -> str:
+    """Say why a file couldn't be read or parsed.
+
+    Returns:
+      The message.
+
+    """
+    return f"{name}: error: {error}"
 
 
 def _results(raw: str, name: Path, offences: Sequence[Offence], options: Options) -> list[Result]:
@@ -326,8 +335,8 @@ def _cover_path(path: Path, _outside: Outside, options: Options) -> CoverageRun:
     name: Path = options.input.name(path)
     try:
         return CoverageRun(annotation_coverage(_source(read_text(path), name)[0], options.checks))
-    except (OSError, ValueError, SyntaxError) as error:
-        return CoverageRun(error=f"{name}: error: {error}")
+    except READ_ERRORS as error:
+        return CoverageRun(error=_error(name, error))
 
 
 def _check_all(options: Options) -> tuple[list[Path], list[FileRun]]:

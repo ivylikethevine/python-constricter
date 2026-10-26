@@ -7,7 +7,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING, TypeAlias
 
 from constricter.fix.core.known import Origin
-from constricter.fix.index import project
+from constricter.fix.index import spelling
 from constricter.fix.index.modules import Module
 
 if TYPE_CHECKING:
@@ -57,7 +57,7 @@ def classes(
     local: str
     origin: Origin
     for local, origin in names.items():
-        where: Origin = project.canonical_origin(modules, origin)
+        where: Origin = spelling.canonical_origin(modules, origin)
         if where[1] is not None:
             if declares(modules, where, aliases=aliases):
                 yield local, where
@@ -89,7 +89,7 @@ def _package_classes(
             bound: str
             found: Origin
             for bound, found in other.names.items():
-                where: Origin = project.canonical_origin(modules, found)
+                where: Origin = spelling.canonical_origin(modules, found)
                 if declares(modules, where, aliases=aliases):
                     yield f"{name.removeprefix(package)}.{bound}", where
 

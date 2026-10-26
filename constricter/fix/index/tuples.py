@@ -8,8 +8,9 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Origin
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
-from constricter.fix.index.project import ALIAS, CLASS, definition, portable
+from constricter.fix.index.modules import Index, Module, module_at
+from constricter.fix.index.project import type_definition
+from constricter.fix.index.spelling import portable
 
 
 def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, str]:
@@ -24,7 +25,7 @@ def fields(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     found: dict[str, str] = {}
     key: str
@@ -44,7 +45,7 @@ def unions(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str,
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     return {
         key: defined[0].unions[defined[1]]
@@ -82,12 +83,8 @@ def _named(
     key: str
     origin: Origin
     for key, origin in named:
-        defined: tuple[Module, str] | None = definition(modules, origin, CLASS) or definition(
-            modules,
-            origin,
-            ALIAS,
-        )
-        if defined is not None:
+        defined: tuple[Module, str] | None
+        if (defined := type_definition(modules, origin)) is not None:
             yield key, defined
         module: Module | None
         if origin[1] is None and (module := modules.get(origin[0])) is not None:

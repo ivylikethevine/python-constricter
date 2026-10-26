@@ -2,6 +2,7 @@
 
 import ast
 import textwrap
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -9,7 +10,8 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core.known import Guarded, Outside
 from constricter.fix.index import linked, project
-from constricter.rules.flow import Hierarchy
+from constricter.source.declarations import GenericClass
+from constricter.source.flow import Hierarchy
 
 CORE: Final = """
 from typing import Union
@@ -104,6 +106,10 @@ def test_a_later_binding_spelled_otherwise_fits_the_fix() -> None:
         same=(_SCHEMAS,),
     )
     assert clashing.usable(frozenset({"Schema"}), frozenset()).same == (_SCHEMAS,)
+    # What it filters nothing of carries over, the project's generic classes too.
+    generic: dict[str, GenericClass] = {"Rows": GenericClass(("T",), {}, {}, (), frozenset())}
+    kept: Outside = replace(clashing, generic=generic).usable(frozenset({"Schema"}), frozenset())
+    assert (kept.calls, kept.generic) == ({}, generic)
 
 
 def test_spellings_of_one_type_fit_each_other() -> None:

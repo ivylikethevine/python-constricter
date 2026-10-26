@@ -30,18 +30,18 @@ class Memo:
     installed: frozenset[int] = frozenset()  # the installed modules read, by identity
     modules: Mapping[str, Module] | None = None  # the index they were last compared with
     read: dict[tuple[str, str], tuple[ReadSignature, ...]] = field(
-        default_factory=dict[tuple[str, str], "tuple[ReadSignature, ...]"],
+        default_factory=dict[tuple[str, str], tuple[ReadSignature, ...]],
     )
     packages: dict[tuple[str, bool], Packaged] = field(
-        default_factory=dict[tuple[str, bool], "Packaged"],
+        default_factory=dict[tuple[str, bool], Packaged],
     )
-    lines: dict[Origin, tuple[str, ...]] = field(default_factory=dict[Origin, "tuple[str, ...]"])
+    lines: dict[Origin, tuple[str, ...]] = field(default_factory=dict[Origin, tuple[str, ...]])
     methods: dict[tuple[Origin, str], tuple[ReadSignature, ...]] = field(
-        default_factory=dict[tuple[Origin, str], "tuple[ReadSignature, ...]"],
+        default_factory=dict[tuple[Origin, str], tuple[ReadSignature, ...]],
     )
     names: dict[Origin, frozenset[str]] = field(default_factory=dict[Origin, frozenset[str]])
-    expansions: dict[Origin, Expanded | None] = field(default_factory=dict[Origin, "Expanded | None"])
-    accepts: dict[Asked, Accepts] = field(default_factory=dict["Asked", Accepts])
+    expansions: dict[Origin, Expanded | None] = field(default_factory=dict[Origin, Expanded | None])
+    accepts: dict[Asked, Accepts] = field(default_factory=dict[Asked, Accepts])
 
     def of(self, modules: Mapping[str, Module]) -> "Memo":
         """Keep what's read for as long as `modules` has the same installed ones.

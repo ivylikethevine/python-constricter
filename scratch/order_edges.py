@@ -16,11 +16,22 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from constricter.cli.paths import python_files
-from constricter.fix.index import awaits, crossed, decorated, fixtures, linked, loose, managed, order, plain, project
+from constricter.fix.core.signatures import AWAIT
+from constricter.fix.index import (
+    awaits,
+    crossed,
+    decorated,
+    fixtures,
+    linked,
+    loose,
+    managed,
+    order,
+    plain,
+    project,
+)
 from constricter.fix.index.modules import Index, Module
 from constricter.fix.index.stubs import installed
 from constricter.fix.values.returned import unannotated
-from constricter.fix.core.signatures import AWAIT
 from constricter.offences import PLAIN_BASES
 
 _Needs = Callable[[Index, Module], set[str]]

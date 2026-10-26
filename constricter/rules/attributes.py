@@ -17,11 +17,10 @@ from constricter.fix.values.inference import ASSIGNED
 from constricter.fix.values.shapes import or_none
 from constricter.offences import UNANNOTATED_ATTRIBUTE, Fix, Offence
 from constricter.rules.scope import Scope
-from constricter.rules.syntax import own_nodes
-from constricter.rules.walked import classes, walk
+from constricter.source.syntax import own_nodes
+from constricter.source.walked import classes, walk
 
 _OBJECT: Final = "object"
-_NONE: Final = "None"
 _OPTIONAL: Final = "optional"  # the fix kind of `None`, then one known type
 
 

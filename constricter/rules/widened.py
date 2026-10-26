@@ -21,9 +21,9 @@ from constricter.offences import (
     UNTYPED_CALLS,
     UNTYPED_PARAMETERS,
 )
-from constricter.rules.annotations import dotted, node_name
-from constricter.rules.syntax import FUNCTION_DEFS, FunctionDef
-from constricter.rules.walked import children, classes, walk
+from constricter.source.annotations import dotted, node_name
+from constricter.source.syntax import FUNCTION_DEFS, FunctionDef
+from constricter.source.walked import children, classes, walk
 
 ANY: Final = "typing.Any"
 _RECEIVERS: Final = frozenset({"self", "cls"})
@@ -142,11 +142,10 @@ def container(value: ast.expr, plan: ImportPlan, kinds: Collection[str]) -> Infe
         case ast.Dict(keys=keys) if keys:
             texts: bool = all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in keys)
             annotation = f"dict[{'str' if texts else spelled}, {spelled}]"
+        case _ if empty in {"list", "set"}:
+            annotation = f"{empty}[{spelled}]"
         case _:
-            annotation = {"list": f"list[{spelled}]", "set": f"set[{spelled}]"}.get(
-                empty or "",
-                f"dict[{spelled}, {spelled}]" if empty else None,
-            )
+            annotation = f"dict[{spelled}, {spelled}]" if empty else None
     if annotation is None:
         return None
     reason: str = "an empty container nothing fills" if empty else "a display of mixed or unknown elements"
@@ -207,8 +206,12 @@ def _method(found: Own, owner: str, name: str) -> FunctionDef | None:
         None,
         owner,
     ]  # each class still to look in, the next one last; `None` ends it
+    seen: set[str] = set()  # each looked in once: a base two bases share, or bases that cycle
     current: str
     for current in iter(waiting.pop, None):
+        if current in seen:
+            continue
+        seen.add(current)
         node: ast.ClassDef | None
         if (node := found.classes.get(current)) is None:
             return None

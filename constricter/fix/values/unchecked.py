@@ -16,8 +16,8 @@ from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.values.narrowed import Regions, read_narrowed, tested_lines
-from constricter.rules.syntax import FunctionDef
-from constricter.rules.walked import classes, walk
+from constricter.source.syntax import FunctionDef
+from constricter.source.walked import classes, walk
 
 # A use of a name: its line, and the attribute taken of it (none: an item).
 Use: TypeAlias = tuple[int, str]

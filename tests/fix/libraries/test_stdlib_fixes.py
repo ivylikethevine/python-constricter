@@ -521,3 +521,15 @@ def test_a_library_class_member_needs_a_plan_to_name_a_class() -> None:
     assert stdlib.library_member("argparse.ArgumentParser", "add_argument", _CALL, known) is None
     found: Inference | None = stdlib.library_member("argparse.ArgumentParser", "prog", None, known)
     assert [None if found is None else found.annotation] == ["str"]
+
+
+def test_each_class_line_holds_its_ancestors_lines() -> None:
+    """The tables give each class every ancestor, not its bases alone: what reads a line walks it once."""
+    paths: set[str] = set(stdlib.CLASSES.values())
+    path: str
+    ancestor: str
+    for path in paths:
+        for ancestor in stdlib.lines(path) - {path}:
+            assert stdlib.lines(ancestor) <= stdlib.lines(path), (path, ancestor)
+    assert stdlib.inherits("argparse.RawTextHelpFormatter", "argparse.HelpFormatter")  # a base's base
+    assert stdlib.members("ast.Add") >= stdlib.members("ast.AST")

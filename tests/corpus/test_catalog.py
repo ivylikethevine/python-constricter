@@ -9,7 +9,7 @@ import pytest
 from tests.corpus import __main__ as runner
 from tests.corpus import catalog, corpus_sources, trees
 from tests.corpus.corpus_sources import Source
-from tests.corpus.run_config import Run
+from tests.corpus.run_config import Run, read_command
 
 _GROUPS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")  # by size and time
 _PIN: Final = "=="  # a `corpus` group entry pinned to one version
@@ -51,10 +51,15 @@ def test_a_set_that_names_itself_is_refused() -> None:
 
 def test_a_command_leaves_out_a_corpus_a_set_or_a_run_files(tmp_path: Path) -> None:
     """`--minus NAME`, or `--minus RUN.toml`: that run's corpora."""
-    assert runner.commanded(Run(), ["--minus", catalog.ORIGINAL]).minus == (catalog.ORIGINAL,)
+    assert runner.commanded(Run(), read_command(["--minus", catalog.ORIGINAL], run_file=False)).minus == (
+        catalog.ORIGINAL,
+    )
     less: Path = tmp_path / "less.toml"
     _ = less.write_text('[corpora]\ninclude = ["pip", "twisted"]\n', encoding="utf-8")
-    run: Run = runner.commanded(Run(include=(catalog.SUPER,)), ["--minus", str(less)])
+    run: Run = runner.commanded(
+        Run(include=(catalog.SUPER,)),
+        read_command(["--minus", str(less)], run_file=False),
+    )
     assert run.minus == ("pip", "twisted")
     known: catalog.Catalog = catalog.load()
     left: list[str] = [name for name in known.names([catalog.SUPER]) if name not in run.minus]

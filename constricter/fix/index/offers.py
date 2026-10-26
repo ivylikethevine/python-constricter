@@ -9,20 +9,18 @@ edits would import (the standard library's are `hinted`'s to judge, by its table
 
 import ast
 import re
-import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from typing import NamedTuple, TypeAlias, cast
 
 from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Offered, Origin
 from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX
+from constricter.fix.index.modules import PACKAGE, module_at
 from constricter.fix.index.origins import absolute
+from constricter.fix.index.stubs.atoms import private_name
 from constricter.fix.libraries import stdlib
 
-_PACKAGE: Final = "__init__"
-_STDLIB: Final = sys.stdlib_module_names
 _Defined: TypeAlias = tuple[str, str]  # where the index defines a class: its module, and its name there
 
 
@@ -42,7 +40,7 @@ def own(catalog: project.Index, path: Path) -> Own:
 
     """
     target: project.Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(project.module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return Own()
     found: dict[str, Guarded] = {}
     generics: set[str] = set()
@@ -66,7 +64,7 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
     """
     if not any(found.offered for found in hints):
         return hints
-    module: tuple[str, bool] = (project.module_name(path), path.stem == _PACKAGE)
+    module: tuple[str, bool] = (project.module_name(path), path.stem == PACKAGE)
     target: project.Module | None = catalog.modules.get(module[0])
     checking: Mapping[str, Origin] = Empty() if target is None else target.guarded
     found: dict[str, _Defined | None] = {name: _defined(catalog, origin) for name, origin in checking.items()}
@@ -144,7 +142,7 @@ def imported(path: Path, hints: tuple[Hints, ...]) -> dict[str, Guarded]:
       Each name one statement binds in every edit, with it.
 
     """
-    module: tuple[str, bool] = (project.module_name(path), path.stem == _PACKAGE)
+    module: tuple[str, bool] = (project.module_name(path), path.stem == PACKAGE)
     found: dict[str, Guarded] = {}
     clashing: set[str] = set()
     statement: str
@@ -182,12 +180,8 @@ def _defined(catalog: project.Index, origin: Origin) -> _Defined | None:
       Its module and its name there; `None` where it doesn't.
 
     """
-    kind: str
-    for kind in (project.CLASS, project.ALIAS):
-        found: tuple[project.Module, str] | None
-        if (found := project.definition(catalog.modules, origin, kind)) is not None:
-            return found[0].name, found[1]
-    return None
+    found: tuple[project.Module, str] | None = project.type_definition(catalog.modules, origin)
+    return None if found is None else (found[0].name, found[1])
 
 
 def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, shown: str) -> bool:
@@ -211,7 +205,7 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
             return False
         alias: ast.alias = node.names[0]
         origin: Origin = (absolute(module[0], node.module, node.level, is_package=module[1]), alias.name)
-        if origin[0].partition(".")[0] in _STDLIB:
+        if origin[0].partition(".")[0] in project.STDLIB:
             continue
         lone: re.Pattern[str] = re.compile(rf"(?<![\w.]){re.escape(alias.asname or alias.name)}(?![\w\[])")
         generic: bool | None = _class(catalog, origin)
@@ -229,7 +223,7 @@ def _private(catalog: project.Index, name: str) -> bool:
 
     """
     module: project.Module | None = catalog.modules.get(name)
-    return module is not None and module.installed and any(part.startswith("_") for part in name.split("."))
+    return module is not None and module.installed and private_name(name)
 
 
 def _class(catalog: project.Index, origin: Origin) -> bool | None:

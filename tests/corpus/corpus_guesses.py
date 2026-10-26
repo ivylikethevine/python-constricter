@@ -18,6 +18,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeAlias, cast
 
+from tests.corpus import jsonl
+
 if TYPE_CHECKING:
     from tests.corpus.catalog import Suite
     from tests.corpus.pipeline import Job
@@ -202,13 +204,13 @@ def kept(job: "Job", root: Path, trace: str) -> Seen:
     """
     found: Seen = seen(root, trace)
     prefix: str = f"{cast('Suite', job.tree.suite).source.rstrip('/')}/"
-    lines: list[str] = [
-        json.dumps({"path": file.removeprefix(prefix), "line": line, "name": name, "seen": list(types)})
+    rows: list[jsonl.Row] = [
+        {"path": file.removeprefix(prefix), "line": line, "name": name, "seen": list(types)}
         for file, traced in found.items()
         if file.startswith(prefix)
         for line, names in traced.items()
         for name, types in names.items()
     ]
     written: Path = job.store.path(job.tree.name, job.recorded, _TRACED, SEEN)
-    _ = written.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    _ = written.write_text(jsonl.text(rows), encoding="utf-8")
     return found

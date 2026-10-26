@@ -21,19 +21,19 @@ from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
 from constricter import Level
-from tests.corpus import archive, corpus_table, corpus_untyped
+from tests.corpus import archive, corpus_table, corpus_untyped, jsonl
 from tests.corpus.corpus_table import Corpus, Likely, Measured, Typed
 from tests.corpus.pipeline import (
     CENSUS,
     CHECK,
     COVERAGE,
     FIX,
-    INFER,
+    FIX_UNSAFE,
+    INFER_UNION,
     TESTS,
     TIMING,
     TRACED,
     TYPES,
-    UNION,
     Record,
     Store,
     fixing,
@@ -49,10 +49,9 @@ from tests.corpus.report_tables import (
     Rows,
     Table,
     differs,
-    json_lines,
     typed_share,
 )
-from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, REPORT, UNSAFE, Run, scrubbed
+from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, REPORT, Run, scrubbed
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
 
@@ -61,7 +60,7 @@ _CONSTRICTER: Final = "constricter"  # a table's second column: the version
 _ERROR: Final = "error"  # in a fixed run's record: why its patch didn't apply
 _SUITE: Final = frozenset({TESTS, TYPES})  # the steps whose records have a fixed run for each fix
 # The fix steps a second pass of which is to leave nothing: `--likely`'s is known to leave some.
-_CONVERGING: Final = frozenset({f"{FIX}{CERTAIN}", f"{FIX}{UNSAFE}"})
+_CONVERGING: Final = frozenset({f"{FIX}{CERTAIN}", FIX_UNSAFE})
 _HEAVY: Final = 8  # gigabytes: a step that held more beside others is noted (a laptop has 16)
 _VERSIONS: Final = "\n## constricter "  # `corpus_table.record`'s sections, which a run's goes before
 _HEADING: Final = "\n## "
@@ -75,7 +74,7 @@ def _every(run: Run) -> list[str]:
       Their names, each once.
 
     """
-    union: list[str] = [f"{INFER}{UNION}", suite_part(TESTS, f"{INFER}{UNION}")] if united(run) else []
+    union: list[str] = [INFER_UNION, suite_part(TESTS, INFER_UNION)] if united(run) else []
     suited: list[str] = [TRACED, *suite_parts(run, TESTS), *union, TESTS, *suite_parts(run, TYPES), TYPES]
     return list(dict.fromkeys([*steps(run), *fixing(run), *suited, TIMING]))
 
@@ -111,7 +110,7 @@ def measured(records: Records, tree: Tree, version: str) -> Measured:
     checked: Record = records.of(tree, version, CHECK)
     certain: Record = records.of(tree, version, f"{FIX}{CERTAIN}")
     likely: Record = records.of(tree, version, f"{FIX}{LIKELY}")
-    unsafe: Record = records.of(tree, version, f"{FIX}{UNSAFE}")
+    unsafe: Record = records.of(tree, version, FIX_UNSAFE)
     fixed: int | None = _count(certain, "fixed")
     every: int | None = _count(unsafe, "fixed")
     levels: dict[str, list[int]] = cast("dict[str, list[int]]", checked.get("levels", {}))
@@ -282,20 +281,20 @@ def guesses(records: Records, store: Store) -> list[Record]:
 
     """
     found: list[Record] = []
-    step: str = f"{FIX}{UNSAFE}"
+    step: str = FIX_UNSAFE
     tree: Tree
     version: str
     for tree, version in itertools.product(records.trees, records.versions):
         fixed: Record = cast("Record", records.of(tree, version, TYPES).get("fixed", {}))
         checked: Record = cast("Record", fixed.get(step, {}))
-        judged: list[Record] = json_lines(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
+        judged: list[Record] = jsonl.read(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
         if tree.base is None or not (checked or judged):
             continue
         source: str = tree.root.relative_to(tree.base).as_posix()
         errors: Counter[_Key] = _blames(checked)
         told: dict[_Key, Record] = {_key(each["path"], each): each for each in judged}
         fix: Record
-        for fix in json_lines(store.path(tree.name, version, step, ".fixes.jsonl")):
+        for fix in jsonl.read(store.path(tree.name, version, step, ".fixes.jsonl")):
             key: _Key = _key(f"{source}/{fix['path']}", fix)
             verdict: Record = told.get(key, {})
             found.append(
@@ -475,7 +474,7 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
         _ = written[-1].write_text(reported + "\n", encoding="utf-8")
         if guessed := guesses(records, Store(folder)):
             written.append(folder / "guesses.jsonl")
-            _ = written[-1].write_text("".join(f"{json.dumps(each)}\n" for each in guessed), encoding="utf-8")
+            _ = written[-1].write_text(jsonl.text(guessed), encoding="utf-8")
     if MARKDOWN in records.run.formats:
         written.append(folder / "report.md")
         made: str = staged(facts).strip()

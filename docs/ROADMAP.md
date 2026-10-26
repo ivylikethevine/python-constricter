@@ -124,50 +124,6 @@ measure before building.
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between.
-3. **The witness, past a test's own classes.** The corpora runs hold a fixed binding's value to its
-   annotation as its package's traced tests bind it (`tests/corpus/witness`). A value of a class a
-   test module defines tells nothing of the annotation, as a mock or a `SimpleNamespace` doesn't,
-   nor of an annotation naming a test's class outside the tests (django's `datetime`, patched to
-   `MockDateTime`); a class a function defines again at each call is the annotation's by its module
-   and qualified name, and a module's class imported anew is the one it names. On the 0.4.0-rc.3
-   mega run 223 certain fixes differed (259 before these), 70 likely and 88 other guesses (102 and
-   109). Most are the package's own declarations its tests contradict: a numpy scalar where `int` or
-   `bool` is declared (pandas's `iloc`, `_has_infs`), `None` where it isn't (sphinx's C++ parser),
-   `round_trip_pickle`'s `DataFrame | Series` for any value pickled, pytest's `FSHookProxy` for a
-   `HookRelay`. Read through on 2026-10-21, all 223: the witness was wrong on 6, fixed in the tree
-   (`typing.IO`'s classes, which nothing is an instance of, now take any value that reads, writes
-   and closes: optuna's `NamedTemporaryFile` wrapper, 147 of its counts; a `StringIO` or `BytesIO`
-   where `io`'s or `typing`'s file class is named is a test's stand-in, as a test's `open` or
-   `io.TextIOWrapper` gives it: dask's, black's, celery's; and a package's `pytest` plugin module
-   is a test module: pdm's `pdm.pytest.Distribution`). The other 217 are declarations the tests
-   contradict: the package's own, or typeshed's (asyncio's `Server.sockets` as `socket.socket`,
-   given `TransportSocket`; uvloop's `Server` and transports for asyncio's). On the 0.4.3-rc.1 mega
-   run 225 certain fixes differed (`scratch/witness_diff.py`, against rc.3's): 179 of those 217; 7
-   fixes rc.3 made the same and no test contradicted then (asyncio's `Transport` given uvloop's,
-   sqlalchemy's `str` given `None`); 4 new fixes of declarations the tests contradict (sphinx's
-   `self.names` given `None`, starlette's `path_params: dict[str, str]` given a `datetime` and an
-   `int`, xarray's `Mapping[str, TreeNode]` given an `int` by a test of its `TypeError`); and one
-   wrong fix: narwhals's `impl = self.implementation` typed `_Implementation`, a descriptor whose
-   `__get__` gives an `Implementation` through an instance. Since: an attribute a class body
-   annotates with a descriptor class (its body defines `__get__`), the module's or another checked
-   file's, is read through an instance as `__get__` declares it returns, and is no fix where
-   `__get__` is overloaded (narwhals's 16, chosen by the instance's type), declares no return or
-   names a type variable (`declarations.descriptors`, `members.through_instance`). On the 0.4.3-rc.8
-   mega run (`7a075e4`) 192 certain fixes differed against rc.1's 186, 182 in both
-   (`witness_diff.py`): narwhals's `impl` is no fix now, and of rc.1's other 3 one is no longer
-   told of. Of the 10 new, 7 are declarations the tests contradict (pandas's numpy scalars where
-   `bool` and `float | np.ndarray` are declared, 3; sphinx's types-docutils stubs,
-   `get_source_line -> tuple[str, int]` given `None` and `Element.get`'s `failobj: _T -> _T` given an
-   `int`, 3; sqlalchemy's `_CursorKeyMapRecType`, the value one the trace couldn't name), and 3 look
-   like the witness's: pdm's `url: str` and `dep: str` (given a `str`, and tomlkit's `String`, a
-   `str` subclass) and strawberry's `node: GQLFieldNode` (graphql's `FieldNode` imported under that
-   name, given a `FieldNode`). Read through: 1 of 131, 2 of 136 and 1 of 162 values differed, and
-   the trace saw nothing but those types at those bindings, so the witness misjudged a value of the
-   very class the annotation names; but a verdict kept only its counts, so which part did can't be
-   read from the run. A verdict tells of its first 3 differing values since, each the value's class
-   and the annotation evaluated (`differed` in `listings.jsonl.gz`'s verdicts). Done when the next
-   traced run's `differed` on those 3 is read and the witness fixed where it's wrong. Under an hour
-   beside the run; coverage unchanged.
 
 ### Small: under 4 hours
 

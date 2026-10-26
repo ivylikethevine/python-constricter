@@ -12,7 +12,7 @@ from typing import Final
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.values.inference import inference
 from constricter.fix.values.members import fits
-from constricter.rules.annotations import dotted
+from constricter.source.annotations import dotted
 
 # Each reason, by its stable id, and what it means (docs/FIXES.md lists them).
 REASONS: Final[dict[str, str]] = {

@@ -31,12 +31,12 @@ from constricter.fix.values.members import (
 )
 from constricter.fix.values.targets import (
     SAME_ELEMENTS,
-    dict_parts,
+    dict_sides,
     iterator_call,
 )
 from constricter.offences import MEMBER
-from constricter.rules.annotations import dotted
-from constricter.rules.flow import members
+from constricter.source.annotations import dotted
+from constricter.source.flow import members
 
 if TYPE_CHECKING:
     from types import EllipsisType
@@ -116,6 +116,16 @@ def inference(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
     return found
 
 
+def inferring(known: Known, declared: Mapping[str, str]) -> shapes.Infer:
+    """Bind `inference` to a scope's `known` and `declared`: what a helper types a value's parts by.
+
+    Returns:
+      The one-argument `inference`.
+
+    """
+    return lambda arg: inference(arg, known, declared)
+
+
 def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:
     """Infer from what this scope already typed: a copy of a local, or a member of any typed value.
 
@@ -146,7 +156,7 @@ def _from_local(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             return None
     typed: Inference | None
     if (typed := inference(receiver, known, declared)) is None:
-        return installed_chain(stood(value, declared), known, lambda arg: inference(arg, known, declared))
+        return installed_chain(stood(value, declared), known, inferring(known, declared))
     held: str = present(typed.annotation, attr)
     found: Inference | None = _member_of(
         value,
@@ -187,32 +197,22 @@ def _member_of(
                 )
             )
         case ast.Call():
+            infer: shapes.Infer = inferring(known, declared)
             found: Inference | None = member(receiver, attr, value, known)
             method: stdlib.Method | None
-            # A class of the module's takes a library base's method, matched as the base's own is.
-            base: str = known.class_side.lineage.definer(receiver, attr) or receiver
-            if found is None and (
-                (method := stdlib.overloaded_method(receiver, attr, known)) is not None
-                or (method := stdlib.overloaded_method(base, attr, known)) is not None
-                or (method := installed_method(receiver, attr, known)) is not None
-                or (method := installed_method(base, attr, known)) is not None
-            ):
+            if found is None and (method := library_method(receiver, attr, known)) is not None:
                 found = overloads.chosen(
                     method.entry,
                     value,
                     known,
-                    lambda arg: inference(arg, known, declared),
+                    infer,
                     stdlib.for_receiver(method, receiver),
                 )
+                base: str = _base(receiver, attr, known)
                 # The base itself is its `Self`: the receiver's own class, which the base isn't.
                 found = None if found is not None and receiver != base == found.annotation else found
             if found is None:
-                found = shapes.defaulted(
-                    receiver,
-                    value,
-                    lambda arg: inference(arg, known, declared),
-                    known,
-                ) or opened_path(receiver, value, known)
+                found = shapes.defaulted(receiver, value, infer, known) or opened_path(receiver, value, known)
             defined: tuple[str, str] | None = (
                 returned_method(receiver, attr, known) if found is None else None
             )
@@ -223,6 +223,34 @@ def _member_of(
             )
         case _:
             return member(receiver, attr, None, known) or _unannotated(receiver, attr, known)
+
+
+def _base(receiver: str, attr: str, known: Known) -> str:
+    """Name the class `receiver`'s `attr` comes from: a class of the module's takes a library base's.
+
+    Returns:
+      The class (see `Lineage.definer`), or `receiver` itself.
+
+    """
+    return known.class_side.lineage.definer(receiver, attr) or receiver
+
+
+def library_method(receiver: str, attr: str, known: Known) -> stdlib.Method | None:
+    """Find the standard library's or an installed package's method `attr` on `receiver`, or its base's.
+
+    A class of the module's takes a library base's method, matched as the base's own is (see `_base`).
+
+    Returns:
+      The method, or `None`.
+
+    """
+    base: str = _base(receiver, attr, known)
+    return (  # a `Method` is a non-empty tuple, never false
+        stdlib.overloaded_method(receiver, attr, known)
+        or stdlib.overloaded_method(base, attr, known)
+        or installed_method(receiver, attr, known)
+        or installed_method(base, attr, known)
+    )
 
 
 def _item(
@@ -246,13 +274,7 @@ def _item(
     found: Inference | None = stdlib.library_member(receiver, _GET_ITEM, call, known)
     method: stdlib.Method | None
     if found is None and (method := stdlib.overloaded_method(receiver, _GET_ITEM, known)) is not None:
-        found = overloads.chosen(
-            method.entry,
-            call,
-            known,
-            lambda arg: inference(arg, known, declared),
-            method,
-        )
+        found = overloads.chosen(method.entry, call, known, inferring(known, declared), method)
     return None if found is None else found._replace(kinds=found.kinds | {_SUBSCRIPT})
 
 
@@ -307,7 +329,7 @@ def _from_value(value: ast.expr, known: Known, declared: Mapping[str, str]) -> I
             return (
                 shapes.module_text(value, known)
                 or shapes.class_text(value, known)
-                or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
+                or shapes.class_of(value, known, inferring(known, declared))
                 or library_variable(value, known)
             )
         case ast.Subscript():
@@ -325,24 +347,20 @@ def _from_call(value: ast.Call, known: Known, declared: Mapping[str, str]) -> In
       The inference, or `None`.
 
     """
+    infer: shapes.Infer = inferring(known, declared)
     return (
-        decided.builtin(
-            value,
-            known,
-            lambda arg: inference(arg, known, declared),
-            lambda arg: looped(arg, known, declared, inference),
-        )
+        decided.builtin(value, known, infer, lambda arg: looped(arg, known, declared, inference))
         or shapes.cast(value, known.names.casts)
         or opened(value, known)
         or library_class(value, known)
-        or library_call(value, known, lambda arg: inference(arg, known, declared))
-        or installed_call(value, known, lambda arg: inference(arg, known, declared))
+        or library_call(value, known, infer)
+        or installed_call(value, known, infer)
         or _returns(value, known)
-        or shapes.class_of(value, known, lambda arg: inference(arg, known, declared))
+        or shapes.class_of(value, known, infer)
         or called.typed_call(value, known)
-        or called.result(value, known, declared, lambda arg: inference(arg, known, declared))
-        or shapes.partly(value, known, lambda arg: inference(arg, known, declared))
-        or shapes.attribute_of(value, known, lambda arg: inference(arg, known, declared))
+        or called.result(value, known, declared, infer)
+        or shapes.partly(value, known, infer)
+        or shapes.attribute_of(value, known, infer)
     )
 
 
@@ -410,7 +428,7 @@ def _computed(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inf
             )
         case _:
             # What awaiting a checked file's or a standard-library coroutine's call gives, or nothing.
-            return awaited(value, known, lambda arg: inference(arg, known, declared))
+            return awaited(value, known, inferring(known, declared))
 
 
 def _operated(
@@ -428,7 +446,7 @@ def _operated(
         return _arithmetic(value, known, declared)
     if isinstance(value, ast.Compare):
         return _compared(value, known, declared)
-    return decided.unary(value, lambda operand: inference(operand, known, declared))
+    return decided.unary(value, inferring(known, declared))
 
 
 def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -441,7 +459,7 @@ def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, 
 
     """
     if isinstance(value, ast.BoolOp):
-        return shapes.boolean(value, lambda part: inference(part, known, declared))
+        return shapes.boolean(value, inferring(known, declared))
     sides: tuple[Inference | None, Inference | None] = (
         inference(value.body, known, declared),
         inference(value.orelse, known, declared),
@@ -452,10 +470,8 @@ def _joined(value: ast.IfExp | ast.BoolOp, known: Known, declared: Mapping[str, 
             "both sides of a conditional",
             kinds_of(*sides, kind="conditional"),
         )
-    return shapes.optional(value, lambda part: inference(part, known, declared)) or shapes.emptied(
-        value,
-        lambda part: inference(part, known, declared),
-    )
+    infer: shapes.Infer = inferring(known, declared)
+    return shapes.optional(value, infer) or shapes.emptied(value, infer)
 
 
 def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> Inference | None:
@@ -649,7 +665,7 @@ def _container(value: ast.expr, known: Known, declared: Mapping[str, str]) -> In
     if found is None:
         return None
     kinds: frozenset[str] = kinds_of(*parts, kind="container")
-    built: str = found.partition("[")[0]
+    built: str = _root(found)
     if mixed:
         return Inference(found, f"a {built} of its elements' types, joined", kinds | {displays.JOINED})
     return Inference(found, f"a {built} whose elements' types agree", kinds)
@@ -676,11 +692,8 @@ def _pair(key: ast.expr | None, item: ast.expr, known: Known, declared: Mapping[
     """
     if key is not None:
         return inference(key, known, declared), inference(item, known, declared)
-    found: Inference | None = inference(item, known, declared)
-    types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
-    if found is None or types is None:
-        return None, None
-    return found._replace(annotation=types[0]), found._replace(annotation=types[1])
+    sides: tuple[Inference, Inference] | None = dict_sides(inference(item, known, declared))
+    return (None, None) if sides is None else sides
 
 
 def joined(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:

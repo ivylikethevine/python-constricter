@@ -10,19 +10,14 @@ held at one reading.
 import contextlib
 import threading
 from functools import partial
-from typing import Final, NamedTuple, cast
+from typing import Final, cast
 
 import psutil
 
+from tests.corpus.sizing import Used
+
 _EVERY: Final = 2.0  # seconds between readings
 _WOKEN: Final = True  # what the thread's wait gives once it's told to stop
-
-
-class Used(NamedTuple):
-    """What a watched process's tree was seen to use: its CPU seconds, and the most memory at once (bytes)."""
-
-    cpu: float = 0.0
-    memory: int = 0
 
 
 def _reading(root: int) -> dict[int, tuple[float, int]]:

@@ -18,13 +18,16 @@ def absolute(name: str, module: str | None, level: int, *, is_package: bool) -> 
     """Resolve `from <.level><module> import ...` in module `name`.
 
     Returns:
-      The absolute module name.
+      The absolute module name; one past the top package, as Python refuses it, as written (`..x`),
+      which names no module.
 
     """
     if not level:
         return module or ""
     package: list[str] = name.split(".") if is_package else name.split(".")[:-1]
-    base: list[str] = package[: len(package) - (level - 1)] if level > 1 else package
+    if level - 1 >= len(package):
+        return "." * level + (module or "")
+    base: list[str] = package[: len(package) - (level - 1)]
     return ".".join([*base, *([module] if module else [])])
 
 

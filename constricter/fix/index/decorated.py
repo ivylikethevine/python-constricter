@@ -1,7 +1,7 @@
 """Returns under decorators another module defines: kept where it gives the function back.
 
 A module alone vouches for the standard library's such decorators and its own (see
-`constricter.rules.decorators`); with the index, for those it imports from a checked file or an
+`constricter.source.decorators`); with the index, for those it imports from a checked file or an
 installed package too (`@set_module("pandas")`, declared `-> Callable[[F], F]`), once the type
 variables their signatures name are found to be ones. A declared return is kept, and an unannotated
 function's `return`s may type its calls (`unannotated`), as an undecorated one's do.
@@ -12,13 +12,13 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index import project, spelling
+from constricter.fix.index.modules import Index, Module, module_at
 from constricter.fix.index.project import DECORATOR
 
 if TYPE_CHECKING:
     from constricter.fix.core.known import Origin
-    from constricter.rules.decorators import Pass
+    from constricter.source.decorators import Pass
 
 
 def passed(catalog: Index) -> Index:
@@ -70,7 +70,7 @@ def vouched(catalog: Index, path: Path) -> frozenset[str]:
 
     """
     module: Module | None
-    if path.suffix != SUFFIX or (module := catalog.modules.get(module_name(path))) is None:
+    if (module := module_at(catalog, path)) is None:
         return frozenset()
     return frozenset(_vouched(catalog, module))
 
@@ -108,7 +108,7 @@ def _vouched(catalog: Index, module: Module) -> Iterator[str]:
             yield read.spelled(name)
     key: str
     origin: Origin
-    for key, origin in project.spellings(catalog, module, DECORATOR):
+    for key, origin in spelling.spellings(catalog, module, DECORATOR):
         defined: tuple[Module, str] | None
         if (defined := project.definition(catalog.modules, origin, DECORATOR)) is not None:
             read = defined[0].passes[defined[1]]
@@ -127,7 +127,7 @@ def own(catalog: Index, path: Path) -> dict[str, str]:
 
     """
     module: Module | None
-    if path.suffix != SUFFIX or (module := catalog.modules.get(module_name(path))) is None:
+    if (module := module_at(catalog, path)) is None:
         return {}
     return {
         **{name: module.returns[name] for name in module.vouched},

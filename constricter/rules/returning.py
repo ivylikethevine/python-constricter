@@ -12,10 +12,10 @@ NotImplementedError`), or a type naming what the module can't use without an imp
 
 import ast
 import builtins
-import io
 import itertools
 import tokenize
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from functools import partial
 from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Returned
@@ -23,15 +23,14 @@ from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values.bodies import is_generator, terminates
 from constricter.fix.values.inference import RETURNED
 from constricter.offences import UNANNOTATED_RETURN, Edit, Fix, Offence
-from constricter.rules.annotations import roots
-from constricter.rules.syntax import FunctionDef
+from constricter.source.annotations import roots
+from constricter.source.syntax import FUNCTION_DEFS, FunctionDef, own_returns
 
 _NONE: Final = "None"
 _BUILTINS: Final = frozenset(dir(builtins))
 _OPENING: Final = frozenset("([{")
 _CLOSING: Final = frozenset(")]}")
 _COLON: Final = ":"
-_NESTED: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)  # their own `return`s
 _STUB: Final = (ast.Pass,)  # a body of only these (and a docstring, `...`) declares nothing it does
 
 
@@ -68,12 +67,12 @@ def _plain(tree: ast.Module) -> Iterator[tuple[str | None, FunctionDef]]:
     """
     statement: ast.stmt
     for statement in tree.body:
-        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and not statement.decorator_list:
+        if isinstance(statement, FUNCTION_DEFS) and not statement.decorator_list:
             yield None, statement
         elif isinstance(statement, ast.ClassDef):
             member: ast.stmt
             for member in statement.body:
-                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and not member.decorator_list:
+                if isinstance(member, FUNCTION_DEFS) and not member.decorator_list:
                     yield statement.name, member
 
 
@@ -95,25 +94,10 @@ def _typed(
         return given, owner is not None
     if _stub(func.body) or is_generator(tree, func):
         return None
-    returns: list[ast.Return] = list(_own_returns(func))
+    returns: list[ast.Return] = own_returns(func.body)
     if any(each.value is not None for each in returns) or (terminates(func.body) and not returns):
         return None  # a value nothing typed, or it only raises
     return _NONE, owner is not None
-
-
-def _own_returns(node: ast.AST) -> Iterator[ast.Return]:
-    """Yield a function's own `return`s, under `node`: not those of a function or class defined in it.
-
-    Yields:
-      Each one.
-
-    """
-    child: ast.AST
-    for child in ast.iter_child_nodes(node):
-        if isinstance(child, ast.Return):
-            yield child
-        elif not isinstance(child, _NESTED):
-            yield from _own_returns(child)
 
 
 def _stub(body: Sequence[ast.stmt]) -> bool:
@@ -182,10 +166,11 @@ def _colon(lines: Sequence[str], func: FunctionDef) -> tuple[int, int] | None:
     if not lines:
         return None
     first: int = func.lineno - 1
-    text: str = "".join(f"{line}\n" for line in lines[first:])
+    read: Iterator[str] = (f"{line}\n" for line in itertools.islice(lines, first, None))
+    readline: Callable[[], str] = partial(next, read, "")
     row: int
     column: int
-    row, column = _header_end(tokenize.generate_tokens(io.StringIO(text).readline))
+    row, column = _header_end(tokenize.generate_tokens(readline))
     line: int = first + row
     return line, len(lines[line - 1][:column].encode())
 

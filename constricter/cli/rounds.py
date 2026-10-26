@@ -9,11 +9,11 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
-from constricter import notebook
-from constricter.cli import collecting, schedule, traced
+from constricter import notebook, traced
+from constricter.cli import collecting, schedule
 from constricter.cli.options import Guesses, Mode, Options
 from constricter.cli.paths import STDIN
-from constricter.cli.reading import read_text
+from constricter.cli.reading import READ_ERRORS, read_text
 from constricter.cli.runs import CheckRun, FileRun, merged
 from constricter.cli.workers import Workers, running, started
 from constricter.empty import Empty
@@ -76,18 +76,26 @@ def settled(
             break
         fresh: list[tuple[int, FileRun]]
         latest: project.Index
-        fresh, latest = _round(paths, runs, (again, held), (check, options, session), modules)
+        fresh, latest = _round(paths, runs, (again, held), _How(check, options, session), modules)
         modules = latest if onward else modules
         again = [index for index, run in fresh if _unsettled(run, session, options.guesses)]
         changed = [index for index, run in fresh if _changed(paths[index], run)]
     return runs
 
 
+class _How(NamedTuple):
+    """How a round checks its files: the check, the options, and the type checkers' session."""
+
+    check: Callable[[Path, Outside], FileRun]
+    options: Options
+    session: "hints.Session | None"
+
+
 def _round(
     paths: Sequence[Path],
     runs: list[FileRun],
     todo: tuple[Sequence[int], Mapping[int, FileRun]],
-    how: "tuple[Callable[[Path, Outside], FileRun], Options, hints.Session | None]",
+    how: "_How",
     modules: project.Index,
 ) -> tuple[list[tuple[int, FileRun]], project.Index]:
     """Check files of `paths` again, knowing `modules`: each one's new run is joined to its `runs`.
@@ -109,9 +117,9 @@ def _round(
     latest: project.Index
     redone, latest = checked_all(
         [paths[i] for i in which],
-        how[0],
-        how[1],
-        how[2],
+        how.check,
+        how.options,
+        how.session,
         _Known(modules, {at: held[i] for at, i in enumerate(which) if i in held}),
     )
     fresh: list[tuple[int, FileRun]] = [
@@ -205,21 +213,21 @@ def _called_again(
         return runs, modules
     calling: list[int] = _calling(runs, found, again)
     before: project.Index = callers.with_parameters(modules, found)
-    modules = _checked_more(paths, runs, again, (check, options, session), before)
+    modules = _checked_more(paths, runs, again, _How(check, options, session), before)
     # A caller is checked again only if a function it imports now returns something else.
     calling = [
         at
         for at in calling
         if loose.returned(modules, paths[at], {}) != loose.returned(before, paths[at], {})
     ]
-    return runs, _checked_more(paths, runs, calling, (check, options, session), modules)
+    return runs, _checked_more(paths, runs, calling, _How(check, options, session), modules)
 
 
 def _checked_more(
     paths: Sequence[Path],
     runs: list[FileRun],
     which: Sequence[int],
-    how: "tuple[Callable[[Path, Outside], FileRun], Options, hints.Session | None]",
+    how: "_How",
     modules: project.Index,
 ) -> project.Index:
     """Check the files of `paths` at `which` again, knowing `modules`, into `runs`.
@@ -232,11 +240,17 @@ def _checked_more(
 
     """
     redone: list[FileRun]
-    redone, modules = checked_all([paths[at] for at in which], how[0], how[1], how[2], _Known(modules))
+    redone, modules = checked_all(
+        [paths[at] for at in which],
+        how.check,
+        how.options,
+        how.session,
+        _Known(modules),
+    )
     at: int
     run: FileRun
     for at, run in zip(which, redone, strict=True):
-        runs[at] = merged(runs[at], run) if how[1].mode is Mode.FIX else run
+        runs[at] = merged(runs[at], run) if how.options.mode is Mode.FIX else run
     return modules
 
 
@@ -327,7 +341,6 @@ def _texts(paths: Sequence[Path]) -> dict[Path, str]:
     path: Path
     for path in paths:
         if path != STDIN and path.suffix != notebook.SUFFIX:
-            # UnicodeDecodeError is a ValueError; a bad encoding declaration, a SyntaxError.
-            with contextlib.suppress(OSError, ValueError, SyntaxError):
+            with contextlib.suppress(*READ_ERRORS):
                 texts[path] = read_text(path)
     return texts

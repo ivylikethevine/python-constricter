@@ -9,11 +9,11 @@ alone, so the installed packages resolve as a corpus run's do). Prints each side
 fixes only one side has; each side's listing is kept. About 30s a side, 1 worker on 16CPU/60GB.
 """
 
+import io
 import shutil
 import subprocess
 import sys
 import tarfile
-import io
 from pathlib import Path
 
 import pydantic

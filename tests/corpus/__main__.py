@@ -45,17 +45,13 @@ nothing beside them. Every step starts constricter one way (`launch.run`) on one
 
 import contextlib
 import graphlib
-import hashlib
-import itertools
 import math
 import os
-import platform
 import shutil
 import subprocess  # asks git for the commit, and runs each step
 import sys
 import threading
 import time
-import tomllib
 from collections.abc import Callable, Generator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -64,173 +60,39 @@ from functools import partial
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
-from constricter import __version__
-from constricter.rules import parsed
 from tests.corpus import (
     catalog,
-    corpus_suite,
     launch,
     pipeline,
     planning,
     render,
     report_tables,
+    resume,
     sizing,
     stages,
+    suite_checkouts,
     suite_steps,
     trees,
 )
 from tests.corpus.pipeline import Record
-from tests.corpus.run_config import FACTS, STARTED, Run, outside, percent, read
+from tests.corpus.run_config import FACTS, JOBS, LABEL, ROOT, Command, Run, percent, read, read_command
 
 if TYPE_CHECKING:
     import resource
 
 _Measured: TypeAlias = tuple[trees.Tree | None, list[str]]  # a corpus's tree, and its steps that failed
-_RESUME: Final = "--resume"
-_AT_ONCE: Final = "--at-once"  # then how many corpora are found side by side, whatever the file says
-_JOBS: Final = "--jobs"  # and constricter's worker processes
-_LABEL: Final = "--label"  # then the run's label, whatever its file says
-_SHARE: Final = "--share"  # then the percent of the machine its steps share, whatever its file says
-_SAID: Final = 2000  # the characters kept of why a corpus couldn't be had: the end of its build's output
-_ONLY: Final = "--only"  # then a corpus or a set: the run file's, on that alone
-_MINUS: Final = "--minus"  # then a corpus, a set or a run file: the run's corpora less its
 _STEP: Final = "--step"  # then a run's folder, a corpus, a version and a step: that step alone
-_STAGE: Final = "--stage"  # then one of the run's stages: its steps alone
-_JOIN: Final = "--join-anyway"  # a stage joins a folder of another commit or run file
-_STAGES: Final = "stages"  # in a run's facts: each stage run, with its commit
-_LEFT: Final = "stages-left"  # and those still to run
-_ROOT: Final = Path(__file__).resolve().parents[2]
+_LEFT: Final = "stages-left"  # in a run's facts: the stages still to run
 _POLL: Final = 0.2  # the seconds between looks at whether a step's process has ended
 _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
 _DONE: Final = True  # what an event's `wait` says once it's set
 _MACOS: Final = "darwin"
-_LOG: Final = "runner.log"  # in a run's folder
-_RUNNING: Final = "running"  # and when the one under way did: gone once it ends
-_QUEUE: Final = "queue.log"  # and its queue, each minute steps wait
+_QUEUE: Final = "queue.log"  # in a run's folder: its queue, each minute steps wait
 _SUITE_WORKERS: Final = "CORPUS_SUITE_WORKERS"  # in a step's environment: its suite's tests' processes
-_RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)  # a suite's tests as released
 _SAMPLED: Final = "sampled"  # what read a step's use outside a scope: the sampler, the waited count
 _MAXRSS: Final = (
     1 if sys.platform == _MACOS else 1024
 )  # the bytes `ru_maxrss` counts in: kilobytes, but there
-
-
-def run_facts(run: Run, started: datetime) -> Record:
-    """Gather what a run's outputs say of the run itself.
-
-    Returns:
-      The run file's values, this checkout's version and commit, the machine's CPUs and memory,
-      and the keys a record is comparable across runs by: each type checker's version, and the
-      version of what reads a suite's tests' output.
-
-    """
-    commit: str = _git("rev-parse", "--short=12", "HEAD").strip()
-    return {
-        "label": run.label,
-        "started": started.isoformat(timespec="seconds"),
-        "versions": list(run.versions),
-        "formats": list(run.formats),
-        "jobs": run.jobs,
-        "at-once": run.at_once,
-        "corpora": list(run.include),
-        "minus": list(run.minus),
-        "check": run.steps.check,
-        "fix": list(run.steps.fix),
-        "coverage": run.steps.coverage,
-        "infer-with": list(run.steps.infer),
-        "census": run.steps.census,
-        "tests": run.steps.tests,
-        "types": run.steps.types,
-        "traced": run.steps.traced,
-        "timing": run.steps.timing,
-        "profile": run.steps.profile,
-        "install": run.install,
-        "suite-seconds": run.suite_seconds,
-        "suite-workers": run.suite_workers,
-        "constricter": __version__,
-        "commit": commit,
-        "changes": changes(run.output),
-        "python": platform.python_version(),
-        "system": platform.system(),
-        "cpus": os.cpu_count() or 1,
-        "share": run.share,
-        "gigabytes": round((parsed.memory() or 0) / sizing.GIB),
-        "checkers": checkers(run),
-        "parser": corpus_suite.parser(),
-    }
-
-
-def _git(*args: str) -> str:
-    """Ask this checkout's git.
-
-    Returns:
-      What it printed.
-
-    """
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=False, cwd=_ROOT).stdout
-
-
-def changes(output: Path) -> str:
-    """Name the checkout's uncommitted changes: tracked files' and the untracked files git sees.
-
-    Not those under `output`, where the runs write their folders: a run's own output leaves the
-    tree the next one measures as clean as it was.
-
-    Returns:
-      A hash of them; nothing for a clean tree.
-
-    """
-    beside: list[str] = outside(output, _ROOT)
-    changed: str = _git("diff", "HEAD", "--binary", *beside)
-    untracked: list[str] = _git("ls-files", "--others", "--exclude-standard", *beside).splitlines()
-    path: str
-    for path in untracked:
-        changed += f"\n{path}\n" + (_ROOT / path).read_text(encoding="utf-8", errors="replace")
-    return hashlib.sha256(changed.encode()).hexdigest()[:12] if changed else ""
-
-
-def checkers(run: Run) -> list[str]:
-    """Name each type checker the run's `infer-with` starts, with its version: `--version`'s first line.
-
-    Found as `--infer-with` finds it: on the path, or beside this Python.
-
-    Returns:
-      Them; `(not found)` for one that isn't installed.
-
-    """
-    found: list[str] = []
-    name: str
-    for name in run.steps.infer:
-        path: str | None
-        if (path := shutil.which(name) or shutil.which(name, path=str(Path(sys.executable).parent))) is None:
-            found.append(f"{name} (not found)")
-            continue
-        said: str = subprocess.run([path, "--version"], capture_output=True, text=True, check=False).stdout
-        line: str = said.strip().partition("\n")[0]
-        found.append(line if line.startswith(name) else f"{name} {line}")
-    return found
-
-
-def _toml(facts: Record) -> str:
-    """Write flat facts as TOML: strings, numbers, booleans and lists of strings.
-
-    Returns:
-      The text.
-
-    """
-
-    def value(each: object) -> str:
-        if isinstance(each, bool):
-            return str(each).lower()
-        if isinstance(each, list):
-            return "[" + ", ".join(value(one) for one in cast("list[object]", each)) + "]"
-        return (
-            str(each)
-            if isinstance(each, int)
-            else '"' + str(each).replace("\\", "\\\\").replace('"', '\\"') + '"'
-        )
-
-    return "".join(f"{key} = {value(each)}\n" for key, each in facts.items())
 
 
 def _suited(run: Run) -> dict[str, str]:
@@ -252,16 +114,6 @@ class _Hold:
     held: tuple[int, int]
 
 
-def _every(_name: str) -> bool:
-    """Choose every step: a run in one sitting's.
-
-    Returns:
-      True.
-
-    """
-    return True
-
-
 class Running(NamedTuple):
     """A run under way: its folder, what its steps share of the machine, and what counts their use."""
 
@@ -272,8 +124,8 @@ class Running(NamedTuple):
     watcher: sizing.Watcher | None  # `None`: nothing counts a step's use
     ports: dict[str, threading.Lock]  # each port's lock, taken with its share of the machine (`Slots.take`)
     finding: threading.Semaphore  # the corpora found at once: cloned, installed
+    checkouts: dict[tuple[str, str], threading.Lock]  # each suite checkout's lock, as `ports`, made as asked
     scope: tuple[str, ...] = ()  # what starts a step in a scope of its own (`sizing.scope`): nothing, none
-    checkouts: dict[tuple[str, str], threading.Lock] | None = None  # each suite checkout's lock, as `ports`
     ranks: Mapping[tuple[str, str], float] | None = None  # each step's planned start (`planning.ranks`)
     chosen: Callable[[str], bool] | None = None  # the steps this execution's stage runs: `None`, every one
 
@@ -298,7 +150,12 @@ class Running(NamedTuple):
         scoped |= {_SUITE_WORKERS: str(hold.wanted.workers)} if sizing.testing(name) else {}
         servers: int = hold.wanted.servers
         scoped |= {pipeline.INFER_MEMORY: f"{servers / sizing.GIB:.2f}"} if servers else {}
-        said: list[str] = [_LABEL, self.run.label, _JOBS, str(self.run.jobs)]  # what the run's command said
+        said: list[str] = [
+            LABEL,
+            self.run.label,
+            JOBS,
+            str(self.run.jobs),
+        ]  # what the run's command said
         file: IO[str]
         process: subprocess.Popen[bytes]
         with (
@@ -307,7 +164,7 @@ class Running(NamedTuple):
                 [*command, entry.name, job.version, name, *said],
                 stdout=file,
                 stderr=subprocess.STDOUT,
-                cwd=_ROOT,
+                cwd=ROOT,
                 env=os.environ | _suited(self.run) | scoped,
             ) as process,
         ):
@@ -316,7 +173,7 @@ class Running(NamedTuple):
             counted: sizing.Used = self._waited(process, hold, f"{entry.name}/{name}")
         if self.watcher is None:
             return sizing.Used()
-        used: sizing.Used = sizing.Used(*self.watcher.used(process.pid))
+        used: sizing.Used = self.watcher.used(process.pid)
         return sizing.Used(max(used.cpu, counted.cpu), max(used.memory, counted.memory))
 
     def _waited(self, process: subprocess.Popen[bytes], hold: "_Hold", named: str) -> sizing.Used:
@@ -339,7 +196,7 @@ class Running(NamedTuple):
             time.sleep(_POLL)
             now: float = time.perf_counter()
             if self.watcher is not None and now - looked >= _LOOK:
-                seen: sizing.Used = sizing.Used(*self.watcher.seen(process.pid))
+                seen: sizing.Used = self.watcher.seen(process.pid)
                 fitted: tuple[int, int] = self.plan.fitted(
                     hold.wanted,
                     hold.held,
@@ -388,11 +245,10 @@ class Running(NamedTuple):
           Them, the port's last if it binds one.
 
         """
-        port: threading.Lock | None = self.ports.get(entry.port) if suite_steps.binds(name) else None
-        held_too: dict[tuple[str, str], threading.Lock] = self.checkouts if self.checkouts is not None else {}
+        port: threading.Lock | None = self.ports.get(entry.port) if suite_checkouts.binds(name) else None
         locks: list[threading.Lock] = [
-            held_too.setdefault((entry.name, each), threading.Lock())
-            for each in (suite_steps.checkouts(job, name) if job.tree.suite is not None else ())
+            self.checkouts.setdefault((entry.name, each), threading.Lock())
+            for each in (suite_checkouts.checkouts(job, name) if job.tree.suite is not None else ())
         ]
         return locks + ([port] if port is not None else [])
 
@@ -447,7 +303,7 @@ class Running(NamedTuple):
         """Write a line to the run's output and, timed, to its `runner.log`."""
         _ = sys.stderr.write(f"{line}\n")
         file: IO[str]
-        with (self.store.root / _LOG).open("a", encoding="utf-8") as file:
+        with (self.store.root / resume.LOG).open("a", encoding="utf-8") as file:
             _ = file.write(f"{datetime.now().astimezone():%H:%M:%S} {line}\n")
 
     def steps(self, entry: catalog.Entry, job: pipeline.Job, names: Sequence[str]) -> list[str]:
@@ -503,7 +359,7 @@ class Running(NamedTuple):
         if self.store.read(job.tree.name, job.recorded, name) is not None:
             return True
         taken: Record | None
-        if name == _RELEASED and (taken := suite_steps.taken(job)) is not None:
+        if name == pipeline.TESTS_RELEASED and (taken := suite_steps.taken(job)) is not None:
             self.store.write(job.tree.name, job.recorded, name, taken)
             said: str = (
                 f", as {taken[suite_steps.CONFIRMED]} found them" if suite_steps.CONFIRMED in taken else ""
@@ -530,7 +386,7 @@ class Running(NamedTuple):
             try:
                 tree: trees.Tree = trees.found(entry, install=self.run.install)
             except (OSError, RuntimeError, ValueError) as failure:  # it can't be cloned, installed or fetched
-                why: str = f"{entry.name}: not found: {str(failure)[-_SAID:]}"
+                why: str = f"{entry.name}: not found: {str(failure)[-pipeline.TAIL :]}"
                 self.said(why)
                 return None, [why]
         failed: list[str] = []
@@ -543,7 +399,7 @@ class Running(NamedTuple):
         """Measure one corpus with one version (see `measured`).
 
         Every step starts as soon as the steps it reads have ended (`suite_steps.needs`) and the
-        checkouts it works on are installed (`suite_steps.checkouts`): those of a suite's steps, a
+        checkouts it works on are installed (`suite_checkouts.checkouts`): those of a suite's steps, a
         kind each, one after another beside the steps before them. Only the stage's, where the
         execution runs one (`chosen`), less those needing a step of a stage still to run.
 
@@ -562,14 +418,14 @@ class Running(NamedTuple):
         # Each step waits on its own thread; the checkouts are installed one after another.
         with ThreadPoolExecutor(1) as installing, ThreadPoolExecutor(max(1, len(names))) as pool:
             installed: dict[str, Future[Path]] = {
-                each: installing.submit(suite_steps.prepared, job, each)
+                each: installing.submit(suite_checkouts.prepared, job, each)
                 for each in dict.fromkeys(
-                    each for name in suited for each in suite_steps.checkouts(job, name)
+                    each for name in suited for each in suite_checkouts.checkouts(job, name)
                 )
             }
             name: str
             for name in names:  # those a step waits for come before it
-                used: tuple[str, ...] = suite_steps.checkouts(job, name) if name in suited else ()
+                used: tuple[str, ...] = suite_checkouts.checkouts(job, name) if name in suited else ()
                 after: list[Future[bool]] = [ended[each] for each in needs.get(name, ()) if each in ended]
                 ready: list[Future[Path]] = [installed[each] for each in used]
                 ended[name] = pool.submit(self._after, entry, job, name, after, ready)
@@ -597,7 +453,7 @@ class Running(NamedTuple):
         return failed
 
     def _chosen(self, name: str) -> bool:
-        return (self.chosen or _every)(name)
+        return (self.chosen or stages.every)(name)
 
     def _runnable(
         self,
@@ -681,28 +537,27 @@ def _counted(record: Record | None, used: sizing.Used) -> tuple[sizing.Used, str
     return (counted, sizing.SCOPE) if scoped else (used, _SAMPLED)
 
 
-def commanded(run: Run, argv: Sequence[str]) -> Run:
+def commanded(run: Run, said: Command) -> Run:
     """Read what a command says of its run, whatever the run file does.
 
     Returns:
       The run, with the command's corpora, label, corpora at once, `--jobs` and `--share`.
 
     """
-    if _ONLY in argv:
-        run = run._replace(include=(argv[argv.index(_ONLY) + 1],))
-    if _MINUS in argv:
-        minus: str = argv[argv.index(_MINUS) + 1]
-        less: Run | None = read(Path(minus)) if minus.endswith(".toml") else None
-        names: list[str] = [minus] if less is None else catalog.load().names(list(less.include))
+    if said.only is not None:
+        run = run._replace(include=(said.only,))
+    if said.minus is not None:
+        less: Run | None = read(Path(said.minus)) if said.minus.endswith(".toml") else None
+        names: list[str] = [said.minus] if less is None else catalog.load().names(list(less.include))
         run = run._replace(minus=tuple(names))
-    if _LABEL in argv:
-        run = run._replace(label=argv[argv.index(_LABEL) + 1])
-    if _AT_ONCE in argv:
-        run = run._replace(at_once=int(argv[argv.index(_AT_ONCE) + 1]))
-    if _JOBS in argv:
-        run = run._replace(jobs=int(argv[argv.index(_JOBS) + 1]))
-    if _SHARE in argv:
-        run = run._replace(share=percent(int(argv[argv.index(_SHARE) + 1])))
+    if said.label is not None:
+        run = run._replace(label=said.label)
+    if said.at_once is not None:
+        run = run._replace(at_once=said.at_once)
+    if said.jobs is not None:
+        run = run._replace(jobs=said.jobs)
+    if said.share is not None:
+        run = run._replace(share=percent(said.share))
     return run
 
 
@@ -720,7 +575,7 @@ def _step(argv: Sequence[str]) -> int:
     version: str
     name: str
     corpus, version, name = argv[1:4]
-    run: Run = commanded(read(folder / "run.toml"), argv[4:])
+    run: Run = commanded(read(folder / "run.toml"), read_command(argv[4:], run_file=False))
     launch.configure(run.options)
     # A suite's type checks have a checkout of their own, and run beside its tests on the other.
     tree: trees.Tree = trees.found(
@@ -755,198 +610,39 @@ def main(argv: Sequence[str]) -> int:
     if argv[:1] == [_STEP]:
         return _step(argv[1:])
     start: float = time.perf_counter()
-    earlier: Record = resumed_facts(argv)
-    run: Run = relabelled(commanded(read(Path(argv[0])), argv), argv, earlier)
-    stage: str | None = stages.named(argv[argv.index(_STAGE) + 1], run.stages) if _STAGE in argv else None
+    said: Command = read_command(argv)
+    earlier: Record = resume.resumed_facts(said)
+    run: Run = resume.relabelled(commanded(read(cast("Path", said.run_file)), said), said, earlier)
+    stage: str | None = None if said.stage is None else stages.named(said.stage, run.stages)
     launch.configure(run.options)
-    facts: Record = carried(run_facts(run, datetime.now().astimezone()), earlier, _last_written(argv))
-    facts = joined(argv, earlier, facts, stage)
-    folder: Path = _folder(argv, run, facts)
+    facts: Record = resume.carried(
+        resume.run_facts(run, datetime.now().astimezone()),
+        earlier,
+        resume.last_written(said),
+    )
+    facts = resume.joined(said, earlier, facts, stage)
+    folder: Path = resume.run_folder(said, run, facts)
     store: pipeline.Store = pipeline.Store(folder)
     measured: list[_Measured] = _all(run, store, None if stage is None else stages.chosen(stage, run.stages))
     shutil.rmtree(folder / "work", ignore_errors=True)  # the copies its fixes worked on
-    facts = finished(facts, (time.perf_counter() - start) / 60)
-    if _STAGES in facts:
-        facts[_LEFT] = stages.left(run.stages, _missing(run, store, [tree for tree, _ in measured if tree]))
-    _ = (folder / FACTS).write_text(_toml(facts), encoding="utf-8")
+    facts = resume.finished(facts, (time.perf_counter() - start) / 60)
+    if resume.STAGES in facts:
+        facts[_LEFT] = stages.left(
+            run.stages,
+            resume.missing(run, store, [tree for tree, _ in measured if tree]),
+        )
+    _ = (folder / FACTS).write_text(resume.facts_toml(facts), encoding="utf-8")
     records: report_tables.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
     # A part of its corpora, or of its stages, isn't what its section is of.
-    if _ONLY not in argv and _MINUS not in argv and not facts.get(_LEFT):
-        render.publish(records, _ROOT, facts)
+    if said.only is None and said.minus is None and not facts.get(_LEFT):
+        render.publish(records, ROOT, facts)
     _ = sys.stdout.write("".join(f"{path}\n" for path in written))
     failed: list[str] = [f"failed: {each}" for _, failures in measured for each in failures]
     failed += [f"problem: {each}" for each in render.problems(records)]
     noted: list[str] = [f"note: {each}" for each in render.notes(records)]
     _ = sys.stderr.write("".join(f"{each}\n" for each in (*noted, *failed)))
     return int(bool(failed))
-
-
-def joined(argv: Sequence[str], earlier: Record, facts: Record, stage: str | None) -> Record:
-    """Join a stage to the folder `--resume` names, noting it and its commit in the run's facts.
-
-    `earlier`: the folder's facts (`resumed_facts`). Its stages carry on to an execution of no stage.
-
-    Returns:
-      The facts, with each stage run.
-
-    Raises:
-      SystemExit: the folder's stages ran on another commit, other uncommitted changes or another
-        run file, and `--join-anyway` isn't given.
-
-    """
-    before: list[str] = list(cast("list[str]", earlier.get(_STAGES, [])))
-    if stage is None:
-        return facts | ({_STAGES: before} if before else {})
-    now: str = _spelled(facts)
-    if earlier and _JOIN not in argv:
-        kept: Path = Path(argv[argv.index(_RESUME) + 1]) / "run.toml"
-        message: str = ""
-        if _spelled(earlier) != now:
-            message = f"the folder's stages ran on {_spelled(earlier)}, this on {now}: run it there"
-        elif kept.exists() and kept.read_bytes() != Path(argv[0]).read_bytes():
-            message = f"{argv[0]} isn't the run file the folder's stages ran ({kept}): name that one"
-        if message:
-            message = f"{_STAGE} {stage}: {message}, or {_JOIN}"
-            raise SystemExit(message)
-    return facts | {_STAGES: [*before, f"{stage} {now}"]}
-
-
-def _spelled(facts: Record) -> str:
-    """Name the tree a run's facts were made on: its commit, and its uncommitted changes' hash.
-
-    Returns:
-      `abc123def456`, or `abc123def456+0123456789ab`.
-
-    """
-    changed: str = str(facts.get("changes", ""))
-    return f"{facts.get('commit', '')}{f'+{changed}' if changed else ''}"
-
-
-def _missing(run: Run, store: pipeline.Store, measured: Sequence[trees.Tree]) -> list[str]:
-    """Name the steps of the run, on every corpus measured and with every version, that have no record.
-
-    Returns:
-      Them: one that failed, and one left for the stage it needs.
-
-    """
-    found: list[str] = []
-    tree: trees.Tree
-    version: str
-    for tree in measured:
-        for version in run.versions:
-            job: pipeline.Job = pipeline.Job(run, store, tree, version)
-            found += [
-                name
-                for name in (*pipeline.steps(run), *suite_steps.waiting(job))
-                if store.read(tree.name, job.recorded, name) is None
-            ]
-    return found
-
-
-def resumed_facts(argv: Sequence[str]) -> Record:
-    """Read the facts of the run `--resume` carries on.
-
-    Returns:
-      Its folder's `facts.toml`; nothing for a new run, or a folder that has none.
-
-    """
-    if _RESUME not in argv:
-        return {}
-    path: Path = Path(argv[argv.index(_RESUME) + 1]) / FACTS
-    return tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-
-
-def _last_written(argv: Sequence[str]) -> datetime | None:
-    """Say when the run `--resume` carries on last wrote its `runner.log`: a step's end.
-
-    Returns:
-      The time; `None` for a new run, or one that ended no step.
-
-    """
-    if _RESUME not in argv:
-        return None
-    log: Path = Path(argv[argv.index(_RESUME) + 1]) / _LOG
-    return datetime.fromtimestamp(log.stat().st_mtime).astimezone() if log.exists() else None
-
-
-def relabelled(run: Run, argv: Sequence[str], earlier: Record) -> Run:
-    """Give a resumed run the label it was started under, whatever its run file says.
-
-    `earlier`: the facts of the run it carries on (`resumed_facts`).
-
-    Returns:
-      The run, under that label.
-
-    Raises:
-      SystemExit: `--label` names another, which would measure every corpus again beside it.
-
-    """
-    label: str | None
-    if (label := cast("str | None", earlier.get("label"))) is None:  # `_toml` writes it as a string
-        return run
-    if _LABEL in argv and run.label != label:
-        message: str = (
-            f"{_RESUME} carries on the run labelled {label!r}, not {run.label!r}: leave out {_LABEL}"
-        )
-        raise SystemExit(message)
-    return run._replace(label=label)
-
-
-def carried(facts: Record, earlier: Record, last: datetime | None) -> Record:
-    """Carry a stopped run's start and time into a resumed one's facts.
-
-    `earlier`: the stopped run's facts; `last`: when it last ended a step. Its executions' minutes
-    are those that ended (`finished`), and one that was stopped from where it started to `last`.
-
-    Returns:
-      The facts, with the first execution's start, the minutes before this one, and this one's start.
-
-    """
-    now: str = str(facts[STARTED])
-    if not earlier:
-        return facts | {_RUNNING: now}
-    before: float = float(cast("float", earlier.get(render.MINUTES, 0)))
-    stopped: str | None = cast("str | None", earlier.get(_RUNNING))
-    if stopped is None and render.MINUTES not in earlier:  # no minutes: its one execution was stopped
-        stopped = cast("str | None", earlier.get(STARTED))
-    if stopped is not None and last is not None:
-        before += max(0.0, (last - datetime.fromisoformat(stopped)).total_seconds() / 60)
-    return facts | {STARTED: earlier.get(STARTED, now), render.MINUTES: round(before), _RUNNING: now}
-
-
-def finished(facts: Record, minutes: float) -> Record:
-    """Add an execution's minutes to its run's, as it ends.
-
-    Returns:
-      The facts, with the run's minutes and none under way.
-
-    """
-    total: int = round(float(cast("float", facts.get(render.MINUTES, 0))) + minutes)
-    return {key: value for key, value in facts.items() if key != _RUNNING} | {render.MINUTES: total}
-
-
-def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
-    """Make the folder this execution writes, or take the one `--resume` names, and keep the run file there.
-
-    Returns:
-      The folder.
-
-    """
-    resumed: Path | None = Path(argv[argv.index(_RESUME) + 1]) if _RESUME in argv else None
-    started: datetime = datetime.fromisoformat(str(facts["started"]))
-    folder: Path = (resumed or _ROOT / run.folder(started)).resolve()
-    named: str = folder.name
-    again: int
-    for again in itertools.count(2):  # past another execution of the label, started that minute
-        if resumed is not None or not folder.exists():
-            break
-        folder = folder.with_name(f"{named}-{again}")
-    folder.mkdir(parents=True, exist_ok=True)
-    if not (resumed and (folder / "run.toml").exists()):
-        _ = shutil.copyfile(argv[0], folder / "run.toml")
-    _ = (folder / FACTS).write_text(_toml(facts), encoding="utf-8")
-    return folder
 
 
 def _all(run: Run, store: pipeline.Store, chosen: Callable[[str], bool] | None = None) -> list[_Measured]:
@@ -968,9 +664,9 @@ def _all(run: Run, store: pipeline.Store, chosen: Callable[[str], bool] | None =
     version: str
     for version in run.versions:
         _ = launch.python(version)
-    plan: sizing.Plan = sizing.plan(run, store.root, _ROOT)
+    plan: sizing.Plan = sizing.plan(run, store.root, ROOT)
     # Its steps held to its share of the machine, where it has one.
-    scope: tuple[str, ...] = sizing.scope(_ROOT, plan if run.share else None)
+    scope: tuple[str, ...] = sizing.scope(ROOT, plan if run.share else None)
     running: Running = Running(
         run,
         store,
@@ -979,8 +675,8 @@ def _all(run: Run, store: pipeline.Store, chosen: Callable[[str], bool] | None =
         sizing.watcher(scoped=bool(scope)),
         {entry.port: threading.Lock() for entry in entries if entry.port},
         threading.Semaphore(max(1, run.at_once)),
-        scope,
         {},
+        scope,
         planning.ranks(run, entries, plan, chosen),
         chosen,
     )

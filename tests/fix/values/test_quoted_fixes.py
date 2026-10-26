@@ -7,7 +7,7 @@ from typing import Final
 import pytest
 
 from constricter import Checks, Offence, check_source
-from constricter.rules.quoted import written
+from constricter.source.quoted import written
 
 SOURCE: Final = """
 from typing import TYPE_CHECKING, Annotated, Literal

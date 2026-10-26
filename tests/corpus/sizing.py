@@ -70,7 +70,7 @@ from typing import Final, NamedTuple, Protocol, cast
 from constricter.cli import paths
 from constricter.cli.lsp import hints
 from constricter.cli.lsp.protocol import SERVERS, Server
-from constricter.rules import parsed
+from constricter.source import parsed
 from tests.corpus import archive
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
@@ -86,7 +86,7 @@ from tests.corpus.pipeline import (
     Record,
     parts,
 )
-from tests.corpus.run_config import Run, started
+from tests.corpus.run_config import WHOLE, Run, directory, started
 from tests.corpus.trees import Tree
 
 GIB: Final = 1 << 30
@@ -142,7 +142,6 @@ _LINUX: Final = "linux"
 _SYSTEMD_RUN: Final = "systemd-run"
 _SYSTEMCTL: Final = "systemctl"
 _SLICE: Final = "constricter-corpus.slice"  # a run's steps' scopes, held to its share (`_sliced`)
-_WHOLE: Final = 100  # a share's percent of the whole machine
 _SCOPE: Final = (_SYSTEMD_RUN, "--user", "--scope", "--quiet", "--collect")  # then the command, run in it
 _PROBE: Final = (  # run in a scope by `scope`: whether its control group counts it
     "import sys; from tests.corpus import sizing; sys.exit(sizing.counted(sizing.group()) is None)"
@@ -162,11 +161,11 @@ class Watcher(Protocol):
     def watch(self, root: int) -> None:
         """Start counting process `root` and what it starts."""
 
-    def seen(self, root: int) -> tuple[float, int]:
+    def seen(self, root: int) -> Used:
         """Say what its tree has used so far: its CPU seconds, and its most bytes at once."""
         raise NotImplementedError
 
-    def used(self, root: int) -> tuple[float, int]:
+    def used(self, root: int) -> Used:
         """Stop counting it, and say what its tree used: its CPU seconds, and its most bytes at once."""
         raise NotImplementedError
 
@@ -274,7 +273,7 @@ def _sliced(held: "Plan") -> tuple[str, ...]:
       share is only the steps' sizing.
 
     """
-    limits: list[str] = [f"CPUQuota={held.cpus * _WHOLE}%", f"MemoryHigh={held.memory}"]
+    limits: list[str] = [f"CPUQuota={held.cpus * WHOLE}%", f"MemoryHigh={held.memory}"]
     try:
         done: subprocess.CompletedProcess[bytes] = subprocess.run(
             [_SYSTEMCTL, "--user", "set-property", "--runtime", _SLICE, *limits],
@@ -479,6 +478,8 @@ class Slots:
             return f"wants {waiter.cpus} CPUs and {waiter.memory / GIB:.1f} GB"
         if any(lock.locked() for lock in waiter.locks):
             return "its checkout or its port is in use"
+        if waiter.memory >= self.memory:  # it runs alone, kept for none
+            return "starting"
         whole: list[_Waiter] = [other for other in self.waiting if other.memory >= self.memory]
         if waiter.memory < self.memory and whole:
             return f"{whole[0].name} wants all the memory"
@@ -711,26 +712,24 @@ class Plan(NamedTuple):
           The CPUs it keeps busy, the memory it holds at most, and how long it lasts.
 
         """
-        directory: str = tree.name.replace(" ", "-")
+        folder: str = directory(tree.name)
         known: Before | None = (
-            self.before.get((directory, step))
-            or self._parted(directory, step)
-            or self._united(directory, step)
+            self.before.get((folder, step)) or self._parted(folder, step) or self._united(folder, step)
         )
         if step in SHARING:  # either may run their one check: the most either took
             both: list[Before] = [
-                self.before[directory, each] for each in sorted(SHARING) if (directory, each) in self.before
+                self.before[folder, each] for each in sorted(SHARING) if (folder, each) in self.before
             ]
             if both:
                 known = Before(*(max(each) for each in zip(*both, strict=True)))
         behind: tuple[str, ...] = _CHAIN[_CHAIN.index(_kind(step)) + 1 :] if _kind(step) in _CHAIN else _CHAIN
         lasting: float = sum(
-            self.before[directory, each].seconds
+            self.before[folder, each].seconds
             for each in (step, *(behind if tree.suite is not None else ()))
-            if (directory, each) in self.before
+            if (folder, each) in self.before
         )
         if testing(step) and tree.suite is not None and not (step == TRACED and tree.suite.script):
-            tested: Before | None = self.before.get((directory, TESTS)) if step == TRACED else None
+            tested: Before | None = self.before.get((folder, TESTS)) if step == TRACED else None
             return self._testing(tree.suite, (known, tested), lasting, heavy=heavy)
         cpus: int = math.ceil(known.cpus) if known is not None else _STEP_CPUS
         cpus = min(cpus, max(_STEP_CPUS, self.cpus // _MOST_SHARE))
@@ -824,7 +823,7 @@ class Plan(NamedTuple):
             workers=workers if busy < workers else 0,
         )
 
-    def _parted(self, directory: str, step: str) -> Before | None:
+    def _parted(self, folder: str, step: str) -> Before | None:
         """Estimate a part of a suite's tests or type checks no run has measured, by its kind's others.
 
         As much as the kind's largest measured part took, by CPU seconds (the released tests'): a
@@ -841,16 +840,16 @@ class Plan(NamedTuple):
         measured: list[Before] = [
             known
             for (where, each), known in self.before.items()
-            if where == directory and each.startswith(f"{kind}-")
+            if where == folder and each.startswith(f"{kind}-")
         ]
         if measured:
             return max(measured, key=lambda known: known.cpus * known.seconds)
         whole: Before | None
-        if (whole := self.before.get((directory, kind))) is None:
+        if (whole := self.before.get((folder, kind))) is None:
             return None
         return whole._replace(seconds=whole.seconds / max(1, len(parts(self.run, kind))))
 
-    def _united(self, directory: str, step: str) -> Before | None:
+    def _united(self, folder: str, step: str) -> Before | None:
         """Estimate the fix with every checker (`infer-union`), unmeasured, by its checkers' steps.
 
         Returns:
@@ -858,9 +857,9 @@ class Plan(NamedTuple):
 
         """
         checkers: list[Before] = [
-            self.before[directory, each]
+            self.before[folder, each]
             for each in (f"{INFER}{checker}" for checker in self.run.steps.infer)
-            if (directory, each) in self.before
+            if (folder, each) in self.before
         ]
         if step != _UNION_STEP or not checkers:
             return None
@@ -900,8 +899,8 @@ def plan(run: Run, folder: Path, root: Path) -> Plan:
 
     """
     machine: int = os.cpu_count() or 1
-    cpus: int = run.cpus or (max(1, machine * run.share // _WHOLE) if run.share else machine)
+    cpus: int = run.cpus or (max(1, machine * run.share // WHOLE) if run.share else machine)
     free: int = int((available() or 0) * _MEMORY_SHARE)
-    shared: int = (parsed.memory() or 0) * run.share // _WHOLE
+    shared: int = (parsed.memory() or 0) * run.share // WHOLE
     memory: int = int(run.memory * GIB) if run.memory else min(free, shared or free)
     return Plan(run, cpus, memory or _UNKNOWN, before(root / run.output, folder))

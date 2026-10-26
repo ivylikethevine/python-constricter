@@ -8,11 +8,11 @@ which reads an installed package's.
 
 from typing import Final, NamedTuple, NotRequired, Required, TypeAlias, TypedDict
 
-# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stubs.signatures`): a
-# class passed as the argument, and a builtin container.
 # Before a path, an `async def`'s entry for `overloads.chosen`; before a method's name in
 # `method_overloads`, an `async def` method's: its signatures' returns are what awaiting a call gives.
 AWAIT: Final = "await "
+# `Accepts`' keys for an installed package's parameter (see `constricter.fix.index.stubs.signatures`): a
+# class passed as the argument, and a builtin container.
 CLASS_VERDICT: Final = "k"
 CLASS_BINDS: Final = "kv"
 CLASS_BOUNDED: Final = "kb"

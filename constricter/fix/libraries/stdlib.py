@@ -21,8 +21,8 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.core.signatures import Variant
-from constricter.rules.syntax import import_bindings
-from constricter.rules.walked import classes
+from constricter.source.syntax import import_bindings
+from constricter.source.walked import classes
 
 
 def _table(name: str) -> object:
@@ -86,6 +86,7 @@ _SUBSCRIPTABLE: Final = cast("Mapping[str, str]", _table("subscriptable"))
 # (`re.Match`'s `string`: `AnyStr`), which its instance's type arguments bind; and a non-generic
 # class's own that `_ATTRIBUTES` can't hold (`ast.Module`'s `body`: `list[ast.stmt]`).
 _GENERIC_ATTRIBUTES: Final = cast("_Own", _table("generic_attributes"))
+_MEMBER_TABLES: Final = (_METHODS, _ATTRIBUTES, _METHOD_OVERLOADS, _GENERIC_ATTRIBUTES)  # every member's
 # What iterating each class's instance gives, as such a template (`io.TextIOWrapper`'s `str`).
 _ELEMENTS: Final = cast("Mapping[str, str]", _table("elements"))
 
@@ -113,7 +114,7 @@ def member_classes() -> Mapping[str, frozenset[str]]:
     """
     own: dict[str, set[str]] = {}
     table: _Own
-    for table in (_METHODS, _ATTRIBUTES, _METHOD_OVERLOADS, _GENERIC_ATTRIBUTES):
+    for table in _MEMBER_TABLES:
         path: str
         named: Mapping[str, str | None]
         for path, named in table.items():
@@ -168,7 +169,7 @@ _KIND: Final = "stdlib"  # the fix kind of what the tables type
 _BUILTIN_NAMES: Final = frozenset({*dir(builtins), "None"})
 _DOT: Final = "."
 _ENTER: Final = "__enter__"
-_SELF: Final = "Self"  # in a template: the receiver's own type
+SELF_TYPE: Final = "Self"  # in a template (`Method.types`): the receiver's own type
 ANY: Final = "Any"  # a function's whole return in `RETURNS`, declared `typing.Any` (`json.loads`)
 KNOWN: Final = frozenset({*RETURNS, *OVERLOADS, ENVIRONMENT, *CLASSES})  # every function the tables type
 # Capitalised functions the tables don't type (`xml.etree.ElementTree.Comment`): no constructors.
@@ -357,9 +358,11 @@ def members(path: str) -> frozenset[str]:
     """
     own: set[str] = set()
     table: _Own
-    for table in (_METHODS, _ATTRIBUTES, _METHOD_OVERLOADS, _GENERIC_ATTRIBUTES):
-        own.update(table.get(path, {}))
-    return frozenset(own).union(*(members(ancestor) for ancestor in _ancestors(path)))
+    each: str
+    for table in _MEMBER_TABLES:
+        for each in (path, *_ancestors(path)):  # every ancestor's: the tables hold each class's whole line
+            own.update(table.get(each, {}))
+    return frozenset(own)
 
 
 def attributes(path: str) -> dict[str, str]:
@@ -384,7 +387,7 @@ def lines(path: str) -> frozenset[str]:
       Their paths: two classes sharing one have an order between them the tables don't say.
 
     """
-    return frozenset({path}).union(*(lines(ancestor) for ancestor in _ancestors(path)))
+    return frozenset({path, *_ancestors(path)})  # every ancestor's: the tables hold each class's whole line
 
 
 def enters_itself(receiver: str, known: Known) -> bool:
@@ -449,7 +452,9 @@ def for_receiver(method: Method, receiver: str) -> Method:
       The method, its `Self` (if it binds one) the receiver's type.
 
     """
-    return method._replace(types={**method.types, _SELF: receiver}) if _SELF in method.types else method
+    return (
+        method._replace(types={**method.types, SELF_TYPE: receiver}) if SELF_TYPE in method.types else method
+    )
 
 
 def overloaded_method(receiver: str, name: str, known: Known) -> Method | None:
@@ -495,7 +500,7 @@ def inherits(path: str, ancestor: str) -> bool:
       Whether it is.
 
     """
-    return any(base == ancestor or inherits(base, ancestor) for base in _ancestors(path))
+    return ancestor in _ancestors(path)  # every ancestor's: the tables hold each class's whole line
 
 
 def generic_attribute(receiver: str, name: str, known: Known) -> tuple[str, str, dict[str, str]] | None:
@@ -569,7 +574,7 @@ def _bound(path: str, texts: list[str], receiver: str) -> dict[str, str]:
     params: list[str] = [param.rstrip("=") for param in _TYPE_PARAMETERS.get(path, "").split(",") if param]
     if len(params) != len(texts):
         return {}
-    return {**dict(zip(params, texts, strict=True)), _SELF: receiver}
+    return {**dict(zip(params, texts, strict=True)), SELF_TYPE: receiver}
 
 
 def generics(bound: Mapping[str, str]) -> frozenset[str]:
@@ -732,13 +737,10 @@ def _guarded(root: ast.expr, plan: ImportPlan) -> str | None:
       Its dotted origin, or `None` if its first name isn't such an import's.
 
     """
-    first: str | None = (
-        next(
-            (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
-            None,
-        )
-        if plan.guarded  # most modules have none: nothing to look for
-        else None
+    # Its one caller (`_path`) asks only where the module has such imports: most have none.
+    first: str | None = next(
+        (node.id for node in ast.walk(root) if isinstance(node, ast.Name) and node.id in plan.guarded),
+        None,
     )
     if first is None:
         return None

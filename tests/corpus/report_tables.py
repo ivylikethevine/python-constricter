@@ -4,24 +4,23 @@ Which go in `report.md` and which each version's section of docs/RUNS.md has (`S
 the CSV files (`TABLES`).
 """
 
-import json
 from collections import Counter
-from collections.abc import Callable, Sequence
-from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias, cast
+from collections.abc import Callable, Iterator, Sequence
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level
-from tests.corpus import corpus_guesses, corpus_suite
+from tests.corpus import corpus_guesses, corpus_suite, jsonl
 from tests.corpus.corpus_table import Typed
 from tests.corpus.pipeline import (
     CENSUS,
     CHECK,
     COVERAGE,
     FIX,
+    FIX_UNSAFE,
     FROM,
     GUESS,
     IMPLIED,
-    INFER,
+    INFER_UNION,
     LOOP,
     RELEASED,
     ROWS,
@@ -30,15 +29,17 @@ from tests.corpus.pipeline import (
     TIMING,
     TRACED,
     TYPES,
-    UNION,
     Record,
     Store,
     fixing,
     united,
 )
-from tests.corpus.run_config import CERTAIN, LIKELY, UNSAFE, Run
+from tests.corpus.run_config import CERTAIN, LIKELY, Run
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _Row: TypeAlias = list[object]  # a table's cells, as `csv` writes them
 Rows: TypeAlias = list[_Row]
@@ -52,17 +53,6 @@ _VERDICTS: Final = ("told", "held", "differed")  # a traced record's counts, eac
 _COUNTS: Final = ("untyped", "guessed", "unfixed", "unparsed")  # a census record's counts
 _FIXES: Final = ".fixes.jsonl"  # a fix step's list of its fixes, a line each
 _Bound: TypeAlias = tuple[str, int, str]  # a fix's file, line and name
-
-
-def json_lines(path: Path) -> list[Record]:
-    """Read a file of JSON lines a step wrote beside its record.
-
-    Returns:
-      Each line's record; none if the file isn't there.
-
-    """
-    text: str = path.read_text(encoding="utf-8") if path.exists() else ""
-    return [json.loads(line) for line in text.splitlines()]
 
 
 class Records(NamedTuple):
@@ -83,6 +73,21 @@ class Records(NamedTuple):
         """
         return self.found.get((tree.name, version, step), _NO_RECORD)
 
+    def each(self, step: str) -> Iterator[tuple[Tree, str, Record]]:
+        """Walk a step's records, each corpus's in turn, each version's in the run's order.
+
+        Yields:
+          Each corpus, version and record, where the step ran.
+
+        """
+        tree: Tree
+        version: str
+        record: Record
+        for tree in self.trees:
+            for version in self.versions:
+                if record := self.of(tree, version, step):
+                    yield tree, version, record
+
     def listed(self, tree: Tree, version: str, step: str) -> dict[_Bound, str]:
         """Read the fixes a fix step made.
 
@@ -95,7 +100,7 @@ class Records(NamedTuple):
         path: Path = self.store.path(tree.name, version, step, _FIXES)
         return {
             (str(fix["path"]), cast("int", fix["line"]), str(fix["name"])): str(fix["annotation"])
-            for fix in json_lines(path)
+            for fix in jsonl.read(path)
         }
 
 
@@ -118,19 +123,17 @@ def _summary(outcome: Record) -> str:
 def _types(records: Records) -> Rows:
     rows: Rows = [["corpus", "constricter", "run", "errors", "new", "gone", "change"]]
     tree: Tree
-    for tree in records.trees:
-        version: str
-        for version in records.versions:
-            record: Record
-            if record := records.of(tree, version, TYPES):
-                rows.append([tree.name, version, "released", record["released"], "", "", ""])
-                step: str
-                ran: Record
-                for step, ran in cast("dict[str, Record]", record["fixed"]).items():
-                    errors: list[Record] | None = cast("list[Record] | None", ran.get("new"))
-                    new: int | str = "" if errors is None else len(errors)
-                    counts: _Row = [ran.get("errors", ""), new, ran.get("gone", "")]
-                    rows.append([tree.name, version, step, *counts, ran.get("change", ran.get("error", ""))])
+    version: str
+    record: Record
+    for tree, version, record in records.each(TYPES):
+        rows.append([tree.name, version, "released", record["released"], "", "", ""])
+        step: str
+        ran: Record
+        for step, ran in cast("dict[str, Record]", record["fixed"]).items():
+            errors: list[Record] | None = cast("list[Record] | None", ran.get("new"))
+            new: int | str = "" if errors is None else len(errors)
+            counts: _Row = [ran.get("errors", ""), new, ran.get("gone", "")]
+            rows.append([tree.name, version, step, *counts, ran.get("change", ran.get("error", ""))])
     return rows
 
 
@@ -156,21 +159,19 @@ def _traced(records: Records) -> Rows:
     head: _Row = ["corpus", "constricter", "tier", *_VERDICTS, "resting on the trace", "tests"]
     rows: Rows = [[*head, "seconds", "untraced"]]
     tree: Tree
-    for tree in records.trees:
-        version: str
-        for version in records.versions:
-            record: Record
-            if record := records.of(tree, version, TRACED):
-                said: str = str(record.get("summary", record.get("error", "")))
-                summary: str = ", ".join(
-                    line.strip() for line in said.splitlines()
-                )  # pytest-pretty's: a count a line
-                took: _Row = [record.get("seconds", ""), records.of(tree, version, TESTS).get("seconds", "")]
-                rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary, *took])
-                tier: str
-                for tier in (CERTAIN, LIKELY, GUESS) if _VERDICTS[0] in record else ():
-                    counts: _Row = [cast("dict[str, int]", record[key]).get(tier, 0) for key in _VERDICTS]
-                    rows.append([tree.name, version, tier, *counts, "", "", "", ""])
+    version: str
+    record: Record
+    for tree, version, record in records.each(TRACED):
+        said: str = str(record.get("summary", record.get("error", "")))
+        summary: str = ", ".join(
+            line.strip() for line in said.splitlines()
+        )  # pytest-pretty's: a count a line
+        took: _Row = [record.get("seconds", ""), records.of(tree, version, TESTS).get("seconds", "")]
+        rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary, *took])
+        tier: str
+        for tier in (CERTAIN, LIKELY, GUESS) if _VERDICTS[0] in record else ():
+            counts: _Row = [cast("dict[str, int]", record[key]).get(tier, 0) for key in _VERDICTS]
+            rows.append([tree.name, version, tier, *counts, "", "", "", ""])
     return rows
 
 
@@ -193,13 +194,13 @@ def _one_type(records: Records) -> Rows:
         for version in records.versions:
             seen: dict[_Bound, list[str]] = {
                 _bound(each): cast("list[str]", each["seen"])
-                for each in json_lines(store.path(tree.name, version, TRACED, corpus_guesses.SEEN))
+                for each in jsonl.read(store.path(tree.name, version, TRACED, corpus_guesses.SEEN))
             }
             shape: str
             counts: list[int]
             common: str
             for shape, counts, common in _held(
-                json_lines(store.path(tree.name, version, CENSUS, ROWS)),
+                jsonl.read(store.path(tree.name, version, CENSUS, ROWS)),
                 seen,
             ):
                 rows.append([tree.name, version, shape, *counts, common])
@@ -252,23 +253,19 @@ def _tests(records: Records) -> Rows:
     head: _Row = ["corpus", "constricter", "run", "same as released", "summary", "new failures"]
     rows: Rows = [[*head, "gone", "named", "skipped anew", "skipped no more"]]
     tree: Tree
-    for tree in records.trees:
-        version: str
-        for version in records.versions:
-            record: Record
-            if record := records.of(tree, version, TESTS):
-                released: str = _summary(cast("Record", record["released"]))
-                whose: str = f" (from {record[FROM]})" if FROM in record else ""
-                rows.append([tree.name, version, f"released{whose}", "", released, "", "", "", "", ""])
-                step: str
-                ran: Record
-                for step, ran in cast("dict[str, Record]", record["fixed"]).items():
-                    more: _Row = [
-                        len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")
-                    ]
-                    more += _moved(records, tree, version, step)
-                    summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
-                    rows.append([tree.name, version, step, not differs(record, ran), summary, *more])
+    version: str
+    record: Record
+    for tree, version, record in records.each(TESTS):
+        released: str = _summary(cast("Record", record["released"]))
+        whose: str = f" (from {record[FROM]})" if FROM in record else ""
+        rows.append([tree.name, version, f"released{whose}", "", released, "", "", "", "", ""])
+        step: str
+        ran: Record
+        for step, ran in cast("dict[str, Record]", record["fixed"]).items():
+            more: _Row = [len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")]
+            more += _moved(records, tree, version, step)
+            summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
+            rows.append([tree.name, version, step, not differs(record, ran), summary, *more])
     return rows
 
 
@@ -332,24 +329,22 @@ def _timing(records: Records) -> Rows:
         ],
     ]
     tree: Tree
-    for tree in records.trees:
-        version: str
-        for version in records.versions:
-            record: Record
-            if record := records.of(tree, version, TIMING):
-                medians: _Row = [record["median one"], record["median every"]]
-                runs: int = len(cast("list[float]", record["one"]))
-                instructions: _Row = [
-                    round(cast("int", record[key]) / 1e9, 1) if key in record else ""
-                    for key in ("median one instructions", "median every instructions")
-                ]
-                timed: _Row = [
-                    *medians,
-                    runs,
-                    *instructions,
-                    record.get("by", LOOP),  # a record from before `by` was timed in a loop
-                ]
-                rows.append([tree.name, version, record["jobs"], *timed])
+    version: str
+    record: Record
+    for tree, version, record in records.each(TIMING):
+        medians: _Row = [record["median one"], record["median every"]]
+        runs: int = len(cast("list[float]", record["one"]))
+        instructions: _Row = [
+            round(cast("int", record[key]) / 1e9, 1) if key in record else ""
+            for key in ("median one instructions", "median every instructions")
+        ]
+        timed: _Row = [
+            *medians,
+            runs,
+            *instructions,
+            record.get("by", LOOP),  # a record from before `by` was timed in a loop
+        ]
+        rows.append([tree.name, version, record["jobs"], *timed])
     return rows
 
 
@@ -437,7 +432,7 @@ def _mechanisms(records: Records, most: int | None = None) -> Rows:
 
     """
     rows: Rows = [["fix", "constricter", "mechanisms", "fixed", CERTAIN, LIKELY, GUESS]]
-    union: list[str] = [f"{INFER}{UNION}"] if united(records.run) else []
+    union: list[str] = [INFER_UNION] if united(records.run) else []
     version: str
     for version in records.versions:
         mode: str
@@ -480,15 +475,13 @@ def _most_mechanisms(records: Records) -> Rows:
 def _census(records: Records) -> Rows:
     rows: Rows = [["corpus", "constricter", *_COUNTS, _SHAPE, "bindings"]]
     tree: Tree
-    for tree in records.trees:
-        version: str
-        for version in records.versions:
-            record: Record
-            if record := records.of(tree, version, CENSUS):
-                rows.append([tree.name, version, *(record[key] for key in _COUNTS), "", ""])
-                blank: _Row = [tree.name, version, *("" for _ in _COUNTS)]
-                shapes: dict[str, int] = cast("dict[str, int]", record["shapes"])
-                rows.extend([*blank, shape, count] for shape, count in shapes.items())
+    version: str
+    record: Record
+    for tree, version, record in records.each(CENSUS):
+        rows.append([tree.name, version, *(record[key] for key in _COUNTS), "", ""])
+        blank: _Row = [tree.name, version, *("" for _ in _COUNTS)]
+        shapes: dict[str, int] = cast("dict[str, int]", record["shapes"])
+        rows.extend([*blank, shape, count] for shape, count in shapes.items())
     return rows
 
 
@@ -520,7 +513,7 @@ def _unshared(records: Records) -> Rows:
         version: str
         for version in records.versions:
             likely: dict[_Bound, str] = records.listed(tree, version, f"{FIX}{LIKELY}")
-            unsafe: dict[_Bound, str] = records.listed(tree, version, f"{FIX}{UNSAFE}")
+            unsafe: dict[_Bound, str] = records.listed(tree, version, FIX_UNSAFE)
             absent: int = len(likely.keys() - unsafe.keys())
             otherwise: int = sum(unsafe[key] != likely[key] for key in likely.keys() & unsafe.keys())
             if unsafe and (absent or otherwise):

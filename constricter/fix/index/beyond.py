@@ -15,7 +15,8 @@ from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.inherited import SEVERAL, Beyond
 from constricter.fix.index import plain
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name, takes
+from constricter.fix.index.modules import Index, Module, module_at, takes
+from constricter.fix.index.project import DEPTH
 from constricter.fix.index.stubs import installed
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import classvars
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
 
 _DOT: Final = "."
 _OBJECT: Final = "object"
-_DEPTH: Final = 8  # how many classes a line of bases is followed through
 
 
 def library_bases(catalog: Index, path: Path) -> dict[str, Beyond]:
@@ -39,7 +39,7 @@ def library_bases(catalog: Index, path: Path) -> dict[str, Beyond]:
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     written: set[str] = {base for bases in target.bases.values() for base in bases} - {classvars.SPECIAL}
     ends: dict[str, Beyond | None] = {
@@ -59,7 +59,7 @@ def _end(modules: Mapping[str, Module], defined: str) -> Beyond | None:
       doesn't end.
 
     """
-    found: Beyond | None = _line(modules, defined, _DEPTH)
+    found: Beyond | None = _line(modules, defined, DEPTH)
     return None if found is None or (found[0] and not found[1]) else found
 
 
@@ -130,7 +130,7 @@ def emptied(catalog: Index, path: Path) -> dict[str, Mapping[str, str]]:
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     found: dict[str, Mapping[str, str]] = {}
     name: str

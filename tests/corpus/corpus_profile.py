@@ -18,6 +18,7 @@ import subprocess  # runs the check under `py-spy`
 import sys
 import sysconfig
 import time
+from collections import Counter
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Final, NamedTuple
@@ -136,15 +137,13 @@ def rows(samples: Path) -> list[Row]:
       A row a function.
 
     """
-    own: dict[str, int] = {}
-    whole: dict[str, int] = {}
+    own: Counter[str] = Counter()
+    whole: Counter[str] = Counter()
     frames: list[str]
     count: int
     for frames, count in stacks(samples):
-        own[frames[-1]] = own.get(frames[-1], 0) + count
-        frame: str
-        for frame in set(frames):
-            whole[frame] = whole.get(frame, 0) + count
+        own[frames[-1]] += count
+        whole.update(dict.fromkeys(set(frames), count))
     named: dict[str, tuple[str, bool]] = {frame: _where(frame) for frame in whole}
     return [
         Row(named[frame][0], own.get(frame, 0) / _RATE, seen / _RATE, named[frame][1])

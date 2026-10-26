@@ -32,12 +32,12 @@ from pathlib import Path
 from typing import Final, NamedTuple, TextIO, TypeAlias, cast
 
 from constricter.fix.values.refused import REASONS
-from tests.corpus.corpus_table import ALL_SCOPES, WORK, Corpus
+from tests.corpus import untyped_shapes
+from tests.corpus.corpus_table import ALL_SCOPES, WORK, Corpus, table
 from tests.corpus.untyped_shapes import Module, Names, binding_of, declares, names_in, origin_of, shape
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 _Result: TypeAlias = dict[str, _Json]
-_Scopes: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 _Groups: TypeAlias = Mapping[str, frozenset[str]]  # each group's label, and the shapes in it
 _Section: TypeAlias = tuple[str, list[str]]  # a heading, and the lines under it
 
@@ -49,14 +49,9 @@ _FUNCTION: Final = "function"
 _MODULE: Final = "module"
 _NOT_A_NAME: Final = "other (not a Name store)"
 _UNKNOWN: Final = "?"
-_STDLIB_ORIGIN: Final = "stdlib"
-_OWN: Final = "own package"
-_THIRD_PARTY: Final = "third-party"
-_MODULE_CALL: Final = "call: module.func()"
 _TOP: Final = 30
 _TOP_MODULES: Final = 8
 _SOURCE_WIDTH: Final = 120  # how much of a value's source a row keeps
-_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 # A call to a name an import binds: `f()` after `from m import f`, or `f.g()`.
 _IMPORTS: Final = frozenset({"call: imported function", "call: imported class", "call: imported.attr()"})
 # The groups the roadmap's items are sized by, each a set of shapes (whatever the statement).
@@ -65,11 +60,11 @@ _GROUPS: Final[_Groups] = {
     "`self.method()` call": frozenset({"call: self.method()"}),
     "Chained `.method()` call": frozenset({"call: chained .method()"}),
     "Call to an imported function or class": _IMPORTS,
-    "`module.func()` call": frozenset({_MODULE_CALL}),
+    "`module.func()` call": frozenset({untyped_shapes.MODULE_CALL}),
     "`getattr(...)`": frozenset({"call: builtin getattr()"}),
     "Empty container": frozenset({"empty list", "empty dict", "empty set"}),
     "Comprehension of unknown elements": frozenset(
-        {f"{kind.__name__} (unknown elements)" for kind in _COMPREHENSIONS},
+        {f"{kind.__name__} (unknown elements)" for kind in untyped_shapes.COMPREHENSIONS},
     ),
 }
 
@@ -248,7 +243,7 @@ def _scope(scope: ast.AST | None, module: Module) -> tuple[str, bool, Names]:
       does), and its names.
 
     """
-    if isinstance(scope, _Scopes):
+    if isinstance(scope, untyped_shapes.Scopes):
         return _FUNCTION, declares(scope), names_in(scope, module)
     kind: str = "class" if isinstance(scope, ast.ClassDef) else _MODULE
     return kind, module.annotated, Names(module, {}, frozenset())
@@ -312,20 +307,7 @@ def _table(header: Sequence[str], rows: Iterable[Sequence[str]]) -> list[str]:
       Its lines.
 
     """
-    every: list[Sequence[str]] = [header, *rows]
-    widths: list[int] = [max(3, *(len(row[i]) for row in every)) for i in range(len(header))]
-
-    def line(row: Sequence[str]) -> str:
-        return (
-            "| "
-            + " | ".join(
-                cell.ljust(widths[i]) if not i else cell.rjust(widths[i]) for i, cell in enumerate(row)
-            )
-            + " |"
-        )
-
-    separator: list[str] = ["-" * widths[0], *("-" * (w - 1) + ":" for w in widths[1:])]
-    return [line(header), "| " + " | ".join(separator) + " |", *(line(row) for row in every[1:])]
+    return table([header, *rows], right=1)
 
 
 def _ranked(counts: Counter[str], top: int) -> list[tuple[str, int]]:
@@ -428,11 +410,12 @@ def _origins(calls: Sequence[Binding]) -> list[str]:
     """
     rows: list[list[str]] = []
     origin: str
-    for origin in (_STDLIB_ORIGIN, _OWN, _THIRD_PARTY):
+    for origin in (untyped_shapes.STDLIB_ORIGIN, untyped_shapes.OWN, untyped_shapes.THIRD_PARTY):
         mine: list[Binding] = [b for b in calls if b.origin == origin]
         # A third-party package by its top level; anything else by the module itself.
         modules: Counter[str] = Counter(
-            b.dotted.split(".", 1)[0] if origin == _THIRD_PARTY else b.dotted.rsplit(".", 1)[0] for b in mine
+            b.dotted.split(".", 1)[0] if origin == untyped_shapes.THIRD_PARTY else b.dotted.rsplit(".", 1)[0]
+            for b in mine
         )
         common: str = ", ".join(f"`{name}` {count:,}" for name, count in _ranked(modules, _TOP_MODULES))
         rows.append([origin, f"{len(mine):,}", common])
@@ -447,10 +430,10 @@ def _imports(missed: Sequence[Binding], top: int) -> list[str]:
       commonest functions among both.
 
     """
-    through_modules: list[Binding] = [b for b in missed if b.shape == _MODULE_CALL]
+    through_modules: list[Binding] = [b for b in missed if b.shape == untyped_shapes.MODULE_CALL]
     through_names: list[Binding] = [b for b in missed if b.shape in _IMPORTS]
     functions: Counter[str] = Counter(
-        b.dotted for b in (*through_modules, *through_names) if b.origin == _STDLIB_ORIGIN
+        b.dotted for b in (*through_modules, *through_names) if b.origin == untyped_shapes.STDLIB_ORIGIN
     )
     return [
         "Through a module an `import` binds (`os.path.join(...)`, `np.array(...)`):",

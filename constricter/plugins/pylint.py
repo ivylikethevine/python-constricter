@@ -4,21 +4,18 @@ from typing import IO, NamedTuple, Protocol, cast, final
 
 from pylint.checkers import BaseRawFileChecker
 from pylint.lint import PyLinter
-from pylint.typing import MessageDefinitionTuple, Options
+from pylint.typing import MessageDefinitionTuple, OptionDict, Options
 
-from constricter.jsonc import as_text
 from constricter.noqa import lines, unsuppressed
 from constricter.offences import (
     CAN_BE_FINAL,
     COMMENT_TYPED_TARGET,
     LEVELS,
     LONG_TUPLE,
-    MAX_LENGTH,
     MESSAGES,
     MISMATCHED_TYPE,
     NARROWABLE_TYPE,
     NESTED_TYPE,
-    NESTING,
     OPT_IN,
     REDUNDANT_TYPE,
     UNANNOTATED,
@@ -27,15 +24,17 @@ from constricter.offences import (
     UNANNOTATED_RETURN,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
-    VAGUE,
     VAGUE_TYPE,
     Checks,
     Level,
     Offence,
 )
 from constricter.overrides import override
+from constricter.plugins import options as table
+from constricter.plugins.options import CHOICES, OPTIONS, Option
 from constricter.rules.checker import check_source
-from constricter.rules.flow import parse_narrower
+from constricter.source import parsed
+from constricter.source.flow import parse_narrower
 
 
 class Message(NamedTuple):
@@ -77,67 +76,31 @@ class _Module(Protocol):  # pylint: disable=too-few-public-methods
         ...
 
 
+def _option(option: Option) -> OptionDict:
+    """Describe one of the plugins' options (see `options.OPTIONS`) as pylint takes it.
+
+    Returns:
+      Its settings.
+
+    """
+    said: OptionDict = {"default": option.default, "help": f"{option.help[0].upper()}{option.help[1:]}."}
+    match option.kind:
+        case table.LEVEL:
+            return said | {"type": "choice", "choices": CHOICES, "metavar": "<level>"}
+        case table.FLAG:
+            return said | {"type": "yn", "metavar": "<y or n>"}
+        case table.WHOLE:
+            return said | {"type": "int", "metavar": "<n>"}
+        case _:
+            return said | {"type": "string", "metavar": "<B=A, ...>"}
+
+
 @final
 class ConstricterChecker(BaseRawFileChecker):
     """pylint's checker, run once per module on its raw source."""
 
     name: str = "constricter"
-    options: Options = (
-        (
-            "constricter-level",
-            {
-                "default": "strict",
-                "type": "choice",
-                "choices": list(LEVELS),
-                "metavar": "<level>",
-                "help": "Which codes are reported.",
-            },
-        ),
-        (
-            "constricter-type-comments",
-            {"default": False, "type": "yn", "metavar": "<y or n>", "help": "Count `# type:` comments."},
-        ),
-        (
-            "constricter-all-scopes",
-            {"default": False, "type": "yn", "metavar": "<y or n>", "help": "Check module and class bodies."},
-        ),
-        (
-            "constricter-nesting",
-            {
-                "default": NESTING,
-                "type": "int",
-                "metavar": "<n>",
-                "help": "Report an annotation nested this deep.",
-            },
-        ),
-        (
-            "constricter-max-length",
-            {
-                "default": MAX_LENGTH,
-                "type": "int",
-                "metavar": "<n>",
-                "help": "Report a fixed-length tuple annotation listing more than this many types.",
-            },
-        ),
-        (
-            "constricter-vague",
-            {
-                "default": VAGUE,
-                "type": "int",
-                "metavar": "<n>",
-                "help": "How vague an annotation may be before it's LVA005 (-1: none).",
-            },
-        ),
-        (
-            "constricter-narrower",
-            {
-                "default": "",
-                "type": "string",
-                "metavar": "<B=A, ...>",
-                "help": "Your own type hierarchy (LVA008-LVA010): B=A, B narrower than A.",
-            },
-        ),
-    )
+    options: Options = tuple((f"constricter-{option.name}", _option(option)) for option in OPTIONS)
 
     msgs: dict[str, MessageDefinitionTuple]
 
@@ -176,7 +139,7 @@ class ConstricterChecker(BaseRawFileChecker):
             attributes=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_ATTRIBUTE].symbol),
             returns=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_RETURN].symbol),
         )
-        text: str = as_text(source)
+        text: str = parsed.text(source)  # by its PEP 263 declaration or BOM, as the CLI decodes it
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)
         o: Offence
         for o in unsuppressed(offences, lines(text)):  # suppression comments, as the CLI reads them

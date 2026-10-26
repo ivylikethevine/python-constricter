@@ -13,8 +13,9 @@ from typing import TYPE_CHECKING, Final, TypeAlias
 from constricter.fix.core.imports import added_dotted
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.core.signatures import AWAIT, ReadSignature
-from constricter.fix.libraries import overloads, stdlib
-from constricter.rules.annotations import dotted, vague_fits
+from constricter.fix.libraries import operators, overloads, stdlib
+from constricter.fix.libraries.receivers import parsed
+from constricter.source.annotations import dotted, vague_fits
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import Expansion
@@ -22,7 +23,6 @@ if TYPE_CHECKING:
 _STDLIB: Final = "stdlib"  # the fix kind
 _STR: Final = "str"
 _DOT: Final = "."
-_SELF: Final = "Self"  # a method's own class, in a template
 _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 _TYPING_ANY: Final = "typing.Any"
 _ARITHMETIC: Final = "arithmetic"  # the fix kind
@@ -68,13 +68,13 @@ def library_class(value: ast.Call, known: Known) -> Inference | None:
 def library_operator(op: ast.operator, sides: _Operands, known: Known) -> Inference | None:
     """Type an operator by its left operand's standard-library class's method (`__add__`, `__sub__`).
 
-    `when - start`, two `datetime`s, is a `timedelta` (see `overloads.operated`). Where the right
+    `when - start`, two `datetime`s, is a `timedelta` (see `operators.operated`). Where the right
     operand is a builtin's or a standard-library class's instance too: another class's reflected
     method may be the one that answers. A builtin number's, left of a standard-library class's
     instance (not a class under the number's own), is the right one's reflected method's
     (`2 * span`, a `timedelta`). A class the module defines under a library one is that one's (see
     `_as_library`), its `Self` the module's own; a generic class's instance is matched by its type
-    arguments (`Counter[str] + Counter[str]`, see `overloads.operated`).
+    arguments (`Counter[str] + Counter[str]`, see `operators.operated`).
 
     Returns:
       The inference, or `None`.
@@ -101,7 +101,7 @@ def library_operator(op: ast.operator, sides: _Operands, known: Known) -> Infere
     method: stdlib.Method | None = stdlib.overloaded_method(taken, name, known)
     if left is None or right is None or method is None:
         return None
-    found: Inference | None = overloads.operated(
+    found: Inference | None = operators.operated(
         stdlib.for_receiver(method, receiver),
         (left, right),
         known,
@@ -133,7 +133,7 @@ def _operand(annotation: str, known: Known) -> tuple[str | None, tuple[str, ...]
       Its name (see `stdlib.operand`), and a generic class's instance's type arguments, as written.
 
     """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    tree: ast.expr = parsed(annotation)
     if not isinstance(tree, ast.Subscript):
         return stdlib.operand(annotation, known), None
     head: str | None = stdlib.operand(ast.unparse(tree.value), known)
@@ -199,7 +199,7 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
       It (its `entry`: the method's key in `LibraryNames.installed`), or `None`.
 
     """
-    tree: ast.expr = ast.parse(receiver, mode="eval").body
+    tree: ast.expr = parsed(receiver)
     base: str = _imported(ast.unparse(tree.value if isinstance(tree, ast.Subscript) else tree), known)
     entry: str
     if (entry := f"{base}.{name}") not in known.names.installed:
@@ -214,12 +214,12 @@ def installed_method(receiver: str, name: str, known: Known) -> stdlib.Method | 
         return stdlib.Method(
             entry,
             None,
-            {**own, _SELF: receiver},
+            {**own, stdlib.SELF_TYPE: receiver},
             dict(expansion.templates),
             overloads.substituted(expansion.receiver, own),
         )
     params: tuple[str, ...] = known.names.parameters.get(base, ())
-    return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), _SELF: receiver})
+    return stdlib.Method(entry, None, {**dict(zip(params, texts, strict=False)), stdlib.SELF_TYPE: receiver})
 
 
 def _imported(base: str, known: Known) -> str:

@@ -17,6 +17,7 @@ from constricter.fix.core.known import (
 )
 from constricter.fix.index.params import open_functions
 from constricter.fix.values import returned, stored
+from constricter.fix.values.tables import Tables, module_tables
 from constricter.jsonc import as_text
 from constricter.offences import (
     DEFAULT_CHECKS,
@@ -26,25 +27,24 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import attributes, late, parsed, recorded, returning
+from constricter.rules import attributes, late, recorded, returning
 from constricter.rules.calls import keyed, observed
-from constricter.rules.flow import Finding
 from constricter.rules.narrowing import flow_offences, module_flow
 from constricter.rules.redundant import redundant
 from constricter.rules.scope import Scope
 from constricter.rules.scoped import Seeded, Settings
 from constricter.rules.scoping import body_scopes, bound_once, finish, function_scope, module_scopes
 from constricter.rules.settings import module_settings
-from constricter.rules.syntax import (
+from constricter.source import parsed
+from constricter.source.flow import Finding
+from constricter.source.syntax import (
     FUNCTION_DEFS,
     FunctionDef,
     child_statements,
 )
-from constricter.rules.tables import Tables, module_tables
 
 _KEPT: Final = "_constricter_kept"  # the attribute a tree holds its last check in
 _ROUNDS: Final = 5  # how many times to re-check what calls an unannotated function, at most
-_TYPE_CHECKING: Final = "TYPE_CHECKING"
 
 
 def check_source(
@@ -206,6 +206,16 @@ def _attributes(tree: ast.Module, checks: Checks, done: "_Round") -> list[Offenc
     )
 
 
+def _kept(tree: ast.Module) -> "_Kept | None":
+    """Read a module's last check, kept on its tree (see `_Kept`).
+
+    Returns:
+      It; `None` before its first.
+
+    """
+    return cast("_Kept | None", vars(tree).get(_KEPT))
+
+
 def _kept_scopes(tree: ast.Module) -> frozenset[int]:
     """Identify the scopes of a module's last check, kept on its tree (see `_Kept`).
 
@@ -213,7 +223,7 @@ def _kept_scopes(tree: ast.Module) -> frozenset[int]:
       Their `id`s; none before its first.
 
     """
-    kept: _Kept | None = cast("_Kept | None", vars(tree).get(_KEPT))
+    kept: _Kept | None = _kept(tree)
     return frozenset() if kept is None else frozenset(id(scope) for scope in kept.done.scopes())
 
 
@@ -286,7 +296,7 @@ def _resumed(tree: ast.Module, checks: Checks, outside: Outside | None) -> _Roun
       asked for (its fix rewrites a scope's own), or a name of the module's top level typed anew.
 
     """
-    kept: _Kept | None = cast("_Kept | None", vars(tree).get(_KEPT))
+    kept: _Kept | None = _kept(tree)
     if kept is None or outside is None or kept.outside is None or checks.final or kept.checks != checks:
         return None
     if replace(outside, parameters={}) != replace(kept.outside, parameters={}):
@@ -393,14 +403,8 @@ def _returned(
       The check (see `_Round`), its settings with what the functions it imports return too.
 
     """
-    found: Returned = returned.returned(
-        tree,
-        table.recorded,
-        table.assigned,
-        table.used,
-        settings.known.vouched,
-    )
-    settings = replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
+    found: Returned = _returned_by(tree, table, settings)
+    settings = _knowing(settings, imported, found)
     functions: list[tuple[Scope, FunctionDef]] = [
         (scope, scope.kind.function) for scope in scopes if scope.kind.function is not None
     ]
@@ -414,6 +418,26 @@ def _returned(
     }
     bodies: list[Scope] = [scope for scope in scopes if scope.kind.function is None]
     return _rounds(tree, _Round(settings, functions, bodies, table, found), imported, again)
+
+
+def _returned_by(tree: ast.Module, table: returned.Table, settings: Settings) -> Returned:
+    """Read what the module's unannotated functions return, as checked so far (see `returned.returned`).
+
+    Returns:
+      It.
+
+    """
+    return returned.returned(tree, table.recorded, table.assigned, table.used, settings.known.vouched)
+
+
+def _knowing(settings: Settings, imported: Returns, found: Returned) -> Settings:
+    """Give a check's settings what the module's functions (`found`) and those it imports return.
+
+    Returns:
+      Them.
+
+    """
+    return replace(settings, known=replace(settings.known, returned=returned.joined(imported, found)))
 
 
 def _rounds(tree: ast.Module, start: _Round, imported: Returns, again: set[int]) -> _Round:
@@ -438,23 +462,14 @@ def _rounds(tree: ast.Module, start: _Round, imported: Returns, again: set[int])
         if not again:
             break
         functions = _checked_again(tree, functions, again, settings, table)
-        latest: Returned = returned.returned(
-            tree,
-            table.recorded,
-            table.assigned,
-            table.used,
-            settings.known.vouched,
-        )
+        latest: Returned = _returned_by(tree, table, settings)
         typed: bool = latest != found and returned.called(tree, tree, latest)  # even if only a body calls one
         # Attributes typed anew: what reads one, of any value, may be typed now.
         newly: set[str] = returned.retyped(found, latest)
         # Kept even when nothing here calls it: other files import what the module's functions return.
         if latest != found:
             found = latest
-            settings = replace(
-                settings,
-                known=replace(settings.known, returned=returned.joined(imported, found)),
-            )
+            settings = _knowing(settings, imported, found)
             changed = changed or typed
             retyped |= newly
         again = {

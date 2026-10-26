@@ -9,7 +9,7 @@ import pytest
 from constricter import Checks, check_source
 from constricter.cli import command as cli
 from constricter.cli import config
-from constricter.rules.flow import Hierarchy, Narrower, parse_narrower
+from constricter.source.flow import Hierarchy, Narrower, parse_narrower
 
 SOURCE: str = textwrap.dedent(
     """

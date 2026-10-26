@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Final
 
 from constricter.fix.core.known import Guarded, Passed
-from constricter.fix.index import project
-from constricter.fix.index.modules import CONFTEST, SUFFIX, Index, Memo, Module
+from constricter.fix.index import spelling
+from constricter.fix.index.modules import CONFTEST, Index, Memo, Module, module_at
 
 KIND: Final = "fixture"  # the guessing mechanism (`FIX_KINDS`)
 _DOT: Final = "."
@@ -99,7 +99,7 @@ def needed(catalog: Index, name: str) -> set[str]:
 
 
 def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, Passed]:
-    """Type the fixtures the file at `path` can take, as it can write each type (see `project.spelled_in`).
+    """Type the fixtures the file at `path` can take, as it can write each type (see `spelling.spelled_in`).
 
     `guarded` records the names those types need imported for type checking.
 
@@ -109,7 +109,7 @@ def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(project.module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     if target.name in catalog.repeated:  # another file's module, maybe: its `conftest.py`s aren't this one's
         return {}
@@ -157,7 +157,9 @@ def _typed(
     if annotation is not None and module.fixtures[fixture]:
         annotation = _yielded(annotation)
     written: str | None = (
-        None if annotation is None else project.spelled_in(catalog, target, module, annotation, guarded)
+        None
+        if annotation is None
+        else spelling.spelled_in(catalog.modules, (target, module), annotation, guarded)
     )
     if written is None:
         return None

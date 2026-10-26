@@ -6,7 +6,7 @@ import copy
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
@@ -16,8 +16,8 @@ from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.overrides import override
-from constricter.rules.annotations import free_of, free_of_all, roots
-from constricter.rules.declarations import GenericClass
+from constricter.source.annotations import free_of, free_of_all, roots
+from constricter.source.declarations import GenericClass
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
@@ -411,7 +411,7 @@ class Limits(NamedTuple):
 class Known:  # pylint: disable=too-many-instance-attributes
     """What a module declares that `--fix` can infer a value's type from.
 
-    `calls`: its functions' return types (`returns`, plus other modules', see `project.calls`).
+    `calls`: its functions' return types (`returns`, plus other modules', see `spelling.calls`).
     `factories`: names that build a class or special form rather than an instance of it (see
     `factories`), so a call to one is never guessed to construct one. `classes` and `methods`: each
     class's annotated attributes (see `classes`) and methods' return types (see `method_returns`).
@@ -432,7 +432,7 @@ class Known:  # pylint: disable=too-many-instance-attributes
     names: LibraryNames = field(default_factory=LibraryNames)
     limits: Limits = field(default_factory=Limits)
     returned: Returned = field(default_factory=Returned)
-    # The decorators that give a function back, as the module spells them (see `rules.decorators`).
+    # The decorators that give a function back, as the module spells them (see `source.decorators`).
     vouched: frozenset[str] = frozenset()
     generic: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
     # Its descriptors and other checked files' it names, as it spells them: what each one's `__get__`
@@ -666,13 +666,13 @@ class Outside:  # pylint: disable=too-many-instance-attributes
         if not clashing and guarded == self.guarded:
             return self
         members: Classes | None = self.classes
-        return Outside(
+        # Every field it doesn't filter carries over as it is.
+        return replace(
+            self,
             calls=free_of(self.calls, clashing),
             classes=None
             if members is None
             else Classes(free_of_all(members.attributes, clashing), free_of_all(members.methods, clashing)),
-            hints=self.hints,
-            type_vars=self.type_vars,
             returned=Returns(
                 free_of(self.returned.calls, clashing),
                 self.returned.guesses,
@@ -680,27 +680,16 @@ class Outside:  # pylint: disable=too-many-instance-attributes
                 free_of_all(self.returned.methods, clashing),
             ),
             guarded={name: found for name, found in guarded.items() if name not in clashing},
-            generics=self.generics,
             # A descriptor stays one: its instance's attribute is unread, not its class.
             descriptors={
                 name: None if gives is None or roots(gives) & clashing else gives
                 for name, gives in self.descriptors.items()
             },
-            callees=self.callees,
-            parameters=self.parameters,
             overloaded={
                 callee: signatures
                 for callee, signatures in self.overloaded.items()
                 if not any(clashing.intersection(_NAME.findall(each.returns or "")) for each in signatures)
             },
-            installed_classes=self.installed_classes,
-            installed_parameters=self.installed_parameters,
-            installed_lineage=self.installed_lineage,
-            installed_aliases=self.installed_aliases,
-            checking=self.checking,
-            plain=self.plain,
-            members=self.members,
-            same=self.same,
             partial=Partial(
                 free_of(self.partial.calls, clashing),
                 free_of_all(self.partial.methods, clashing),
@@ -708,18 +697,12 @@ class Outside:  # pylint: disable=too-many-instance-attributes
             tuples=free_of(self.tuples, clashing),
             fixtures={name: typed for name, typed in self.fixtures.items() if not roots(typed[0]) & clashing},
             named={name: typed for name, typed in self.named.items() if not roots(typed[0]) & clashing},
-            beyond=self.beyond,
             awaits=free_of(self.awaits, clashing),
-            values=self.values,
-            unions=self.unions,
-            untyped=self.untyped,
             managers={name: typed for name, typed in self.managers.items() if not roots(typed[0]) & clashing},
-            emptied=self.emptied,
             takers={
                 name: {param: taken for param, taken in takers.items() if not roots(taken[2]) & clashing}
                 for name, takers in self.takers.items()
             },
-            vouched=self.vouched,
         )
 
 

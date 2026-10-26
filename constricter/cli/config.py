@@ -220,11 +220,13 @@ def _checkers(value: _Toml) -> list[str] | None:
     """Read `infer-with`: a checker, or a list of them, each one it knows.
 
     Returns:
-      Them, or `None` for anything else.
+      Them, each once in the order they're preferred, as `--infer-with` gives them; `None` for
+      anything else.
 
     """
     checkers: list[str] | None = [value] if isinstance(value, str) else _strings(value)
-    return checkers if checkers and all(checker in SERVERS for checker in checkers) else None
+    known: bool = bool(checkers) and all(checker in SERVERS for checker in checkers or ())
+    return list(dict.fromkeys(checkers)) if checkers and known else None
 
 
 def _levels(value: _Toml) -> dict[str, str] | None:
@@ -247,7 +249,7 @@ def _lists(value: _Toml, read: Callable[[_Toml], list[str] | None]) -> dict[str,
     return None if None in lists.values() else {key: list(item or []) for key, item in lists.items()}
 
 
-def _baseline(value: _Toml, root: Path) -> str | None:
+def _path(value: _Toml, root: Path) -> str | None:
     """Read a baseline's or a trace's path, relative to `root` (the pyproject.toml that names it).
 
     Returns:
@@ -302,8 +304,8 @@ def config_defaults(start: Path) -> dict[str, Default]:
         return {}
     readers: dict[str, Callable[[_Toml], Default | None]] = {
         **_READERS,
-        "baseline": partial(_baseline, root=path.parent),
-        "infer-from": partial(_baseline, root=path.parent),
+        "baseline": partial(_path, root=path.parent),
+        "infer-from": partial(_path, root=path.parent),
     }
     defaults: dict[str, Default] = {}
     key: str

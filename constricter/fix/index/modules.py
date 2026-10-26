@@ -29,10 +29,11 @@ from constricter.fix.values import classvars, entered, fills
 from constricter.fix.values.bodies import yields_itself
 from constricter.fix.values.returned import held_back, unannotated
 from constricter.fix.values.stored import untouched
+from constricter.fix.values.tables import Tables, module_tables
 from constricter.overrides import override
-from constricter.rules import parsed
-from constricter.rules.annotations import dotted, is_composite, node_name
-from constricter.rules.declarations import (
+from constricter.source import parsed
+from constricter.source.annotations import dotted, is_composite, node_name
+from constricter.source.declarations import (
     GenericClass,
     awaited_returns,
     defined_type_vars,
@@ -40,14 +41,13 @@ from constricter.rules.declarations import (
     generic_classes,
     generic_members,
 )
-from constricter.rules.decorators import Held, Pass, is_fixture, passing
-from constricter.rules.keys import key, optional
-from constricter.rules.syntax import child_statements, top_level
-from constricter.rules.tables import Tables, module_tables
-from constricter.rules.walked import classes as walked_classes
-from constricter.rules.walked import of_type
+from constricter.source.decorators import Held, Pass, is_fixture, passing
+from constricter.source.keys import key, optional
+from constricter.source.syntax import child_statements, top_level
+from constricter.source.walked import classes as walked_classes
+from constricter.source.walked import of_type
 
-_PACKAGE: Final = "__init__"
+PACKAGE: Final = "__init__"
 _DOT: Final = "."
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
@@ -185,6 +185,11 @@ class Module:  # pylint: disable=too-many-instance-attributes
         unpickled(self, state)
 
     @property
+    def signatures(self) -> Mapping[str, tuple[Signature, ...]]:
+        """Its functions' signatures as written: an installed module's, or a checked file's overloads."""
+        return self.overloads if self.declared is None else self.declared.signatures
+
+    @property
     def typing(self) -> Declarations | None:
         """What its names stand for in a signature: an installed module's declarations, or its `kinds`."""
         return self.declared or self.kinds
@@ -229,7 +234,7 @@ class Memo:
     # The members a class declares a type for (attributes, methods' returns), by its module and name.
     members: dict[tuple[str, str], frozenset[str]] = field(default_factory=dict)
     # The methods a module's classes overload, by class (see `own_methods`), by its name and folder.
-    overloaded: dict[tuple[str, str], "_ByClass"] = field(default_factory=dict)
+    overloaded: dict[tuple[str, str], _ByClass] = field(default_factory=dict)
     # Each name the checked files annotate alike, with a module's annotation of it (see `consistent`).
     named: dict[str, tuple[str, str]] | None = None
     # The installed modules pytest defines its own fixtures in, by name (see `fixtures`).
@@ -257,13 +262,23 @@ def module_name(path: Path) -> str:
     """
     packages: list[Path] = list(
         itertools.takewhile(
-            lambda folder: (folder / f"{_PACKAGE}{SUFFIX}").is_file(),
+            lambda folder: (folder / f"{PACKAGE}{SUFFIX}").is_file(),
             path.resolve().parents,
         ),
     )
     return ".".join(
-        [*(folder.name for folder in reversed(packages)), *([] if path.stem == _PACKAGE else [path.stem])],
+        [*(folder.name for folder in reversed(packages)), *([] if path.stem == PACKAGE else [path.stem])],
     )
+
+
+def module_at(catalog: Index, path: Path) -> Module | None:
+    """Find the checked module of the file at `path`.
+
+    Returns:
+      It; `None` for a file `catalog` doesn't have (a notebook, standard input).
+
+    """
+    return catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
 
 
 def index(paths: Sequence[Path]) -> Index:
@@ -334,7 +349,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
       Its module, or `None` if it isn't a `.py` file, or can't be read or parsed.
 
     """
-    if path.suffix not in ({SUFFIX} if name is None else {SUFFIX, STUB}) or not path.is_file():
+    installed: bool = name is not None
+    if path.suffix not in ({SUFFIX, STUB} if installed else {SUFFIX}) or not path.is_file():
         return None
     source: str | None
     if (source := _source(path)) is None:
@@ -346,10 +362,13 @@ def read(path: Path, name: str | None = None) -> Module | None:
     own: Tables = module_tables(tree)
     assigned: Counter[str] = _assigned(tree.body)
     rebound: frozenset[str] = frozenset(bound for bound, count in assigned.items() if count > 1)
-    if name is None:
+    if not installed:
         parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
-    names: dict[str, Origin] = origins_of(tree, named, is_package=path.stem == _PACKAGE)
+    is_package: bool = path.stem == PACKAGE
+    aliases: dict[str, bool] = _aliases(tree)
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
     names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
     return Module(
         name=named,
@@ -357,35 +376,35 @@ def read(path: Path, name: str | None = None) -> Module | None:
         names=names,
         classes=own.classes,
         methods=own.order.flattened(own.methods),
-        type_vars=defined_type_vars(tree),
-        guarded=guarded_origins(tree, named, is_package=path.stem == _PACKAGE),
-        stars=starred(tree, named, is_package=path.stem == _PACKAGE),
-        unannotated=unannotated(tree.body, passing(tree, defined_type_vars(tree))),
+        type_vars=type_vars,
+        guarded=guarded_origins(tree, named, is_package=is_package),
+        stars=starred(tree, named, is_package=is_package),
+        unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree),
         descriptors=descriptors(tree),
-        generic_members={} if name is not None else generic_members(tree),
+        generic_members={} if installed else generic_members(tree),
         loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),
         selfish=dict(own.order.selfish),
         awaits=awaited_returns(tree),
-        written={} if name is not None else _written(tree),
-        passed=frozenset() if name is not None else _passed(tree, names),
-        method_calls=frozenset() if name is not None else _method_calls(tree),
-        attributes=frozenset() if name is not None else _attributes(tree),
-        installed=name is not None,
+        written={} if installed else _written(tree),
+        passed=frozenset() if installed else _passed(tree, names),
+        method_calls=frozenset() if installed else _method_calls(tree),
+        attributes=frozenset() if installed else _attributes(tree),
+        installed=installed,
         open=open_functions(tree),
-        declared=None if name is None else declarations(tree),
+        declared=declarations(tree) if installed else None,
         held=own.held,
         passes=own.passes,
-        aliases={alias: generic for alias, generic in _aliases(tree).items() if alias not in rebound},
+        aliases={alias: generic for alias, generic in aliases.items() if alias not in rebound},
         rebound=rebound,
-        assigned=frozenset(assigned).difference(_aliases(tree).keys(), defined_type_vars(tree)),
-        shadowed=frozenset(names) & taken_names(tree)[1] if name is None else frozenset(),
-        bases={} if name is not None else classvars.bases(tree),
+        assigned=frozenset(assigned).difference(aliases.keys(), type_vars),
+        shadowed=frozenset() if installed else frozenset(names) & taken_names(tree)[1],
+        bases={} if installed else classvars.bases(tree),
         bound=dict(own.order.bound),
-        members={} if name is not None else classvars.members(tree),
-        named={} if name is not None else classvars.named(tree),
+        members={} if installed else classvars.members(tree),
+        named={} if installed else classvars.named(tree),
         sides=own.sides,
         held_sides=own.held_sides,
         partial=own.partial,
@@ -393,18 +412,18 @@ def read(path: Path, name: str | None = None) -> Module | None:
         tuples=own.tuples,
         unions=own.unions,
         fixtures=_fixtures(tree),
-        overloads={} if name is not None else overloads(tree),
-        folder="" if name is not None else str(path.resolve().parent),
-        managers={} if name is not None else _managers(tree),
-        takers={} if name is not None else fills.takers(tree),
-        emptied={} if name is not None else untouched(tree),
-        annotated={} if name is not None else annotated.annotations(tree),
-        bare=frozenset() if name is not None else annotated.bare(tree),
-        kinds=None if name is not None else kinds(tree, _aliases(tree).keys() - rebound),
+        overloads={} if installed else overloads(tree),
+        folder="" if installed else str(path.resolve().parent),
+        managers={} if installed else _managers(tree),
+        takers={} if installed else fills.takers(tree),
+        emptied={} if installed else untouched(tree),
+        annotated={} if installed else annotated.annotations(tree),
+        bare=frozenset() if installed else annotated.bare(tree),
+        kinds=None if installed else kinds(tree, aliases.keys() - rebound),
         unawaited=frozenset(
             stmt.name
             for stmt in tree.body
-            if name is None and isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
+            if not installed and isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
         ),
     )
 

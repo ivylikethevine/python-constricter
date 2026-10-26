@@ -1,20 +1,21 @@
 """What a module declares, for `--fix`.
 
 Its functions' and methods' return types, its classes' attributes, its type variables, and the
-factories and casts it imports (see `constricter.rules.annotations` for what an annotation says).
+factories and casts it imports (see `constricter.source.annotations` for what an annotation says).
 """
 
 import ast
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.rules.annotations import is_vague, node_name, words
-from constricter.rules.decorators import Held, passing, spelled
-from constricter.rules.keys import key, keys
-from constricter.rules.quoted import written
-from constricter.rules.syntax import child_statements, declared_return, top_level
+from constricter.source.annotations import is_vague, node_name, words
+from constricter.source.decorators import Held, passing, spelled
+from constricter.source.keys import key, keys
+from constricter.source.quoted import written
+from constricter.source.syntax import child_statements, declared_return, top_level
 
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
 # Each module's classes and type variables, for as long as its tree lives: every class table
@@ -104,13 +105,13 @@ def casts(tree: ast.Module) -> frozenset[str]:
     module: str
     for stmt in tree.body:
         match stmt:
-            case ast.ImportFrom(module=str() as module, level=0) if module in _FACTORY_MODULES - {"enum"}:
+            case ast.ImportFrom(module=str() as module, level=0) if module in _TYPING_MODULES:
                 names.update(alias.asname or alias.name for alias in stmt.names if alias.name == _CAST)
             case ast.Import():
                 names.update(
                     f"{alias.asname or alias.name}.{_CAST}"
                     for alias in stmt.names
-                    if alias.name in _FACTORY_MODULES - {"enum"}
+                    if alias.name in _TYPING_MODULES
                 )
             case _:
                 pass
@@ -405,13 +406,14 @@ def held(tree: ast.Module) -> dict[str, Held]:
     """
     known: frozenset[str] = _passing(tree)
     declared: dict[str, str] = _declared_returns(tree.body, defined_type_vars(tree), vouched=None)
+    vouched: dict[str, str] = returns(tree)
     return {
         stmt.name: Held(
             declared[stmt.name],
             tuple(sorted({spelled(d) or "" for d in stmt.decorator_list} - known)),
         )
         for stmt in tree.body
-        if isinstance(stmt, ast.FunctionDef) and stmt.name in declared and stmt.name not in returns(tree)
+        if isinstance(stmt, ast.FunctionDef) and stmt.name in declared and stmt.name not in vouched
     }
 
 
@@ -540,10 +542,8 @@ def descriptors(tree: ast.Module) -> dict[str, str | None]:
       not as `Self`; `None` where it's overloaded, undeclared, vague or names a type variable.
 
     """
-    counts: dict[str, int] = {}
+    counts: Counter[str] = Counter(node.name for node in _class_nodes(tree))
     node: ast.ClassDef
-    for node in _class_nodes(tree):
-        counts[node.name] = counts.get(node.name, 0) + 1
     type_vars: frozenset[str] = defined_type_vars(tree)
     found: dict[str, str | None] = {}
     for node in _class_nodes(tree):
@@ -583,10 +583,8 @@ def generic_members(tree: ast.Module) -> dict[str, GenericClass]:
 
     """
     type_vars: frozenset[str] = defined_type_vars(tree)
-    counts: dict[str, int] = {}
+    counts: Counter[str] = Counter(node.name for node in _class_nodes(tree))
     node: ast.ClassDef
-    for node in _class_nodes(tree):
-        counts[node.name] = counts.get(node.name, 0) + 1
     found: dict[str, GenericClass] = {}
     vouched: frozenset[str] = _passing(tree)
     for node in _class_nodes(tree):
@@ -809,14 +807,14 @@ def _every_return(
       part.
 
     """
-    counts: dict[str, int] = {}
+    counts: Counter[str] = Counter()
     found: dict[str, tuple[str, bool]] = {}
     stmt: ast.stmt
     name: str
     for stmt in body:
         match stmt:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
-                counts[name] = counts.get(name, 0) + 1
+                counts[name] += 1
                 declared: tuple[str, bool] | None = _usable_return(stmt)
                 if (
                     declared is not None

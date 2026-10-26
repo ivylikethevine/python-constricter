@@ -6,9 +6,8 @@ from typing import Final
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.cli import schedule
 from constricter.fix.core.known import Returns
-from constricter.fix.index import awaits, order, project, sides
+from constricter.fix.index import across, awaits, order, project, sides
 
 _LOCAL: Final = """
 class Client:
@@ -163,7 +162,7 @@ def test_another_files_async_defs_and_class_side_methods_are_typed(tmp_path: Pat
     }
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {o.name: o.fix for o in found} == {
         "own": "bytes",

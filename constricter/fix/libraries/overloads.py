@@ -36,7 +36,6 @@ from constricter.fix.core.signatures import (
     Constant,
     Parameter,
     ReadSignature,
-    Signature,
     Variant,
 )
 from constricter.fix.libraries import stdlib
@@ -52,7 +51,7 @@ from constricter.fix.libraries.receivers import (
     parsed,
     receiver_of,
 )
-from constricter.rules.walked import walk
+from constricter.source.walked import walk
 
 SCALARS: Final = ("str", "LiteralString", "bytes", "bytearray", "int", "float", "complex", "bool", "None")
 _COLUMNS: Final = {scalar: index for index, scalar in enumerate(SCALARS)}
@@ -63,26 +62,18 @@ _KEYWORD: Final = frozenset({"e", "k"})
 _STAR: Final = "a"
 _STARS: Final = "w"
 _BUILTINS: Final = frozenset({*dir(builtins), _NONE})
-_KIND: Final = "stdlib"
-# The builtin numbers a type checker takes where each of these is declared.
-_PROMOTED: Final = {
-    "int": ("bool",),
-    "float": ("int", "bool"),
-    "complex": ("float", "int", "bool"),
-}
+KIND: Final = "stdlib"
 _GENERATOR: Final = "collections.abc.Generator"
 _ITERATOR: Final = "collections.abc.Iterator"
 _TUPLE: Final = "tuple"
 _ANYTHING: Final = "t"  # `Accepts`' key for a parameter any argument binds
 _RETURNED: Final = "r"  # `Accepts`' key for a callable parameter a function's return binds
-_Taken: TypeAlias = tuple[str, dict[str, str]]  # whether an operand is taken, and what it binds
 _NESTED: Final = "ei"  # `Accepts`' key for an iterable of iterables' inner containers
 _AWAITED: Final = "w"  # and for an awaitable one, which what awaiting a coroutine's call gives binds
 _CALL: Final = "call"  # the fix kind of a declared return
 # The builtin containers whose type arguments bind a parameter's type variable (`Iterable[_T]`'s).
 CONTAINERS: Final = ("list", _TUPLE, "set", "frozenset", "dict")  # in the `scalars` table's order
 _CONTAINERS: Final = frozenset(CONTAINERS)
-_SELF: Final = "self"  # a signature's key for the type arguments its method's instance must have
 # The builtin classes, each a class as an argument (`assertRaises(ValueError)`).
 _BUILTIN_CLASSES: Final = frozenset(
     name for name in dir(builtins) if isinstance(cast("object", getattr(builtins, name)), type)
@@ -166,7 +157,7 @@ def chosen(
     installed: tuple[ReadSignature, ...] | None = known.names.installed.get(name)
     variants: tuple[tuple[ReadSignature, ...], ...] = _signatures(name) if installed is None else (installed,)
     receiver: Receiver | None = None if method is None else receiver_of(method, known)
-    kinds: frozenset[str] = frozenset({_KIND if installed is None else _CALL})
+    kinds: frozenset[str] = frozenset({KIND if installed is None else _CALL})
     reason: str = f"`{name}`'s return type, for its arguments"
     annotation: str | None = _agreed(variants, read, method, receiver, known)
     if annotation is None and method is None and name in stdlib.OVERLOADS:
@@ -272,165 +263,12 @@ def _iterator(picked: tuple[str, dict[str, str]]) -> tuple[str, dict[str, str]]:
     """
     head: ast.expr
     index: ast.expr
-    match ast.parse(picked[0].removeprefix(SPELLED), mode="eval").body:
+    match parsed(picked[0].removeprefix(SPELLED)):
         case ast.Subscript(value=ast.Attribute() as head, slice=index) if ast.unparse(head) == _GENERATOR:
             first: ast.expr = index.elts[0] if isinstance(index, ast.Tuple) else index
             return f"{_ITERATOR}[{ast.unparse(first)}]", picked[1]
         case _:
             return picked
-
-
-def operated(
-    method: stdlib.Method,
-    operands: tuple[str, str],
-    known: Known,
-    arguments: tuple[str, ...] | None = None,
-    *,
-    same: bool = False,
-) -> Inference | None:
-    """Type a binary operator by its left operand's `method` (`__sub__`), for its right operand's type.
-
-    `operands`: both as `stdlib.operand` names them, a generic class's instance by its class. The
-    first signature whose operand takes the right one answers, as a type checker picks it: the same
-    type, a class under it, or a number promoted to it (an `int` where a `float` is taken).
-    `arguments`: the right operand's type arguments, where it's a generic class's instance, which
-    bind the operand's own type variables (`Counter.__add__` takes a `Counter[_S]`); `same`: whether
-    it's the left one's own type, as an operand of `Self` must be.
-
-    Returns:
-      The inference, or `None`: no signature certainly takes it, one before that may, the Python
-      versions differ, or the right operand's class is under the left's (its reflected method may
-      answer first).
-
-    """
-    left: str
-    right: str
-    left, right = operands
-    if left != right and stdlib.inherits(right, left):
-        return None
-    found: set[str | None] = {
-        _answered(
-            variant,
-            method,
-            known,
-            lambda member: _taken(member, operands, arguments, method.types, same=same),
-        )
-        for variant in stdlib.method_signatures()[method.entry]
-    }
-    annotation: str | None
-    if (annotation := found.pop() if len(found) == 1 else None) is None:
-        return None
-    return Inference(annotation, f"`{method.entry}`'s return type, for its operand", frozenset({_KIND}))
-
-
-def _answered(
-    variant: Variant,
-    method: stdlib.Method,
-    known: Known,
-    taking: Callable[[str], _Taken],
-) -> str | None:
-    """Type an operator by one variant of its method's signatures (see `operated`); `taking`, `_taken`'s.
-
-    Returns:
-      What the first signature taking the right operand returns, or `None`: a signature before it
-      can't be read, or may take it.
-
-    """
-    signature: Signature
-    for signature in variant:
-        takes: str | None
-        if (takes := signature.get("takes")) is None:
-            return None
-        taken: list[_Taken] = [taking(member) for member in _members(parsed(takes))]
-        if any(verdict == MAYBE for verdict, _ in taken):
-            return None
-        bound: dict[str, str] | None
-        if (bound := next((binds for verdict, binds in taken if verdict == YES), None)) is not None:
-            template: str | None = signature["returns"]
-            written: str | None = (
-                None if template is None else write((template, {**method.types, **bound}), known)
-            )
-            return None if written is None else _deduplicated(written)
-    return None
-
-
-def _taken(
-    member: str,
-    operands: tuple[str, str],
-    arguments: tuple[str, ...] | None,
-    types: Mapping[str, str],
-    *,
-    same: bool,
-) -> _Taken:
-    """Decide whether an operand typed `member` takes the right operand, and what that binds.
-
-    A generic class's instance (`arguments`) is taken by `Self` where it's the left one's own type,
-    and by its own class's template (`Counter[_S]`) where each type argument the left one's binds
-    (`types`) is its own, binding the others; another class's template (a base's) may take it.
-
-    Returns:
-      `YES`, `NO` or `MAYBE`, and the type variables it binds.
-
-    """
-    left: str
-    right: str
-    left, right = operands
-    if arguments is None:
-        return YES if _takes(member, left, right) else NO, {}
-    if member == SELF_TYPE:
-        return YES if same else NO, {}
-    tree: ast.expr = parsed(member)
-    # A base's (`dict[_KT, _VT]`, of an `OrderedDict`): the tables may not know it is.
-    if ast.unparse(tree.value if isinstance(tree, ast.Subscript) else tree) != right:
-        return MAYBE, {}
-    params: list[ast.expr] = (
-        []
-        if not isinstance(tree, ast.Subscript)
-        else tree.slice.elts
-        if isinstance(tree.slice, ast.Tuple)
-        else [tree.slice]
-    )
-    if len(params) != len(arguments) or not all(isinstance(param, ast.Name) for param in params):
-        return MAYBE, {}
-    bound: dict[str, str] = {}
-    name: str
-    argument: str
-    for name, argument in zip((cast("ast.Name", param).id for param in params), arguments, strict=True):
-        wanted: str | None = types.get(name, bound.get(name))
-        if wanted is not None and wanted != argument:
-            return NO, {}
-        bound[name] = argument
-    return YES, bound
-
-
-def _takes(member: str, left: str, right: str) -> bool:
-    """Check whether an operand typed `member` (`Self`: the left operand's own class) takes `right`.
-
-    Returns:
-      Whether it does.
-
-    """
-    wanted: str = left if member == SELF_TYPE else member
-    return right == wanted or right in _PROMOTED.get(wanted, ()) or stdlib.inherits(right, wanted)
-
-
-def _deduplicated(annotation: str) -> str:
-    """Write each union in an annotation with each member once (`Counter[str | str]`: `Counter[str]`).
-
-    Returns:
-      The annotation.
-
-    """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    node: ast.AST
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Subscript):
-            slices: list[ast.expr] = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-            joined: list[ast.expr] = [
-                ast.parse(" | ".join(dict.fromkeys(_members(part))), mode="eval").body for part in slices
-            ]
-            node.slice = ast.Tuple(joined, ast.Load()) if isinstance(node.slice, ast.Tuple) else joined[0]
-    return ast.unparse(tree)
 
 
 def _receiving(picked: _Picked, method: stdlib.Method | None) -> _Picked:
@@ -614,7 +452,7 @@ def _elements(annotation: str, known: Known) -> tuple[str, tuple[str, ...]] | No
       Its name and them, or `None` for anything else (a tuple of several types among them).
 
     """
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
+    tree: ast.expr = parsed(annotation)
     name: str
     index: ast.expr
     match tree:
@@ -928,8 +766,8 @@ def write(picked: tuple[str, dict[str, str]], known: Known) -> str | None:
     template, types = picked
     if template.startswith(SPELLED):
         return template.removeprefix(SPELLED)
-    tree: ast.expr | None = _rewritten(ast.parse(template, mode="eval").body, types, known)
-    return None if tree is None else " | ".join(dict.fromkeys(_members(tree)))
+    tree: ast.expr | None = _rewritten(parsed(template), types, known)
+    return None if tree is None else " | ".join(dict.fromkeys(members(tree)))
 
 
 def _rewritten(node: ast.expr, types: Mapping[str, str], known: Known) -> ast.expr | None:
@@ -945,9 +783,7 @@ def _rewritten(node: ast.expr, types: Mapping[str, str], known: Known) -> ast.ex
     parts: list[ast.expr | None]
     match node:
         case ast.Name() | ast.Attribute():
-            return (
-                None if (text := _spelled(node, types, known)) is None else ast.parse(text, mode="eval").body
-            )
+            return None if (text := _spelled(node, types, known)) is None else parsed(text)
         case ast.Subscript():
             parts = [_rewritten(node.value, types, known), _rewritten(node.slice, types, known)]
             node.value, node.slice = parts[0] or node.value, parts[1] or node.slice
@@ -976,7 +812,7 @@ def _spelled(node: ast.Name | ast.Attribute, types: Mapping[str, str], known: Kn
     return node.id if node.id in _BUILTINS and (node.id == _NONE or known.is_builtin(node.id)) else None
 
 
-def _members(tree: ast.expr) -> Iterator[str]:
+def members(tree: ast.expr) -> Iterator[str]:
     """Walk a union's members (`a | b | c`), not into brackets.
 
     Yields:
@@ -984,7 +820,7 @@ def _members(tree: ast.expr) -> Iterator[str]:
 
     """
     if isinstance(tree, ast.BinOp) and isinstance(tree.op, ast.BitOr):
-        yield from _members(tree.left)
-        yield from _members(tree.right)
+        yield from members(tree.left)
+        yield from members(tree.right)
     else:
         yield ast.unparse(tree)

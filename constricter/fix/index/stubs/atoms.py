@@ -25,23 +25,25 @@ NO: Final = "n"
 MAYBE: Final = "?"
 NONE: Final = "None"
 LITERAL_STRING: Final = "LiteralString"
+NONE_ATOM: Final = "none"
+LITERAL_ATOM: Final = "literal"
 VAR: Final = "var"
 TYPE: Final = "type"
 CLASS: Final = "class"
-UNKNOWN_ATOM: Final = "unknown"
-STR: Final = "str"  # `project.definition`'s kind for a function `Declarations` has
+_UNKNOWN_ATOM: Final = "unknown"
+STR: Final = "str"  # the scalar a `LiteralString` takes, and binds a type variable to
 BUILTINS_MODULE: Final = "builtins"
 TYPING: Final = frozenset({"typing", "typing_extensions"})
 ANYTHING: Final = frozenset(
     {"typing.Any", "typing_extensions.Any", "_typeshed.Incomplete", "builtins.object"},
 )
 TYPES: Final = frozenset({"builtins.type", "typing.Type", "typing_extensions.Type"})
-REFUSING: Final = frozenset({"Callable", "Type"})  # no scalar is a callable or a class
+_REFUSING: Final = frozenset({"Callable", "Type"})  # no scalar is a callable or a class
 PARAM_SPEC: Final = "*"  # a `ParamSpec`'s or `TypeVarTuple`'s bound (see `declared`)
-BUILTIN_TYPES: Final = (*SCALARS, *CONTAINERS)  # the `scalars` table's columns
-ELEMENT_OF: Final = frozenset({"list", "set", "frozenset"})  # one type argument: their elements'
+_BUILTIN_TYPES: Final = (*SCALARS, *CONTAINERS)  # the `scalars` table's columns
+_ELEMENT_OF: Final = frozenset({"list", "set", "frozenset"})  # one type argument: their elements'
 TUPLE: Final = "tuple"
-HOMOGENEOUS: Final = 2  # `tuple[int, ...]`'s arguments
+_HOMOGENEOUS: Final = 2  # `tuple[int, ...]`'s arguments
 
 
 class Scope(NamedTuple):
@@ -77,7 +79,7 @@ class Atom(NamedTuple):
     constrained: bool = False  # a type variable's `bound` is its constraints: it binds none of them
 
 
-UNKNOWN: Final = Atom(UNKNOWN_ATOM)
+UNKNOWN: Final = Atom(_UNKNOWN_ATOM)
 
 
 # Whether an atom takes a container argument, and what that container's elements must fit, if it says.
@@ -190,16 +192,16 @@ def scalar_verdict(atom: Atom, scalar: str, *, constant: bool) -> str:
             matches: bool = scalar in types or (scalar == LITERAL_STRING and STR in types)
             return NO if constant or not matches else MAYBE
         case "var":
-            return bound_verdict(atom, scalar)
+            return _bound_verdict(atom, scalar)
         case "type":
             return NO
         case "class":
-            return class_takes(atom, scalar)
+            return _class_takes(atom, scalar)
         case _:
             return MAYBE
 
 
-def bound_verdict(atom: Atom, scalar: str) -> str:
+def _bound_verdict(atom: Atom, scalar: str) -> str:
     """Decide whether a type variable takes an argument of type `scalar`, by its bound (its `inner` atoms).
 
     Returns:
@@ -211,7 +213,7 @@ def bound_verdict(atom: Atom, scalar: str) -> str:
     return MAYBE if atom.bound == PARAM_SPEC else verdict_of(atom.inner, scalar, constant=False)
 
 
-def class_takes(atom: Atom, scalar: str) -> str:
+def _class_takes(atom: Atom, scalar: str) -> str:
     """Decide whether a class takes an argument of type `scalar`.
 
     A standard-library one by the `scalars` table; an installed protocol by its members (a generic
@@ -223,7 +225,7 @@ def class_takes(atom: Atom, scalar: str) -> str:
     """
     path: str = atom_path(atom)
     if atom.module is None:
-        return external_takes(path, scalar)
+        return _external_takes(path, scalar)
     declared: Declarations | None = atom.module.typing
     protocol: Protocol | None = None if declared is None else declared.protocols.get(path.rpartition(".")[2])
     members: frozenset[str] | None = stdlib.scalar_members(scalar)
@@ -243,10 +245,10 @@ def element_of(container: str, args: Sequence[ast.expr]) -> ast.expr | None:
       Their annotation, or `None` for any other (`tuple[int, str]`, a `dict`'s, none at all).
 
     """
-    if container in ELEMENT_OF and len(args) == 1:
+    if container in _ELEMENT_OF and len(args) == 1:
         return args[0]
     ellipsis: bool = (
-        len(args) == HOMOGENEOUS
+        len(args) == _HOMOGENEOUS
         and isinstance(args[1], ast.Constant)
         and isinstance(args[1].value, EllipsisType)
     )
@@ -254,7 +256,7 @@ def element_of(container: str, args: Sequence[ast.expr]) -> ast.expr | None:
 
 
 @lru_cache(maxsize=8192)  # asked of each parameter's classes, for each scalar
-def external_takes(path: str, scalar: str) -> str:
+def _external_takes(path: str, scalar: str) -> str:
     """Decide whether a class outside the installed packages (`typing.SupportsIndex`) takes a `scalar`.
 
     Returns:
@@ -266,12 +268,12 @@ def external_takes(path: str, scalar: str) -> str:
     module, _, name = path.rpartition(".")
     verdicts: str | None = stdlib.scalar_verdicts(path)
     if path in ANYTHING:
-        verdicts = YES * len(BUILTIN_TYPES)
+        verdicts = YES * len(_BUILTIN_TYPES)
     elif module in TYPING and name == LITERAL_STRING:
-        verdicts = "".join(YES if each == LITERAL_STRING else NO for each in BUILTIN_TYPES)
-    elif module in TYPING and name in REFUSING:
-        verdicts = NO * len(BUILTIN_TYPES)
-    return MAYBE if verdicts is None else verdicts[BUILTIN_TYPES.index(scalar)]
+        verdicts = "".join(YES if each == LITERAL_STRING else NO for each in _BUILTIN_TYPES)
+    elif module in TYPING and name in _REFUSING:
+        verdicts = NO * len(_BUILTIN_TYPES)
+    return MAYBE if verdicts is None else verdicts[_BUILTIN_TYPES.index(scalar)]
 
 
 def class_verdict(atom: Atom) -> str:
@@ -290,19 +292,19 @@ def class_verdict(atom: Atom) -> str:
         case "none" | "literal":
             found = NO
         case "type":  # a `type[T]` takes any class (bounds unchecked: a call outside one is an error)
-            found = YES if all(inner.kind == VAR or is_anything(inner) for inner in atom.inner) else MAYBE
+            found = YES if all(inner.kind == VAR or _is_anything(inner) for inner in atom.inner) else MAYBE
         case "var" if atom.bound is None:
             found = YES
         case "var" if atom.bound != PARAM_SPEC:
             found = combined({class_verdict(inner) for inner in atom.inner})
         case "class":
-            found = class_takes_class(atom)
+            found = _class_takes_class(atom)
         case _:
             pass
     return found
 
 
-def is_anything(atom: Atom) -> bool:
+def _is_anything(atom: Atom) -> bool:
     """Check whether an atom is `Any`, `object` or `typeshed`'s `Incomplete`.
 
     Returns:
@@ -312,7 +314,7 @@ def is_anything(atom: Atom) -> bool:
     return atom.kind == CLASS and atom_path(atom) in ANYTHING
 
 
-def class_takes_class(atom: Atom) -> str:
+def _class_takes_class(atom: Atom) -> str:
     """Decide whether a class atom takes a class passed as an argument (see `class_verdict`).
 
     Returns:
@@ -388,6 +390,16 @@ def literal_values(args: Sequence[ast.expr]) -> Iterator[Constant]:
             bool | int | float | complex | str | bytes | None,
         ):
             yield arg.value
+
+
+def arguments_of(index: ast.expr) -> list[ast.expr]:
+    """Split a subscript's index into its type arguments (`int, str` in `dict[int, str]`).
+
+    Returns:
+      Them, in order.
+
+    """
+    return list(index.elts) if isinstance(index, ast.Tuple) else [index]
 
 
 def joined(separator: str, parts: Sequence[str | None]) -> str | None:

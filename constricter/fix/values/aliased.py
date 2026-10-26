@@ -21,8 +21,9 @@ from typing import Final, TypeAlias, cast
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import hinted
+from constricter.fix.values.called import ENUM_FACTORIES, TYPING_FACTORIES
 from constricter.fix.values.doubts import Facts
-from constricter.rules.annotations import dotted, node_name
+from constricter.source.annotations import dotted, node_name
 
 KIND: Final = "alias"  # the fix kind
 _SINCE: Final = (3, 10)  # the first Python whose `typing` has `TypeAlias`
@@ -38,20 +39,8 @@ _REASON: Final = "a type alias, written as a type made of others"
 # What makes a type of a call's result, by where it's from.
 _FACTORIES: Final = frozenset(
     {
-        *(
-            f"{module}.{name}"
-            for module in ("typing", "typing_extensions")
-            for name in (
-                "NamedTuple",
-                "NewType",
-                "ParamSpec",
-                "TypeAliasType",
-                "TypeVar",
-                "TypeVarTuple",
-                "TypedDict",
-            )
-        ),
-        *(f"enum.{name}" for name in ("Enum", "Flag", "IntEnum", "IntFlag", "StrEnum")),
+        *(f"{module}.{name}" for module in ("typing", "typing_extensions") for name in TYPING_FACTORIES),
+        *(f"enum.{name}" for name in ENUM_FACTORIES),
         "collections.namedtuple",
     },
 )

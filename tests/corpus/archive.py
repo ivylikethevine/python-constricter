@@ -16,7 +16,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
-from tests.corpus.run_config import FACTS, REPORT, scrubbed
+from tests.corpus.run_config import FACTS, REPORT, directory, scrubbed
 
 Record: TypeAlias = dict[str, object]
 Kept: TypeAlias = dict[tuple[str, str, str], Record]  # by a corpus's directory, a version and a step
@@ -57,7 +57,7 @@ def kept(folder: Path) -> Kept:
     if report.is_file():
         nested: _Nested = cast("_Nested", json.loads(report.read_text(encoding="utf-8"))[RECORDS])
         return {
-            (corpus.replace(" ", "-"), version, step): record
+            (directory(corpus), version, step): record
             for corpus, versions in nested.items()
             for version, steps in versions.items()
             for step, record in steps.items()
@@ -139,7 +139,7 @@ def gather(folder: Path, corpora: Iterable[tuple[str, str]], guessed: Sequence[R
         corpus: str
         version: str
         for corpus, version in pairs:
-            path: Path = folder / RECORDS / corpus.replace(" ", "-") / version / f"{step}{suffix}"
+            path: Path = folder / RECORDS / directory(corpus) / version / f"{step}{suffix}"
             text: str = path.read_text(encoding="utf-8") if path.is_file() else ""
             head: Record = {LISTING: name, "corpus": corpus, "constricter": version}
             lines += [json.dumps(head | cast("Record", json.loads(line))) for line in text.splitlines()]

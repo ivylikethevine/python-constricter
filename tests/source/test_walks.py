@@ -3,7 +3,7 @@
 import ast
 from typing import Final
 
-from constricter.rules.syntax import own_nodes
+from constricter.source.syntax import own_nodes
 
 _SOURCE: Final = """
 def outer(items):

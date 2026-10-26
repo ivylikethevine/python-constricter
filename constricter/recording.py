@@ -40,6 +40,7 @@ _DOT: Final = "."  # between a class's name and that of one defined in it
 _SEQUENCES: Final = frozenset({list, set, frozenset, collections.deque, collections.Counter})
 _TUPLES: Final = frozenset({tuple})
 _MAPPINGS: Final = frozenset({dict, collections.defaultdict, collections.OrderedDict})
+_CONTAINERS: Final = _SEQUENCES | _MAPPINGS
 # The classes a path is on one platform, as the one written for any.
 _PATHS: Final = {
     "PosixPath": "Path",
@@ -111,7 +112,7 @@ def spelled(value: object, depth: int = _DEPTH) -> str | None:
         return NONE
     if type(value) in _TUPLES:
         return _tuple(cast("tuple[object, ...]", value), depth)
-    if type(value) in _SEQUENCES | _MAPPINGS:
+    if type(value) in _CONTAINERS:
         return _container(named(type(value)), _parts(value, type(value)), depth)
     if issubclass(type(value), type):  # not `isinstance`, which asks the value its `__class__`
         return UNKNOWN if named(cast("type", value)) == UNKNOWN else f"type[{named(cast('type', value))}]"
@@ -171,7 +172,7 @@ def _instance(value: object, cls: type, depth: int) -> str | None:
         if (
             text != UNKNOWN
             and isinstance(kind, type)
-            and kind in _SEQUENCES | _MAPPINGS
+            and kind in _CONTAINERS
             and all(isinstance(each, TypeVar) for each in own)
             and declared in {(), own}
         ):
@@ -479,15 +480,7 @@ class Recorder:
         return self.functions[id(frame.f_code)] is function and not function.spent
 
     def ended(self, frame: FrameType, function: _Function) -> None:
-        """Note what the statement `frame` was in bound: it ended."""
-        self._note(frame, function)
-
-    def raised(self, frame: FrameType) -> None:
-        """Forget the statement `frame` was in: an exception ended it."""
-        _ = self.pending.pop(id(frame), None)
-
-    def _note(self, frame: FrameType, function: _Function) -> None:
-        """Add the types of what the statement `frame` was in bound, and forget the statement."""
+        """Add the types of what the statement `frame` was in bound: it ended. Forget the statement."""
         code: CodeType | None
         statement: _Statement
         code, statement = self.pending.pop(id(frame), (None, _Statement()))
@@ -507,6 +500,10 @@ class Recorder:
         function.fresh = function.fresh or new
         if new:
             function.quiet = 0
+
+    def raised(self, frame: FrameType) -> None:
+        """Forget the statement `frame` was in: an exception ended it."""
+        _ = self.pending.pop(id(frame), None)
 
     def _function(self, frame: FrameType) -> _Function | None:
         """Find `frame`'s function, if it's one to record: in a file under the root, binding a name.

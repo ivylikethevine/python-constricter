@@ -11,17 +11,17 @@ checked file's function either (see `constricter.fix.index.managed`). `open(...)
 """
 
 import ast
-from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import ImportPlan, Inference, Known, Passed
 from constricter.fix.libraries import stdlib
+from constricter.fix.values.bodies import owned_bodies, plain
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import dotted, is_vague, node_name
-from constricter.rules.declarations import defined_type_vars
-from constricter.rules.syntax import Start
-from constricter.rules.walked import classes, of_type
+from constricter.source.annotations import dotted, is_vague, node_name
+from constricter.source.declarations import defined_type_vars
+from constricter.source.syntax import FunctionDef, Start
+from constricter.source.walked import of_type
 
 ENTER: Final = "__enter__"
 _AENTER: Final = "__aenter__"
@@ -85,13 +85,11 @@ def managers(tree: ast.Module) -> dict[str, str]:
 
     """
     type_vars: frozenset[str] = defined_type_vars(tree)
-    found: dict[str, str] = _managers(tree.body, "", type_vars)
-    nodes: Sequence[ast.ClassDef] = classes(tree)
-    owners: Counter[str] = Counter(node.name for node in nodes)
-    node: ast.ClassDef
-    for node in nodes:
-        if owners[node.name] == 1:
-            found.update(_managers(node.body, f"{node.name}.", type_vars | {_SELF}))
+    found: dict[str, str] = {}
+    body: Sequence[ast.stmt]
+    prefix: str
+    for body, prefix in owned_bodies(tree):
+        found.update(_managers(body, prefix, type_vars | {_SELF} if prefix else type_vars))
     return found
 
 
@@ -104,16 +102,12 @@ def _managers(body: Sequence[ast.stmt], prefix: str, unusable: frozenset[str]) -
       Each one's name after `prefix`, and what it yields as source text.
 
     """
-    counts: Counter[str] = Counter(
-        stmt.name for stmt in body if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
-    )
     found: dict[str, str] = {}
-    stmt: ast.stmt
-    for stmt in body:
+    stmt: FunctionDef
+    for stmt in plain(body):
         yielded: ast.expr | None
         if (
             isinstance(stmt, ast.FunctionDef)
-            and counts[stmt.name] == 1
             and is_manager(stmt)
             and (yielded := _yielded(stmt.returns)) is not None
             and not unusable & {node_name(node) for node in ast.walk(yielded)}

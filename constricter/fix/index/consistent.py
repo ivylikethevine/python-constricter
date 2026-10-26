@@ -6,21 +6,18 @@ annotation's names refer to, through re-exports), is taken for that type where a
 unannotated with no default. A guess (`named`): nothing ties one function's `df` to another's.
 """
 
-import ast
-import builtins
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Guarded, Origin, Passed
-from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, Index, Module
-from constricter.rules.annotations import roots
+from constricter.fix.index import project, spelling
+from constricter.fix.index.modules import Index, Module, module_at
+from constricter.source.annotations import roots
 
 KIND: Final = "named"  # the guessing mechanism (`FIX_KINDS`)
 AGREED: Final = 3  # the fewest annotations of a name, all alike, that type it
-_BUILTINS: Final = frozenset(dir(builtins))
 _DOT: Final = "."
 # What an annotation says nothing by: a parameter so typed is as vague as one left bare.
 _VAGUE: Final = frozenset({"typing.Any", "typing_extensions.Any", "builtins.object", "builtins.None"})
@@ -97,30 +94,25 @@ def _meaning(modules: Mapping[str, Module], module: Module, annotation: str) -> 
         origin: Origin | None = (
             module.names.get(root)
             or module.guarded.get(root)
-            or (("builtins", root) if root in _BUILTINS else None)
+            or (("builtins", root) if root in project.BUILTINS else None)
         )
         if origin is None:
             return None
-        origin = project.canonical_origin(modules, origin)
+        origin = spelling.canonical_origin(modules, origin)
         renamed[root] = origin[0] if origin[1] is None else f"{origin[0]}{_DOT}{origin[1]}"
-    tree: ast.expr = ast.parse(annotation, mode="eval").body
-    node: ast.AST
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            node.id = renamed.get(node.id, node.id)
-    return ast.unparse(tree)
+    return spelling.renamed(annotation, renamed)
 
 
 def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, Passed]:
     """Type the parameters the file at `path` leaves bare by their names, as it can write each type.
 
-    `guarded` records the names those types need imported for type checking (see `project.spelled_in`).
+    `guarded` records the names those types need imported for type checking (see `spelling.spelled_in`).
 
     Returns:
       Each such name's type, and what it rests on; nothing for a file `catalog` doesn't have.
 
     """
-    target: Module | None = catalog.modules.get(project.module_name(path)) if path.suffix == SUFFIX else None
+    target: Module | None = module_at(catalog, path)
     if target is None or target.name in catalog.repeated:  # another file's module, maybe
         return {}
     named: Mapping[str, tuple[str, str]] = agreed(catalog)
@@ -130,10 +122,9 @@ def visible(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str
         defined: str
         annotation: str
         defined, annotation = named[name]
-        written: str | None = project.spelled_in(
-            catalog,
-            target,
-            catalog.modules[defined],
+        written: str | None = spelling.spelled_in(
+            catalog.modules,
+            (target, catalog.modules[defined]),
             annotation,
             guarded,
         )

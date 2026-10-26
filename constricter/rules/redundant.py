@@ -5,8 +5,8 @@ from collections.abc import Callable, Iterator
 from typing import Final, cast
 
 from constricter.offences import REDUNDANT_TYPE, Edit, Fix, FixPolicy, Offence, at
-from constricter.rules.syntax import BRANCHING, child_statements
-from constricter.rules.walked import classes, of_type
+from constricter.source.syntax import BRANCHING, child_statements
+from constricter.source.walked import classes, of_type
 
 _KINDS: Final = frozenset({"redundant"})
 # The nodes with blocks of statements: all `_blocks` finds any in.

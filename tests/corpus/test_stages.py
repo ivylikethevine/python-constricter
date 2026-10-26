@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 
-from tests.corpus import __main__ as runner
-from tests.corpus import render, stages
+from tests.corpus import render, resume, stages
 from tests.corpus.pipeline import Record
-from tests.corpus.run_config import parse
+from tests.corpus.run_config import parse, read_command
 from tests.corpus.stages import BUILT_IN, Stages
 
 if TYPE_CHECKING:
@@ -99,20 +98,25 @@ def test_a_stage_joins_a_folder_of_its_commit_and_run_file(tmp_path: Path) -> No
     _ = (folder / "run.toml").write_text(_RUN, encoding="utf-8")
     argv: list[str] = [str(file), "--resume", str(folder), "--stage", "tests"]
     earlier: Record = _facts() | {"stages": [f"fixes {_COMMIT}"]}
-    assert runner.joined(argv, earlier, _facts(), "tests")["stages"] == [
+    assert resume.joined(read_command(argv), earlier, _facts(), "tests")["stages"] == [
         f"fixes {_COMMIT}",
         f"tests {_COMMIT}",
     ]
     with pytest.raises(SystemExit, match=f"ran on {_COMMIT}, this on {_COMMIT}\\+0123"):
-        _ = runner.joined(argv, earlier, _facts(changes="0123"), "tests")
-    joined: Record = runner.joined([*argv, "--join-anyway"], earlier, _facts("fedcba987654"), "tests")
+        _ = resume.joined(read_command(argv), earlier, _facts(changes="0123"), "tests")
+    joined: Record = resume.joined(
+        read_command([*argv, "--join-anyway"]),
+        earlier,
+        _facts("fedcba987654"),
+        "tests",
+    )
     assert joined["stages"] == [f"fixes {_COMMIT}", "tests fedcba987654"]
     _ = file.write_text(f"{_RUN}jobs = 2\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="isn't the run file"):
-        _ = runner.joined(argv, earlier, _facts(), "tests")
-    assert runner.joined(argv[:3], earlier, _facts(), None)["stages"] == [f"fixes {_COMMIT}"]
-    assert _STAGES not in runner.joined(argv[:1], {}, _facts(), None)
-    assert runner.joined([str(file), "--stage", "fixes"], {}, _facts(), "fixes")["stages"] == [
+        _ = resume.joined(read_command(argv), earlier, _facts(), "tests")
+    assert resume.joined(read_command(argv[:3]), earlier, _facts(), None)["stages"] == [f"fixes {_COMMIT}"]
+    assert _STAGES not in resume.joined(read_command(argv[:1]), {}, _facts(), None)
+    assert resume.joined(read_command([str(file), "--stage", "fixes"]), {}, _facts(), "fixes")["stages"] == [
         f"fixes {_COMMIT}",
     ]
 

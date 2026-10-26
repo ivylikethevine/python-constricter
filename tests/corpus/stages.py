@@ -24,7 +24,6 @@ BUILT_IN: Final[Stages] = (
     ("tests", ("tests", "tests-*", "types", "types-*")),
     ("timed", ("timing", "profile")),
 )
-_GLOB: Final = frozenset("*?[")  # what makes a pattern of a step's name
 
 
 def stage_of(step: str, stages: Stages) -> str:
@@ -43,7 +42,7 @@ def stage_of(step: str, stages: Stages) -> str:
         if step in patterns:
             return name
     for name, patterns in stages:
-        if any(_GLOB & set(pattern) and fnmatchcase(step, pattern) for pattern in patterns):
+        if any(fnmatchcase(step, pattern) for pattern in patterns):  # a name alone, as the first loop
             return name
     message: str = f"the step {step!r} is in none of the stages {', '.join(name for name, _ in stages)}"
     raise ValueError(message)
@@ -73,11 +72,17 @@ def chosen(stage: str | None, stages: Stages) -> Callable[[str], bool]:
 
     """
     if stage is None:
-        return _every
+        return every
     return lambda step: stage_of(step, stages) == stage
 
 
-def _every(_step: str) -> bool:
+def every(_step: str) -> bool:
+    """Choose every step: a run in one sitting's.
+
+    Returns:
+      True.
+
+    """
     return True
 
 

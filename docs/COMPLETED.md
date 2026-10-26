@@ -145,7 +145,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   have is no fix where a function alone imports it, by a table generated from typeshed (`platform`:
   35 modules).
 - **Re-exports, one way**: a name is followed to where it's defined through what a module imports
-  for type checking alone too (`project.definition`, as `_canonical` does), so a class a package's
+  for type checking alone too (`project.definition`, as `canonical_origin` does), so a class a package's
   `__init__` imports only when it's asked for (pydantic's `TypeAdapter`) has its members, its
   methods' returns and its aliases; a package's re-exports are spelled from both
   (`modules.exported`). On pydantic's checkout with its tests, 42 fixes more (36 certain, none
@@ -693,6 +693,21 @@ What constricter does today and what was measured on the way, by scope. What's n
   `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
   pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
 
+- **The witness, past a test's own classes**: a value of a class a test module defines, a mock or
+  a `mock.sentinel` object, or a `SimpleNamespace` tells nothing of the annotation, nor does an
+  annotation naming a test's class outside the tests; a class a function defines again at each
+  call is the annotation's by its module and qualified name; a descriptor class an attribute is
+  annotated with is read through an instance as its `__get__` declares (`declarations.descriptors`).
+  A verdict tells of its first 3 differing values, each the value's class and the annotation
+  evaluated (`differed`), so a misjudgment can be read from the run. Read through on the
+  0.4.3-rc.8 mega run (`7a075e4`) and the super run of 2026-10-25 (`722e868`): of rc.8's 10 new
+  differing certain fixes, 7 are declarations the tests contradict (pandas's numpy scalars,
+  types-docutils' stubs, sqlalchemy's untold value); pdm's `dep: str` was given tomlkit
+  `InlineTable`s (pdm's own `deps: list[str]` contradicted), and its `url` and strawberry's `node`
+  didn't differ again; strawberry's other differing fixes are its own `cast("Edge[NodeType]", ...)`
+  of a class and declarations of instances given classes. The one misjudgment, pdm's
+  `mock.sentinel` values, is fixed.
+
 ## CI, security and releases
 
 - **CI** (`ci.yml`): every check in [CONTRIBUTING](CONTRIBUTING.md#development), the pre-commit
@@ -704,7 +719,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   skips every job.
 - **The layers, checked**: `import-linter` holds `constricter.fix`'s four layers to importing only
   those before them, the rules and the fixes to importing neither the command nor the plugins, and
-  `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
+  `source.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
   job).
 - **ty, a fourth type checker**, beside basedpyright, mypy and pyrefly on the project's own code
   (`ty check`, `[tool.ty]`): it found a quoted alias it couldn't join with `| None`, a method read
@@ -760,19 +775,25 @@ What constricter does today and what was measured on the way, by scope. What's n
 - **Python 3.11+**, the oldest still maintained after 3.10's end of life (October 2026): 3.10 would
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
-- **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
+- **Layout**: `constricter/` in `rules/`, `fix/`, `source/` (what a module's source says: its walks,
+  annotations and declarations, which the rules and the fixes both read and which reads neither),
+  `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. Every module is under 800 lines, past which
-  the Lint job warns, split along what each grouped (a reader of stubs' signatures out of
-  `stubbed.py`, and its names' resolution out of `stubs/signatures.py`; what a file takes of
-  another's classes out of `project.py`; loops out of `inference.py`; what a module declares out of
-  `rules/annotations.py`; where a module's names come from and its open functions out of
-  `fix/index/modules.py`; the hint rounds out of `cli/command.py`; the language server's connection
-  out of `cli/lsp/hints.py`; building the scopes out of `rules/checker.py`; the annotation forms out of
-  `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`), and all of
-  `constricter/`'s but five under 750 (`cli/options.py`, `fix/index/project.py`,
-  `fix/libraries/overloads.py`, and `rules/late.py` and `scope.py`); the standard-library tables in
+  (the cross-file index), its tests laid out the same. Modules are split along what each grouped
+  as they near pylint's 1,000 lines (a reader of stubs' signatures out of `stubbed.py`, and its
+  names' resolution out of `stubs/signatures.py`; what a file takes of another's classes out of
+  `project.py`, and how a file spells another's types and calls (`spelling.py`); loops out of
+  `inference.py`; what a module declares out of `source/annotations.py`; where a module's names
+  come from and its open functions out of `fix/index/modules.py`; the hint rounds out of
+  `cli/command.py`; the language server's connection out of `cli/lsp/hints.py`; building the
+  scopes out of `rules/checker.py`; how a function binds a name again out of `rules/late.py`
+  (`rebound.py`); operators out of `fix/libraries/overloads.py` (`operators.py`); the annotation
+  forms out of `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`; a
+  run's facts and resuming out of the corpus runner's `__main__.py` (`resume.py`); a suite's
+  checkouts and type checks out of `tests/corpus/suite_steps.py` (`suite_checkouts.py`)); the Lint
+  job warns past 800 lines, where `fix/values/hinted.py`, `rules/scope.py`,
+  `source/declarations.py`, `fix/libraries/overloads.py` and `cli/options.py` are; the standard-library tables in
   `constricter/fix/tables/`, their generator in `stdlib_tables/`; the language servers' modules
   under `cli/lsp/`, the installed packages' stub readers under `fix/index/stubs/`; docs in `docs/` (changelog,
   contributing, security, integrations, fixes, likely, runs), release notes grouped by
@@ -781,6 +802,29 @@ What constricter does today and what was measured on the way, by scope. What's n
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
   10.8s (51.0s and 11.0s).
+- **Faults a review of the package found**, each with a test: `fix-widen`'s method lookup through
+  bases that cycle (`class A(B)`, `class B(A)`) no longer hangs; a relative import climbing past
+  the top package names no module, as Python refuses it (`origins.absolute`); a guarded name's
+  clash no longer drops the generic classes other files declare (`Outside.usable`); an import in
+  a top-level `try`'s `finally:` counts as the module's; `infer-with` in `pyproject.toml` names each
+  checker once; the hint store's key covers the code that writes what it keeps (`edits.py`);
+  workers start only inside `kept()`, which stops them; the pylint plugin reads a module by its
+  PEP 263 declaration or BOM, as the CLI does (a latin-1 module crashed it).
+- **Simplified**, behavior kept and the compiled build's tests passing: helpers shared where a
+  shape was written several times (a checked module's lookup, `syntax.own_returns`, the
+  `Outside()` defaults for a module no other file informs, one framing of a language server's
+  messages, one probe per checker), `Counter` for hand counts, dead names removed and names used
+  in one module made private; the corpus runner's facts and resuming in `tests/corpus/resume.py`
+  (its `__main__.py` was at pylint's 1,000 lines), its step names, paths and constants named once.
+- **Structure**: what a module's source says (its walks, annotations and declarations) in
+  `constricter/source/`, which import-linter holds below the rules and the fixes, so the two no
+  longer import each other; one table per code in `offences.CODES` (its message and the levels it's
+  reported and an error from), and one table of the plugins' options (`plugins/options.py`). The
+  corpus runner reads its flags with argparse (`run_config.read_command`): an argument it doesn't
+  take is an error, with its usage. It writes `facts.toml` with tomli-w and holds a corpus's shared
+  check with filelock, both declared in the `test` group. What reads a suite's tests' output
+  changed (`corpus_suite.parser`: `3aeda7010fee`), so a run after it doesn't reuse an earlier run's
+  released-tests records.
 - **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
   pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
   (`cli/lsp/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,

@@ -7,7 +7,7 @@ import pytest
 
 from constricter.offences import Checks
 from constricter.rules.checker import value_flow
-from constricter.rules.flow import DEFAULT_PARENTS, Finding, Hierarchy, Kind, augmented, members
+from constricter.source.flow import DEFAULT_PARENTS, Finding, Hierarchy, Kind, augmented, members
 
 
 def _found(source: str) -> list[tuple[str, Kind, str]]:

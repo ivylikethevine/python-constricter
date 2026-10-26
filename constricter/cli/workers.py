@@ -17,7 +17,7 @@ from constricter.cli.paths import shares
 from constricter.cli.runs import FileRun
 from constricter.fix.core.known import Hints, Outside, Returns
 from constricter.fix.index import project
-from constricter.rules import parsed
+from constricter.source import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for many files
     from concurrent.futures import Future, ProcessPoolExecutor
@@ -93,7 +93,7 @@ class Workers:
         """Stop the workers."""
         self.stack.close()
 
-    def over(self, paths: Sequence[Path]) -> "Workers":
+    def over(self, paths: Sequence[Path]) -> Self:
         """Ask these workers about `paths` alone, some of their files: each has what it had of them.
 
         Returns:
@@ -101,7 +101,7 @@ class Workers:
 
         """
         place: dict[Path, int] = {path: at for at, path in enumerate(paths)}
-        some: Workers = copy.copy(self)
+        some: Self = copy.copy(self)
         some.paths = paths
         some.shares = [
             [place[self.paths[at]] for at in share if self.paths[at] in place] for share in self.shares
@@ -206,10 +206,16 @@ def started(paths: Sequence[Path], jobs: int) -> Workers:
     Returns:
       The workers.
 
+    Raises:
+      RuntimeError: Outside `kept`, which would neither stop them nor forget them for the next run.
+
     """
+    if _KEPT.stack is None:
+        message: str = "workers start only inside `kept()`, which stops them"
+        raise RuntimeError(message)
     if _KEPT.workers is not None:
         return _KEPT.workers.over(paths)
-    _KEPT.workers = (_KEPT.stack or contextlib.ExitStack()).enter_context(Workers(paths, jobs))
+    _KEPT.workers = _KEPT.stack.enter_context(Workers(paths, jobs))
     return _KEPT.workers
 
 
@@ -263,23 +269,4 @@ def _read_share(paths: Sequence[Path]) -> list[project.Module | None]:
     """
     found: list[project.Module | None] = [project.read(path) for path in paths]
     collecting.indexed()
-    return found
-
-
-def check_share(
-    check: Callable[[Path, Outside], FileRun],
-    files: Sequence[tuple[Path, Outside]],
-) -> list[FileRun]:
-    """Check a share of the files (a worker's, or all of them in one process).
-
-    Returns:
-      What each found.
-
-    """
-    found: list[FileRun] = []
-    path: Path
-    outside: Outside
-    for path, outside in files:
-        found.append(check(path, outside))
-        collecting.sweep()
     return found

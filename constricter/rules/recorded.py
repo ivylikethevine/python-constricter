@@ -13,8 +13,8 @@ from constricter.fix.values.inference import RETURNED, inference
 from constricter.fix.values.loops import looped
 from constricter.fix.values.targets import iterated
 from constricter.rules.scope import Scope, guesses_in
-from constricter.rules.syntax import FunctionDef, own_nodes
-from constricter.rules.walked import walk
+from constricter.source.syntax import FunctionDef, own_nodes
+from constricter.source.walked import walk
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

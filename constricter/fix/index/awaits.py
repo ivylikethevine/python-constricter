@@ -2,17 +2,17 @@
 
 Found through the calling file's imports and the re-exports between them (`await load(url)`,
 `await client.load(url)` after `import pkg.client as client`); its declared return types the
-awaited call where the file can write it (see `project.portable`), or else its `return`s do, once
+awaited call where the file can write it (see `spelling.portable`), or else its `return`s do, once
 its file is checked (see `constricter.fix.values.returned`). A method's is its class's (see
-`rules.tables`).
+`values.tables`).
 """
 
 from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Returns
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index import project, sides
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index import project, spelling
+from constricter.fix.index.modules import Index, Module, module_at
 
 
 def calls(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, str]:
@@ -28,14 +28,14 @@ def calls(catalog: Index, path: Path, guarded: dict[str, Guarded]) -> dict[str, 
     """
     found: dict[str, str] = {}
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return found
     spelled: str
     defined: tuple[Module, str]
-    for spelled, defined in sides.called(catalog.modules, target, _awaitable):
+    for spelled, defined in project.called(catalog.modules, target, _awaitable):
         if defined[1] in defined[0].awaits:
             declared: dict[str, str] = {spelled: defined[0].awaits[defined[1]]}
-            found.update(project.portable(catalog.modules, (target, defined), spelled, declared, guarded))
+            found.update(spelling.portable(catalog.modules, (target, defined), spelled, declared, guarded))
     return found
 
 
@@ -52,17 +52,17 @@ def returned(catalog: Index, path: Path, guarded: dict[str, Guarded], found: Ret
     awaited: dict[str, str] = {}
     guesses: dict[str, frozenset[str]] = {}
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return found
     spelled: str
     defined: tuple[Module, str]
-    for spelled, defined in sides.called(catalog.modules, target, _awaitable):
+    for spelled, defined in project.called(catalog.modules, target, _awaitable):
         key: str
         if (key := f"{AWAIT}{defined[1]}") not in defined[0].returned.calls:
             continue
         typed: dict[str, str] = {spelled: defined[0].returned.calls[key]}
         kept: dict[str, str]
-        if kept := project.portable(catalog.modules, (target, defined), spelled, typed, guarded):
+        if kept := spelling.portable(catalog.modules, (target, defined), spelled, typed, guarded):
             awaited[f"{AWAIT}{spelled}"] = kept[spelled]
             if key in defined[0].returned.guesses:
                 guesses[f"{AWAIT}{spelled}"] = defined[0].returned.guesses[key]
@@ -80,7 +80,7 @@ def needs(catalog: Index, module: Module) -> set[str]:
     """
     return {
         defined[0].name
-        for _, defined in sides.called(catalog.modules, module, _awaitable)
+        for _, defined in project.called(catalog.modules, module, _awaitable)
         if defined[1] in defined[0].unawaited
     } - {module.name}
 

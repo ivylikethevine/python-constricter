@@ -48,13 +48,9 @@ from typing import IO, Final, NamedTuple, TypeAlias, cast
 from xml.etree import ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 
 from constricter import recording
-from constricter.empty import Empty
 from constricter.offences import Tier
-from tests.corpus import catalog
+from tests.corpus import catalog, jsonl
 from tests.corpus.run_config import scrubbed
-
-_Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
-
 
 Suite: TypeAlias = catalog.Suite
 
@@ -113,6 +109,12 @@ _JUNIT: Final = "--junitxml"
 _JUNIT_FAMILY: Final = ("-o", "junit_family=xunit1")
 _JUNIT_DIR: Final = ".venv/corpus-suite-junit"  # in a checkout: the parts' reports, written anew each run
 _XFAIL: Final = "pytest.xfail"  # the `type` of a skip that's an expected failure
+_SKIP_TAG: Final = "skipped"  # the report's element for a skip, an expected failure's too
+_OUTCOMES: Final = {"failure": "failed", "error": "error", _SKIP_TAG: "skipped"}  # by the report's element
+_PASSED: Final = "passed"
+_XFAILED: Final = "xfailed"
+_FAILURES: Final = frozenset({"failed", "error"})  # a test's outcomes that fail its run
+_SKIP: Final = "skipped"  # a test's outcome, as `Test` has it
 _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a half
 SUITES: Final = catalog.load().suites(catalog.ORIGINAL)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
@@ -448,24 +450,15 @@ def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Ou
     pool: ThreadPoolExecutor
     with ThreadPoolExecutor(max(1, min(workers(suite), len(commands)))) as pool:  # parts side by side
         outputs: list[str] = list(pool.map(run, commands))
-    if keep is not None:
-        keep.parent.mkdir(parents=True, exist_ok=True)
-        _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    tests: list[Test] = [
-        test for report in sorted(reports.glob("*.xml")) for test in junit_tests(report, root)
-    ]
+    outcome: Outcome = _kept(keep, outputs)
+    written: list[Path] = sorted(reports.glob("*.xml"))
+    tests: list[Test] = [test for report in written for test in junit_tests(report, root)]
     if data is not None and tests:
         data.parent.mkdir(parents=True, exist_ok=True)
-        listed: str = "".join(json.dumps(test._asdict()) + "\n" for test in tests)
-        _ = data.write_text(scrubbed(listed), encoding="utf-8")
-    outcome: Outcome = _added([read(output) for output in outputs])
-    if len(list(reports.glob("*.xml"))) != len(commands):  # a part that wrote none: read as text
+        _ = data.write_text(scrubbed(jsonl.text(test._asdict() for test in tests)), encoding="utf-8")
+    if len(written) != len(commands):  # a part that wrote none: read as text
         return outcome
     return Outcome(outcome.counts, frozenset(test.id for test in tests if test.outcome in _FAILURES))
-
-
-_FAILURES: Final = frozenset({"failed", "error"})
-_SKIP: Final = "skipped"  # a test's outcome, as `Test` has it
 
 
 def skips(released: Path, fixed: Path) -> tuple[list[str], list[str]] | None:
@@ -603,10 +596,17 @@ def _located(file: str, classes: str, ran_in: Path | None) -> tuple[str, str]:
     return file or classes, classes
 
 
-_SKIP_TAG: Final = "skipped"  # the report's element for a skip, an expected failure's too
-_OUTCOMES: Final = {"failure": "failed", "error": "error", _SKIP_TAG: "skipped"}
-_PASSED: Final = "passed"
-_XFAILED: Final = "xfailed"
+def _kept(keep: Path | None, outputs: Sequence[str]) -> Outcome:
+    """Keep a run's parts' outputs in `keep`, unless it's `None`, and read their outcome.
+
+    Returns:
+      It, the parts' added up.
+
+    """
+    if keep is not None:
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        _ = keep.write_text("\n".join(outputs), encoding="utf-8")
+    return _added([read(output) for output in outputs])
 
 
 def _added(outcomes: Sequence[Outcome]) -> Outcome:
@@ -647,7 +647,7 @@ def read(output: str) -> Outcome:
 def parser() -> str:
     """Name the version of what reads a test run's outcome: its output's readers and its JUnit reports'.
 
-    `read`, `_summary`, `_added` and their patterns; `tested`, `junit_tests` and `_located`. A record
+    `read`, `_summary`, `_added`, `_kept` and their patterns; `tested`, `junit_tests` and `_located`. A record
     read by another version isn't comparable with one read by this.
 
     Returns:
@@ -656,7 +656,7 @@ def parser() -> str:
     """
     patterns: tuple[re.Pattern[str], ...] = (_FAILED, _COUNTS, _SUMMARY, _PRETTY, _COLOUR, _RAN, _RAN_SUMMARY)
     source: str = "".join(
-        inspect.getsource(each) for each in (read, _summary, _added, tested, junit_tests, _located)
+        inspect.getsource(each) for each in (read, _summary, _added, _kept, tested, junit_tests, _located)
     )
     source += "".join(each.pattern for each in (*patterns, _UNITTEST)) + _TIMED_OUT
     return hashlib.sha256(source.encode()).hexdigest()[:12]
@@ -759,10 +759,7 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
         trace: str
         for trace in files:
             (root / trace).unlink(missing_ok=True)
-    if keep is not None:
-        keep.parent.mkdir(parents=True, exist_ok=True)
-        _ = keep.write_text("\n".join(outputs), encoding="utf-8")
-    outcome: Outcome = _added([read(output) for output in outputs])
+    outcome: Outcome = _kept(keep, outputs)
     counted: str = ", ".join(f"{count} {kind}" for kind, count in outcome.counts.items())
     return (_summary(outputs[0]) if len(outputs) == 1 else counted), outcome
 
@@ -847,7 +844,7 @@ def _scopes(source: str) -> list[int]:
         return scopes
     node: ast.AST
     for node in ast.walk(tree):  # breadth first: an inner scope overwrites its outer one
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef):
             line: int
             for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
                 scopes[line] = node.lineno
@@ -963,7 +960,6 @@ class Compared(NamedTuple):
     errors: int
     gone: int
     new: list[Blamed]
-    fixes: Mapping[str, Sequence[Fix]] = Empty()  # every fix the run made, per file
 
 
 def blamed(
@@ -991,4 +987,4 @@ def blamed(
         tier: Tier = Tier.of(unsafe=bool(fix and fix.unsafe), likely=bool(fix and fix.likely))
         guess: str = "" if tier is Tier.CERTAIN else f" ({tier.value})"
         new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))
-    return Compared(made[1], len(after), (before - now).total(), new, made[0])
+    return Compared(made[1], len(after), (before - now).total(), new)

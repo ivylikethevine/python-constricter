@@ -20,12 +20,11 @@ from typing import Final, NamedTuple, cast
 
 from constricter.cli import paths
 from tests.corpus import corpus_table
-from tests.corpus.run_config import DEV, NAMED
+from tests.corpus.run_config import DEV, NAMED, ROOT
 from tests.corpus.trees import Tree
 
 _SETTINGS: Final = ("pyproject.toml", "pyrightconfig.json", "pyrefly.toml")
 _INSTALLING: Final = threading.Lock()
-_ROOT: Final = Path(__file__).resolve().parents[2]
 _PROBE: Final = "def f():\n    a = 1\n"
 _FIXED: Final = '"fixed":'  # in `--fix --format=json`'s output, where it says what it fixed
 
@@ -98,7 +97,7 @@ def python(version: str) -> str:
     """
     if NAMED in version:  # another checkout's, say: `base=../base/local/.venv/bin/python`
         # A venv's Python as it's named, not the interpreter it links to.
-        return os.path.normpath(_ROOT / version.partition(NAMED)[2])
+        return os.path.normpath(ROOT / version.partition(NAMED)[2])
     with _INSTALLING:
         return corpus_table.interpreter(version)
 

@@ -11,7 +11,7 @@ from functools import cache
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.offences import MAX_LENGTH, NESTING
-from constricter.rules.annotations import depth, is_vague
+from constricter.source.annotations import depth, is_vague
 
 STR: Final = "str"
 _BYTES: Final = "bytes"

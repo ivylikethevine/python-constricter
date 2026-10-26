@@ -25,7 +25,7 @@ from enum import StrEnum
 from functools import lru_cache
 from typing import Final, TypeAlias
 
-from constricter.rules.walked import classes as defined_classes
+from constricter.source.walked import classes as defined_classes
 
 # Each named type's directly wider types.
 Parents: TypeAlias = Mapping[str, frozenset[str]]

@@ -10,9 +10,9 @@ from typing import Final, TypeAlias
 
 import pytest
 
-from constricter import recording, trace
+from constricter import recording, trace, traced
 from constricter.cli import command as cli
-from constricter.cli import config, traced
+from constricter.cli import config
 from constricter.fix.core.known import Hints, Offered
 
 _SOURCE: Final = """

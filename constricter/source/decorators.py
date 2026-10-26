@@ -10,10 +10,11 @@ factory's each gives such a decorator (`return unittest.skipUnless(ok, "why")`, 
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Mapping
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.rules.syntax import child_statements, import_bindings
+from constricter.source.syntax import import_bindings, own_returns
 
 _CALLED: Final = "()"  # after a decorator's name, as it's spelled when it's called to decorate
 # How a pytest fixture's decorator is spelled (see `spelled`).
@@ -116,13 +117,13 @@ def passes(tree: ast.Module) -> dict[str, Pass]:
       Each one's name, and how it's used (see `Pass`).
 
     """
-    counts: dict[str, int] = {}
+    counts: Counter[str] = Counter()
     found: dict[str, Pass] = {}
     plain: list[ast.FunctionDef] = []
     stmt: ast.stmt
     for stmt in tree.body:
         if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
+            counts[stmt.name] += 1
             read: Pass | None = _pass(stmt) if isinstance(stmt, ast.FunctionDef) else None
             if read is not None and not stmt.decorator_list:
                 found[stmt.name] = read
@@ -168,7 +169,7 @@ def _inferred(func: ast.FunctionDef, library: frozenset[str], found: Mapping[str
       How it's used, or `None` if its `return`s don't say so.
 
     """
-    returns: list[ast.Return] = _returns(func.body)
+    returns: list[ast.Return] = own_returns(func.body)
     if not returns or any(stmt.value is None for stmt in returns):
         return None
     factories: frozenset[str] = frozenset(
@@ -186,23 +187,6 @@ def _inferred(func: ast.FunctionDef, library: frozenset[str], found: Mapping[str
     if all(_gives_decorator(value, factories, bare) for value in values):
         return Pass(called=True, type_vars=_NO_TYPE_VARS)
     return None
-
-
-def _returns(body: Sequence[ast.stmt]) -> list[ast.Return]:
-    """Find a function's own `return` statements: not a nested function's or class's.
-
-    Returns:
-      Them, in source order.
-
-    """
-    found: list[ast.Return] = []
-    stmt: ast.stmt
-    for stmt in body:
-        if isinstance(stmt, ast.Return):
-            found.append(stmt)
-        elif not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            found.extend(_returns(child_statements(stmt)))
-    return found
 
 
 def _gives_back(value: ast.expr, param: str, factories: frozenset[str]) -> bool:
@@ -254,13 +238,11 @@ def _library(tree: ast.Module) -> frozenset[str]:
         module: str
         name: str
         module, _, name = origin.rpartition(".")
-        uses: _Uses = (
-            {f"{bound}.{known}": use for known, use in _LIBRARY[origin].items()}
-            if origin in _LIBRARY
-            else {bound: _LIBRARY[module][name]}
-            if name in _LIBRARY.get(module, {})
-            else {}
-        )
+        uses: _Uses = {}
+        if origin in _LIBRARY:
+            uses = {f"{bound}.{known}": use for known, use in _LIBRARY[origin].items()}
+        elif name in _LIBRARY.get(module, {}):
+            uses = {bound: _LIBRARY[module][name]}
         text: str
         bare: bool
         called: bool

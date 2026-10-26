@@ -142,10 +142,10 @@ def hints(found: Trace, source: bytes) -> Hints | None:
     stored: dict[int, frozenset[str]] = {} if tree is None else _undeclared(tree)
     node: ast.AST
     for node in ast.walk(tree) if tree is not None else ():
+        if not isinstance(node, _Function):
+            continue
         targets: list[ast.Name]
-        for targets in (
-            _untyped(node, stored.get(id(node), frozenset())).values() if isinstance(node, _Function) else ()
-        ):
+        for targets in _untyped(node, stored.get(id(node), frozenset())).values():
             # A binding the run never reached may hold anything.
             seen: list[tuple[str, ...]] = [
                 bindings.get(target.lineno, {}).get(target.id, ()) for target in targets

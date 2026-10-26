@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Final
 
 import pytest
 
-from constricter.rules import checker, parsed
-from constricter.rules.tables import module_tables
+from constricter.fix.values.tables import module_tables
+from constricter.rules import checker
+from constricter.source import parsed
 
 if TYPE_CHECKING:
     import ast

@@ -6,7 +6,7 @@ Not their locals: `--fix` annotates those, and what it wrote would count the nex
 import ast
 from typing import Final, cast
 
-from constricter.rules.walked import of_type
+from constricter.source.walked import of_type
 
 # A method's own: what each is follows from its class, not from the name.
 _UNNAMED: Final = frozenset({"self", "cls"})
