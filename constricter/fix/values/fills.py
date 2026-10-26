@@ -29,10 +29,10 @@ from constricter.fix.libraries.stdlib import resolved
 from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import looped
 from constricter.fix.values.shapes import displayed
-from constricter.fix.values.targets import dict_parts
-from constricter.rules.annotations import dotted, is_vague
-from constricter.rules.syntax import NESTED_SCOPES, own_nodes
-from constricter.rules.walked import walk
+from constricter.fix.values.targets import dict_sides
+from constricter.source.annotations import dotted, is_vague
+from constricter.source.syntax import NESTED_SCOPES, own_nodes
+from constricter.source.walked import walk
 
 _LIST: Final = "list"
 _DICT: Final = "dict"
@@ -88,7 +88,7 @@ class Fill(NamedTuple):
     spread: bool = False
 
 
-class Given(NamedTuple):
+class _Given(NamedTuple):
     """One pass of the container to a call, as an argument of its own: at a position, or by a keyword."""
 
     call: ast.Call
@@ -255,22 +255,23 @@ def filled(
     taken: list[str | None] = []
     node: ast.Name
     for node in found.names.get(name, []):
-        fill: Fill | Given | bool
+        fill: Fill | _Given | bool
         if (fill := _use(node, kind, found.parents)) is False and not _only_read(node, kind, found):
             return None
         if isinstance(fill, Fill):
             fills.append(fill)
-        elif isinstance(fill, Given):
+        elif isinstance(fill, _Given):
             taken.append(_taken(fill, kind, known, declared))
     typed: Inference | None = _typed(fills, kind, known, declared) if fills else None
     if (fills and typed is None) or None in taken or not (fills or taken):
         return None
     types: set[str | None] = {*taken, *([] if typed is None else [typed.annotation])}
-    passed: Inference = Inference(str(next(iter(types))), "what it's passed as", frozenset({"filled"}))
-    return None if len(types) != 1 else typed or passed
+    if len(types) != 1:
+        return None
+    return typed or Inference(str(next(iter(types))), "what it's passed as", frozenset({"filled"}))
 
 
-def _taken(given: Given, kind: str, known: Known, declared: Mapping[str, str]) -> str | None:
+def _taken(given: _Given, kind: str, known: Known, declared: Mapping[str, str]) -> str | None:
     """Type the container by the parameter a call it's passed to takes it as (see `Indirect.takers`).
 
     Returns:
@@ -340,8 +341,8 @@ def stored(body: Sequence[ast.stmt], kinds: Mapping[str, str]) -> Iterator[tuple
     for node in own_nodes(body, parents):
         match node:
             case ast.Attribute(value=ast.Name(id="self"), attr=attr, ctx=ast.Load()) if attr in kinds:
-                judged: Fill | Given | bool = _use(node, kinds[attr], parents)
-                use: Fill | bool = False if isinstance(judged, Given) else judged  # passed on: unseen
+                judged: Fill | _Given | bool = _use(node, kinds[attr], parents)
+                use: Fill | bool = False if isinstance(judged, _Given) else judged  # passed on: unseen
                 if use is False and isinstance(parents.get(id(node)), ast.Assign):
                     found = found or uses(body)
                     use = _only_read(node, kinds[attr], found._replace(parents={**found.parents, **parents}))
@@ -368,7 +369,7 @@ def _only_read(node: ast.expr, kind: str, found: Uses) -> bool:
             return False
 
 
-def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | Given | bool:
+def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | _Given | bool:
     """Judge one read of the container.
 
     Returns:
@@ -391,7 +392,7 @@ def _use(node: ast.expr, kind: str, parents: Mapping[int, ast.AST]) -> Fill | Gi
             return _reads(parent, grandparent) or _given(node, parent, grandparent)
 
 
-def _given(node: ast.expr, parent: ast.AST | None, grandparent: ast.AST | None) -> Given | bool:
+def _given(node: ast.expr, parent: ast.AST | None, grandparent: ast.AST | None) -> _Given | bool:
     """Judge a use by the call it's an argument of.
 
     Returns:
@@ -401,9 +402,9 @@ def _given(node: ast.expr, parent: ast.AST | None, grandparent: ast.AST | None) 
     keyword: str
     match parent:
         case ast.Call() if any(arg is node for arg in parent.args):
-            return Given(parent, next(at for at, arg in enumerate(parent.args) if arg is node))
+            return _Given(parent, next(at for at, arg in enumerate(parent.args) if arg is node))
         case ast.keyword(arg=str() as keyword) if isinstance(grandparent, ast.Call):
-            return Given(grandparent, keyword)
+            return _Given(grandparent, keyword)
         case _:
             return False
 
@@ -498,7 +499,7 @@ def _keyed(
     """
     factory: str | None = _factory(kind)
     if factory is not None and not _FACTORIES[factory]:
-        inner: Fill | Given | bool = _use(target, factory, parents)
+        inner: Fill | _Given | bool = _use(target, factory, parents)
         return inner._replace(key=target.slice) if isinstance(inner, Fill) else inner is True
     addition: ast.expr
     match statement:
@@ -584,8 +585,5 @@ def added(fill: Fill, kind: str, known: Known, declared: Mapping[str, str]) -> l
     if kind != _DICT:  # and a `defaultdict`'s key, of `d[k].extend(xs)`
         keyed: list[Inference | None] = [] if fill.key is None else [inference(fill.key, known, declared)]
         return [*keyed, looped(fill.value, known, declared, inference)]
-    found: Inference | None = inference(fill.value, known, declared)
-    types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
-    if found is None or types is None:
-        return [None, None]
-    return [found._replace(annotation=types[0]), found._replace(annotation=types[1])]
+    sides: tuple[Inference, Inference] | None = dict_sides(inference(fill.value, known, declared))
+    return [None, None] if sides is None else [*sides]

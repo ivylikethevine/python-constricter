@@ -1,17 +1,18 @@
 """The order the CLI checks files in: each after those whose unannotated functions it calls.
 
-So their `return`s are known when it's checked (see `project.returned`); files calling each other's
+So their `return`s are known when it's checked (see `spelling.returned`); files calling each other's
 functions (a cycle in the graph `linked.needs` gives) form one component.
 """
 
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Final, NamedTuple, TypeAlias
+from typing import NamedTuple, TypeAlias
 
 from constricter.fix.index import awaits, fixtures, linked, loose, managed, project
+from constricter.fix.index.modules import SUFFIX
 from constricter.fix.index.project import Index
 
-_SUFFIX: Final = ".py"
 _Visit: TypeAlias = tuple[str, Iterator[str]]  # a module in the graph, and its callees still to visit
 
 
@@ -34,13 +35,8 @@ def plan(catalog: Index, paths: Sequence[Path]) -> Plan:
       The components, callees first, and what each comes after; and each file's module.
 
     """
-    names: list[str | None] = [
-        project.module_name(path) if path.suffix == _SUFFIX else None for path in paths
-    ]
-    counts: dict[str | None, int] = {}
-    name: str | None
-    for name in names:
-        counts[name] = counts.get(name, 0) + 1
+    names: list[str | None] = [project.module_name(path) if path.suffix == SUFFIX else None for path in paths]
+    counts: Counter[str | None] = Counter(names)
     unique: dict[str, int] = {
         name: at
         for at, name in enumerate(names)

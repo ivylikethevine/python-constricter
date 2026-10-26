@@ -21,11 +21,11 @@ from constricter.fix.values.inference import inference
 from constricter.fix.values.loops import LoopPart, looped, looped_parts
 from constricter.fix.values.targets import iterated, unpacked
 from constricter.offences import COMMENT_TYPED_TARGET, UNTYPED_TARGET, VAGUE_TYPE, Edit, Fix, Offence, at
-from constricter.rules.annotations import roots
-from constricter.rules.flow import augmented, members
 from constricter.rules.scope import Scope, certain_type, guessed_type, guesses_in
 from constricter.rules.scoped import Bare, Late
-from constricter.rules.syntax import Commented, captures, comment_type, target_names, type_comment_span
+from constricter.source.annotations import roots
+from constricter.source.flow import augmented, members
+from constricter.source.syntax import Commented, captures, comment_type, target_names, type_comment_span
 
 _COMMENT: Final = frozenset({"comment"})  # the fix kind of a `# type:` comment's annotation
 _UNPACK: Final = frozenset({"unpack"})  # the fix kind of an unpacking's split
@@ -235,6 +235,24 @@ def _sources(target: ast.expr, value: ast.expr) -> Iterator[tuple[ast.Name, ast.
       `_unpacked`), else with `value`.
 
     """
+    pairs: list[tuple[ast.expr, ast.expr]] | None = _paired(target, value)
+    part: ast.expr
+    item: ast.expr
+    for part, item in pairs or ():
+        yield from _sources(part, item)
+    if pairs is None:
+        name: ast.Name
+        for name in target_names(target):
+            yield name, value
+
+
+def _paired(target: ast.expr, value: ast.expr) -> list[tuple[ast.expr, ast.expr]] | None:
+    """Pair each part of an unpacking's `target` with its value: where `value` is a display of as many.
+
+    Returns:
+      The pairs; `None` where either isn't such a display, or either has a `*` part.
+
+    """
     targets: list[ast.expr]
     values: list[ast.expr]
     match (target, value):
@@ -244,14 +262,9 @@ def _sources(target: ast.expr, value: ast.expr) -> Iterator[tuple[ast.Name, ast.
         ) if len(targets) == len(values) and not any(
             isinstance(part, ast.Starred) for part in (*targets, *values)
         ):
-            part: ast.expr
-            item: ast.expr
-            for part, item in zip(targets, values, strict=True):
-                yield from _sources(part, item)
+            return list(zip(targets, values, strict=True))
         case _:
-            name: ast.Name
-            for name in target_names(target):
-                yield name, value
+            return None
 
 
 def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr) -> Iterator[_Named]:
@@ -265,21 +278,16 @@ def _unpacked(scope: Scope, stmt: ast.Assign, target: ast.expr, value: ast.expr)
       Each name, with its inference, whether that's a guess, and what the guess rests on.
 
     """
-    targets: list[ast.expr]
-    values: list[ast.expr]
+    pairs: list[tuple[ast.expr, ast.expr]] | None = _paired(target, value)
+    part: ast.expr
+    item: ast.expr
+    for part, item in pairs or ():
+        yield from _unpacked(scope, stmt, part, item)
+    if pairs is not None:
+        return
     name: ast.Name
-    match (target, value):
-        case (
-            ast.Tuple(elts=targets) | ast.List(elts=targets),
-            ast.Tuple(elts=values) | ast.List(elts=values),
-        ) if len(targets) == len(values) and not any(
-            isinstance(part, ast.Starred) for part in (*targets, *values)
-        ):
-            part: ast.expr
-            item: ast.expr
-            for part, item in zip(targets, values, strict=True):
-                yield from _unpacked(scope, stmt, part, item)
-        case (ast.Name() as name, _):
+    match target:
+        case ast.Name() as name:
             fix: Inference | None
             unsafe: bool
             origins: frozenset[str]

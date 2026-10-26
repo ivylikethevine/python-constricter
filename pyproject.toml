@@ -44,11 +44,13 @@ build = [
 test = [
     { include-group = "build" },
     "fastjsonschema", # validates the SARIF output against its schema
+    "filelock", # tests/corpus/pipeline.py: a corpus's one shared check, its other steps waiting on it
     "flake8>=7",
     "hypothesis",
     "pylint>=3",
     "pytest",
     "pytest-cov",
+    "tomli-w", # tests/corpus/resume.py writes a run's facts
 ]
 # A pinned, reproducible corpus of real code for the corpus runner (`python -m tests.corpus`) to check
 # and --fix, alongside the running interpreter's own standard library: a web framework, an ORM, a
@@ -57,11 +59,13 @@ test = [
 corpus = [
     { include-group = "build" }, # for the setup action's editable `-e .` install
     "django==5.2.18", # 6.x needs Python 3.12+; 5.2 is the current LTS and still supports 3.11
+    "filelock", # tests/corpus/pipeline.py: a corpus's one shared check, its other steps waiting on it
     "pandas==3.0.6", # a large, partly annotated data library: overloads, generics, TYPE_CHECKING imports
     "pydantic==2.14.0",
     "ortools", # tests/corpus/planning.py: plans a run's steps with CP-SAT
     "py-spy", # the corpus runner's `profile` step samples the check from outside
     "sqlalchemy==2.1.4",
+    "tomli-w", # tests/corpus/resume.py writes a run's facts
 ]
 # What a compiled wheel's build from the sdist needs, without build isolation
 # (`HATCH_BUILD_HOOK_ENABLE_MYPYC=1`): the backend, and the mypyc hook's `dependencies`, pinned the same.
@@ -135,13 +139,13 @@ artifacts = ["constricter/fix/tables/*.json", "stdlib_tables/partial.json"]
 [tool.hatch.build.targets.wheel]
 packages = ["constricter"]
 
-# A compiled wheel: with `HATCH_BUILD_HOOK_ENABLE_MYPYC=1`, mypyc compiles the rules and the fixes, as
-# annotated as they are. Off by default: the pure wheel runs anywhere (PyPy, free-threaded builds).
+# A compiled wheel: with `HATCH_BUILD_HOOK_ENABLE_MYPYC=1`, mypyc compiles the rules, the fixes and what
+# they read of a module's source, as annotated as they are. Off by default: the pure wheel runs anywhere (PyPy, free-threaded builds).
 # Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
 [tool.hatch.build.targets.wheel.hooks.mypyc]
 enable-by-default = false
 dependencies = ["hatch-mypyc==0.16.0", "mypy==2.4.0", "setuptools==84.1.0"] # the `mypyc` group's
-include = ["/constricter/rules", "/constricter/fix"]
+include = ["/constricter/rules", "/constricter/fix", "/constricter/source"]
 options = { debug_level = "0" }
 
 [tool.hatch.build.targets.sdist]
@@ -192,11 +196,12 @@ external = ["LVA"]
 "tests/corpus/corpus_untyped.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The corpus runner starts each constricter version under test (`launch`; under `py-spy`, `pipeline`),
 # each of its steps as a process (in a scope of its own where systemd starts one, `sizing`), and git:
-# for the commit, and to apply a fix to a checkout (`suite_steps`).
+# for the commit (`resume`), and to apply a fix to a checkout (`suite_checkouts`).
 "tests/corpus/launch.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 "tests/corpus/pipeline.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
-"tests/corpus/suite_steps.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+"tests/corpus/suite_checkouts.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 "tests/corpus/__main__.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
+"tests/corpus/resume.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
 "tests/corpus/sizing.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true"]
 # The local CI runner runs the workflow's own steps (and git) as subprocesses.
 "tests/ci_local.py" = ["suspicious-subprocess-import", "subprocess-without-shell-equals-true", "start-process-with-partial-path"]
@@ -316,13 +321,20 @@ layers = [
 [[tool.importlinter.contracts]]
 name = "the rules and the fixes import neither the command nor the plugins"
 type = "forbidden"
-source_modules = ["constricter.rules", "constricter.fix", "constricter.offences"]
+source_modules = ["constricter.rules", "constricter.fix", "constricter.source", "constricter.offences"]
 forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.recording", "constricter.trace"]
 
 [[tool.importlinter.contracts]]
-name = "constricter.rules.walked imports nothing of constricter's"
+name = "the rules read the fixes, and both what a module's source says, which reads neither"
+type = "layers"
+layers = ["constricter.rules", "constricter.fix", "constricter.source"]
+# A kept tree's tables, named for type checking alone.
+ignore_imports = ["constricter.source.parsed -> constricter.fix.values.tables"]
+
+[[tool.importlinter.contracts]]
+name = "constricter.source.walked imports nothing of constricter's"
 type = "forbidden"
-source_modules = ["constricter.rules.walked"]
+source_modules = ["constricter.source.walked"]
 forbidden_modules = [
     "constricter.cli",
     "constricter.fix",

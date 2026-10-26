@@ -9,10 +9,10 @@ import pytest
 
 from constricter import Offence, check_source
 from constricter.fix.core.known import Guarded, Outside
-from constricter.fix.index import decorated, project
+from constricter.fix.index import decorated, project, spelling
 from constricter.fix.values import returned
-from constricter.rules import decorators
-from constricter.rules.decorators import Held, Pass
+from constricter.source import decorators
+from constricter.source.decorators import Held, Pass
 
 _Fixes: TypeAlias = dict[str, str | None]
 _LOCAL: Final = """
@@ -456,7 +456,7 @@ def test_another_modules_decorator_is_vouched_for_by_the_index(
     guarded: dict[str, Guarded] = {}
     outside: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=Outside(calls=project.calls(catalog, main, guarded), guarded=guarded),
+        outside=Outside(calls=spelling.calls(catalog, main, guarded), guarded=guarded),
     )
     assert {o.name: o.fix for o in outside} == {"a": "Index", "b": "float", "c": None}
 

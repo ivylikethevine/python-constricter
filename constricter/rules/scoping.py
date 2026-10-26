@@ -17,16 +17,16 @@ from constricter.offences import (
     UNANNOTATED_MEMBER,
 )
 from constricter.rules import binding, late, recorded
-from constricter.rules.annotations import node_name
 from constricter.rules.calls import seed_parameters, unshadowed
-from constricter.rules.declarations import (
-    imported_from,
-)
 from constricter.rules.narrowing import module_names
-from constricter.rules.quoted import written
 from constricter.rules.scope import Scope
 from constricter.rules.scoped import Kind, Late, Seeded, Settings
-from constricter.rules.syntax import (
+from constricter.source.annotations import node_name
+from constricter.source.declarations import (
+    imported_from,
+)
+from constricter.source.quoted import written
+from constricter.source.syntax import (
     BRANCHING,
     FunctionDef,
     Start,
@@ -37,7 +37,7 @@ from constricter.rules.syntax import (
     has_within,
     target_names,
 )
-from constricter.rules.walked import classes
+from constricter.source.walked import classes
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"

@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Call, Callee, Observed, Origin, Passed, Seeds
-from constricter.fix.index import project
-from constricter.fix.index.modules import SUFFIX, Index
+from constricter.fix.index import project, spelling
+from constricter.fix.index.modules import Index, module_at
 from constricter.fix.index.params import Param
 
 KIND: Final = "callers"  # the guessing mechanism (`FIX_KINDS`)
@@ -115,12 +115,12 @@ def callees(catalog: project.Index, path: Path) -> dict[str, Callee]:
 
     """
     target: project.Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(project.module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     found: dict[str, Callee] = {name: (target.name, name) for name in target.open}
     key: str
     origin: Origin
-    for key, origin in project.spellings(catalog, target, project.OPEN):
+    for key, origin in spelling.spellings(catalog, target, project.OPEN):
         defined: tuple[project.Module, str] | None = project.definition(catalog.modules, origin, project.OPEN)
         if defined is not None and not defined[0].installed:
             found[key] = (defined[0].name, defined[1])
@@ -134,9 +134,7 @@ def own_parameters(catalog: project.Index, path: Path) -> Seeds:
       Each function's parameters' types, by name (see `with_parameters`).
 
     """
-    target: project.Module | None = (
-        catalog.modules.get(project.module_name(path)) if path.suffix == SUFFIX else None
-    )
+    target: project.Module | None = module_at(catalog, path)
     return {} if target is None else target.parameters
 
 

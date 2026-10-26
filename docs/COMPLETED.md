@@ -145,7 +145,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   have is no fix where a function alone imports it, by a table generated from typeshed (`platform`:
   35 modules).
 - **Re-exports, one way**: a name is followed to where it's defined through what a module imports
-  for type checking alone too (`project.definition`, as `_canonical` does), so a class a package's
+  for type checking alone too (`project.definition`, as `canonical_origin` does), so a class a package's
   `__init__` imports only when it's asked for (pydantic's `TypeAdapter`) has its members, its
   methods' returns and its aliases; a package's re-exports are spelled from both
   (`modules.exported`). On pydantic's checkout with its tests, 42 fixes more (36 certain, none
@@ -366,7 +366,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
   with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
   seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
-  `local/research/type-sources-2026-10-23.md`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
+  [type sources](research/type-sources.md)). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
   certain fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from
   982, no new type error (narwhals's certain tier 19 from 23): the chains estimated didn't come.
   Done when a super run gives sphinx, seaborn,
@@ -666,6 +666,47 @@ What constricter does today and what was measured on the way, by scope. What's n
   part (112s) stood for every fixed tree (`tests-fix-likely` 0s, implied). Done when a run's
   `infer-union` part stands for sqlalchemy's
   fixed trees again and its `tests` stage takes about rc.3's 12 minutes. Coverage unchanged.
+- **One type at run time, no fix**: the `traced` step keeps the types the trace saw each of the
+  package's bindings hold (`traced.seen.jsonl`), and the report holds the census's bindings with
+  neither a fix nor a guess to them, by shape (`one-type.csv`, its commonest source of each; the
+  Markdown leaves the sources out). On the 0.4.3-rc.7 mega run (`5674049`, 16CPU/60GB, 68
+  minutes), of 162,001 such bindings the traced tests reached 79,623 and saw 60,259 hold one type:
+  the upper bound of any inference there, and where a binding bound otherwise is worth a look.
+- **The hinted steps' servers, sized by the memory free**: memory, not CPUs, kept the 0.4.3-rc.2
+  super run's steps waiting (pandas's `infer-union`, all three checkers' servers at once, held
+  28.5 GB for 10.5 minutes). The runner's `infer-union` asks its checkers in turn
+  (`--infer-in-turn`, each one's servers shut down before the next's start), sized by its largest
+  checker's step until measured. A hinted step starts with as few CPUs as hold one server of each
+  of its checkers for the corpus (`Plan._hinted`) and takes more as they free, its servers given
+  that share of the 8 GB default rounded up to whole servers (`Wanted.hinted`, `Wanted.server`);
+  only one whose last run took 300s at most starts short (`sizing._BRIEF`), as a short start keeps
+  its CPUs for the whole step. On the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes)
+  pandas's `infer-union` held 14.3 GB, and the run used 77% of its CPU seconds (rc.7 75%).
+- **basedpyright's heap, capped**: Node 24's own cap was 4.2 GB whatever a server's share, and
+  basedpyright empties its caches near it. Each server's heap is capped at nine tenths of its share
+  of the memory (`NODE_OPTIONS=--max-old-space-size`, `Checker.share`), and a capped server that
+  exits is restarted and asked about its files alone, as a hung one is (`ExitedError`), a file it
+  exits on again left without hints and not remembered. A file a server hung on in an earlier run
+  gets no hints rather than none of its answers (`Session.hints`), and a fix or census step whose
+  constricter ends at an exception fails (`pipeline._crashed`). On the 0.4.3-rc.4 super run
+  (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
+  `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
+  pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
+
+- **The witness, past a test's own classes**: a value of a class a test module defines, a mock or
+  a `mock.sentinel` object, or a `SimpleNamespace` tells nothing of the annotation, nor does an
+  annotation naming a test's class outside the tests; a class a function defines again at each
+  call is the annotation's by its module and qualified name; a descriptor class an attribute is
+  annotated with is read through an instance as its `__get__` declares (`declarations.descriptors`).
+  A verdict tells of its first 3 differing values, each the value's class and the annotation
+  evaluated (`differed`), so a misjudgment can be read from the run. Read through on the
+  0.4.3-rc.8 mega run (`7a075e4`) and the super run of 2026-10-25 (`722e868`): of rc.8's 10 new
+  differing certain fixes, 7 are declarations the tests contradict (pandas's numpy scalars,
+  types-docutils' stubs, sqlalchemy's untold value); pdm's `dep: str` was given tomlkit
+  `InlineTable`s (pdm's own `deps: list[str]` contradicted), and its `url` and strawberry's `node`
+  didn't differ again; strawberry's other differing fixes are its own `cast("Edge[NodeType]", ...)`
+  of a class and declarations of instances given classes. The one misjudgment, pdm's
+  `mock.sentinel` values, is fixed.
 
 ## CI, security and releases
 
@@ -678,7 +719,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   skips every job.
 - **The layers, checked**: `import-linter` holds `constricter.fix`'s four layers to importing only
   those before them, the rules and the fixes to importing neither the command nor the plugins, and
-  `rules.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
+  `source.walked` to nothing of constricter's (`[tool.importlinter]`; `lint-imports` in the Lint
   job).
 - **ty, a fourth type checker**, beside basedpyright, mypy and pyrefly on the project's own code
   (`ty check`, `[tool.ty]`): it found a quoted alias it couldn't join with `| None`, a method read
@@ -708,32 +749,51 @@ What constricter does today and what was measured on the way, by scope. What's n
   lockfile, uv and actionlint by version. `tool-versions.yml` keeps one issue open while any of them
   is behind a release at least a week old; Dependabot opens no version-update pull request.
 - **harden-runner** blocks egress to all but the observed hosts in every Linux job, the release jobs
-  included; rulesets require every check on `main` and protect `v*` tags.
+  included. The rulesets hold `main` to pull requests and signed commits, with no required status
+  check, and protect `v*` tags.
 - **Releases** (`release.yml` on `v*` tags): CI, a reusable build workflow that checks the tag
   matches the version and attests the dists (SLSA Build Level 3), PyPI trusted publishing, and a
   GitHub release: the README's badges, each merged pull request's `## Release note` section (which
   `release-note.yml` makes every one write) under "What changed", then GitHub's generated list.
   Verify a download with
   `gh attestation verify FILE --repo ivylikethevine/python-constricter --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
+- **The compiled wheels, a job each**: a `python` matrix of cp311 to cp314 beside `os` in
+  `build.yml` (`CIBW_BUILD` set from it) builds the 20 wheels at once, each job's artifacts and
+  attestation named by both (`compiled-<os>-<python>`, which `release.yml`'s `compiled-*` patterns
+  take): 2 to 5 minutes a job, from 0.4.2's 10 to 20 a platform. 0.4.3's 20 are on PyPI and the
+  GitHub release (2026-10-25). A job can lose its start to a transient refusal as harden-runner
+  engages (an artifact download's `ECONNREFUSED`, an image pull's `unexpected EOF`), which a rerun
+  of the failed jobs clears.
+- **Ubuntu 26.04 runners, named**: every Linux job runs on `ubuntu-26.04` rather than
+  `ubuntu-latest`, so an image change is a commit, not the label moving under a release
+  (`.github/actionlint.yaml` names the label, which actionlint 1.7.12 doesn't know); the ARM wheels
+  stay on `ubuntu-24.04-arm`, there being no 26.04 ARM image. CI, Security, CodeQL and the 0.4.3
+  release passed on it, harden-runner's allowlists unchanged.
 
 ## Project
 
 - **Python 3.11+**, the oldest still maintained after 3.10's end of life (October 2026): 3.10 would
   add a runtime dependency (`tomli`) for a month, and 3.6–3.9 would mean dropping `match` from the
   checker. Code for any Python 3 version can still be checked.
-- **Layout**: `constricter/` in `rules/`, `fix/`, `cli/` and `plugins/`; `fix/` in four layers, each
+- **Layout**: `constricter/` in `rules/`, `fix/`, `source/` (what a module's source says: its walks,
+  annotations and declarations, which the rules and the fixes both read and which reads neither),
+  `cli/` and `plugins/`; `fix/` in four layers, each
   importing only those before it: `core/` (what every part shares), `libraries/` (the standard
   library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. Every module is under 800 lines, past which
-  the Lint job warns, split along what each grouped (a reader of stubs' signatures out of
-  `stubbed.py`, and its names' resolution out of `stubs/signatures.py`; what a file takes of
-  another's classes out of `project.py`; loops out of `inference.py`; what a module declares out of
-  `rules/annotations.py`; where a module's names come from and its open functions out of
-  `fix/index/modules.py`; the hint rounds out of `cli/command.py`; the language server's connection
-  out of `cli/lsp/hints.py`; building the scopes out of `rules/checker.py`; the annotation forms out of
-  `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`), and all of
-  `constricter/`'s but five under 750 (`cli/options.py`, `fix/index/project.py`,
-  `fix/libraries/overloads.py`, and `rules/late.py` and `scope.py`); the standard-library tables in
+  (the cross-file index), its tests laid out the same. Modules are split along what each grouped
+  as they near pylint's 1,000 lines (a reader of stubs' signatures out of `stubbed.py`, and its
+  names' resolution out of `stubs/signatures.py`; what a file takes of another's classes out of
+  `project.py`, and how a file spells another's types and calls (`spelling.py`); loops out of
+  `inference.py`; what a module declares out of `source/annotations.py`; where a module's names
+  come from and its open functions out of `fix/index/modules.py`; the hint rounds out of
+  `cli/command.py`; the language server's connection out of `cli/lsp/hints.py`; building the
+  scopes out of `rules/checker.py`; how a function binds a name again out of `rules/late.py`
+  (`rebound.py`); operators out of `fix/libraries/overloads.py` (`operators.py`); the annotation
+  forms out of `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`; a
+  run's facts and resuming out of the corpus runner's `__main__.py` (`resume.py`); a suite's
+  checkouts and type checks out of `tests/corpus/suite_steps.py` (`suite_checkouts.py`)); the Lint
+  job warns past 800 lines, where `fix/values/hinted.py`, `rules/scope.py`,
+  `source/declarations.py`, `fix/libraries/overloads.py` and `cli/options.py` are; the standard-library tables in
   `constricter/fix/tables/`, their generator in `stdlib_tables/`; the language servers' modules
   under `cli/lsp/`, the installed packages' stub readers under `fix/index/stubs/`; docs in `docs/` (changelog,
   contributing, security, integrations, fixes, likely, runs), release notes grouped by
@@ -742,6 +802,29 @@ What constricter does today and what was measured on the way, by scope. What's n
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
   10.8s (51.0s and 11.0s).
+- **Faults a review of the package found**, each with a test: `fix-widen`'s method lookup through
+  bases that cycle (`class A(B)`, `class B(A)`) no longer hangs; a relative import climbing past
+  the top package names no module, as Python refuses it (`origins.absolute`); a guarded name's
+  clash no longer drops the generic classes other files declare (`Outside.usable`); an import in
+  a top-level `try`'s `finally:` counts as the module's; `infer-with` in `pyproject.toml` names each
+  checker once; the hint store's key covers the code that writes what it keeps (`edits.py`);
+  workers start only inside `kept()`, which stops them; the pylint plugin reads a module by its
+  PEP 263 declaration or BOM, as the CLI does (a latin-1 module crashed it).
+- **Simplified**, behavior kept and the compiled build's tests passing: helpers shared where a
+  shape was written several times (a checked module's lookup, `syntax.own_returns`, the
+  `Outside()` defaults for a module no other file informs, one framing of a language server's
+  messages, one probe per checker), `Counter` for hand counts, dead names removed and names used
+  in one module made private; the corpus runner's facts and resuming in `tests/corpus/resume.py`
+  (its `__main__.py` was at pylint's 1,000 lines), its step names, paths and constants named once.
+- **Structure**: what a module's source says (its walks, annotations and declarations) in
+  `constricter/source/`, which import-linter holds below the rules and the fixes, so the two no
+  longer import each other; one table per code in `offences.CODES` (its message and the levels it's
+  reported and an error from), and one table of the plugins' options (`plugins/options.py`). The
+  corpus runner reads its flags with argparse (`run_config.read_command`): an argument it doesn't
+  take is an error, with its usage. It writes `facts.toml` with tomli-w and holds a corpus's shared
+  check with filelock, both declared in the `test` group. What reads a suite's tests' output
+  changed (`corpus_suite.parser`: `3aeda7010fee`), so a run after it doesn't reuse an earlier run's
+  released-tests records.
 - **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
   pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
   (`cli/lsp/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,

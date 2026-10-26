@@ -4,7 +4,7 @@ Reads `records/<corpus>/<label>/*.json` under each run folder given: files from 
 the wall and CPU seconds of every step (`used.seconds`, `used.cpu`, else `seconds`). Prints one row
 per corpus, sorted by wall seconds, with the medians the groups split at.
 
-    python3 scratch/corpus_quadrants.py local/corpus-runs/super-... local/corpus-runs/mega-...
+    python3 scratch/corpus_quadrants.py corpus-runs/super-... corpus-runs/mega-...
 """
 
 import json

@@ -24,12 +24,13 @@ from typing import Final, NamedTuple, TypeAlias, cast
 from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
-from constricter.rules.annotations import node_name, roots
-from constricter.rules.declarations import generic_classes
-from constricter.rules.flow import members
-from constricter.rules.quoted import parsed
-from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import classes, of_type, walk
+from constricter.fix.values.shapes import COMPREHENSIONS, Comprehension, is_none
+from constricter.source.annotations import node_name, roots
+from constricter.source.declarations import generic_classes
+from constricter.source.flow import members
+from constricter.source.quoted import parsed
+from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.walked import classes, of_type, walk
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
 _Read: TypeAlias = type[ast.expr]
@@ -47,8 +48,6 @@ _COMPREHENSION: Final = "comprehension"
 _LITERAL: Final = "literal"
 _NONE: Final = "None"
 _OPTIONAL: Final = "Optional"
-_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-_Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 _UNIONS: Final = frozenset({"Optional", "Union"})
 _SELF_ORIGINS: Final = frozenset({"typing.Self", "typing_extensions.Self"})
 _SELF_ITSELF: Final = "{}"  # how a value that is `Self` is written, `{}` standing for it
@@ -80,7 +79,7 @@ class Facts(NamedTuple):
     checking: frozenset[str] = frozenset()
     tests: Tests = Tests()  # what its tests read (see `tests`)
     narrowed: Regions = MappingProxyType({})  # where each value is narrowed (see `narrowed.regions`)
-    inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `inner_starts`)
+    inner: tuple[int, ...] = ()  # the lines functions and lambdas start on, sorted (see `_inner_starts`)
     # The functions `@contextmanager` makes context managers, its own and those it imports: what
     # `with` gives of each, and what that rests on if it's a guess (see `entered`).
     managers: Mapping[str, Passed] = MappingProxyType({})
@@ -120,18 +119,18 @@ def facts(
 
     """
     return Facts(
-        selfish,
-        generic_classes(tree) | generics,
-        passed(tree),
-        checking(tree),
-        tests(tree),
-        regions(tree),
-        inner_starts(tree),
-        managers,
-        type_vars,
-        _bound_vars(tree, type_vars),
-        rebound_names(tree),
-        [(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
+        selfish=selfish,
+        generics=generic_classes(tree) | generics,
+        passed=passed(tree),
+        checking=checking(tree),
+        tests=tests(tree),
+        narrowed=regions(tree),
+        inner=_inner_starts(tree),
+        managers=managers,
+        type_vars=type_vars,
+        bound=_bound_vars(tree, type_vars),
+        rebound=rebound_names(tree),
+        lazy=[(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
         nested=nested_classes(tree),
     )
 
@@ -204,7 +203,7 @@ def doubts(value: ast.expr, found: Inference, *, constant: bool, narrowed: froze
     if narrowed.intersection(found.reads):
         return frozenset({_READS[ast.Name]})
     if (
-        isinstance(value, _COMPREHENSIONS)
+        isinstance(value, COMPREHENSIONS)
         and any(g.ifs for g in value.generators)
         and (_has_union(found) or _sifted(value))
     ):
@@ -229,7 +228,7 @@ def narrowed_first(value: ast.expr, found: Inference) -> bool:
     if found.annotation == _NONE:
         return True
     optional: bool = _NONE in (members(found.annotation) or ())
-    filtered: bool = isinstance(value, _COMPREHENSIONS) and any(g.ifs for g in value.generators)
+    filtered: bool = isinstance(value, COMPREHENSIONS) and any(g.ifs for g in value.generators)
     return (isinstance(value, _READ_KINDS) and optional) or (filtered and _has_none(found.annotation))
 
 
@@ -267,7 +266,7 @@ def _stored(function: FunctionDef) -> frozenset[str]:
     )
 
 
-def _sifted(value: _Comprehension) -> bool:
+def _sifted(value: Comprehension) -> bool:
     """Check whether a comprehension keeps only what's of some class: `[x for x in xs if isinstance(x, C)]`.
 
     Returns:
@@ -303,13 +302,12 @@ def _has_none(annotation: str) -> bool:
     """
     # `annotation` is always `ast.unparse`'s own output, so it's always valid Python to parse back.
     return any(
-        (isinstance(node, ast.Constant) and node.value is None)
-        or (isinstance(node, ast.Name | ast.Attribute) and node_name(node) == _OPTIONAL)
+        is_none(node) or (isinstance(node, ast.Name | ast.Attribute) and node_name(node) == _OPTIONAL)
         for node in ast.walk(ast.parse(annotation, mode="eval"))
     )
 
 
-def inner_starts(tree: ast.Module) -> tuple[int, ...]:
+def _inner_starts(tree: ast.Module) -> tuple[int, ...]:
     """List the lines the module's functions and lambdas start on, for `contains_inner` to look up.
 
     Returns:

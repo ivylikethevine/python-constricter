@@ -6,10 +6,10 @@ from functools import lru_cache
 from typing import Final
 
 from constricter.offences import NARROW, Edit, Fix, FixPolicy, Offence
-from constricter.rules.annotations import node_name
-from constricter.rules.flow import Finding, Kind
 from constricter.rules.scope import Scope
-from constricter.rules.walked import of_type
+from constricter.source.annotations import node_name
+from constricter.source.flow import Finding, Kind
+from constricter.source.walked import of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 

@@ -6,12 +6,11 @@ it.
 """
 
 import ast
-import builtins
 from collections.abc import Iterator, Mapping
 from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Origin
-from constricter.fix.index import project
+from constricter.fix.index import project, spelling
 from constricter.fix.index.modules import Module
 from constricter.fix.index.stubs import classnames
 from constricter.fix.index.stubs.atoms import (
@@ -24,11 +23,10 @@ from constricter.fix.index.stubs.atoms import (
     parse_text,
 )
 from constricter.fix.index.stubs.declared import Alias, Class, Declarations, Variable
+from constricter.fix.libraries.receivers import UNFOLLOWED
 
 ARG: Final = "arg"
-_BUILTINS: Final = frozenset(dir(builtins))
 ALIAS_DEPTH: Final = 20  # aliases followed before giving up
-_UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
 
 
 Resolved: TypeAlias = Atom | tuple[Alias, Scope, Origin]
@@ -79,7 +77,7 @@ class Resolver:
             return Atom(VAR, name=expr.id, bound=param, scope=scope)
         if (origin := self._origin(expr, scope.module)) is None or origin[1] is None:
             return None
-        origin = project.canonical_origin(self.modules, origin)
+        origin = spelling.canonical_origin(self.modules, origin)
         defining: Module | None = self.modules.get(origin[0])
         if defining is None or not defining.reads(origin[1]):
             return Atom(CLASS, origin=origin)
@@ -112,19 +110,19 @@ class Resolver:
         klass: Class | None
         # No class: a checked file's protocol, or one its module defines twice (attrs's `AttrsInstance_`).
         if module.declared is None or (klass := module.declared.classes.get(origin[1] or "")) is None:
-            yield _UNFOLLOWED
+            yield UNFOLLOWED
             return
         base: str
         for base in klass.bases:
             resolved: Resolved | None = self.resolved_base(base, module)
             if not isinstance(resolved, Atom) or resolved.kind != CLASS:
-                yield _UNFOLLOWED
+                yield UNFOLLOWED
             elif resolved.module is None:
                 yield atom_path(resolved)
             elif hops < ALIAS_DEPTH:
                 yield from self.lineage(resolved.origin, hops + 1)
             else:  # a cycle of bases
-                yield _UNFOLLOWED
+                yield UNFOLLOWED
 
     def is_class(self, target: Module, name: str) -> bool:
         """Check whether a dotted name the module writes (`np.float64`) is an installed class or its alias.
@@ -137,7 +135,7 @@ class Resolver:
         resolved: Resolved | None = (
             None
             if origin is None or origin[1] is None
-            else self._declared_of(project.canonical_origin(self.modules, origin))
+            else self._declared_of(spelling.canonical_origin(self.modules, origin))
         )
         if resolved is not None and not isinstance(resolved, Atom):  # an alias: of a class?
             value: ast.expr = parse_text(resolved[0].value)
@@ -186,7 +184,7 @@ class Resolver:
                 ((module.name, expr.id) if declared is not None and expr.id in declared.aliases else None)
                 or module.names.get(expr.id)
                 or module.guarded.get(expr.id)
-                or ((BUILTINS_MODULE, expr.id) if expr.id in _BUILTINS else None)
+                or ((BUILTINS_MODULE, expr.id) if expr.id in project.BUILTINS else None)
             )
         if not isinstance(expr.value, ast.Name | ast.Attribute):
             return None

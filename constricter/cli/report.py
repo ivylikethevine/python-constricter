@@ -166,12 +166,21 @@ def _sarif(results: Sequence[Result]) -> dict[str, _Json]:
     }
 
 
+def _located(r: Result) -> str:
+    """Say where `r` is: its path, its cell in a notebook, its line and its column (from 1).
+
+    Returns:
+      It.
+
+    """
+    cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
+    return f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
+
+
 def _text(results: Sequence[Result]) -> Iterator[str]:
     r: Result
     for r in results:
-        cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
-        where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
-        yield f"{where}: {r.severity}: {r.offence.code} {r.offence.message}"
+        yield f"{_located(r)}: {r.severity}: {r.offence.code} {r.offence.message}"
 
 
 def _full(results: Sequence[Result]) -> Iterator[str]:
@@ -186,8 +195,7 @@ def _full(results: Sequence[Result]) -> Iterator[str]:
     for r in results:
         yield from _text([r])
         source: str = r.source
-        # `col` counts UTF-8 bytes, as `ast` does; the caret goes under that many characters.
-        start: int = len(source.encode()[: r.offence.col].decode(errors="ignore"))
+        start: int = _column(r)  # the caret goes under the name's first character
         width: int = len(r.offence.name) if source[start:].startswith(r.offence.name) else 1
         number: str = str(r.offence.line)
         gutter: str = " " * len(number)
@@ -374,8 +382,7 @@ def fix_reasons(results: Sequence[Result]) -> Iterator[str]:
     r: Result
     for r in results:
         if r.offence.fix is not None:
-            cell: str = "" if r.offence.cell is None else f"cell {r.offence.cell}:"
-            where: str = f"{r.path}:{cell}{r.offence.line}:{r.offence.col + 1}"
+            where: str = _located(r)
             flag: str = "--likely" if r.offence.likely else "--unsafe-fixes"
             guess: str = f" (a guess: {flag})" if r.offence.unsafe and not r.fixed else ""
             kinds: str = ", ".join(sorted(r.offence.edit.kinds if r.offence.edit else ()))

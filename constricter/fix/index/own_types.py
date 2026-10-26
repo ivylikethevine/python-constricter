@@ -15,17 +15,14 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import OWN, OWN_ELEMENTS, Accepts
-from constricter.fix.index import plain, project
-from constricter.fix.index.modules import SUFFIX, Index, Memo, Module, classes_under, exported, module_name
-from constricter.fix.index.stubs.atoms import BUILTINS_MODULE, CLASS, Atom, Scope
+from constricter.fix.index import plain, project, spelling
+from constricter.fix.index.modules import Index, Memo, Module, classes_under, exported, module_at
+from constricter.fix.index.stubs.atoms import BUILTINS_MODULE, CLASS, LITERAL_ATOM, NONE_ATOM, Atom, Scope
 from constricter.fix.libraries import stdlib
+from constricter.fix.libraries.receivers import UNFOLLOWED
 from constricter.fix.values import classvars
 from constricter.overrides import override
 
-_NONE_ATOM: Final = "none"
-_LITERAL_ATOM: Final = "literal"
-_UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
-_DEPTH: Final = 8  # how many classes a line of bases is followed through
 # Generic classes of one argument whose instance a builtin sequence or set argument is, by its elements.
 _ITERABLES: Final = frozenset(
     {"Iterable", "Iterator", "Collection", "Sequence", "MutableSequence", "list", "List"}
@@ -54,7 +51,7 @@ def accept(modules: Mapping[str, Module], atoms: Sequence[Atom], read: _Atoms, f
     atom: Atom
     for atom in atoms:
         name: str = atom.origin[1] or ""
-        if atom.kind == _NONE_ATOM or (atom.kind == CLASS and name in _MAPPINGS):
+        if atom.kind == NONE_ATOM or (atom.kind == CLASS and name in _MAPPINGS):
             continue
         inner: list[str] | None = (
             _classes(modules, list(read(atom.args[0], atom.scope)))
@@ -87,7 +84,7 @@ def _classes(modules: Mapping[str, Module], atoms: Sequence[Atom]) -> list[str] 
             and atom.origin[1] in module.bases
         ):
             found.add(f"{atom.origin[0]}.{atom.origin[1]}")
-        elif atom.kind not in {_NONE_ATOM, _LITERAL_ATOM} and not (
+        elif atom.kind not in {NONE_ATOM, LITERAL_ATOM} and not (
             atom.kind == CLASS and atom.origin[0] == BUILTINS_MODULE and not atom.args
         ):
             return None
@@ -111,7 +108,7 @@ def lineages(
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return Lineages(catalog, Named({}, {}, frozenset()), installed)
     own: dict[str, tuple[str, ...]] = {
         name: _lined(catalog, f"{target.name}.{name}") for name in target.bases
@@ -125,7 +122,7 @@ def lineages(
     for names in (checking, target.names):
         local: str
         origin: Origin
-        for local, origin in project.resolved(catalog, names):
+        for local, origin in spelling.resolved(catalog, names):
             defined: tuple[Module, str] | None
             if origin[1] is None:
                 under[local] = origin[0]
@@ -300,7 +297,7 @@ def _lined(catalog: Index, defined: str) -> tuple[str, ...]:
     memo: Memo | None = catalog.memo
     line: tuple[str, ...] | None
     if (line := None if memo is None else memo.lines.get(defined)) is None:
-        line = tuple(dict.fromkeys(_line(catalog.modules, defined, _DEPTH)))
+        line = tuple(dict.fromkeys(_line(catalog.modules, defined, project.DEPTH)))
         if memo is not None:
             memo.lines[defined] = line
     return line
@@ -318,12 +315,12 @@ def _line(modules: Mapping[str, Module], defined: str, depth: int) -> Iterator[s
     name: str = defined.rpartition(".")[2]
     if module is None or module.installed or name not in module.bases:
         if stdlib.held_whole(defined) is None and defined.rpartition(".")[0] != BUILTINS_MODULE:
-            yield _UNFOLLOWED
+            yield UNFOLLOWED
         return
     yield defined
     base: str
     for base in module.bases[name]:
         if base == classvars.SPECIAL or not depth:
-            yield _UNFOLLOWED
+            yield UNFOLLOWED
         else:
             yield from _line(modules, plain.resolved(modules, module, base), depth - 1)

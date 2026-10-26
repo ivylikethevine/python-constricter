@@ -25,14 +25,16 @@ from constricter.fix.core.known import (
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import callables, classvars, entered, fills, reads, stored
 from constricter.fix.values.doubts import facts, says_self
+from constricter.fix.values.tables import Tables
 from constricter.offences import (
     STARRED_SUBSCRIPTS,
     Checks,
 )
 from constricter.rules import late, widened
-from constricter.rules.annotations import free_of, free_of_all
 from constricter.rules.calls import keyed, marked
-from constricter.rules.declarations import (
+from constricter.rules.scoped import Seeded, Settings
+from constricter.source.annotations import free_of, free_of_all
+from constricter.source.declarations import (
     GenericClass,
     awaited_returns,
     casts,
@@ -43,15 +45,13 @@ from constricter.rules.declarations import (
     generic_members,
     self_returns,
 )
-from constricter.rules.decorators import passing
-from constricter.rules.flow import Hierarchy
-from constricter.rules.scoped import Seeded, Settings
-from constricter.rules.syntax import (
+from constricter.source.decorators import passing
+from constricter.source.flow import Hierarchy
+from constricter.source.syntax import (
     owners,
     python2_compatible,
 )
-from constricter.rules.tables import Tables
-from constricter.rules.walked import of_type
+from constricter.source.walked import of_type
 
 TYPING_ALIAS: Final = (3, 10)  # the first Python whose `typing` has `TypeAlias`
 
@@ -72,40 +72,39 @@ def module_settings(
       Its settings.
 
     """
-    stored.hand(tree, {} if outside is None else outside.emptied)
+    seen: Outside = outside or Outside()  # its defaults, where the CLI knows nothing of the module
+    origins: dict[str, str] = stdlib.origins(tree)
+    stored.hand(tree, seen.emptied)
     # The functions' declared returns: other checked files' (see `Outside`), then the module's own.
-    calls: dict[str, str] = {**({} if outside is None else outside.calls), **own.returns, **own.side_calls}
-    imported: Classes | None = None if outside is None else outside.classes
+    calls: dict[str, str] = {**seen.calls, **own.returns, **own.side_calls}
+    imported: Classes | None = seen.classes
     # The bases whose members are known whole: the standard library's, and other checked files' below.
-    bases: dict[str, str] = stdlib.bases(tree, stdlib.origins(tree))
-    beyond: Mapping[str, inherited.Beyond] = {} if outside is None else outside.beyond
+    bases: dict[str, str] = stdlib.bases(tree, origins)
+    beyond: Mapping[str, inherited.Beyond] = seen.beyond
     library: dict[str, inherited.Library] = {
         text: (stdlib.members(path), stdlib.lines(path))
         for text, path in (*bases.items(), *((end, end) for end in inherited.several(beyond)))
         if path
     }
     # The file's own types that mention a type variable it imports (`--fix` sees only its own).
-    free: frozenset[str] = frozenset() if outside is None else outside.type_vars
+    free: frozenset[str] = seen.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
     # The generic classes it names, as it spells them: other checked files', then its own.
-    generic: dict[str, GenericClass] = {
-        **({} if outside is None else outside.generic),
-        **generic_members(tree),
-    }
+    generic: dict[str, GenericClass] = {**seen.generic, **generic_members(tree)}
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
         Known(
             free_of(calls, free),
-            factories(tree) | (frozenset[str]() if outside is None else outside.values),
+            factories(tree) | seen.values,
             {**(imported.attributes if imported else {}), **free_of_all(own.classes, free)},
             {**(imported.methods if imported else {}), **free_of_all(own.methods, free)},
             Indirect(
-                {**({} if outside is None else outside.awaits), **free_of(awaited_returns(tree), free)},
+                {**seen.awaits, **free_of(awaited_returns(tree), free)},
                 _partial(own, free, outside),
-                {**({} if outside is None else outside.tuples), **free_of(own.tuples, free)},
-                {**({} if outside is None else outside.unions), **own.unions},
-                {**({} if outside is None else outside.takers), **fills.takers(tree)},
+                {**seen.tuples, **free_of(own.tuples, free)},
+                {**seen.unions, **own.unions},
+                {**seen.takers, **fills.takers(tree)},
             ),
             ClassSide(
                 free_of_all(own.order.flattened(class_attributes(tree)), free),
@@ -128,31 +127,29 @@ def module_settings(
             ),
             LibraryNames(
                 casts(tree),
-                stdlib.origins(tree),
+                origins,
                 # What annotations alone can name: its own imports for type checking, and other files' types'.
                 replace(
                     imports.plan(tree),
-                    guarded={} if outside is None else {**outside.checking, **outside.guarded},
+                    guarded={**seen.checking, **seen.guarded},
                 ),
-                {} if outside is None else outside.overloaded,
-                frozenset() if outside is None else outside.installed_classes,
-                {} if outside is None else outside.installed_parameters,
-                {} if outside is None else outside.installed_lineage,
-                {} if outside is None else outside.installed_aliases,
+                seen.overloaded,
+                seen.installed_classes,
+                seen.installed_parameters,
+                seen.installed_lineage,
+                seen.installed_aliases,
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
                 checks.min_python is None or checks.min_python >= TYPING_ALIAS,
             ),
             Limits(checks.max_length, checks.vague, widened.marks(lines)),
-            vouched=passing(tree, defined_type_vars(tree)).union(
-                frozenset() if outside is None else outside.vouched,
-            ),
+            vouched=passing(tree, defined_type_vars(tree)).union(seen.vouched),
             generic=generic,
-            descriptors={**({} if outside is None else outside.descriptors), **descriptors(tree)},
+            descriptors={**seen.descriptors, **descriptors(tree)},
         ),
         Hierarchy.for_module(
             tree,
             {name: frozenset(wider) for name, wider in checks.narrower},
-            () if outside is None else outside.same,
+            seen.same,
         ),
         owners(tree, says_self),
         tuple(
@@ -161,18 +158,18 @@ def module_settings(
                 for node in cast("list[ast.NamedExpr]", of_type(tree, ast.NamedExpr))
             ),
         ),
-        () if outside is None else outside.hints,
+        seen.hints,
         facts(
             tree,
             selfish,
-            stdlib.generics(stdlib.origins(tree)) | (outside.generics if outside else frozenset[str]()),
+            stdlib.generics(origins) | seen.generics,
             {
-                **({} if outside is None else outside.managers),
+                **seen.managers,
                 **{name: (yielded, frozenset[str]()) for name, yielded in entered.managers(tree).items()},
             },
             defined_type_vars(tree) | free,
         )._replace(
-            untyped=frozenset() if outside is None else outside.untyped,
+            untyped=seen.untyped,
             attributed=frozenset(
                 node.value.id
                 for node in cast("list[ast.Attribute]", of_type(tree, ast.Attribute))
@@ -182,11 +179,11 @@ def module_settings(
             excused=late.excusing(lines),
         ),
         Seeded(
-            keyed(tree, {} if outside is None else outside.parameters),
-            {} if outside is None else outside.fixtures,
+            keyed(tree, seen.parameters),
+            seen.fixtures,
             marked=marked(tree),
-            reads=reads.members(tree, imported, () if outside is None else outside.same),
-            named={} if outside is None else outside.named,
+            reads=reads.members(tree, imported, seen.same),
+            named=seen.named,
         ),
     )
 

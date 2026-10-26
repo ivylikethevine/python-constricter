@@ -8,7 +8,7 @@ import ast
 
 from constricter.fix.core.known import SPELLED, Guarded
 from constricter.fix.core.signatures import ReadSignature
-from constricter.fix.index import project
+from constricter.fix.index import spelling
 from constricter.fix.index.modules import Index, Module
 from constricter.fix.index.stubs.declared import Signature
 
@@ -20,7 +20,7 @@ def written(module: Module, name: str) -> tuple[Signature, ...]:
       Them.
 
     """
-    return module.overloads[name] if module.declared is None else module.declared.signatures[name]
+    return module.signatures[name]
 
 
 def spelled(
@@ -30,7 +30,7 @@ def spelled(
     read: tuple[ReadSignature, ...],
     guarded: dict[str, Guarded] | None,
 ) -> tuple[ReadSignature, ...]:
-    """Write a checked file's overloads' returns as `target` can (see `project.spelled_in`).
+    """Write a checked file's overloads' returns as `target` can (see `spelling.spelled_in`).
 
     Each is the type itself then (`SPELLED`), not a template: no overload of a checked file's binds
     a type variable.
@@ -48,7 +48,12 @@ def spelled(
         text: str | None = (
             None
             if signature.returns is None
-            else project.spelled_in(catalog, target, defined[0], _unquoted(signature.returns), names)
+            else spelling.spelled_in(
+                catalog.modules,
+                (target, defined[0]),
+                _unquoted(signature.returns),
+                names,
+            )
         )
         if text is None:
             return ()

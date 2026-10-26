@@ -32,17 +32,15 @@ from constricter.fix.values.targets import (
     unpacked,
 )
 from constricter.offences import CONSTRUCTOR
-from constricter.rules.flow import members
+from constricter.source.flow import members
 
 _GENERIC: Final = "["  # in a type's text: its arguments
-COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNION: Final = re.compile(r"\||\b(?:None|Optional|Union)\b")  # an annotation with a union in it
 _NONE: Final = "None"
 # A predicate's return that narrows what it's given
 _NARROWING: Final = re.compile(r"\b(?:TypeGuard|TypeIs)\b")
 _CALLABLE: Final = "callable"  # the builtin predicate that narrows (`TypeIs[Callable[..., object]]`)
 _PREDICATE: Final = 2  # `filter`'s arguments: the predicate and the iterable
-_Comprehension: TypeAlias = ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp
 # Types a value over what a scope declared, as `constricter.fix.values.inference.inference` does.
 Infer: TypeAlias = Callable[[ast.expr, Known, Mapping[str, str]], Inference | None]
 
@@ -79,7 +77,7 @@ def comprehended(
 
     """
     return targets_typed(
-        [node for node in ast.walk(value) if isinstance(node, COMPREHENSIONS)],
+        [node for node in ast.walk(value) if isinstance(node, shapes.COMPREHENSIONS)],
         known,
         declared,
         infer,
@@ -104,7 +102,7 @@ def targets_typed(
     node: ast.AST
     generator: ast.comprehension
     for node in comprehensions:
-        for generator in cast("_Comprehension", node).generators:
+        for generator in cast("shapes.Comprehension", node).generators:
             found: Inference | None = looped(generator.iter, known, inside, infer)
             name: ast.Name
             part: str | None

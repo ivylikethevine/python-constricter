@@ -1,6 +1,6 @@
 """Replay finished corpus runs' steps under other schedules, to see which ends soonest and how near the best.
 
-Reads every `records/<corpus>/<version>/<step>.json` of each run folder given: each step's seconds,
+Reads every step's record of each run folder given (its report's, else `records/`; `tests.corpus.archive`): its seconds,
 CPU seconds and peak memory as measured, and when it started. A step needs its average CPUs
 (`cpu / seconds`, at least 1) and its peak memory with the runner's 25% margin; with `--given`, what
 the runner gave it. Its order within a corpus is the runner's: `traced` after `fix-unsafe`;
@@ -17,11 +17,12 @@ each order replays in. `--sweep` searches the runner's settings, its order, `_PA
 import argparse
 import heapq
 import itertools
-import json
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from tests.corpus import archive
 
 _ROOT = Path(__file__).resolve().parents[1]
 _TIMED = {"timing", "profile"}
@@ -53,8 +54,7 @@ def read(folder: Path, *, given: bool = False, only: str = "") -> list[Step]:
     ("cpus" or "memory") takes that one of them alone, to see which the run lost time to.
     """
     steps: list[Step] = []
-    for record in sorted(folder.glob("records/*/*/*.json")):
-        read = json.loads(record.read_text())
+    for (corpus, _, name), read in sorted(archive.kept(folder).items()):
         used = read.get("used") or {}
         if not used.get("seconds") or "from" in read:  # taken from an earlier run, not run here
             continue
@@ -67,7 +67,7 @@ def read(folder: Path, *, given: bool = False, only: str = "") -> list[Step]:
             cpus = gave[0] if only in {"", "cpus"} else cpus
             memory = gave[1] if only in {"", "memory"} else memory
         steps.append(
-            Step(record.parts[-3], record.stem, seconds, cpus, memory, float(used.get("started", 0)), cpu),
+            Step(corpus, name, seconds, cpus, memory, float(used.get("started", 0)), cpu),
         )
     names: dict[str, set[str]] = {}
     for step in steps:
@@ -217,10 +217,15 @@ def sweep(runs: list[list[Step]], cpus: int, memory: float) -> list[tuple[float,
     """
     found: list[tuple[float, str, float | None, float]] = []
     patiences: tuple[float | None, ...] = (None, 120.0, 300.0, 600.0, 900.0)
-    for name, patience, beside in itertools.product(orders(runs[0]), patiences, (0.0, 60.0, 120.0, 300.0, 600.0)):
+    for name, patience, beside in itertools.product(
+        orders(runs[0]), patiences, (0.0, 60.0, 120.0, 300.0, 600.0)
+    ):
         if patience is None and beside:
             continue  # nothing is kept waiting to start beside
-        total = sum(simulate(steps, cpus, memory, orders(steps)[name], patience=patience, beside=beside) for steps in runs)
+        total = sum(
+            simulate(steps, cpus, memory, orders(steps)[name], patience=patience, beside=beside)
+            for steps in runs
+        )
         found.append((total, name, patience, beside))
     return sorted(found, key=lambda each: each[0])
 

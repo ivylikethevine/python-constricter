@@ -4,6 +4,7 @@ What `constricter.fix.index.callers` matches each call's arguments to (`Param`).
 """
 
 import ast
+from collections import Counter
 from typing import Final, TypeAlias
 
 # A function's parameter: its name, kind (`p` positional only, `e` either, `k` keyword only), and
@@ -24,11 +25,11 @@ def open_functions(tree: ast.Module) -> dict[str, tuple[Param, ...]]:
       Each one's parameters, by its name.
 
     """
-    counts: dict[str, int] = {}
-    stmt: ast.stmt
-    for stmt in tree.body:
-        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
+    counts: Counter[str] = Counter(
+        stmt.name
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    )
     return {
         stmt.name: _params(stmt.args)
         for stmt in tree.body

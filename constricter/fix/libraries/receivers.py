@@ -11,25 +11,17 @@ from collections.abc import Sequence
 from typing import Final, NamedTuple, cast
 
 from constricter.fix.core.known import Known
-from constricter.fix.core.signatures import (
-    ReadSignature,
-)
+from constricter.fix.core.signatures import ReadSignature
 from constricter.fix.libraries import stdlib
 
 YES: Final = "y"
 NO: Final = "n"
 MAYBE: Final = "?"
-
-
-SELF_TYPE: Final = "Self"  # a method's receiver's type, in `stdlib.Method.types`
+SELF_TYPE: Final = stdlib.SELF_TYPE  # a method's receiver's type, in `stdlib.Method.types`
 _ANY_PATH: Final = "typing.Any"  # a receiver pattern's anything
 _TUPLE_PATH: Final = "builtins.tuple"
 _BUILTINS_PATH: Final = "builtins."
-
-
 UNFOLLOWED: Final = "?"  # a lineage's base that can't be followed
-
-
 _CLASHING: Final = "?"  # a type variable a receiver's type binds two ways
 _REPEATED: Final = 2  # `tuple[int, ...]`'s arguments
 

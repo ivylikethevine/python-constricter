@@ -74,3 +74,10 @@ def test_only_a_fork_server_is_told_to_preload_constricter(
     with workers.Workers(_files(tmp_path, 1), 1):
         pass
     assert context.preloaded == preloaded
+
+
+def test_workers_start_only_where_a_run_stops_them(tmp_path: Path) -> None:
+    """Outside `kept`, nothing would stop them, and the next run would be asked about this one's files."""
+    with pytest.raises(RuntimeError, match="kept"):
+        _ = workers.started(_files(tmp_path, 1), 1)
+    assert not workers.running()

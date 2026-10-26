@@ -79,7 +79,7 @@ jobs:
       - run: |
           mkdir -p local/corpus-coverage
           python -m tests.corpus tests/corpus/runs/coverage.toml --only "$CORPUS"
-          jq --arg corpus "$CORPUS" -f tests/corpus/runs/coverage.jq local/corpus-runs/coverage-*/report.json \
+          jq --arg corpus "$CORPUS" -f tests/corpus/runs/coverage.jq corpus-runs/coverage-*/report.json \
             > local/corpus-coverage/coverage.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

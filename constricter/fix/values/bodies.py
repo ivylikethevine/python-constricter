@@ -1,12 +1,49 @@
-"""What a function's body says of its calls: whether it's a generator, and whether it can fall off its end."""
+"""What a function's body says of its calls: whether it's a generator, and whether it can fall off its end.
+
+And which functions a body defines once, as a name reaches them (`plain`, `owned_bodies`).
+"""
 
 import ast
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Iterator, Sequence
 from functools import lru_cache
 from typing import cast
 
-from constricter.rules.syntax import FunctionDef, Start, has_within, own_nodes
-from constricter.rules.walked import of_type
+from constricter.source.syntax import FunctionDef, Start, has_within, own_nodes
+from constricter.source.walked import classes, of_type
+
+
+def plain(body: Sequence[ast.stmt]) -> list[FunctionDef]:
+    """Find the plain functions directly in `body`: a `def` or `async def` no other there shares a name with.
+
+    Returns:
+      Them, in source order.
+
+    """
+    counts: Counter[str] = Counter(
+        stmt.name for stmt in body if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
+    )
+    return [
+        stmt
+        for stmt in body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef) and counts[stmt.name] == 1
+    ]
+
+
+def owned_bodies(tree: ast.Module) -> Iterator[tuple[Sequence[ast.stmt], str]]:
+    """Walk the bodies a function is named in: the module's, then each class's it defines once.
+
+    Yields:
+      Each body, and what its functions' names follow: `""`, or a class's (`Class.`).
+
+    """
+    yield tree.body, ""
+    nodes: Sequence[ast.ClassDef] = classes(tree)
+    owners: Counter[str] = Counter(node.name for node in nodes)
+    node: ast.ClassDef
+    for node in nodes:
+        if owners[node.name] == 1:
+            yield node.body, f"{node.name}."
 
 
 def is_generator(module: ast.Module, func: FunctionDef) -> bool:

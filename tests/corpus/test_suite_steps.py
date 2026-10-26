@@ -9,11 +9,11 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import catalog, corpus_suite, suite_steps
+from tests.corpus import catalog, corpus_suite, suite_checkouts, suite_steps
 from tests.corpus.catalog import PYTEST, Suite
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Job, Record, Store
-from tests.corpus.run_config import Run, parse
+from tests.corpus.run_config import FACTS, Run, parse
 from tests.corpus.trees import Tree
 
 _SUITE: Final = Suite("https://example.invalid/a", "1", "src/a", (), PYTEST, (("mypy",),), at_once=2)
@@ -97,25 +97,26 @@ def _keyed(record: Record, environment: str = "e1") -> Record:
 def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
     """The tests' parts take the suite's `at_once` in turn; their whole every one, to run some again."""
     job: Job = _job(tmp_path)
-    assert [suite_steps.checkouts(job, name)[0] for name in (_RELEASED, "tests-fix-certain")] == [
+    assert [suite_checkouts.checkouts(job, name)[0] for name in (_RELEASED, "tests-fix-certain")] == [
         "run0",
         "run1",
     ]
-    assert suite_steps.checkouts(job, "tests") == ("run0", "run1")
-    assert suite_steps.checkouts(job, "tests-infer-union") == ("run0",)
-    assert not suite_steps.checkouts(job, _UNION)
-    assert suite_steps.checkouts(job, "traced") == ("traced",)
-    assert suite_steps.checkouts(job, "types-fix-unsafe") == ("types",)
-    assert not suite_steps.checkouts(job, "types")
-    assert suite_steps.binds("tests-fix-unsafe")
-    assert not suite_steps.binds("types-released")
+    assert suite_checkouts.checkouts(job, "tests") == ("run0", "run1")
+    assert suite_checkouts.checkouts(job, "tests-infer-union") == ("run0",)
+    assert not suite_checkouts.checkouts(job, _UNION)
+    assert suite_checkouts.checkouts(job, "traced") == ("traced",)
+    assert suite_checkouts.checkouts(job, "types-fix-unsafe") == ("types",)
+    assert not suite_checkouts.checkouts(job, "types")
+    assert suite_checkouts.binds("tests-fix-unsafe")
+    assert not suite_checkouts.binds("types-released")
 
 
 def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
     """Those at the suite's tag, of any version, read by this parser, on the same checkout, latest first.
 
-    Each says whose run it is: the run that ran them, where a run took its record from another.
-    Not one stopped, nor this run's.
+    Latest by when each run started, not by its files' times, which a checkout sets at once. Each
+    says whose run it is: the run that ran them, where a run took its record from another. Not one
+    stopped, nor this run's.
     """
     runs: Path = tmp_path / "runs"
     job: Job = _job(runs / "this")
@@ -136,13 +137,22 @@ def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
     record: Record
     for when, (folder, version, record) in enumerate(written):
         Store(runs / folder).write("a", version, _RELEASED, record)
-        os.utime(runs / folder / "records" / "a" / version / "tests-released.json", (when, when))
+        facts: str = f'started = "2026-10-1{when}T09:00:00-07:00"\n'
+        _ = (runs / folder / FACTS).write_text(facts, encoding="utf-8")
+        os.utime(runs / folder / "records" / "a" / version / "tests-released.json", (10 - when, 10 - when))
     assert suite_steps.earlier(job) == [
         found | {"from": "older"},
         _keyed(_FAILED, "e2") | {"from": "other-checkout"},
         found | {"from": "old"},
     ]
     assert suite_steps.earlier(job, "e2") == [_keyed(_FAILED, "e2") | {"from": "other-checkout"}]
+    # A committed run keeps its report alone, its records left out.
+    reported: Path = runs / "reported"
+    reported.mkdir()
+    _ = (reported / FACTS).write_text('started = "2026-10-19T09:00:00-07:00"\n', encoding="utf-8")
+    nested: Record = {"records": {"a": {"dev": {_RELEASED: found}}}}
+    _ = (reported / "report.json").write_text(json.dumps(nested), encoding="utf-8")
+    assert suite_steps.earlier(job)[0] == found | {"from": "reported"}
 
 
 def test_an_earlier_runs_tests_are_taken_where_the_run_skips_them_or_the_trace_confirms_them(
@@ -215,31 +225,37 @@ def test_a_part_stands_for_another_by_its_fixes_patch(tmp_path: Path) -> None:
     def clean(record: Record) -> bool:
         return record["counts"] == _PASSED["counts"]
 
-    assert suite_steps.standing(job, "tests", "fix-certain", clean) == {
+    assert suite_checkouts.standing(job, "tests", "fix-certain", clean) == {
         "implied": "infer-trace",
         "patch": "within",
     }
-    assert suite_steps.standing(job, "tests", "infer-ty", clean) == {"implied": "fix-unsafe", "patch": "same"}
-    assert suite_steps.standing(job, "tests", "infer-basedpyright", clean) is None
-    assert suite_steps.standing(job, "types", "fix-certain", clean) is None  # no types part has run
+    assert suite_checkouts.standing(job, "tests", "infer-ty", clean) == {
+        "implied": "fix-unsafe",
+        "patch": "same",
+    }
+    assert suite_checkouts.standing(job, "tests", "infer-basedpyright", clean) is None
+    assert suite_checkouts.standing(job, "types", "fix-certain", clean) is None  # no types part has run
     job.store.write("a", job.recorded, "tests-infer-trace", _FAILED)
-    assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
+    assert suite_checkouts.standing(job, "tests", "fix-certain", clean) is None
     # The tests after every source's fixes at once stand for each fix's where they're the released tests'.
     job.store.write("a", job.recorded, "tests-infer-union", _PASSED)
     step: str
     for step in ("fix-certain", "fix-unsafe", "infer-ty", "infer-basedpyright", "infer-trace"):
-        assert suite_steps.standing(job, "tests", step, clean) == {"implied": _UNION, "patch": "union"}
-    assert suite_steps.standing(job, "types", "infer-ty", clean) is None  # the type checks, never
+        assert suite_checkouts.standing(job, "tests", step, clean) == {"implied": _UNION, "patch": "union"}
+    assert suite_checkouts.standing(job, "types", "infer-ty", clean) is None  # the type checks, never
     job.store.write("a", job.recorded, "tests-infer-union", _FAILED)
-    assert suite_steps.standing(job, "tests", "fix-certain", clean) is None
-    assert suite_steps.standing(job, "tests", "infer-ty", clean) == {"implied": "fix-unsafe", "patch": "same"}
+    assert suite_checkouts.standing(job, "tests", "fix-certain", clean) is None
+    assert suite_checkouts.standing(job, "tests", "infer-ty", clean) == {
+        "implied": "fix-unsafe",
+        "patch": "same",
+    }
     bare: Job = _job(tmp_path / "bare")  # a version that lists no fixes: a tier's are the guesses'
     bare.store.write("a", bare.recorded, "tests-fix-unsafe", _PASSED)
-    assert suite_steps.standing(bare, "tests", "fix-certain", clean) == {
+    assert suite_checkouts.standing(bare, "tests", "fix-certain", clean) == {
         "implied": "fix-unsafe",
         "patch": "within",
     }
-    assert suite_steps.standing(bare, "tests", "infer-ty", clean) is None
+    assert suite_checkouts.standing(bare, "tests", "infer-ty", clean) is None
 
 
 def test_a_checkouts_environment_and_the_parser_key_a_record(tmp_path: Path) -> None:

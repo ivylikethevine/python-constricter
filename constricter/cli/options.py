@@ -7,10 +7,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, Self, cast
 
-from constricter import __version__
-from constricter.cli import baseline, traced
+from constricter import __version__, traced
+from constricter.cli import baseline
 from constricter.cli.config import (
     DEFAULT_BASELINE,
     config_defaults,
@@ -637,7 +637,7 @@ class Options:  # pylint: disable=too-many-instance-attributes
     infer_in_turn: bool = False  # ask one checker at a time, not all at once (`--infer-in-turn`)
 
     @classmethod
-    def parse(cls, argv: Sequence[str] | None) -> "Options":
+    def parse(cls, argv: Sequence[str] | None) -> Self:
         """Parse `argv` over the defaults `pyproject.toml` sets; `--explain` prints and exits.
 
         Returns:

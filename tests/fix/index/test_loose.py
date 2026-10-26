@@ -6,9 +6,8 @@ from typing import Final
 
 from constricter import Offence, check_source
 from constricter.cli import command as cli
-from constricter.cli import schedule
 from constricter.fix.core.known import Returns
-from constricter.fix.index import crossed, linked, loose, order, own_types, project
+from constricter.fix.index import across, crossed, linked, loose, order, own_types, project
 from constricter.rules.checker import Checked, checked_source
 
 _BASE: Final = """
@@ -123,7 +122,7 @@ def test_another_files_methods_returns_type_their_calls(tmp_path: Path) -> None:
     assert loose.returned(catalog, tmp_path / "missing.py") == Returns()
     offences: list[Offence] = check_source(
         use.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, use, {}),
+        outside=across.outside(catalog, use, {}),
     )
     assert {o.name: (o.fix, o.unsafe) for o in offences} == {
         "path": ("str", True),

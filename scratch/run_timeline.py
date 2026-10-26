@@ -1,22 +1,23 @@
 """Rebuild a corpus run's timeline from its records, and show where its CPUs sat idle.
 
-  local/.venv/bin/python -m scratch.run_timeline local/corpus-runs/0.4.0-rc.3-10-18-2026-1010
+  local/.venv/bin/python -m scratch.run_timeline corpus-runs/0.4.0-rc.3-10-18-2026-1010
   local/.venv/bin/python -m scratch.run_timeline FOLDER --top 20 --every 5   # 20 longest steps, 5-minute buckets
 
-A step's record says when it started (`used.started`); one from before it did is rewritten as it
-ends, so its file's time less its seconds is its start. Each step's CPU seconds are spread evenly
-over its seconds, and the minutes it waited for its share of the machine are summed. Prints the run's share of the machine's CPU seconds used, the CPUs busy in each
-bucket with the steps running then, the longest steps, and each corpus's last end: the corpora
-that finished last held the run open. A resumed run's or a copied folder's file times are wrong.
+Reads a run's records from its report, or else its `records/` (`tests.corpus.archive`): each step's
+start (`used.started`; a record from before it kept one is left out) and seconds. Each step's CPU
+seconds are spread evenly over its seconds, and the minutes it waited for its share of the machine
+are summed. Prints the run's share of the machine's CPU seconds used, the CPUs busy in each bucket
+with the steps running then, the longest steps, and each corpus's last end: the corpora that
+finished last held the run open.
 """
 
 import argparse
-import json
-import tomllib
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
+
+from tests.corpus import archive
 
 
 class Step(NamedTuple):
@@ -32,18 +33,15 @@ class Step(NamedTuple):
 
 def steps(folder: Path) -> list[Step]:
     found: list[Step] = []
-    for path in sorted((folder / "records").glob("*/*/*.json")):
-        try:
-            used = json.loads(path.read_text(encoding="utf-8")).get("used")
-        except (OSError, ValueError):
+    for (corpus, _, step), record in sorted(archive.kept(folder).items()):
+        used = record.get("used")
+        if not used or not used.get("seconds") or not used.get("started"):  # an older record kept no start
             continue
-        if not used or not used.get("seconds"):
-            continue
-        start = used.get("started") or path.stat().st_mtime - used["seconds"]
+        start = used["started"]
         found.append(
             Step(
-                path.parent.parent.name,
-                path.stem,
+                corpus,
+                step,
                 start,
                 start + used["seconds"],
                 used.get("cpu", 0.0),
@@ -61,7 +59,7 @@ def main() -> int:
     parser.add_argument("--top", type=int, default=15)
     parser.add_argument("--every", type=float, default=5.0, help="minutes a bucket")
     args = parser.parse_args()
-    facts = tomllib.loads((args.folder / "facts.toml").read_text(encoding="utf-8"))
+    facts = archive.facts(args.folder)
     cpus = int(facts.get("cpus", 1))
     started = datetime.fromisoformat(str(facts["started"])).timestamp()
     # A record taken from an earlier run (the tests as released, `from`) keeps that run's `used`.

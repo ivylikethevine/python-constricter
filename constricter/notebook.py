@@ -104,10 +104,10 @@ def fix(raw: str, offences: Sequence[Offence]) -> tuple[str, list[Cell]]:
     number: int
     for number in sorted(by_cell):
         cell: dict[str, _Json] = cast("dict[str, _Json]", cells[number - 1])
-        source: _Json = cell["source"]
+        source: _Json = cell[_SOURCE]
         old: list[str] = _text(source).splitlines(keepends=True)
         new: list[str] = fixes.apply(old, by_cell[number])
-        cell["source"] = list[_Json](new) if isinstance(source, list) else "".join(new)
+        cell[_SOURCE] = list[_Json](new) if isinstance(source, list) else "".join(new)
         changed.append(Cell(number, old, new))
     indent: re.Match[str] | None = re.match(r"\{\r?\n( +)", raw)
     text: str = json.dumps(document, indent=len(indent.group(1)) if indent else 1, ensure_ascii=False)

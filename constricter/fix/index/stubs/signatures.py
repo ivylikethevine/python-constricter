@@ -30,16 +30,18 @@ from constricter.fix.core.signatures import (
     Parameter,
     ReadSignature,
 )
-from constricter.fix.index import own_types, project
+from constricter.fix.index import own_types, spelling
 from constricter.fix.index.modules import Module
 from constricter.fix.index.stubs import classnames
 from constricter.fix.index.stubs.atoms import (
     ANYTHING,
     BUILTINS_MODULE,
     CLASS,
+    LITERAL_ATOM,
     MAYBE,
     NO,
     NONE,
+    NONE_ATOM,
     PARAM_SPEC,
     TYPE,
     TYPES,
@@ -51,6 +53,7 @@ from constricter.fix.index.stubs.atoms import (
     Scope,
     Taken,
     argument_of,
+    arguments_of,
     atom_path,
     bound_alias,
     class_binds,
@@ -73,9 +76,6 @@ from constricter.fix.index.stubs.names import ALIAS_DEPTH, ARG, Resolved, Resolv
 from constricter.fix.index.stubs.read import MEMO, Asked, Expanded
 from constricter.fix.libraries.overloads import CONTAINERS, SCALARS, substituted
 
-# What an atom is (see `Atom`).
-_NONE_ATOM: Final = "none"
-_LITERAL_ATOM: Final = "literal"
 _OPTIONAL: Final = "Optional"
 _LITERAL: Final = "Literal"
 _ANNOTATED: Final = "Annotated"
@@ -367,7 +367,7 @@ class Reader(Resolver):
             return
         match expr:
             case ast.Constant(value=None):
-                yield Atom(_NONE_ATOM)
+                yield Atom(NONE_ATOM)
             case ast.Constant(value=str() as text):
                 yield from self._atoms(parse_text(text), scope, hops + 1)
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
@@ -410,7 +410,7 @@ class Reader(Resolver):
             yield resolved._replace(subscripted=bool(args), args=tuple(args), scope=scope)
 
     def _subscript_atoms(self, expr: ast.Subscript, scope: Scope, hops: int) -> Iterator[Atom]:
-        args: list[ast.expr] = list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
+        args: list[ast.expr] = arguments_of(expr.slice)
         base: ast.expr = expr.value
         if not isinstance(base, ast.Name | ast.Attribute):
             yield UNKNOWN
@@ -423,7 +423,7 @@ class Reader(Resolver):
                 yield from (atom for member in members for atom in self._atoms(member, scope, hops + 1))
                 return
             if name == _LITERAL:
-                yield Atom(_LITERAL_ATOM, tuple(literal_values(args)))
+                yield Atom(LITERAL_ATOM, tuple(literal_values(args)))
                 return
             if name == _ANNOTATED:
                 yield from self._atoms(args[0], scope, hops + 1)
@@ -506,7 +506,7 @@ class Reader(Resolver):
         if klass is None or receiver is None:
             return None
         renamed: dict[str, str] = {param: f"{_RENAMED}{place}" for place, param in enumerate(params)}
-        args: list[ast.expr] = list(index.elts) if isinstance(index, ast.Tuple) else [index]
+        args: list[ast.expr] = arguments_of(index)
         return (
             head.origin,
             Expansion(
@@ -582,9 +582,7 @@ class Reader(Resolver):
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
                 found = joined(" | ", [self._template(side, scope, hops + 1) for side in (left, right)])
             case ast.Subscript(value=ast.Name() | ast.Attribute() as base):
-                args: list[ast.expr] = (
-                    list(expr.slice.elts) if isinstance(expr.slice, ast.Tuple) else [expr.slice]
-                )
+                args: list[ast.expr] = arguments_of(expr.slice)
                 found = self._named_template(base, scope, hops, args)
             case ast.Name() | ast.Attribute():
                 found = self._named_template(expr, scope, hops, [])
@@ -614,7 +612,7 @@ class Reader(Resolver):
             where: Scope
             origin: Origin
             alias, where, origin = resolved
-            public: Origin = project.public_origin(self.modules, origin)
+            public: Origin = spelling.public_origin(self.modules, origin)
             if not self.matching and not private_name(public[0]) and not private_name(public[1]):
                 written = f"{public[0]}.{public[1]}"
             elif alias.params or free_variables(alias.value, where) or not args:
@@ -647,7 +645,7 @@ class Reader(Resolver):
         if self.matching:
             return _ANY if atom_path(atom) in ANYTHING else None if origin[0] in TYPING else atom_path(atom)
         if atom.module is not None:
-            origin = project.public_origin(self.modules, origin)
+            origin = spelling.public_origin(self.modules, origin)
         elif origin[0] == BUILTINS_MODULE:
             return origin[1] if origin[1] not in {"object", "type"} else None
         elif origin[0] in TYPING:

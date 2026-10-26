@@ -12,8 +12,8 @@ from collections.abc import Collection, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.empty import Empty
-from constricter.rules.annotations import node_name
-from constricter.rules.declarations import defined_type_vars
+from constricter.source.annotations import node_name
+from constricter.source.declarations import defined_type_vars
 
 # A parameter: its name, kind (`p` positional only, `e` either, `k` keyword only, `a` `*args`,
 # `w` `**kwargs`), whether it has a default, and its annotation's text (`None`: unannotated).

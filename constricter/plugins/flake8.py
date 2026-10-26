@@ -18,8 +18,10 @@ from constricter.offences import (
     Level,
     Offence,
 )
+from constricter.plugins import options as table
+from constricter.plugins.options import CHOICES, LEVEL, OPTIONS, WHOLE, Option
 from constricter.rules.checker import check_source, check_tree
-from constricter.rules.flow import Narrower, parse_narrower
+from constricter.source.flow import Narrower, parse_narrower
 
 if TYPE_CHECKING:
     from flake8.options.manager import OptionManager
@@ -52,52 +54,9 @@ class ConstricterChecker:
     @classmethod
     def add_options(cls, parser: "OptionManager") -> None:
         """Register the options (flake8's plugin hook)."""
-        parser.add_option(
-            "--constricter-level",
-            choices=list(LEVELS),
-            default="strict",
-            parse_from_config=True,
-            help="which LVA codes are reported (default: strict)",
-        )
-        parser.add_option(
-            "--constricter-type-comments",
-            action="store_true",
-            parse_from_config=True,
-            help="count `x = 1  # type: int` as annotated",
-        )
-        parser.add_option(
-            "--constricter-all-scopes",
-            action="store_true",
-            parse_from_config=True,
-            help="also check module and class bodies (LVA004)",
-        )
-        parser.add_option(
-            "--constricter-nesting",
-            type=int,
-            default=NESTING,
-            parse_from_config=True,
-            help=f"report an annotation nested this deep (LVA006; default: {NESTING})",
-        )
-        parser.add_option(
-            "--constricter-max-length",
-            type=int,
-            default=MAX_LENGTH,
-            parse_from_config=True,
-            help=f"report a fixed-length tuple annotation listing more types (LVA011; default: {MAX_LENGTH})",
-        )
-        parser.add_option(
-            "--constricter-vague",
-            type=int,
-            default=VAGUE,
-            parse_from_config=True,
-            help=f"how vague an annotation may be before it's LVA005 (default: {VAGUE}, none)",
-        )
-        parser.add_option(
-            "--constricter-narrower",
-            default="",
-            parse_from_config=True,
-            help="your own type hierarchy for LVA008-LVA010, as `B=A, C=A, int=` (B is narrower than A)",
-        )
+        option: Option
+        for option in OPTIONS:
+            _added(parser, option)
 
     @classmethod
     def parse_options(cls, options: argparse.Namespace) -> None:
@@ -147,3 +106,24 @@ class ConstricterChecker:
         for o in offences:
             if o.is_error(self.level):
                 yield o.line, o.col, f"{o.code} {o.message}", type(self)
+
+
+def _added(parser: "OptionManager", option: Option) -> None:
+    """Register one of the plugins' options (see `options.OPTIONS`) with flake8."""
+    flag: str = f"--constricter-{option.name}"
+    said: str = f"{option.help} (default: {option.default})" if option.kind in {LEVEL, WHOLE} else option.help
+    match option.kind:
+        case table.LEVEL:
+            parser.add_option(
+                flag,
+                choices=CHOICES,
+                default=option.default,
+                parse_from_config=True,
+                help=said,
+            )
+        case table.FLAG:
+            parser.add_option(flag, action="store_true", parse_from_config=True, help=said)
+        case table.WHOLE:
+            parser.add_option(flag, type=int, default=option.default, parse_from_config=True, help=said)
+        case _:
+            parser.add_option(flag, default=option.default, parse_from_config=True, help=said)

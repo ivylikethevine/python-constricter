@@ -1,6 +1,6 @@
 """Run a type checker's language server for `--infer-with`, so it can't outlive constricter.
 
-  python .../constricter/cli/guard.py GRACE EXECUTABLE [ARGUMENT ...]
+  python .../constricter/cli/lsp/guard.py GRACE EXECUTABLE [ARGUMENT ...]
 
 It imports only the standard library, so it runs by its path whatever the Python can import.
 
@@ -65,20 +65,23 @@ def main(argv: Sequence[str], stdin: IO[bytes] | None = None, stdout: IO[bytes] 
 
 def _pass_on(source: IO[bytes], target: IO[bytes]) -> None:
     """Pass the server's output on until it ends (or constricter's end of it has gone)."""
-    chunk: bytes
     with contextlib.suppress(OSError):
-        for chunk in iter(lambda: _read(source), b""):
-            _write(target, chunk)
+        _copied(source, target)
+
+
+def _copied(source: IO[bytes], target: IO[bytes]) -> None:
+    """Copy `source` to `target` until it ends, each chunk as it comes: the reader waits on it."""
+    chunk: bytes
+    for chunk in iter(lambda: _read(source), b""):
+        _write(target, chunk)
 
 
 def relay_to(source: IO[bytes], server: "subprocess.Popen[bytes]", grace: float) -> None:
     """Pass `source` on to the server's input; when it ends, end the server's, and give it `grace` seconds."""
     target: IO[bytes] = cast("IO[bytes]", server.stdin)
-    chunk: bytes
     # The server has gone (or this is exiting, its input closed): nothing more to pass on.
     with contextlib.suppress(OSError, ValueError):
-        for chunk in iter(lambda: _read(source), b""):
-            _write(target, chunk)
+        _copied(source, target)
     with contextlib.suppress(OSError):  # what's left for a server that has gone is dropped
         target.close()
     try:

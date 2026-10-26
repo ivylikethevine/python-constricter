@@ -4,7 +4,7 @@ import ast
 from functools import lru_cache
 from typing import Final
 
-from constricter.rules.annotations import node_name
+from constricter.source.annotations import node_name
 
 _LITERAL: Final = "Literal"
 

@@ -94,11 +94,7 @@ class Session:
 
     def __exit__(self, *_details: object) -> None:
         """Shut every server down, at once."""
-        running: list[Connection]
-        if running := [server for checker in self.checkers for server in checker.servers]:
-            pool: ThreadPoolExecutor
-            with ThreadPoolExecutor(len(running)) as pool:
-                _ = list(pool.map(Connection.close, running))
+        _closed([server for checker in self.checkers for server in checker.servers])
 
     def hints(self, files: Mapping[Path, str]) -> dict[Path, tuple[Hints, ...]]:
         """Ask every checker for the variable-type hints in `files` (each path's current text).
@@ -306,7 +302,7 @@ class Checker:  # pylint: disable=too-many-instance-attributes
         batches: queue.SimpleQueue[dict[Path, str]] = queue.SimpleQueue()
         start: int
         for start in range(0, len(fresh), _BATCH):
-            batch: list[Path] = fresh[start:][:_BATCH]
+            batch: list[Path] = fresh[start : start + _BATCH]
             batches.put({path: files[path] for path in batch})
         return [partial(self._work, index, own.get(index, {}), batches) for index in range(len(self.servers))]
 
@@ -337,11 +333,7 @@ class Checker:  # pylint: disable=too-many-instance-attributes
             except HintError as failure:  # it has gone since its last answers: past its cap, say
                 if not self._restartable(failure):
                     raise
-                unanswered: dict[Path, str] = {
-                    path: text for sent, _ in pending for path, text in sent.items()
-                }
-                pending.clear()
-                found.update(self._alone(index, unanswered | batch))
+                found.update(self._requeued(index, pending, batch))
                 continue
             if len(pending) > 1:
                 found.update(self._answers(index, pending))
@@ -367,11 +359,20 @@ class Checker:  # pylint: disable=too-many-instance-attributes
         except HintError as failure:
             if not self._restartable(failure):
                 raise
-            unanswered: dict[Path, str] = {path: text for batch, _ in pending for path, text in batch.items()}
-            pending.clear()
-            return self._alone(index, unanswered)
+            return self._requeued(index, pending, {})
         del pending[0]
         return found
+
+    def _requeued(self, index: int, pending: list[Sent], more: Mapping[Path, str]) -> Found:
+        """Ask server `index`, which failed, about each pending file and each of `more` alone (see `_alone`).
+
+        Returns:
+          Their hints.
+
+        """
+        unanswered: dict[Path, str] = {path: text for batch, _ in pending for path, text in batch.items()}
+        pending.clear()
+        return self._alone(index, unanswered | dict(more))
 
     def _alone(self, index: int, files: Mapping[Path, str]) -> Found:
         """Restart server `index`, which hung or exited past its cap, and ask it about each of `files` alone.
@@ -410,10 +411,7 @@ class Checker:  # pylint: disable=too-many-instance-attributes
 
     def stop(self) -> None:
         """Shut its servers down, at once: the next round starts others, which open each file anew."""
-        pool: ThreadPoolExecutor
-        # None where its turn had no file to ask about (a round with none, or every one abandoned).
-        with ThreadPoolExecutor(max(1, len(self.servers))) as pool:
-            _ = list(pool.map(Connection.close, self.servers))
+        _closed(self.servers)
         self.servers.clear()
         self.assigned.clear()
 
@@ -496,3 +494,10 @@ def command(checker: str) -> list[str]:
         )
         raise HintError(message)
     return [found, *server.args]
+
+
+def _closed(servers: Sequence[Connection]) -> None:
+    """Shut `servers` down, at once: none where a turn had no file to ask about."""
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, len(servers))) as pool:
+        _ = list(pool.map(Connection.close, servers))

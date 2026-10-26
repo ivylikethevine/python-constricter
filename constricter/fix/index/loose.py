@@ -1,7 +1,7 @@
 """What another checked file's unannotated methods return, for the files calling them.
 
 A module's functions' `return`s type their calls in the files importing them (see
-`project.returned`); its classes' methods' type `self.method()` under a base of another file's, and
+`spelling.returned`); its classes' methods' type `self.method()` under a base of another file's, and
 a call on an instance of an imported class, the same way: as guesses, since a subclass may
 override one. A file is checked after the modules whose classes it names that have such a method
 it calls (`needs`).
@@ -12,8 +12,8 @@ from pathlib import Path
 
 from constricter.fix.core.known import Guarded, Returns
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index import crossed, project
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index import crossed, spelling
+from constricter.fix.index.modules import Index, Module, module_at
 
 
 def _classes(catalog: Index, target: Module) -> Iterator[tuple[str, tuple[Module, str]]]:
@@ -57,18 +57,18 @@ def returned(
     guarded: dict[str, Guarded] | None = None,
     functions: Returns | None = None,
 ) -> Returns:
-    """Return, for the file at `path`, what `project.returned` does, and the methods it calls too.
+    """Return, for the file at `path`, what `spelling.returned` does, and the methods it calls too.
 
     Those of the classes it names, in modules already checked, by each class as it spells it; a
-    guessed one's origins as `C.m`. `functions`: `project.returned`'s, if it's worked out already.
+    guessed one's origins as `C.m`. `functions`: `spelling.returned`'s, if it's worked out already.
 
     Returns:
-      Them; `project.returned`'s alone for a file `catalog` doesn't have.
+      Them; `spelling.returned`'s alone for a file `catalog` doesn't have.
 
     """
-    found: Returns = functions or project.returned(catalog, path, guarded)
+    found: Returns = functions or spelling.returned(catalog, path, guarded)
     target: Module | None
-    if (target := catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None) is None:
+    if (target := module_at(catalog, path)) is None:
         return found
     methods: dict[str, dict[str, str]] = {}
     guesses: dict[str, frozenset[str]] = dict(found.guesses)
@@ -82,7 +82,7 @@ def returned(
             if name in called
         }
         kept: dict[str, str] = (
-            project.portable(
+            spelling.portable(
                 catalog.modules,
                 (target, defined),
                 key,

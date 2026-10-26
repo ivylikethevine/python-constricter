@@ -15,10 +15,10 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.signatures import AWAIT
-from constricter.rules.annotations import node_name
-from constricter.rules.declarations import generic_classes
-from constricter.rules.syntax import FUNCTION_DEFS, child_statements, expressions
-from constricter.rules.walked import classes, walk
+from constricter.source.annotations import node_name
+from constricter.source.declarations import generic_classes
+from constricter.source.syntax import FUNCTION_DEFS, child_statements, expressions
+from constricter.source.walked import classes, walk
 
 # Bases that give an instance no member a method call could reach.
 _EMPTY: Final = frozenset({"object", "Generic", "Protocol", "ABC"})

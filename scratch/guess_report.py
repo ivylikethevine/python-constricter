@@ -20,18 +20,25 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from tests.corpus import archive
+
 OUT = Path(__file__).resolve().parents[1] / "local" / "scratch" / "guesses"
 TOLD = 20  # the bindings a traced run must have told of
 HELD = 0.95  # the share of them that must have held
 BLAMED = 0.1  # the most guesses blamed by a type checker, per 100 checked
 
 
-SOURCE = "--from"  # then a corpus run's folder: its `guesses.jsonl`
+SOURCE = "--from"  # then a corpus run's folder: its `listings.jsonl`'s guesses, or its `guesses.jsonl`
 
 
 def rows() -> list[dict]:
     found = []
-    chosen = [Path(sys.argv[sys.argv.index(SOURCE) + 1]) / "guesses.jsonl"] if SOURCE in sys.argv else sorted(OUT.glob("*.jsonl"))
+    folder = Path(sys.argv[sys.argv.index(SOURCE) + 1]) if SOURCE in sys.argv else None
+    if (
+        folder is not None and (folder / archive.LISTED).is_file()
+    ):  # a committed run's: its guesses in its listings
+        return [row for row in archive.listed(folder, archive.GUESSES) if "verdict" in row]
+    chosen = [folder / "guesses.jsonl"] if folder is not None else sorted(OUT.glob("*.jsonl"))
     for path in chosen:
         with open(path, encoding="utf-8") as file:
             # A file an older census wrote has no verdicts: its package's newest run kept no fixes.
@@ -89,7 +96,11 @@ def likely(groups: dict[str, list[dict]]) -> dict[str, list[dict]]:
         judged = [row for row in each if told(row)]
         fit = sum(held(row) for row in judged)
         blamed = sum(bool(row["errors"]) for row in checked)
-        if len(judged) >= TOLD and fit > HELD * len(judged) and (not checked or 100 * blamed < BLAMED * len(checked)):
+        if (
+            len(judged) >= TOLD
+            and fit > HELD * len(judged)
+            and (not checked or 100 * blamed < BLAMED * len(checked))
+        ):
             found[kind] = each
     return found
 
@@ -109,16 +120,23 @@ def main(argv: list[str]) -> int:
         passing = likely(whole)
         table("Likely: the whole sets that pass", passing, 0)
         count = sum(map(len, passing.values()))
-        print(f"\n{len(passing)} sets, {count:,} of {len(guesses):,} guesses ({100 * count / len(guesses):.1f}%)\n")
+        print(
+            f"\n{len(passing)} sets, {count:,} of {len(guesses):,} guesses ({100 * count / len(guesses):.1f}%)\n"
+        )
         for kind in sorted(passing):
             print("    frozenset({" + ", ".join(f'"{one}"' for one in kind.split("+")) + "}),")
         return 0
     if argv:
         listed(argv[1], argv[0])
         return 0
-    print(f"{len(every):,} fixes in {len({row['package'] for row in every})} packages: {len(guesses):,} guesses")
+    print(
+        f"{len(every):,} fixes in {len({row['package'] for row in every})} packages: {len(guesses):,} guesses"
+    )
     table("Certain fixes, all together", {"(certain)": [row for row in every if not row["unsafe"]]}, 0)
-    tiers = {"likely": [row for row in guesses if row["likely"]], "other": [row for row in guesses if not row["likely"]]}
+    tiers = {
+        "likely": [row for row in guesses if row["likely"]],
+        "other": [row for row in guesses if not row["likely"]],
+    }
     table("Guesses, by tier", tiers, 0)
     table("Guesses, by each mechanism in the set", each, 1)
     table("Guesses, by the whole set (20 or more)", whole, 20)

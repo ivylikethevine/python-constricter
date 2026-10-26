@@ -1,0 +1,525 @@
+"""Walking the syntax the rules read: functions and methods, nested statements, binding targets."""
+
+import ast
+import bisect
+import re
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from typing import Final, TypeAlias, cast
+
+from constricter.offences import at
+from constricter.source.walked import children as child_nodes
+from constricter.source.walked import classes, of_type
+
+# A `# type:` comment, as an assignment or a loop or `with` header writes one.
+_TYPE_COMMENT: Final = re.compile(rb"#\s*type:")
+
+FunctionDef: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
+# A statement whose `# type:` comment types the names it binds.
+Commented: TypeAlias = ast.Assign | ast.For | ast.AsyncFor | ast.With | ast.AsyncWith
+FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+)
+# Statements whose nested statements may not all run (or not only once).
+BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
+_LEAVING: Final = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+# The statements with statements directly in them (see `child_statements`).
+_COMPOUND: Final = (*BRANCHING, ast.With, ast.AsyncWith)
+# The nodes with a scope of their own: what's inside one isn't the enclosing function's.
+NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+_END: Final = 1 << 62  # past any line: a module's span has no end
+_Ids: TypeAlias = tuple[int, ...]  # the `id()`s of the nodes a walk sets out from
+_Parented: TypeAlias = list[tuple[int, ast.AST]]  # a walk's parents (see `own_nodes`), as it found them
+_Walked: TypeAlias = tuple[list[ast.AST], _Parented | None]  # a walk's nodes, and its parents if asked
+# The last whole walks (see `own_nodes`), by the nodes each set out from, the latest last: the passes
+# over a function walk its body again and again. Each walk holds those nodes: their ids stay theirs.
+_OWN: dict[_Ids, _Walked] = {}
+_KEEP: Final = 1024  # the walks kept: all of most modules' functions, for a check's passes over each
+Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
+_FUTURE: Final = "__future__"
+_SELF: Final = "self"
+# `from __future__` features only code that also runs on Python 2 imports: its type comments count.
+_PYTHON2_FUTURES: frozenset[str] = frozenset(
+    {
+        "nested_scopes",
+        "generators",
+        "division",
+        "absolute_import",
+        "with_statement",
+        "print_function",
+        "unicode_literals",
+    },
+)
+
+
+def python2_compatible(tree: ast.Module) -> bool:
+    """Check for a `from __future__` import only Python 2 needs.
+
+    Returns:
+      Whether it marks the module as written for Python 2.
+
+    """
+    return any(
+        isinstance(stmt, ast.ImportFrom)
+        and stmt.module == _FUTURE
+        and any(alias.name in _PYTHON2_FUTURES for alias in stmt.names)
+        for stmt in tree.body
+    )
+
+
+def collect_functions(body: list[ast.stmt], into: list[FunctionDef], *, nested: bool = True) -> None:
+    """Collect functions in a module or class body, through compound statements and (`nested`) classes."""
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, FUNCTION_DEFS):
+            into.append(stmt)
+        elif not isinstance(stmt, ast.ClassDef):
+            collect_functions(child_statements(stmt), into, nested=nested)
+        elif nested:
+            collect_functions(stmt.body, into)
+
+
+def owners(tree: ast.Module, selfish: Callable[[FunctionDef], bool]) -> dict[int, str]:
+    """Map each direct method of a class to that class's name, by the method's `id`.
+
+    For `--fix` to type a method's `self`. A method is a function directly in a class's body,
+    however deep through `if`/`try`/..., but not through a nested class's or function's own body.
+    A function defined in a method reads the method's `self` (see `_self_readers`): it's mapped
+    too, unless the method is one `selfish` says types its `self` otherwise (as `Self`).
+
+    Returns:
+      Each such function, by `id()`, mapped to its class's name.
+
+    """
+    found: dict[int, str] = {}
+    bindings: list[Start] = _self_bindings(tree)
+    node: ast.AST
+    methods: list[FunctionDef]
+    method: FunctionDef
+    for node in classes(tree):
+        methods = []
+        collect_functions(node.body, methods, nested=False)
+        for method in methods:
+            found[id(method)] = node.name
+            if (
+                _SELF in _first_parameter(method)
+                and not _binds_self(method, bindings)
+                and not selfish(method)
+            ):
+                found.update((id(inner), node.name) for inner in _self_readers(method, bindings))
+    return found
+
+
+def _self_bindings(tree: ast.Module) -> list[Start]:
+    """Find where the module binds a name `self` other than as a parameter (few do, anywhere).
+
+    Returns:
+      Where each such store, deletion or import starts, in source order.
+
+    """
+    return sorted(
+        (node.lineno, node.col_offset)
+        for node in cast("list[ast.Name | ast.alias]", of_type(tree, ast.Name, ast.alias))
+        if _names_self(node)
+    )
+
+
+def _first_parameter(function: FunctionDef) -> list[str]:
+    """Name a function's first positional parameter.
+
+    Returns:
+      It, alone; nothing for a function without one.
+
+    """
+    return [arg.arg for arg in (*function.args.posonlyargs, *function.args.args)][:1]
+
+
+def _self_readers(function: FunctionDef, bindings: Sequence[Start]) -> Iterator[FunctionDef]:
+    """Walk the functions defined in `function`, however deep, that read its `self`.
+
+    One taking no parameter `self` and binding none, in a function that does neither (but
+    `function` itself, whose `self` it is). `bindings`: the module's `_self_bindings`.
+
+    Yields:
+      Each.
+
+    """
+    nested: list[FunctionDef] = []
+    collect_functions(function.body, nested, nested=False)
+    inner: FunctionDef
+    for inner in nested:
+        args: ast.arguments = inner.args
+        params: list[ast.arg | None] = [
+            *args.posonlyargs,
+            *args.args,
+            *args.kwonlyargs,
+            args.vararg,
+            args.kwarg,
+        ]
+        if not any(arg is not None and arg.arg == _SELF for arg in params) and not _binds_self(
+            inner,
+            bindings,
+        ):
+            yield inner
+            yield from _self_readers(inner, bindings)
+
+
+def _binds_self(function: FunctionDef, bindings: Sequence[Start]) -> bool:
+    """Check whether a function's own body binds `self` (an assignment, a loop, an import, ...).
+
+    `bindings`: where the module binds one at all (see `_self_bindings`): a function none is in
+    isn't walked.
+
+    Returns:
+      Whether it does.
+
+    """
+    return has_within(bindings, function) and any(_names_self(node) for node in own_nodes(function.body))
+
+
+def _names_self(node: ast.AST) -> bool:
+    """Check whether `node` binds the name `self`: stores or deletes it, or imports a name as it.
+
+    Returns:
+      Whether it does.
+
+    """
+    return (isinstance(node, ast.Name) and node.id == _SELF and not isinstance(node.ctx, ast.Load)) or (
+        isinstance(node, ast.alias) and (node.asname or node.name) == _SELF
+    )
+
+
+def import_bindings(body: Iterable[ast.stmt]) -> Iterator[tuple[str, str, str]]:
+    """Walk the absolute imports among `body`, and what each name they bind is.
+
+    `import os` binds `os` to `os` (and `import os.path` binds `os` too); `import os.path as p`
+    binds `p` to `os.path`; `from os import getpid as pid` binds `pid` to `os.getpid`. A relative
+    import names no module here.
+
+    Yields:
+      Each bound name, its dotted origin, and the module it comes from: an `import`'s top-level
+      package, a `from` import's module.
+
+    """
+    stmt: ast.stmt
+    module: str
+    alias: ast.alias
+    for stmt in body:
+        match stmt:
+            case ast.Import():
+                for alias in stmt.names:
+                    top: str = alias.name.split(".", 1)[0]
+                    yield alias.asname or top, alias.name if alias.asname else top, top
+            case ast.ImportFrom(module=str() as module, level=0):
+                for alias in stmt.names:
+                    yield alias.asname or alias.name, f"{module}.{alias.name}", module
+            case _:
+                pass
+
+
+def within(starts: Sequence[Start], node: ast.AST, begin: Start | None = None) -> slice:
+    """Find which of `starts` (in source order) are within `node`'s span of the source.
+
+    `begin`, if given, is where the span starts instead (a function's first decorator, say). A node
+    with no position (the module) spans everything.
+
+    Returns:
+      Their slice.
+
+    """
+    return slice(*_bounds(starts, node, begin))
+
+
+def has_within(starts: Sequence[Start], node: ast.AST) -> bool:
+    """Check whether any of `starts` (in source order) is within `node`'s span (see `within`).
+
+    Returns:
+      Whether one is.
+
+    """
+    first: int
+    stop: int
+    first, stop = _bounds(starts, node, None)
+    return stop > first
+
+
+def _bounds(starts: Sequence[Start], node: ast.AST, begin: Start | None) -> tuple[int, int]:
+    """Find where `node`'s span (from `begin`, if given) starts and stops among `starts`.
+
+    Returns:
+      The first index within it, and the first past it.
+
+    """
+    first: Start = begin or (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+    end: Start = (getattr(node, "end_lineno", _END) or _END, getattr(node, "end_col_offset", 0) or 0)
+    return bisect.bisect_left(starts, first), bisect.bisect_left(starts, end)
+
+
+def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = None) -> Iterator[ast.AST]:
+    """Walk `found`, depth first in source order, without entering a nested function, lambda or class.
+
+    `parents`, if given, records each node's parent (by `id()`) before the node is yielded. The walk
+    is the last whole one of the same nodes, where it's kept (see `_OWN`): all its parents recorded
+    at once, before the first node.
+
+    Yields:
+      Each node, a nested scope's own too (but not what's inside it).
+
+    """
+    ids: _Ids = tuple(id(node) for node in found)
+    kept: _Walked | None = _OWN.get(ids)
+    if kept is not None and (parents is None or kept[1] is not None):
+        _keep(ids, kept)
+        if parents is not None and kept[1] is not None:
+            parents.update(kept[1])
+        yield from kept[0]
+        return
+    walked: list[ast.AST] = []
+    parented: _Parented | None = None if parents is None else []
+    # A stack, not a recursion: a nested generator passes each node up through every level above it.
+    waiting: list[ast.AST | None] = [None, *reversed(found)]  # `None` at its bottom ends it
+    node: ast.AST
+    for node in iter(waiting.pop, None):
+        yield node
+        walked.append(node)
+        if not isinstance(node, NESTED_SCOPES):
+            below: list[ast.AST] = child_nodes(node)
+            if parents is not None and parented is not None:
+                pairs: _Parented = [(id(child), node) for child in below]
+                parents.update(pairs)
+                parented.extend(pairs)
+            waiting.extend(reversed(below))
+    _keep(ids, (walked, parented))
+
+
+def _keep(ids: _Ids, walked: _Walked) -> None:
+    """Keep a whole walk (see `own_nodes`) as the latest, the earliest dropped past `_KEEP`."""
+    _ = _OWN.pop(ids, None)
+    _OWN[ids] = walked
+    if len(_OWN) > _KEEP:
+        del _OWN[next(iter(_OWN))]
+
+
+def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a module's top-level statements, those under its `if`s and `try`s too.
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If | ast.Try | ast.TryStar):
+            yield from top_level(child_statements(stmt))
+
+
+def own_returns(body: Sequence[ast.stmt]) -> list[ast.Return]:
+    """Find a function's own `return` statements, in its `body`: not a nested function's or class's.
+
+    Returns:
+      Them, in source order.
+
+    """
+    found: list[ast.Return] = []
+    stmt: ast.stmt
+    for stmt in body:
+        if isinstance(stmt, ast.Return):
+            found.append(stmt)
+        elif not isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            found.extend(own_returns(child_statements(stmt)))
+    return found
+
+
+def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
+    """Collect the statements nested directly in `stmt`.
+
+    Returns:
+      Them, in source order.
+
+    """
+    children: list[ast.stmt] = []
+    if not isinstance(stmt, _COMPOUND):  # most aren't: one check, not the `match`'s nine
+        return children
+    handler: ast.ExceptHandler
+    case: ast.match_case
+    match stmt:
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            children += stmt.body + stmt.orelse
+        case ast.With() | ast.AsyncWith():
+            children += stmt.body
+        case ast.Try() | ast.TryStar():
+            children += stmt.body
+            for handler in stmt.handlers:
+                children += handler.body
+            children += stmt.orelse + stmt.finalbody
+        case _:  # a `match`, the one other
+            for case in stmt.cases:
+                children += case.body
+    return children
+
+
+def arm_ends(stmt: ast.stmt) -> frozenset[int]:
+    """Find where each arm of a branching statement ends: a body, an `else`, a handler, a `match` case.
+
+    Returns:
+      Each arm's last statement, by its `id()`; not one that leaves (`return`, `raise`, ...), past
+      which its arm doesn't go on.
+
+    """
+    blocks: list[list[ast.stmt]]
+    match stmt:
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            blocks = [stmt.body, stmt.orelse]
+        case ast.Try() | ast.TryStar():
+            blocks = [stmt.body, *(handler.body for handler in stmt.handlers), stmt.orelse]
+        case _:  # a `match`, the one other branching statement
+            blocks = [case.body for case in cast("ast.Match", stmt).cases]
+    return frozenset(id(block[-1]) for block in blocks if block and not isinstance(block[-1], _LEAVING))
+
+
+def expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
+    """Walk the parts of `stmt` that aren't statements.
+
+    Yields:
+      Each, as where a `:=` can bind.
+
+    """
+    child: ast.AST
+    for child in child_nodes(stmt):
+        if isinstance(child, ast.match_case | ast.ExceptHandler):
+            yield from (part for part in child_nodes(child) if not isinstance(part, ast.stmt))
+        elif not isinstance(child, ast.stmt):
+            yield child
+
+
+def target_names(target: ast.expr) -> Iterator[ast.Name]:
+    """Walk an assignment target.
+
+    Yields:
+      Each plain name it binds.
+
+    """
+    elements: list[ast.expr]
+    element: ast.expr
+    value: ast.expr
+    match target:
+        case ast.Name():
+            yield target
+        case ast.Tuple(elts=elements) | ast.List(elts=elements):
+            for element in elements:
+                yield from target_names(element)
+        case ast.Starred(value=value):
+            yield from target_names(value)
+        case _:
+            return
+
+
+def captures(pattern: ast.pattern, lines: Sequence[str]) -> Iterator[tuple[str, tuple[int, int]]]:
+    """Walk a `case` pattern.
+
+    Yields:
+      Each name it captures, with where it's bound.
+
+    """
+    node: ast.AST
+    name: str
+    for node in ast.walk(pattern):
+        match node:
+            case ast.MatchAs(name=str() as name) | ast.MatchStar(name=str() as name):
+                yield name, at(node)
+            case ast.MatchMapping(rest=str() as name):
+                yield name, _rest_at(node, name, lines)
+            case _:
+                pass
+
+
+_REST: Final = re.compile(rb"\*\*\s*(\w+)\b")
+
+
+def _rest_at(node: ast.MatchMapping, name: str, lines: Sequence[str]) -> tuple[int, int]:
+    """Find `**name` in a mapping pattern's source.
+
+    Returns:
+      Its position (as `ast` gives it, a byte column), or else the pattern's start.
+
+    """
+    target: bytes = name.encode()
+    number: int
+    encoded: bytes
+    start: int
+    found: re.Match[bytes]
+    for number in range(node.lineno, min(node.end_lineno or node.lineno, len(lines)) + 1):
+        encoded = lines[number - 1].encode()
+        start = node.col_offset if number == node.lineno else 0
+        for found in _REST.finditer(encoded, start):
+            if found.group(1) == target:
+                return number, found.start(1)
+    return at(node)
+
+
+def comment_type(comment: str) -> str | None:
+    """Read a statement's `# type:` comment as an annotation (`int, str` is a tuple's parts).
+
+    Returns:
+      It, or `None` if it doesn't parse as one.
+
+    """
+    text: str = comment.split("#", 1)[0].strip()  # a trailing comment (a noqa one, say) isn't part of it
+    try:
+        parsed: ast.expr = ast.parse(text, mode="eval").body
+    except SyntaxError:
+        return None
+    if isinstance(parsed, ast.Tuple):
+        return f"tuple[{', '.join(ast.unparse(part) for part in parsed.elts)}]"
+    return ast.unparse(parsed)
+
+
+def declared_return(func: FunctionDef) -> ast.expr | None:
+    """Read the return type a function declares: its annotation, or its `# type:` signature comment's.
+
+    `def find():  # type: () -> List[str]` declares a `List[str]`, as a type checker reads it.
+
+    Returns:
+      It, or `None` for a function declaring none (or a comment that isn't a signature).
+
+    """
+    if func.returns is not None or not func.type_comment:
+        return func.returns
+    try:
+        return ast.parse(func.type_comment, mode="func_type").returns
+    except SyntaxError:
+        return None
+
+
+def type_comment_span(lines: Sequence[str], stmt: Commented) -> tuple[int, int, int] | None:
+    """Find a statement's `# type:` comment, to delete it: its line, and the columns (UTF-8 bytes).
+
+    After an assignment's value, on the line it ends, or after a one-line loop or `with` header's
+    code. From the end of that code (or, with a comment after it, `# type: int  # noqa`, from the
+    `#`), up to that comment or the end of the line, so the other comment stays.
+
+    Returns:
+      Them, or `None` if a header spans lines or the comment isn't found after its code.
+
+    """
+    end: ast.expr
+    if isinstance(stmt, ast.Assign):
+        end = stmt.value
+    elif isinstance(stmt, ast.With | ast.AsyncWith):
+        end = stmt.items[-1].optional_vars or stmt.items[-1].context_expr
+    else:
+        end = stmt.iter
+    line: int = end.end_lineno or stmt.lineno
+    if not lines or (
+        not isinstance(stmt, ast.Assign) and (stmt.body[0].lineno == stmt.lineno or line != stmt.lineno)
+    ):
+        return None
+    raw: bytes = lines[line - 1].encode()
+    found: re.Match[bytes] | None
+    if (found := _TYPE_COMMENT.search(raw, end.end_col_offset or 0)) is None:
+        return None
+    after: int
+    if (after := raw.find(b"#", found.end())) >= 0:
+        return line, found.start(), after
+    return line, len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))

@@ -10,111 +10,22 @@ import pickle
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple, cast
+from typing import Final, NamedTuple, cast
 
 from constricter.cli import collecting
 from constricter.cli.runs import CheckRun, CoverageRun, FileRun, shifted
-from constricter.cli.workers import Again, Answering, Asked, File, Told, Workers, check_share, first_done
+from constricter.cli.workers import Again, Answering, Asked, File, Told, Workers, first_done
 from constricter.empty import Empty
-from constricter.fix.core.known import Guarded, Hints, Outside, Passed, Returns
+from constricter.fix.core.known import Hints, Outside, Returns
 from constricter.fix.index import (
-    awaits,
-    beyond,
-    callers,
-    consistent,
-    crossed,
-    decorated,
-    fixtures,
     linked,
-    loose,
-    managed,
-    offers,
     order,
-    own_methods,
-    own_types,
-    plain,
     project,
-    sides,
-    taken,
-    tuples,
 )
+from constricter.fix.index.across import outside
 from constricter.fix.index.modules import Memo
-from constricter.fix.index.stubs import stubbed
-
-if TYPE_CHECKING:
-    from constricter.fix.core.signatures import ReadSignature
 
 CYCLE_ROUNDS: Final = 3  # how many times to check again files calling each other's functions
-
-
-def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hints, ...]]) -> Outside:
-    """Find what's known of a file from outside it: what it imports from the others, and its hints.
-
-    Returns:
-      It.
-
-    """
-    seeded: dict[str, Guarded] = {}
-    seeds: dict[str, Passed] = fixtures.visible(modules, path, seeded)
-    named: dict[str, Passed] = consistent.visible(modules, path, seeded)
-    imported: project.Imported = crossed.imported(
-        modules,
-        path,
-        (seeded, fixtures.attributes({**named, **seeds})),
-    )
-    side_calls: dict[str, str]
-    guarded: dict[str, Guarded]
-    side_calls, guarded = sides.calls(modules, path, imported.guarded)
-    methods: stubbed.Methods = stubbed.methods(modules, path, guarded)
-    hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
-    # What only a hint can name: the classes the file imports for type checking alone.
-    own: offers.Own = offers.own(modules, path) if hints else offers.Own()
-    overloaded: dict[str, tuple[ReadSignature, ...]] = {
-        **stubbed.overloaded(modules, path, guarded),
-        **methods.signatures,
-        **own_methods.overloaded(modules, path, guarded),
-    }
-    return Outside(
-        calls={**imported.calls, **side_calls, **decorated.own(modules, path)},
-        # With those of the classes the overloaded methods' returns import.
-        classes=crossed.guarded_classes(modules, path, imported, guarded),
-        hints=hints,
-        type_vars=project.type_vars(modules, path),
-        returned=awaits.returned(
-            modules,
-            path,
-            guarded,
-            loose.returned(modules, path, guarded, imported.returned),
-        ),
-        guarded=guarded,
-        generics=imported.generics | own.generics,
-        generic=dict(imported.generic),
-        descriptors=dict(imported.descriptors),
-        callees=callers.callees(modules, path),
-        parameters=callers.own_parameters(modules, path),
-        overloaded=overloaded,
-        installed_classes=stubbed.classes(modules, path),
-        installed_parameters=methods.parameters,
-        installed_lineage=own_types.lineages(modules, path, guarded, methods.lineage),
-        installed_aliases=methods.aliases,
-        checking=own.guarded,
-        plain=plain.classes(modules, path),
-        members={**imported.members, **plain.members(modules, path)},
-        same=linked.same(modules, path, {**offers.imported(path, hints), **guarded}),
-        partial=imported.partial,
-        tuples=tuples.fields(modules, path, guarded),
-        fixtures=seeds,
-        named=named,
-        beyond=beyond.library_bases(modules, path),
-        awaits=awaits.calls(modules, path, guarded),
-        values=linked.values(modules, path),
-        untyped=linked.untyped(modules, path),
-        unions=tuples.unions(modules, path, guarded),
-        managers=managed.calls(modules, path, guarded),
-        vouched=decorated.vouched(modules, path),
-        takers=taken.calls(modules, path, guarded),
-        emptied=beyond.emptied(modules, path),
-    )
 
 
 class Rounds(NamedTuple):
@@ -160,15 +71,24 @@ class _Planned:
           Each file's; not a kept one's (see `checked`) that knows what it was last checked knowing.
 
         """
-        given: dict[int, Outside] = {
-            at: outside(self.modules, self.paths[at], self.hints_of(at))
-            for at in self.plan.components[component]
-        }
+        given: dict[int, Outside] = self._known(component)
         self.given.update(given)
         return {
             at: known
             for at, known in given.items()
             if at not in self.earlier.kept or _WORKER.given.get(self.paths[at]) != known
+        }
+
+    def _known(self, component: int) -> dict[int, Outside]:
+        """Find what each of the component's files knows from outside it now (see `outside`).
+
+        Returns:
+          Each one's.
+
+        """
+        return {
+            at: outside(self.modules, self.paths[at], self.hints_of(at))
+            for at in self.plan.components[component]
         }
 
     def hints_of(self, at: int) -> Mapping[Path, tuple[Hints, ...]]:
@@ -228,10 +148,10 @@ class _Planned:
         if self.settled(component):
             return {}
         again: dict[int, Outside] = {
-            at: outside(self.modules, self.paths[at], self.hints_of(at))
-            for at in self.plan.components[component]
+            at: known
+            for at, known in self._known(component).items()
+            if known.returned != self.given[at].returned
         }
-        again = {at: known for at, known in again.items() if known.returned != self.given[at].returned}
         self.given.update(again)
         return again
 
@@ -269,10 +189,15 @@ def _in_process(
     todo: Mapping[int, Outside],
 ) -> None:
     """Check a component's files here (`todo`: each with what it's to know), round by round."""
+    runs: dict[int, FileRun] = {}
+    at: int
+    given: Outside
+    for at, given in todo.items():
+        runs[at] = check(planned.paths[at], given)
+        collecting.sweep()
+    _WORKER.given.update((planned.paths[at], given) for at, given in todo.items())
     if todo:
-        runs: list[FileRun] = check_share(check, [(planned.paths[at], given) for at, given in todo.items()])
-        _WORKER.given.update((planned.paths[at], given) for at, given in todo.items())
-        _in_process(planned, check, component, planned.settle(component, dict(zip(todo, runs, strict=True))))
+        _in_process(planned, check, component, planned.settle(component, runs))
 
 
 @dataclass

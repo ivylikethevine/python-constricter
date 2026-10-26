@@ -9,7 +9,7 @@ import ast
 import re
 from typing import TYPE_CHECKING, Final
 
-from constricter.fix.index.stubs.atoms import parse_text
+from constricter.fix.index.stubs.atoms import arguments_of, parse_text
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -55,7 +55,7 @@ def attributes(
     result: Class | None = module.declared.classes.get(base.id) if isinstance(base, ast.Name) else None
     given: list[ast.expr] = []
     if isinstance(returned, ast.Subscript):
-        given = list(returned.slice.elts) if isinstance(returned.slice, ast.Tuple) else [returned.slice]
+        given = arguments_of(returned.slice)
     if result is None or len(given) != len(result.params):
         return {}
     bound: Mapping[str, str] = {

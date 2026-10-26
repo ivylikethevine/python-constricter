@@ -48,7 +48,8 @@ from constricter.offences import (
     at,
 )
 from constricter.rules import widened
-from constricter.rules.annotations import (
+from constricter.rules.scoped import Assignments, Inferred, Kind, Late, Settings
+from constricter.source.annotations import (
     depth,
     is_composite,
     length,
@@ -56,10 +57,9 @@ from constricter.rules.annotations import (
     roots,
     vague_fits,
 )
-from constricter.rules.flow import Finding, Lifetime, findings, members
-from constricter.rules.quoted import newer, quote
-from constricter.rules.scoped import Assignments, Inferred, Kind, Late, Settings
-from constricter.rules.syntax import FunctionDef
+from constricter.source.flow import Finding, Lifetime, findings, members
+from constricter.source.quoted import newer, quote
+from constricter.source.syntax import FunctionDef
 
 _SELF: Final = "self"
 _NONE: Final = "None"
@@ -81,7 +81,7 @@ class Scope:
         declared: set[str],
         nested: list[FunctionDef],
         settings: Settings,
-        kind: "Kind | None" = None,
+        kind: Kind | None = None,
     ) -> None:
         """Start a scope where `declared` are bound already, collecting nested functions into `nested`."""
         self.declared: set[str] = declared

@@ -22,10 +22,9 @@ from constricter.fix.core.inherited import Lineage
 from constricter.fix.core.known import Returned, Returns
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered
-from constricter.fix.values.bodies import is_generator, terminates
+from constricter.fix.values.bodies import is_generator, plain, terminates
 from constricter.fix.values.inference import RETURNED
 from constricter.fix.values.stored import (
-    FUNCTIONS,
     Assigned,
     Recorded,
     Used,
@@ -36,11 +35,11 @@ from constricter.fix.values.stored import (
     subclasses,
     superclasses,
 )
-from constricter.rules.annotations import roots
-from constricter.rules.decorators import FIXTURES, spelled
-from constricter.rules.flow import members
-from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import classes, of_type
+from constricter.source.annotations import roots
+from constricter.source.decorators import FIXTURES, spelled
+from constricter.source.flow import members
+from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.walked import classes, of_type
 
 _NONE: Final = "None"
 _UNVOUCHED: Final[frozenset[str]] = frozenset()  # no decorator vouched for: a module read alone
@@ -60,7 +59,7 @@ def returned(
 
     `recorded` holds each checked function's `return` statements, `assigned` its `self.x = value`
     assignments and `used` its reads of `self`'s empty containers, by the function's `id()`;
-    `vouched` spells the decorators that give a function back (see `constricter.rules.decorators`).
+    `vouched` spells the decorators that give a function back (see `constricter.source.decorators`).
 
     Returns:
       Their return types: the module's functions', and each class's methods'; and each class's
@@ -85,10 +84,23 @@ def returned(
             if origins:
                 guesses[f"{node.name}.{name}"] = origins
         if class_names(tree)[node.name] == 1:  # its attributes are looked up by its name
-            for name, annotation, origins in attribute_types(tree, node, (assigned, used)):
-                attributes.setdefault(node.name, {})[name] = annotation
-                guesses[f"{node.name}.{name}"] = origins
+            _attributes(tree, node, (assigned, used), (attributes, guesses))
     return Returned(calls, methods, guesses, attributes)
+
+
+def _attributes(
+    tree: ast.Module,
+    node: ast.ClassDef,
+    seen: tuple[Mapping[int, Sequence[Assigned]], Mapping[int, Sequence[Used]]],
+    tables: tuple[dict[str, dict[str, str]], dict[str, frozenset[str]]],
+) -> None:
+    """Enter the class's attributes' types (see `attribute_types`) in `tables`: attributes, and guesses."""
+    name: str
+    annotation: str
+    origins: frozenset[str]
+    for name, annotation, origins in attribute_types(tree, node, seen):
+        tables[0].setdefault(node.name, {})[name] = annotation
+        tables[1][f"{node.name}.{name}"] = origins
 
 
 def joined(imported: Returns, own: Returned) -> Returned:
@@ -143,12 +155,12 @@ def unannotated(body: Sequence[ast.stmt], vouched: frozenset[str] = _UNVOUCHED) 
 
     Returns:
       Each plain function's name that has no declared return, nor a decorator but those `vouched`
-      spells (see `constricter.rules.decorators`).
+      spells (see `constricter.source.decorators`).
 
     """
     return frozenset(
         func.name
-        for func in _plain(body)
+        for func in plain(body)
         if isinstance(func, ast.FunctionDef) and not _decorated(func, vouched) and func.returns is None
     )
 
@@ -164,7 +176,7 @@ def held_back(body: Sequence[ast.stmt]) -> dict[str, tuple[str, ...]]:
     """
     found: dict[str, tuple[str, ...]] = {}
     func: FunctionDef
-    for func in _plain(body):
+    for func in plain(body):
         if isinstance(func, ast.FunctionDef) and func.returns is None and _decorated(func, _UNVOUCHED):
             spellings: list[str | None] = [spelled(each) for each in func.decorator_list]
             if None not in spellings:
@@ -229,7 +241,7 @@ class Slot(NamedTuple):
 def slots(module: ast.Module) -> dict[int, Slot]:
     """Find the functions whose `return`s can type their calls: plain, directly in the module or a class.
 
-    As `_typed` finds them (see `_plain`).
+    As `_typed` finds them (see `bodies.plain`).
 
     Returns:
       Each one's slot, by the function's `id()`.
@@ -238,7 +250,7 @@ def slots(module: ast.Module) -> dict[int, Slot]:
     return {
         id(func): Slot(owner, _key(func))
         for owner, body in ((None, module.body), *((node.name, node.body) for node in classes(module)))
-        for func in _plain(body)
+        for func in plain(body)
     }
 
 
@@ -267,21 +279,6 @@ def _decorated(func: FunctionDef, vouched: frozenset[str]) -> bool:
     return any(spelled(each) not in FIXTURES and spelled(each) not in vouched for each in func.decorator_list)
 
 
-def _plain(body: Sequence[ast.stmt]) -> list[FunctionDef]:
-    """Find the plain functions directly in `body`: a `def` or `async def` no other there shares a name with.
-
-    Returns:
-      Them, in source order.
-
-    """
-    counts: dict[str, int] = {}
-    stmt: ast.stmt
-    for stmt in body:
-        if isinstance(stmt, FUNCTIONS):
-            counts[stmt.name] = counts.get(stmt.name, 0) + 1
-    return [stmt for stmt in body if isinstance(stmt, FUNCTIONS) and counts[stmt.name] == 1]
-
-
 class _Tables(NamedTuple):
     """The live tables a `Table` fills in, as `Returned` holds them."""
 
@@ -308,7 +305,7 @@ class Table:
     ) -> None:
         """Start a table for `module`, with what the functions it imports from other files return.
 
-        `vouched` spells the decorators that give a function back (see `constricter.rules.decorators`).
+        `vouched` spells the decorators that give a function back (see `constricter.source.decorators`).
         """
         imported = imported or Returns()
         self.module: ast.Module = module
@@ -344,10 +341,7 @@ class Table:
         annotation: str
         origins: frozenset[str]
         annotation, origins = found
-        if slot.owner is None:
-            self.tables.calls[slot.name] = annotation
-        else:
-            self.tables.methods.setdefault(slot.owner, {})[slot.name] = annotation
+        _enter(slot, annotation, self.tables.calls, self.tables.methods)
         if origins:
             self.tables.guesses[slot.name if slot.owner is None else f"{slot.owner}.{slot.name}"] = origins
         self.entries.append((slot, annotation))
@@ -365,12 +359,12 @@ class Table:
                 for method in self_methods(each)
             ):
                 continue
-            name: str
-            annotation: str
-            origins: frozenset[str]
-            for name, annotation, origins in attribute_types(self.module, node, (self.assigned, self.used)):
-                self.tables.attributes.setdefault(node.name, {})[name] = annotation
-                self.tables.guesses[f"{node.name}.{name}"] = origins
+            _attributes(
+                self.module,
+                node,
+                (self.assigned, self.used),
+                (self.tables.attributes, self.tables.guesses),
+            )
 
     def stale(self, func: FunctionDef) -> bool:
         """Check whether `func` calls a function whose type the table gained after `func` was checked.
@@ -386,11 +380,16 @@ class Table:
         slot: Slot
         annotation: str
         for slot, annotation in newer:
-            if slot.owner is None:
-                calls[slot.name] = annotation
-            else:
-                methods.setdefault(slot.owner, {})[slot.name] = annotation
+            _enter(slot, annotation, calls, methods)
         return bool(newer) and called(self.module, func, Returned(calls, methods))
+
+
+def _enter(slot: Slot, annotation: str, calls: dict[str, str], methods: dict[str, dict[str, str]]) -> None:
+    """Enter a function's return type in its slot: in `calls` for the module's, in `methods` for a class's."""
+    if slot.owner is None:
+        calls[slot.name] = annotation
+    else:
+        methods.setdefault(slot.owner, {})[slot.name] = annotation
 
 
 @lru_cache(maxsize=4)  # asked of the same module's functions, each round
@@ -435,7 +434,7 @@ def _typed(
 
     """
     func: FunctionDef
-    for func in _plain(body):
+    for func in plain(body):
         found: tuple[str, frozenset[str]] | None
         if (found := _return_type(module, func, recorded.get(id(func), ()), vouched)) is not None:
             yield _key(func), *found

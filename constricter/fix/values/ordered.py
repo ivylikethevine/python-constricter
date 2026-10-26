@@ -5,7 +5,7 @@ from collections.abc import Iterator, Sequence
 from typing import TypeAlias
 
 from constricter.fix.values import returned
-from constricter.rules.syntax import FunctionDef
+from constricter.source.syntax import FunctionDef
 
 # The functions by name: the module's (`[False]`), then the classes' methods (`[True]`).
 _Named: TypeAlias = tuple[dict[str, list[FunctionDef]], dict[str, list[FunctionDef]]]

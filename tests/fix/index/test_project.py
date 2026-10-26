@@ -9,7 +9,7 @@ import pytest
 from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core.known import Classes, Guarded, Outside, Returns
-from constricter.fix.index import crossed, linked, project
+from constricter.fix.index import crossed, linked, project, spelling
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -146,14 +146,14 @@ def test_calls_skip_what_they_cannot_resolve(tmp_path: Path) -> None:
         "from loop import f\nfrom other import g\ndef h() -> int:\n    return 1\n",
     )
     index: project.Index = project.index([loop])
-    assert not project.calls(index, loop)
-    assert not project.calls(index, tmp_path / "sheet.ipynb")
-    assert not project.calls(index, tmp_path / "unknown.py")
+    assert not spelling.calls(index, loop)
+    assert not spelling.calls(index, tmp_path / "sheet.ipynb")
+    assert not spelling.calls(index, tmp_path / "unknown.py")
     cycle: dict[str, project.Module] = {
         "a": project.Module(name="a", returns={}, names={"f": ("b", "f")}),
         "b": project.Module(name="b", returns={}, names={"f": ("a", "f")}),
     }
-    assert not project.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))
+    assert not spelling.calls(project.Index(cycle, sorted(cycle)), Path("a.py"))
 
 
 def test_split_run_misses_what_the_serial_hook_fixes(tmp_path: Path) -> None:
@@ -417,9 +417,9 @@ def test_a_call_through_a_module_follows_its_reexports(tmp_path: Path) -> None:
     uses: Path = _write(tmp_path / "uses.py", USES_REEXPORTED)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     guarded: dict[str, Guarded] = {}
-    assert project.calls(catalog, uses, guarded) == {"p.make": "Thing", "pkg.api.make": "Thing"}
+    assert spelling.calls(catalog, uses, guarded) == {"p.make": "Thing", "pkg.api.make": "Thing"}
     assert [needed.statement for needed in guarded.values()] == ["from pkg.impl import Thing"]
-    assert project.returned(catalog, uses, {}).calls == {}
+    assert spelling.returned(catalog, uses, {}).calls == {}
 
 
 def test_a_file_read_again_takes_its_modules_place(tmp_path: Path) -> None:
@@ -569,7 +569,7 @@ def test_importorskip_binds_its_module_as_an_import_does(tmp_path: Path) -> None
     assert not {"other", "caught", "given", "called"} & module.names.keys()
     assert module.names["named"] == ("test_uses", "named")
     guarded: dict[str, Guarded] = {}
-    assert project.calls(catalog, uses, guarded) == {
+    assert spelling.calls(catalog, uses, guarded) == {
         "m.make": "Thing",
         "top.make": "Thing",
         "again.make": "Thing",

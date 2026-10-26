@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from typing import Final, NamedTuple
 
-from constricter.rules.flow import Narrower
+from constricter.source.flow import Narrower
 
 UNANNOTATED: Final = "LVA001"
 UNTYPED_TARGET: Final = "LVA002"
@@ -21,22 +21,6 @@ LONG_TUPLE: Final = "LVA011"
 CAN_BE_FINAL: Final = "LVA012"
 UNANNOTATED_ATTRIBUTE: Final = "LVA013"
 UNANNOTATED_RETURN: Final = "LVA014"
-MESSAGES: dict[str, str] = {
-    UNANNOTATED: "local variable {name} is not annotated where it's first bound",
-    UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
-    COMMENT_TYPED_TARGET: "for variable {name} is typed only by a type comment; declare it before the loop",
-    UNANNOTATED_MEMBER: "module or class variable {name} is not annotated where it's first bound",
-    VAGUE_TYPE: "the annotation of {name} is vague: Any, object, or a generic without its parameters",
-    NESTED_TYPE: "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
-    REDUNDANT_TYPE: "{name} is annotated again with the type it already has, in the same block",
-    NARROWABLE_TYPE: "{name} only ever holds `{detail}`; its annotation could narrow to that",
-    MISMATCHED_TYPE: "{name} is bound to `{detail}` here, which doesn't fit its annotation",
-    UNUSED_UNION_MEMBER: "{name}'s annotation allows `{detail}`, which no value it's bound to ever is",
-    LONG_TUPLE: "the annotation of {name} lists a tuple of {detail} elements; name them (a NamedTuple)",
-    CAN_BE_FINAL: "{name} is bound once and never rebound; it could be `Final`",
-    UNANNOTATED_ATTRIBUTE: "instance attribute {name} is not annotated where it's first stored",
-    UNANNOTATED_RETURN: "function {name} declares no return type",
-}
 # Codes reported only when selected by their full code (`--select LVA012`), never by a prefix.
 OPT_IN: Final = frozenset({CAN_BE_FINAL, UNANNOTATED_ATTRIBUTE, UNANNOTATED_RETURN})
 # Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
@@ -201,30 +185,80 @@ class Level(IntEnum):
 
 # Each level by name and by number, as the options take it.
 LEVELS: dict[str, Level] = {key: level for level in Level for key in (level.name.lower(), str(level.value))}
-_ERROR_FROM: dict[str, Level] = {
-    UNANNOTATED: Level.STRICT,
-    UNTYPED_TARGET: Level.CONSTRICT,
-    COMMENT_TYPED_TARGET: Level.SUFFOCATE,
-    UNANNOTATED_MEMBER: Level.STRICT,
-    VAGUE_TYPE: Level.SUFFOCATE,
-    NESTED_TYPE: Level.SUFFOCATE,
-    REDUNDANT_TYPE: Level.SUFFOCATE,
-    NARROWABLE_TYPE: Level.SUFFOCATE,
-    MISMATCHED_TYPE: Level.CONSTRICT,
-    UNUSED_UNION_MEMBER: Level.SUFFOCATE,
-    LONG_TUPLE: Level.SUFFOCATE,
-    CAN_BE_FINAL: Level.SUFFOCATE,
-    UNANNOTATED_ATTRIBUTE: Level.STRICT,
-    UNANNOTATED_RETURN: Level.STRICT,
+
+
+class Code(NamedTuple):
+    """A code's message, the level it's an error from, and the level it's reported from at all."""
+
+    message: str
+    error_from: Level
+    reported_from: Level = Level.RELAXED  # most are reported at every level
+
+
+CODES: Final[dict[str, Code]] = {
+    UNANNOTATED: Code(
+        "local variable {name} is not annotated where it's first bound",
+        Level.STRICT,
+    ),
+    UNTYPED_TARGET: Code(
+        "for/match variable {name} is untyped; declare it before the statement",
+        Level.CONSTRICT,
+    ),
+    COMMENT_TYPED_TARGET: Code(
+        "for variable {name} is typed only by a type comment; declare it before the loop",
+        Level.SUFFOCATE,
+    ),
+    UNANNOTATED_MEMBER: Code(
+        "module or class variable {name} is not annotated where it's first bound",
+        Level.STRICT,
+    ),
+    VAGUE_TYPE: Code(
+        "the annotation of {name} is vague: Any, object, or a generic without its parameters",
+        Level.SUFFOCATE,
+        Level.STRICT,
+    ),
+    NESTED_TYPE: Code(
+        "the annotation of {name} nests too deeply; name a part of it with a `type` alias",
+        Level.SUFFOCATE,
+        Level.STRICT,
+    ),
+    REDUNDANT_TYPE: Code(
+        "{name} is annotated again with the type it already has, in the same block",
+        Level.SUFFOCATE,
+    ),
+    NARROWABLE_TYPE: Code(
+        "{name} only ever holds `{detail}`; its annotation could narrow to that",
+        Level.SUFFOCATE,
+        Level.CONSTRICT,
+    ),
+    MISMATCHED_TYPE: Code(
+        "{name} is bound to `{detail}` here, which doesn't fit its annotation",
+        Level.CONSTRICT,
+    ),
+    UNUSED_UNION_MEMBER: Code(
+        "{name}'s annotation allows `{detail}`, which no value it's bound to ever is",
+        Level.SUFFOCATE,
+        Level.CONSTRICT,
+    ),
+    LONG_TUPLE: Code(
+        "the annotation of {name} lists a tuple of {detail} elements; name them (a NamedTuple)",
+        Level.SUFFOCATE,
+        Level.STRICT,
+    ),
+    CAN_BE_FINAL: Code(
+        "{name} is bound once and never rebound; it could be `Final`",
+        Level.SUFFOCATE,
+    ),
+    UNANNOTATED_ATTRIBUTE: Code(
+        "instance attribute {name} is not annotated where it's first stored",
+        Level.STRICT,
+    ),
+    UNANNOTATED_RETURN: Code(
+        "function {name} declares no return type",
+        Level.STRICT,
+    ),
 }
-# Codes reported only from a level up (the rest are reported at every level).
-_REPORTED_FROM: dict[str, Level] = {
-    VAGUE_TYPE: Level.STRICT,
-    NESTED_TYPE: Level.STRICT,
-    LONG_TUPLE: Level.STRICT,
-    NARROWABLE_TYPE: Level.CONSTRICT,
-    UNUSED_UNION_MEMBER: Level.CONSTRICT,
-}
+MESSAGES: Final = {code: each.message for code, each in CODES.items()}
 
 
 class Edit(StrEnum):
@@ -387,7 +421,7 @@ def errs(code: str, level: Level) -> bool:
       Whether it is: a warning otherwise.
 
     """
-    return level >= _ERROR_FROM[code]
+    return level >= CODES[code].error_from
 
 
 def reports(code: str, level: Level) -> bool:
@@ -397,7 +431,7 @@ def reports(code: str, level: Level) -> bool:
       Whether it does at all.
 
     """
-    return level >= _REPORTED_FROM.get(code, Level.RELAXED)
+    return code not in CODES or level >= CODES[code].reported_from
 
 
 # Bases whose class bodies `--fix` annotates as a plain class's (`fix-plain-bases` adds to them): a

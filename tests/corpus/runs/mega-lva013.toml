@@ -1,0 +1,28 @@
+# Every corpus as `mega-fast.toml` measures them, with LVA013 selected: its offences, its fixes, and
+# each suite's tests, type checks and traced tests after them (each fix held to what the traced tests
+# bind), against the mega run at the same commit. No hints, census or timing. Not published: LVA013
+# changes every table's rows.
+
+[run]
+label = "mega-lva013"
+versions = ["dev"]
+jobs = 4
+at-once = 8
+suite-seconds = 900 # the longest suite's tests take 6 minutes a run
+options = ["--extend-select", "LVA013"]
+
+[corpora]
+include = ["mega"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = []
+census = false
+coverage = true
+timing = 0
+profile = false
+tests = true
+types = true
+traced = true
+tests-released = false

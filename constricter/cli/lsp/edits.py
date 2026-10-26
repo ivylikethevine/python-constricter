@@ -19,7 +19,7 @@ from urllib.request import url2pathname
 from constricter.cli.lsp.protocol import Json, Object
 from constricter.fix.core.known import Offered
 from constricter.fix.index.modules import SUFFIX, module_name
-from constricter.rules import parsed
+from constricter.source import parsed
 
 _Where: TypeAlias = tuple[int, int]  # a line (from 1) and a UTF-8 byte column, as `ast` counts
 _Locate: TypeAlias = Callable[[Object], _Where | None]  # a position's, or `None` past the file's end

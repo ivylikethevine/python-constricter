@@ -4,9 +4,14 @@ import io
 import sys
 import tokenize
 from pathlib import Path
+from typing import Final
 
 from constricter import notebook
 from constricter.cli.paths import STDIN
+
+# What reading or parsing a file raises: UnicodeDecodeError is a ValueError; a bad encoding
+# declaration, a SyntaxError.
+READ_ERRORS: Final = (OSError, ValueError, SyntaxError)
 
 
 def encoding_of(path: Path, data: bytes) -> str:

@@ -4,19 +4,20 @@ import ast
 import bisect
 import re
 import sys
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from itertools import accumulate
-from typing import Final, TypeAlias, cast
+from typing import Final, TypeAlias, TypeVar, cast
 from weakref import WeakKeyDictionary
 
 from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
-from constricter.rules.annotations import dotted, roots
-from constricter.rules.syntax import FunctionDef, Start, import_bindings
-from constricter.rules.walked import classes, of_type
+from constricter.source.annotations import dotted, roots
+from constricter.source.syntax import FunctionDef, Start, import_bindings
+from constricter.source.walked import classes, of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
 _QUOTES: Final = ("'", '"')  # what starts a string in an annotation: a name in one isn't a class's
 _STDLIB: Final = sys.stdlib_module_names
+_T = TypeVar("_T")
 _FUTURE: Final = "__future__"
 _IMPORTORSKIP: Final = "pytest.importorskip"  # a module it names may be missing
 _MODNAME: Final = "modname"  # its parameter
@@ -30,7 +31,7 @@ _REBOUND: Final[WeakKeyDictionary[ast.Module, _Rebound]] = WeakKeyDictionary()
 _Import: TypeAlias = ast.Import | ast.ImportFrom
 _Inner: TypeAlias = tuple[_Import, ...]
 _INNER: Final[WeakKeyDictionary[ast.Module, _Inner]] = WeakKeyDictionary()
-# The nodes that bind a name, but a `Name` (see `_stored`): all `_taken` needs look at.
+# The nodes that bind a name, but a `Name` (see `_stored`): all `_bindings` looks at.
 _BINDERS: Final = (
     ast.arg,
     ast.FunctionDef,
@@ -315,8 +316,9 @@ def _running(body: list[ast.stmt]) -> Iterator[ast.stmt]:
         match stmt:
             case ast.If(test=test) if not _is_checking(test):
                 yield from _running(stmt.body + stmt.orelse)
-            case ast.Try() | ast.TryStar():
-                yield from _running(stmt.body + [s for h in stmt.handlers for s in h.body] + stmt.orelse)
+            case ast.Try() | ast.TryStar():  # its `finally:` always runs
+                handled: list[ast.stmt] = [s for h in stmt.handlers for s in h.body]
+                yield from _running(stmt.body + handled + stmt.orelse + stmt.finalbody)
             case _:
                 pass
 
@@ -328,13 +330,14 @@ def inner_imports(tree: ast.Module) -> Sequence[ast.Import | ast.ImportFrom]:
       Them, in source order.
 
     """
-    found: _Inner | None
-    if (found := _INNER.get(tree)) is None:
-        found = _INNER[tree] = tuple(_read_inner_imports(tree))
-    return found
+    return _kept(_INNER, tree, _read_inner_imports)
 
 
-def _read_inner_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
+def _read_inner_imports(tree: ast.Module) -> _Inner:
+    return tuple(_inner_imports(tree))
+
+
+def _inner_imports(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
     statements: list[_Import] = cast("list[_Import]", of_type(tree, ast.Import, ast.ImportFrom))
     functions: list[FunctionDef] = cast(
         "list[FunctionDef]",
@@ -415,37 +418,43 @@ def taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
       parameter, a `def`), which name a value, not a class or module, somewhere.
 
     """
-    found: tuple[frozenset[str], frozenset[str]] | None
-    if (found := _TAKEN.get(tree)) is None:
-        found = _TAKEN[tree] = _read_taken_names(tree)
-    return found
+    return _kept(_TAKEN, tree, _read_taken_names)
 
 
-def _read_taken_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
-    names: set[str] = set()
-    values: set[str] = set()
-    stored: ast.Name
-    for stored in _stored(tree, ast.Store):
-        names.add(stored.id)
-        values.add(stored.id)
+def _read_taken_names(tree: ast.Module) -> _Taken:
+    names: set[str] = {stored.id for stored in _stored(tree, ast.Store)}
+    values: set[str] = set(names)
+    name: str
+    valued: bool
+    for name, _, valued in _bindings(tree):
+        names.add(name)
+        if valued:
+            values.add(name)
+    return frozenset(names), frozenset(values)
+
+
+def _bindings(tree: ast.Module) -> Iterator[tuple[str, Start, bool]]:
+    """Walk the module's bindings that aren't a `Name`'s: imports, classes, functions, parameters, captures.
+
+    Yields:
+      Each one's name, where it starts, and whether it names a value (not a class or a module).
+
+    """
     node: ast.AST
     name: str
     asname: str | None
     for node in of_type(tree, *_BINDERS):
         match node:
             case ast.ClassDef(name=name):
-                names.add(name)
+                yield name, (node.lineno, node.col_offset), False
             case ast.alias(name=name, asname=asname):
-                names.add(asname or name.split(".", 1)[0])
+                yield asname or name.split(".", 1)[0], (node.lineno, node.col_offset), False
             case ast.arg(arg=name) | ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name):
-                names.add(name)
-                values.add(name)
+                yield name, (node.lineno, node.col_offset), True
             case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
-                names.add(name)
-                values.add(name)
+                yield name, (node.lineno, node.col_offset), True
             case _:
                 pass
-    return frozenset(names), frozenset(values)
 
 
 def _stored(tree: ast.Module, *contexts: type[ast.expr_context]) -> Iterator[ast.Name]:
@@ -471,36 +480,36 @@ def rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
       Each such name, and where each of its bindings starts, in source order.
 
     """
-    found: dict[str, list[Start]] | None
-    if (found := _REBOUND.get(tree)) is None:
-        found = _REBOUND[tree] = _read_rebound_names(tree)
-    return found
+    return _kept(_REBOUND, tree, _read_rebound_names)
 
 
-def _read_rebound_names(tree: ast.Module) -> dict[str, list[Start]]:
+def _read_rebound_names(tree: ast.Module) -> _Rebound:
     found: dict[str, list[Start]] = {}
     stored: ast.Name
     for stored in _stored(tree, ast.Store, ast.Del):
         found.setdefault(stored.id, []).append((stored.lineno, stored.col_offset))
-    node: ast.AST
     name: str
-    asname: str | None
-    for node in of_type(tree, *_BINDERS):
-        match node:
-            case ast.alias(name=name, asname=asname):
-                found.setdefault(asname or name.split(".", 1)[0], []).append((node.lineno, node.col_offset))
-            case (
-                ast.arg(arg=name)
-                | ast.FunctionDef(name=name)
-                | ast.AsyncFunctionDef(name=name)
-                | ast.ClassDef(name=name)
-            ):
-                found.setdefault(name, []).append((node.lineno, node.col_offset))
-            case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
-                found.setdefault(name, []).append((node.lineno, node.col_offset))
-            case _:
-                pass
+    start: Start
+    for name, start, _ in _bindings(tree):
+        found.setdefault(name, []).append(start)
     return {name: sorted(starts) for name, starts in found.items() if len(starts) > 1}
+
+
+def _kept(
+    memo: "WeakKeyDictionary[ast.Module, _T]",
+    tree: ast.Module,
+    read: Callable[[ast.Module], _T],
+) -> _T:
+    """Read something of `tree` once, keeping it in `memo` while the tree lives.
+
+    Returns:
+      It.
+
+    """
+    found: _T | None
+    if (found := memo.get(tree)) is None:
+        found = memo[tree] = read(tree)
+    return found
 
 
 def _after(tree: ast.Module) -> int:

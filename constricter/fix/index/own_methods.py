@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Final
 from constricter.fix.core.known import Guarded
 from constricter.fix.core.signatures import ReadSignature
 from constricter.fix.index import crossed, own_overloads
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.modules import Index, Module, module_at
 from constricter.fix.index.stubs import stubbed
-from constricter.rules.annotations import roots
+from constricter.source.annotations import roots
 
 if TYPE_CHECKING:
     from constricter.fix.index.stubs.declared import Signature
@@ -35,7 +35,7 @@ def overloaded(
 
     """
     target: Module | None
-    if path.suffix != SUFFIX or (target := catalog.modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     found: dict[str, tuple[ReadSignature, ...]] = {}
     key: str

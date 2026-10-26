@@ -1,4 +1,4 @@
-"""Measure what a check knows of each file from outside it (`schedule.outside`), by its pickled size.
+"""Measure what a check knows of each file from outside it (`across.outside`), by its pickled size.
 
   local/.venv/bin/python -m scratch.outside_size                       # the standard library
   local/.venv/bin/python -m scratch.outside_size pandas --top 20       # another corpus, its 20 largest
@@ -16,7 +16,7 @@ import time
 import warnings
 from collections import Counter
 
-from constricter.cli import schedule
+from constricter.fix.index import across
 from constricter.fix.index import decorated, plain, project
 from constricter.fix.index.stubs import installed
 from tests.corpus import corpus_table
@@ -40,7 +40,7 @@ def main() -> int:
     fields: Counter[str] = Counter()
     start = time.perf_counter()
     for path in paths:
-        known = schedule.outside(modules, path, {})
+        known = across.outside(modules, path, {})
         size = len(pickle.dumps(known, pickle.HIGHEST_PROTOCOL))
         sizes.append((size, str(path.relative_to(root))))
         if size > 1_000_000:

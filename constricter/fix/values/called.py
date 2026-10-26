@@ -20,13 +20,13 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.values.members import member, parsed
 from constricter.fix.values.returns import BUILTIN_RETURNS
 from constricter.offences import CONSTRUCTOR
-from constricter.rules.annotations import GENERICS, dotted, node_name
+from constricter.source.annotations import GENERICS, dotted, node_name
 
 _Infer: TypeAlias = Callable[[ast.expr], Inference | None]
 _CALLABLE: Final = "Callable"
 _TYPE: Final = frozenset({"type", "Type"})
 _CALL: Final = "__call__"
-NEW: Final = "__new__"  # given a class, makes one of it, whatever it's called on
+_NEW: Final = "__new__"  # given a class, makes one of it, whatever it's called on
 _KIND: Final = frozenset({"call"})  # the fix kind of a declared return
 
 
@@ -43,7 +43,7 @@ def result(call: ast.Call, known: Known, declared: Mapping[str, str], infer: _In
     func: ast.expr = call.func
     if isinstance(func, ast.Name):
         return None if func.id not in declared else _returned(declared[func.id], func.id, call, known)
-    if isinstance(func, ast.Attribute) and func.attr == NEW and call.args:
+    if isinstance(func, ast.Attribute) and func.attr == _NEW and call.args:
         return _made(call.args[0], known, infer)
     callee: Inference | None = infer(func)
     found: Inference | None = (
@@ -63,12 +63,12 @@ def _made(given: ast.expr, known: Known, infer: _Infer) -> Inference | None:
     spelled: str = ast.unparse(given)
     plan: ImportPlan | None = known.names.plan
     if spelled in known.classes and plan is not None and spelled.partition(".")[0] not in plan.values:
-        return Inference(spelled, f"`{NEW}` of `{spelled}`", _KIND)
+        return Inference(spelled, f"`{_NEW}` of `{spelled}`", _KIND)
     found: Inference | None = infer(given)
     made: ast.expr | None = None if found is None else _constructed(parsed(found.annotation))
     if found is None or made is None:
         return None
-    reason: str = f"`{NEW}` of `{spelled}`, a `{found.annotation}`"
+    reason: str = f"`{_NEW}` of `{spelled}`, a `{found.annotation}`"
     return Inference(ast.unparse(made), reason, found.kinds - {"copy"} | _KIND)
 
 
@@ -98,37 +98,34 @@ def _returned(callee: str, spelled: str, call: ast.Call, known: Known) -> Infere
     """
     head: ast.expr
     returns: ast.expr
+    node: ast.Subscript
     made: ast.expr | None
     match parsed(callee):
         case ast.Subscript(value=head, slice=ast.Tuple(elts=[_, returns])) if node_name(head) == _CALLABLE:
             if isinstance(returns, ast.Constant):
                 return None  # `None`, or a name in quotes
             return Inference(ast.unparse(returns), f"what `{spelled}`, a `{callee}`, returns", _KIND)
-        case ast.Subscript(value=head) if node_name(head) in _TYPE:
-            made = _constructed(parsed(callee))
+        case ast.Subscript(value=head) as node if node_name(head) in _TYPE:
+            made = _constructed(node)
             reason: str = f"a call of `{spelled}`, a `{callee}`"
             return None if made is None else Inference(ast.unparse(made), reason, _KIND)
         case _:
             return member(callee, _CALL, call, known)
 
 
-# Calls that return a class or a special form, not an instance of what they're named.
-_FACTORIES: Final = frozenset(
-    {
-        "Enum",
-        "Flag",
-        "IntEnum",
-        "IntFlag",
-        "NamedTuple",
-        "NewType",
-        "ParamSpec",
-        "StrEnum",
-        "TypeAliasType",
-        "TypeVar",
-        "TypeVarTuple",
-        "TypedDict",
-    },
+# Calls that return a class or a special form, not an instance of what they're named: `typing`'s
+# (and `typing_extensions`'), and `enum`'s.
+TYPING_FACTORIES: Final = (
+    "NamedTuple",
+    "NewType",
+    "ParamSpec",
+    "TypeAliasType",
+    "TypeVar",
+    "TypeVarTuple",
+    "TypedDict",
 )
+ENUM_FACTORIES: Final = ("Enum", "Flag", "IntEnum", "IntFlag", "StrEnum")
+_FACTORIES: Final = frozenset({*TYPING_FACTORIES, *ENUM_FACTORIES})
 
 
 def typed_call(value: ast.expr, known: Known) -> Inference | None:

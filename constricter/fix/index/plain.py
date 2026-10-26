@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.modules import Index, Module, module_at
 from constricter.fix.index.project import CLASS, definition
 from constricter.fix.values import classvars
 
@@ -201,7 +201,7 @@ def members(catalog: Index, path: Path) -> dict[str, Mapping[str, str]]:
       Each class's, by its name; none for a file `catalog` doesn't have.
 
     """
-    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
+    target: Module | None = module_at(catalog, path)
     return (
         {}
         if target is None
@@ -216,5 +216,5 @@ def classes(catalog: Index, path: Path) -> frozenset[str] | None:
       Their names; `None` for a file `catalog` doesn't have, whose own classes say.
 
     """
-    target: Module | None = catalog.modules.get(module_name(path)) if path.suffix == SUFFIX else None
+    target: Module | None = module_at(catalog, path)
     return None if target is None else target.plain

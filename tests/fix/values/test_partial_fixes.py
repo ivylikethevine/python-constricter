@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter import Checks, Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import crossed, project
-from constricter.rules import declarations
+from constricter.fix.index import across, crossed, project
+from constricter.source import declarations
 
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
 _LOCAL: Final = """
@@ -242,7 +241,7 @@ def test_another_files_partial_return_is_unpacked_too(tmp_path: Path) -> None:
     }
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {o.name: o.fix for o in found} == {
         "names": "list[str]",

@@ -10,7 +10,7 @@ from constricter import Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core import fixes
 from constricter.fix.core.known import Guarded, Outside
-from constricter.fix.index import crossed, project
+from constricter.fix.index import crossed, project, spelling
 
 # Each starts `--jobs` workers of its own: one at a time, where the tests run at once (`pytest -n`).
 JOBS: pytest.MarkDecorator = pytest.mark.xdist_group("jobs")
@@ -344,7 +344,7 @@ def test_a_name_the_file_binds_otherwise_isnt_imported(tmp_path: Path) -> None:
         outside=Outside(calls=imported.calls, classes=imported.classes, guarded=imported.guarded),
     )
     assert {o.name: o.fix for o in offences} == {"a": None, "b": "Again"}
-    assert not project.calls(catalog, user)
+    assert not spelling.calls(catalog, user)
 
 
 @pytest.mark.parametrize(
@@ -482,7 +482,7 @@ def test_an_alias_assigned_twice_isnt_written_in_another_file(tmp_path: Path) ->
     assert set(catalog.modules["pkg.rebound"].aliases) == {"Versioned", "Constant", "Once"}
     assert catalog.modules["pkg.aliased"].rebound == {"Own"}
     guarded: dict[str, Guarded] = {}
-    assert project.calls(catalog, user, guarded) == {
+    assert spelling.calls(catalog, user, guarded) == {
         "constant": "Constant",
         "once": "Once",
         "versioned": "Versioned",
@@ -813,4 +813,4 @@ def test_a_class_a_package_takes_by_a_star_import_is_the_one_it_names(tmp_path: 
         """,
     )
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    assert project.calls(catalog, use, {}) == {"make": "type[Model]"}
+    assert spelling.calls(catalog, use, {}) == {"make": "type[Model]"}

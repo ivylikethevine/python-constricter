@@ -37,16 +37,18 @@ from constricter.fix.core.known import Inference, Known, LibraryNames, Outside
 from constricter.fix.libraries import stdlib
 from constricter.fix.values.inference import inference
 from constricter.fix.values.operated import operated
+from constricter.fix.values.shapes import is_none
+from constricter.fix.values.stored import class_names
 from constricter.offences import MAX_LENGTH
-from constricter.rules.annotations import dotted
-from constricter.rules.declarations import classes as annotated
-from constricter.rules.flow import members as union
-from constricter.rules.syntax import import_bindings
-from constricter.rules.walked import classes, of_type
+from constricter.source.annotations import dotted
+from constricter.source.declarations import classes as annotated
+from constricter.source.flow import members as union
+from constricter.source.syntax import import_bindings
+from constricter.source.walked import classes, of_type
 
 OBJECT: Final = "object"
 # The standard library's test cases: their subclasses' variables are only ever their own.
-TEST_CASES: Final = frozenset(
+_TEST_CASES: Final = frozenset(
     {
         "unittest.TestCase",
         "unittest.IsolatedAsyncioTestCase",
@@ -65,7 +67,7 @@ PASSED_OVER: Final = frozenset({"abc.ABC", "typing.Generic", "typing_extensions.
 # under `NamedTuple` itself has fields in its body, and isn't plain.
 FUNCTIONAL: Final = frozenset({"namedtuple", "NamedTuple", "TypedDict"})
 CALLED: Final = "()"
-FUNCTIONAL_BASES: Final = frozenset(
+_FUNCTIONAL_BASES: Final = frozenset(
     {
         f"collections.namedtuple{CALLED}",
         *(
@@ -134,6 +136,9 @@ def _is_base(name: str, value: object) -> bool:
 
 
 BUILTIN_BASES: Final = _builtin_bases()
+# The bases `allowed` takes by name alone, and those `_may_test` knows aren't a test case's.
+_ALLOWED: Final = frozenset({*_TEST_CASES, *BUILTIN_BASES, *PASSED_OVER, *_FUNCTIONAL_BASES})
+_NOT_TESTS: Final = frozenset({*BUILTIN_BASES, *PASSED_OVER})
 _WORD: Final = re.compile(r"[A-Za-z_][\w.]*")
 # What a test case declares of itself, where builtins alone spell it: a subclass's variable of the
 # name has that type, to a type checker, whatever its value's is.
@@ -144,7 +149,7 @@ HELD: Final = {
 }
 
 
-def member_type(value: ast.expr, known: Known) -> str | None:
+def _member_type(value: ast.expr, known: Known) -> str | None:
     """Type a class variable's value by its own text: a literal, or a display of them.
 
     Or, `known` naming the standard library as the module does (see `library`), by what it gives:
@@ -165,7 +170,7 @@ def library(tree: ast.Module) -> Known:
     """Know what a module names of the standard library, and nothing it declares itself.
 
     Returns:
-      What `member_type` types a value by, the same for every file that reads the module.
+      What `_member_type` types a value by, the same for every file that reads the module.
 
     """
     return Known({}, frozenset(), {}, {}, names=LibraryNames(frozenset(), stdlib.origins(tree), plan(tree)))
@@ -189,11 +194,9 @@ def bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
 
 def _read_bases(tree: ast.Module) -> dict[str, tuple[str, ...]]:
     taken: frozenset[str] = taken_names(tree)[0]
-    counts: dict[str, int] = {}
-    node: ast.ClassDef
-    for node in classes(tree):
-        counts[node.name] = counts.get(node.name, 0) + 1
+    counts: Mapping[str, int] = class_names(tree)
     found: dict[str, tuple[str, ...]] = {}
+    node: ast.ClassDef
     for node in classes(tree):
         if counts[node.name] == 1:
             names: list[str | None] = [_base_name(base) for base in node.bases]
@@ -254,17 +257,11 @@ def allowed(base: str, entries: Sequence[str] = ()) -> bool:
     """Check whether a base no checked file defines is one a plain class may have.
 
     Returns:
-      Whether it's a test case's (`TEST_CASES`), a builtin's (`BUILTIN_BASES`), one passed over
+      Whether it's a test case's (`_TEST_CASES`), a builtin's (`BUILTIN_BASES`), one passed over
       (`PASSED_OVER`) or a listed one (`listed`), by its origin.
 
     """
-    return (
-        base in TEST_CASES
-        or base in BUILTIN_BASES
-        or base in PASSED_OVER
-        or base in FUNCTIONAL_BASES
-        or listed(base, entries)
-    )
+    return base in _ALLOWED or listed(base, entries)
 
 
 def listed(base: str, entries: Sequence[str]) -> bool:
@@ -501,7 +498,7 @@ def _may_test(name: str, found: Bases, origins: Mapping[str, str]) -> bool:
 
     """
     return any(
-        base not in found and _resolved(base, origins) not in BUILTIN_BASES.keys() | PASSED_OVER
+        base not in found and _resolved(base, origins) not in _NOT_TESTS
         for owner in (name, *ancestors(name, found))
         for base in found[owner]
     )
@@ -554,7 +551,7 @@ def _keeps(store: _Store | None, annotation: str, known: Known) -> bool:
     """Check whether a store of an attribute keeps it the type `annotation`.
 
     Returns:
-      Whether its value's own text types it so (see `member_type`), or (augmented) the operator
+      Whether its value's own text types it so (see `_member_type`), or (augmented) the operator
       gives that type back.
 
     """
@@ -584,13 +581,10 @@ def _typed(
       Their types, by name.
 
     """
-    bound: dict[str, int] = {}
+    bound: Counter[str] = Counter(name for stmt in body for name in _bound(stmt))
+    found: dict[str, str] = {}
     stmt: ast.stmt
     name: str
-    for stmt in body:
-        for name in _bound(stmt):
-            bound[name] = bound.get(name, 0) + 1
-    found: dict[str, str] = {}
     value: ast.expr
     annotation: str | None
     for stmt in body:
@@ -612,11 +606,10 @@ def _of(value: ast.expr, held: str | None, known: Known) -> str | None:
 
     Returns:
       `held`, where its value is of it, `None` too (`maxDiff = None`); its value's own type (see
-      `member_type`) where no base declares it; else `None`.
+      `_member_type`) where no base declares it; else `None`.
 
     """
-    none: bool = isinstance(value, ast.Constant) and value.value is None
-    own: str | None = _NONE if none and held is not None else member_type(value, known)
+    own: str | None = _NONE if is_none(value) and held is not None else _member_type(value, known)
     if own is None or held is None:
         return own
     return held if own in (union(held) or ()) else None

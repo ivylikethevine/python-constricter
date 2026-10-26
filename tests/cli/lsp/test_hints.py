@@ -18,7 +18,7 @@ import pytest
 from constricter import check_source
 from constricter.cli import command as cli
 from constricter.cli import rounds
-from constricter.cli.lsp import connection, guard, hints, protocol, remembered, stored
+from constricter.cli.lsp import connection, edits, guard, hints, protocol, remembered, stored
 from constricter.cli.options import Options
 from constricter.fix.core.known import Hints, Offered
 from constricter.fix.index.stubs.installed import cache_directory
@@ -139,6 +139,20 @@ def test_a_stored_round_unread_of_late_is_removed(tmp_path: Path) -> None:
     os.utime(entries / "old.json", (0, 0))
     stored.store("round", tmp_path, {}, frozenset())
     assert sorted(path.name for path in entries.iterdir()) == ["recent.json", "round.json"]
+
+
+def test_a_rounds_key_rests_on_the_code_that_writes_its_hints(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`edits`, which writes what the store keeps, as well as the code that asks."""
+    code: Path = tmp_path / "edits.py"
+    _ = code.write_text("before\n", encoding="utf-8")
+    monkeypatch.setattr(edits, "__file__", str(code))
+    files: dict[Path, str] = {tmp_path / "a.py": "x = 1\n"}
+    before: str = stored.key("ty", ["ty", "server"], tmp_path, files)
+    _ = code.write_text("after\n", encoding="utf-8")
+    assert stored.key("ty", ["ty", "server"], tmp_path, files) != before
 
 
 def _no_servers(_files: Mapping[Path, str], checkers: list[hints.Checker]) -> None:
@@ -708,8 +722,11 @@ def test_infer_with_is_a_setting(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     checker: str = "ty"
     _ = pyproject.write_text(f'[tool.constricter]\ninfer-with = "{checker}"\n', encoding="utf-8")
     assert Options.parse([]).infer_with == (checker,)
-    _ = pyproject.write_text('[tool.constricter]\ninfer-with = ["ty", "basedpyright"]\n', encoding="utf-8")
-    assert Options.parse([]).infer_with == (checker, _CHECKER)
+    _ = pyproject.write_text(
+        '[tool.constricter]\ninfer-with = ["ty", "basedpyright", "ty"]\n',
+        encoding="utf-8",
+    )
+    assert Options.parse([]).infer_with == (checker, _CHECKER)  # each once, as `--infer-with` gives it
     assert Options.parse(["--infer-with", "basedpyright, ty,basedpyright"]).infer_with == (_CHECKER, checker)
     wrong: str
     for wrong in ('"mypy"', '["ty", "mypy"]', "[]", "1"):

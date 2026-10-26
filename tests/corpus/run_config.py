@@ -2,7 +2,7 @@
 
     [run]
     label = "0.3.7-rc.1"             # names the run's folder, and `dev` in its tables
-    output = "local/corpus-runs"     # each execution writes a folder of its own under it
+    output = "corpus-runs"           # each execution writes a folder of its own under it
     versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout; or `NAME=PATH`,
                                      # the constricter the Python at PATH runs (another checkout's)
     formats = ["json", "markdown", "csv"]
@@ -53,8 +53,14 @@
 A key this doesn't know is an error, not ignored: a misspelt step would otherwise measure nothing.
 """
 
+import argparse
+import contextlib
+import getpass
+import json
+import os
 import tomllib
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
@@ -74,7 +80,7 @@ UNSAFE: Final = "unsafe"
 # Each fix a run can make on a copy, and the options that make it beside `--fix`.
 FIXES: Final = {CERTAIN: (), LIKELY: ("--likely",), UNSAFE: ("--unsafe-fixes",)}
 CHECKERS: Final = ("basedpyright", "ty", "pyrefly")  # what `--infer-with` can start
-_WHOLE: Final = 100  # a share's percent of the whole machine
+WHOLE: Final = 100  # a share's percent of the whole machine
 _KEYS: Final = {
     "run": {
         "label",
@@ -112,6 +118,10 @@ _KEYS: Final = {
 _RUNS_MD: Final = "runs-md"
 _STAGES: Final = "stages"  # the table regrouping the steps
 _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, day, year and time it started
+ROOT: Final = Path(__file__).resolve().parents[2]  # the checkout
+FACTS: Final = "facts.toml"  # in a run's folder: the run as it was read, the commit, the machine
+STARTED: Final = "started"  # in its facts: when its first execution started
+REPORT: Final = "report.json"  # in a run's folder once it ends: its facts, records and tables
 _Table: TypeAlias = dict[str, object]
 
 
@@ -146,7 +156,7 @@ class Run(NamedTuple):
     """A run file, read."""
 
     label: str = CHECKOUT
-    output: Path = Path("local/corpus-runs")
+    output: Path = Path("corpus-runs")
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
     jobs: int = 0
@@ -295,6 +305,16 @@ def _patterns(name: str, given: object) -> tuple[str, ...]:
     return tuple(cast("list[str]", given))
 
 
+def directory(corpus: str) -> str:
+    """Name a corpus's folder in a run's records, logs and work: its name, a space a dash.
+
+    Returns:
+      It.
+
+    """
+    return corpus.replace(" ", "-")
+
+
 def percent(given: object) -> int:
     """Read a share of the machine, in percent.
 
@@ -305,10 +325,74 @@ def percent(given: object) -> int:
       ValueError: it isn't a whole number from 0 to 100.
 
     """
-    if isinstance(given, bool) or not isinstance(given, int) or not 0 <= given <= _WHOLE:
-        message: str = f"share must be a percent, 1 to {_WHOLE} (0: the machine's): {given!r}"
+    if isinstance(given, bool) or not isinstance(given, int) or not 0 <= given <= WHOLE:
+        message: str = f"share must be a percent, 1 to {WHOLE} (0: the machine's): {given!r}"
         raise ValueError(message)
     return given
+
+
+def scrubbed(text: str) -> str:
+    """Write a kept file's paths as no machine's: the checkout's relative to it, the home folder's as `~`.
+
+    A run's folder is committed: what it keeps names nothing of the machine that ran it, nor its
+    user, whom pytest's temporary folders are named for (`pytest-of-<user>`, in a test's id).
+
+    Returns:
+      `text`, so written: as JSON writes a path, which is as it is but on Windows.
+
+    """
+    where: Path
+    written: str
+    for where, written in ((ROOT, ""), (Path.home(), "~/")):
+        text = text.replace(json.dumps(f"{where}{os.sep}")[1:-1], written)
+    with contextlib.suppress(OSError, KeyError):  # no user to name: nothing named for one
+        text = text.replace(f"pytest-of-{getpass.getuser()}", "pytest-of-user")
+    return text
+
+
+def started(folder: Path) -> datetime:
+    """Read when the run in `folder` first started, from its facts: its `facts.toml`, or its report's.
+
+    What orders runs, as a file's time can't: a checkout sets every file's at once. A folder with
+    no facts saying goes by its own time.
+
+    Returns:
+      It, in its zone.
+
+    """
+    with contextlib.suppress(ValueError):  # neither says, or not as a time
+        when: datetime = datetime.fromisoformat(_said(folder))
+        return when if when.tzinfo else when.astimezone()
+    return datetime.fromtimestamp(folder.stat().st_mtime, UTC)
+
+
+def _said(folder: Path) -> str:
+    """Read the `started` of the facts of the run in `folder`: its `facts.toml`'s, or else its report's.
+
+    Returns:
+      It; nothing where neither says.
+
+    """
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        facts: _Table = tomllib.loads((folder / FACTS).read_text(encoding="utf-8"))
+        return str(facts[STARTED])
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        report: _Table = cast("_Table", json.loads((folder / REPORT).read_text(encoding="utf-8")))
+        return str(cast("_Table", report["run"])[STARTED])
+    return ""
+
+
+def outside(output: Path, root: Path) -> list[str]:
+    """Name what git sees of the checkout at `root` but the runs' folders under `output`.
+
+    Returns:
+      A pathspec of every path but `output`'s, as git's arguments; nothing where it isn't a folder
+      under `root`, the checkout itself included.
+
+    """
+    where: Path = output.resolve()
+    inside: bool = where.is_relative_to(root) and where != root
+    return ["--", ".", f":(exclude){where.relative_to(root).as_posix()}"] if inside else []
 
 
 def read(path: Path) -> Run:
@@ -321,3 +405,59 @@ def read(path: Path) -> Run:
     file: IO[bytes]
     with path.open("rb") as file:
         return parse(tomllib.load(file))
+
+
+RESUME: Final = "--resume"  # then a run's folder: this execution carries it on
+STAGE: Final = "--stage"  # then one of the run's stages: its steps alone
+JOIN: Final = "--join-anyway"  # a stage joins a folder of another commit or run file
+LABEL: Final = "--label"  # then the run's label, whatever its file says
+JOBS: Final = "--jobs"  # then constricter's worker processes
+
+
+class Command(NamedTuple):
+    """What the runner's command line says: its run file, and what it says over the file."""
+
+    run_file: Path | None = None  # none for one step's process, which reads its folder's
+    resume: Path | None = None
+    stage: str | None = None
+    join: bool = False
+    label: str | None = None
+    only: str | None = None  # a corpus or a set: the run file's, on that alone
+    minus: str | None = None  # a corpus, a set or a run file: the run's corpora less its
+    at_once: int | None = None  # how many corpora are found side by side
+    jobs: int | None = None
+    share: int | None = None  # the percent of the machine its steps share
+
+
+def read_command(argv: Sequence[str], *, run_file: bool = True) -> Command:
+    """Read the runner's command line (`python -m tests.corpus`); `run_file`: whether it names one.
+
+    Returns:
+      What it says. Raises `SystemExit`, with its usage, for an argument it doesn't take.
+
+    """
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(prog="python -m tests.corpus")
+    if run_file:
+        _ = parser.add_argument("run_file", type=Path)
+    _ = parser.add_argument(RESUME, type=Path, metavar="FOLDER")
+    _ = parser.add_argument(STAGE)
+    _ = parser.add_argument(JOIN, dest="join", action="store_true")
+    _ = parser.add_argument(LABEL)
+    _ = parser.add_argument("--only", metavar="CORPUS")
+    _ = parser.add_argument("--minus", metavar="CORPUS")
+    _ = parser.add_argument("--at-once", type=int)
+    _ = parser.add_argument(JOBS, type=int)
+    _ = parser.add_argument("--share", type=int)
+    said: argparse.Namespace = parser.parse_args(argv)
+    return Command(
+        run_file=cast("Path | None", getattr(said, "run_file", None)),
+        resume=cast("Path | None", said.resume),
+        stage=cast("str | None", said.stage),
+        join=cast("bool", said.join),
+        label=cast("str | None", said.label),
+        only=cast("str | None", said.only),
+        minus=cast("str | None", said.minus),
+        at_once=cast("int | None", said.at_once),
+        jobs=cast("int | None", said.jobs),
+        share=cast("int | None", said.share),
+    )

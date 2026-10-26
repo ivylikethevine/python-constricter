@@ -98,6 +98,7 @@ def _plan(source: str) -> ImportPlan:
             {"io": "import io"},
         ),
         ("try:\n  from io import BytesIO\nexcept ImportError:\n  pass\n", "io.BytesIO", "BytesIO", {}),
+        ("try:\n  pass\nfinally:\n  from io import BytesIO\n", "io.BytesIO", "BytesIO", {}),  # always runs
         ("if True:\n  import io\n", "io.BytesIO", "io.BytesIO", {}),
         ("from . import io\n", "io.BytesIO", "BytesIO", {"BytesIO": "from io import BytesIO"}),
     ],

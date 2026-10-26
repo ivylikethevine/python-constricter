@@ -90,14 +90,14 @@ INPUTS: Final = (
     "constricter/fix/core/__init__.py",
     "constricter/fix/core/signatures.py",
     "constricter/offences.py",
-    "constricter/rules/__init__.py",
-    "constricter/rules/annotations.py",
-    "constricter/rules/decorators.py",
-    "constricter/rules/flow.py",
-    "constricter/rules/keys.py",
-    "constricter/rules/quoted.py",
-    "constricter/rules/syntax.py",
-    "constricter/rules/walked.py",
+    "constricter/source/__init__.py",
+    "constricter/source/annotations.py",
+    "constricter/source/decorators.py",
+    "constricter/source/flow.py",
+    "constricter/source/keys.py",
+    "constricter/source/quoted.py",
+    "constricter/source/syntax.py",
+    "constricter/source/walked.py",
 )
 _SOURCE: Final = OUTPUT / "source.json"  # what the tables were generated from: `stamp`, and more
 _LOCK: Final = ROOT / "uv.lock"

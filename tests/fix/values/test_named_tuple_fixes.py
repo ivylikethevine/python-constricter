@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter import Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import project
+from constricter.fix.index import across, project
 from constricter.fix.values import classvars, entered, targets
-from constricter.rules import declarations
+from constricter.source import declarations
 
 # Each offence's fix and whether it's a guess.
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
@@ -322,8 +321,8 @@ def test_another_files_named_tuple_is_unpacked_too(tmp_path: Path) -> None:
     spelling: Path = tmp_path / "spelling.py"
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     fields: str = "tuple[dict[str, int], list[str]]"
-    assert schedule.outside(catalog, using, {}).tuples == {"Namespaces": fields}
-    assert schedule.outside(catalog, spelling, {}).tuples == {
+    assert across.outside(catalog, using, {}).tuples == {"Namespaces": fields}
+    assert across.outside(catalog, spelling, {}).tuples == {
         "shapes.Namespaces": fields,
         "Namespaces": fields,
         "Plain": "tuple[bytes, float]",
@@ -331,9 +330,9 @@ def test_another_files_named_tuple_is_unpacked_too(tmp_path: Path) -> None:
         "shapes.Plain": "tuple[bytes, float]",
         "shapes.Nested": "tuple[float, float]",
     }
-    found: list[Offence] = check_source(_USING, outside=schedule.outside(catalog, using, {}))
+    found: list[Offence] = check_source(_USING, outside=across.outside(catalog, using, {}))
     assert {o.name: o.fix for o in found} == {"globalns": "dict[str, int]", "localns": "list[str]"}
-    found = check_source(_SPELLING, outside=schedule.outside(catalog, spelling, {}))
+    found = check_source(_SPELLING, outside=across.outside(catalog, spelling, {}))
     assert {o.name: o.fix for o in found} == {
         "first": "dict[str, int]",
         "second": "list[str]",

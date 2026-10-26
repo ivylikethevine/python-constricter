@@ -7,9 +7,10 @@ The corpora are the pinned `corpus` dependency group's packages
 (`uv sync --group dev --group corpus`), and the sources tests/corpus/corpus_sources.py fetches:
 CPython's standard library with its tests, and pure Python 2. A version is a release from PyPI,
 installed with `uv` into `local/corpus-table/venvs/`, or `dev`, this checkout (recorded as
-`<version>+dev`, its version without the commit, or `<label>+dev` with `--label`: a pseudo-version,
-like a release candidate). Each runs isolated (`python -I`, from `local/corpus-table/`), so neither this
-checkout nor its `pyproject.toml` leaks into a release's run, and with this Python's environment as
+`<version>+dev`, its version without the commit, or `<label>+dev` with a run's label: a
+pseudo-version, like a release candidate). Each runs isolated (`python -I`, from
+`local/corpus-table/`), so neither this checkout nor its `pyproject.toml` leaks into a release's
+run, and with this Python's environment as
 its `VIRTUAL_ENV`, so a release sees the installed packages `dev` does.
 
 For each corpus and version: a check at every level (with `--all-scopes`), counted per code at
@@ -18,11 +19,8 @@ then `--fix` and `--fix --unsafe-fixes` on copies, counting what each fixed, wha
 compiles, and what a second pass would still fix; and the share of its bindings typed as released
 and after each (this checkout's `--coverage`, whatever the version). Each version's rows end in a
 total: each code's share of the offences, and what was fixed and guessed as a share of them. A
-corpus's runs go side by side where `CORPUS_JOBS` leaves CPUs for more than one.
-`--write` adds a section per version to docs/RUNS.md, or replaces a release's section if it's there;
-`dev` is recorded under this checkout's version, so record a release with `--label` and its version
-before tagging it (`--replace` to overwrite a section already there). Timings go to standard error, not the
-tables, so rerunning it on an unchanged tree changes nothing.
+corpus's runs go side by side where `CORPUS_JOBS` leaves CPUs for more than one. Timings go to
+standard error, not the tables, so rerunning it on an unchanged tree changes nothing.
 """
 
 import importlib
@@ -45,11 +43,11 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import Level, __version__
 from constricter.cli import paths
+from tests.corpus.run_config import ROOT, directory
 
 _Json: TypeAlias = "str | int | list[_Json] | dict[str, _Json] | None"
-_ROOT: Final = Path(__file__).resolve().parents[2]
-RUNS: Final = _ROOT / "docs" / "RUNS.md"
-WORK: Final = _ROOT / "local" / "corpus-table"
+RUNS: Final = ROOT / "docs" / "RUNS.md"
+WORK: Final = ROOT / "local" / "corpus-table"
 DEV: Final = "dev"
 CHECKOUT: Final = __version__.partition("+")[0]  # this checkout's version, without its commit: `0.5.1.dev3`
 VERSIONS: Final = ("0.2.2", "0.2.3", DEV)
@@ -81,10 +79,6 @@ _SECTION: Final = "## constricter "
 _WINDOWS: Final = "nt"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"  # where constricter looks for installed packages, beside its own path
 _ERROR: Final = "error"
-_VERSIONS_FLAG: Final = "--versions"
-_WRITE_FLAG: Final = "--write"
-_REPLACE_FLAG: Final = "--replace"
-_LABEL_FLAG: Final = "--label"
 _PROSE_WIDTH: Final = 100  # .prettierrc.yaml's printWidth
 NONE: Final = "-"  # a cell with nothing to say
 _WORD: Final = re.compile(r"(?:`[^`]*`|[^\s`])+")  # what Prettier keeps on one line
@@ -296,7 +290,7 @@ def copied(corpus: Corpus, version: str) -> tuple[Path, list[Path]]:
       The copy's root, and each copied file that compiles.
 
     """
-    root: Path = WORK / version / corpus.name.replace(" ", "-")
+    root: Path = WORK / version / directory(corpus.name)
     shutil.rmtree(root, ignore_errors=True)
     valid: list[Path] = []
     source: Path

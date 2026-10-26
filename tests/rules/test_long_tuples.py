@@ -8,7 +8,7 @@ import pytest
 from constricter import LONG_TUPLE, Checks, Level, Offence, check_source
 from constricter.cli import command as cli
 from constricter.cli import config
-from constricter.rules.annotations import length
+from constricter.source.annotations import length
 
 
 @pytest.mark.parametrize(

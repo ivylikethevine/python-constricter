@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Final, TypeAlias
 
 from constricter import Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import project
-from constricter.rules.tables import module_tables
+from constricter.fix.index import across, project
+from constricter.fix.values.tables import module_tables
 
 _Fixes: TypeAlias = dict[str, tuple[str | None, bool]]
 _SOURCE: Final = """
@@ -165,7 +164,7 @@ def test_another_files_base_gives_its_attributes(tmp_path: Path) -> None:
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {(o.line, o.name): o.fix for o in found} == {
         (7, "limit"): "int",

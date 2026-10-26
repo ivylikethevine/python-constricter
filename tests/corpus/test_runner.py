@@ -1,10 +1,12 @@
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
+import getpass
 import json
 import os
 import shutil
 import threading
 import time
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,10 +16,11 @@ import pytest
 
 from constricter import Level, recording
 from tests.corpus import __main__ as runner
-from tests.corpus import catalog, corpus_suite, launch, pipeline, sizing, suite_steps, trees
+from tests.corpus import catalog, corpus_suite, launch, pipeline, resume, sizing, suite_steps, trees
+from tests.corpus.catalog import PYTEST, Suite
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.recorded import SHARE, USED
-from tests.corpus.run_config import CERTAIN, CSV, DEV, LIKELY, Run, Steps, parse
+from tests.corpus.run_config import CERTAIN, CSV, DEV, FACTS, LIKELY, Run, Steps, outside, parse, read_command
 from tests.corpus.trees import Tree
 
 _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
@@ -222,7 +225,7 @@ def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Pa
     store: Store = Store(tmp_path)
     plan: sizing.Plan = sizing.Plan(run, 8, 16 * sizing.GIB, {})
     slots: sizing.Slots = sizing.Slots(8, 16)
-    running: runner.Running = runner.Running(run, store, plan, slots, None, {}, threading.Semaphore())
+    running: runner.Running = runner.Running(run, store, plan, slots, None, {}, threading.Semaphore(), {})
     job: pipeline.Job = pipeline.Job(run, store, Tree("celery", "1", tmp_path), DEV)
     store.write("celery", job.recorded, pipeline.TESTS, {"scope": {"cpu": 30.0, "memory": 2 * sizing.GIB}})
     took: tuple[float, float] = (12.0, 60.0)
@@ -247,6 +250,35 @@ def test_a_steps_record_says_when_it_started_and_how_long_it_waited(tmp_path: Pa
     assert said.endswith(": tests: 60s, 30 CPU seconds, 2.0 GB (given 4 CPUs, 8.0 GB; waited 12s)\n")
 
 
+def test_steps_on_one_checkout_take_one_lock(tmp_path: Path) -> None:
+    """Each step asks for its checkouts' locks anew; a checkout's is the same one every time."""
+    run: Run = parse({"steps": {"fix": ["certain"], "tests": True}})
+    plan: sizing.Plan = sizing.Plan(run, 8, 16 * sizing.GIB, {})
+    store: Store = Store(tmp_path)
+    running: runner.Running = runner.Running(
+        run,
+        store,
+        plan,
+        sizing.Slots(8, 16),
+        None,
+        {},
+        threading.Semaphore(),
+        {},
+    )
+    suite: Suite = Suite("https://example.invalid/a", "1", "src/a", (), PYTEST)
+    job: pipeline.Job = pipeline.Job(run, store, Tree("celery", "1", tmp_path, tmp_path, suite=suite), DEV)
+    entry: catalog.Entry = catalog.load().entry("celery")
+    first: list[threading.Lock] = running.locks(entry, job, "tests-fix-certain")
+    assert first
+    assert running.locks(entry, job, "tests-fix-certain") == first
+
+
+def test_a_runs_facts_are_written_as_toml_values() -> None:
+    """Numbers stay numbers, floats among them, as TOML reads them back."""
+    facts: Record = {"label": 'a "b"', "jobs": 4, "seconds": 1.5, "dry": False, "versions": ["dev"]}
+    assert tomllib.loads(resume.facts_toml(facts)) == facts
+
+
 def test_a_corpus_that_cant_be_had_is_said_as_it_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -264,6 +296,7 @@ def test_a_corpus_that_cant_be_had_is_said_as_it_fails(
         None,
         {},
         threading.Semaphore(),
+        {},
     )
     failure: str = "pandas: uv sync failed:\nFileNotFoundError: meson-python-native-file.ini"
 
@@ -400,9 +433,13 @@ def test_a_run_takes_a_share_of_the_machine(monkeypatch: pytest.MonkeyPatch) -> 
     """Its CPUs and its memory, no more than so much of what's free; refused past the whole of it."""
     monkeypatch.setattr("os.cpu_count", lambda: 16)
     monkeypatch.setattr(sizing, "available", lambda: 40 * sizing.GIB)
-    monkeypatch.setattr("constricter.rules.parsed.memory", lambda: 60 * sizing.GIB)
+    monkeypatch.setattr("constricter.source.parsed.memory", lambda: 60 * sizing.GIB)
     shared: Run = parse({"run": {"share": 75, "output": "."}})
-    assert runner.commanded(Run(), ["--share", "75"]).share == shared.share == SHARE
+    assert (
+        runner.commanded(Run(), read_command(["--share", "75"], run_file=False)).share
+        == shared.share
+        == SHARE
+    )
     plan: sizing.Plan = sizing.plan(shared, Path(), Path())
     assert (plan.cpus, plan.memory) == (12, 32 * sizing.GIB)  # 45 GB is 75%: 80% of the free 40 holds less
     halved: sizing.Plan = sizing.plan(shared._replace(share=25), Path(), Path())
@@ -477,11 +514,7 @@ def test_a_fix_whose_constricter_crashed_fails_its_step(
     def faked(_version: str, _where: launch.Place, _options: list[str], _jobs: int) -> launch.Ran:
         return ran[0]
 
-    def unlocked(_lock: object) -> None:  # in place of `fcntl`'s lock, which Windows lacks
-        pass
-
     monkeypatch.setattr(launch, "run", faked)
-    monkeypatch.setattr(pipeline, "_hold", unlocked)
     step: str = "infer-basedpyright"
     with pytest.raises(RuntimeError, match=f"{step} crashed \\(1\\): Traceback"):
         _ = pipeline.fix(job, step, ["--infer-with=basedpyright"])
@@ -617,18 +650,70 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
 
 
 def test_a_step_is_sized_by_a_run_of_its_own_label_first(tmp_path: Path) -> None:
-    """A later run under another label sizes only the steps this label's runs didn't measure."""
+    """A later run under another label sizes only the steps this label's runs didn't measure.
+
+    Later by when each started, not by its files' times, which a checkout sets at once.
+    """
     probe: Store = Store(tmp_path / "probe-10-13-2026-0900")
     probe.write("celery", "rc+dev", pipeline.TESTS, {"used": USED | {"memory": 0.1}})
     probe.write("celery", "rc+dev", pipeline.TYPES, {"used": USED})
     Store(tmp_path / "full-10-12-2026-0800").write("celery", "rc+dev", pipeline.TESTS, {"used": USED})
     os.utime(tmp_path / "full-10-12-2026-0800" / "records", (0, 0))
+    older: Store = Store(tmp_path / "full-10-11-2026-0800")
+    older.write("celery", "rc+dev", pipeline.TESTS, {"used": USED | {"memory": 0.2}})
+    folder: str
+    day: int
+    for folder, day in (("full-10-12-2026-0800", 12), ("full-10-11-2026-0800", 11)):
+        started: str = f'started = "2026-10-{day}T08:00:00-07:00"\n'
+        _ = (tmp_path / folder / FACTS).write_text(started, encoding="utf-8")
     labelled: dict[tuple[str, str], sizing.Before] = sizing.before(
         tmp_path,
         tmp_path / "full-10-13-2026-1000",
     )
     assert labelled["celery", pipeline.TESTS].memory == int(9.5 * sizing.GIB)
     assert ("celery", pipeline.TYPES) in labelled
+
+
+def test_the_runs_own_folders_are_no_change_to_the_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What's under the run's output is left out, changed or untracked; an output elsewhere, nothing."""
+    asked: list[tuple[str, ...]] = []
+
+    def git(*args: str) -> str:
+        asked.append(args)
+        return ""
+
+    monkeypatch.setattr(resume, "_git", git)
+    root: Path = Path(runner.__file__).resolve().parents[2]
+    assert not resume.changes(root / "runs")
+    beside: tuple[str, ...] = ("--", ".", ":(exclude)runs")
+    assert asked == [
+        ("diff", "HEAD", "--binary", *beside),
+        ("ls-files", "--others", "--exclude-standard", *beside),
+    ]
+    assert not outside(root, root)
+    assert not outside(tmp_path, root)
+
+
+def test_a_kept_record_names_nothing_of_the_machine(tmp_path: Path) -> None:
+    """The checkout's paths relative to it, the home folder's under `~`, its user unnamed, others kept."""
+    root: Path = Path(runner.__file__).resolve().parents[2]
+    given: Record = {
+        "options": [str(root / "local" / "trace.json")],
+        "errors": [[str(Path.home() / "lib" / "a.py"), "msg"]],
+        "path": "/opt/a.py",
+        "test": f"t.py::test[/tmp/pytest-of-{getpass.getuser()}/x]",
+    }
+    store: Store = Store(tmp_path)
+    store.write("a", "dev", "infer-trace", given)
+    assert store.read("a", "dev", "infer-trace") == {
+        "options": [str(Path("local") / "trace.json")],
+        "errors": [[str(Path("~") / "lib" / "a.py").replace("\\", "/", 1), "msg"]],
+        "path": "/opt/a.py",
+        "test": "t.py::test[/tmp/pytest-of-user/x]",
+    }
 
 
 def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
@@ -641,17 +726,17 @@ def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:
 def test_a_resume_carries_on_under_its_runs_label(tmp_path: Path) -> None:
     """Its folder's, whatever the run file says; a `--label` naming another stops it."""
     run: Run = parse({"run": {"label": "mega"}})
-    resume: list[str] = ["mega.toml", "--resume", str(tmp_path)]
-    assert runner.relabelled(run, resume, {}) == run
+    argv: list[str] = ["mega.toml", "--resume", str(tmp_path)]
+    assert resume.relabelled(run, read_command(argv), {}) == run
     earlier: Record = {"label": "0.4.0-rc.3", "started": "2026-10-18T10:10:35-07:00"}
     facts: str = 'label = "0.4.0-rc.3"\nstarted = "2026-10-18T10:10:35-07:00"\n'
     _ = (tmp_path / "facts.toml").write_text(facts, encoding="utf-8")
-    assert runner.resumed_facts(resume) == earlier
+    assert resume.resumed_facts(read_command(argv)) == earlier
     labelled: Run = run._replace(label="0.4.0-rc.3")
-    assert runner.relabelled(run, resume, earlier) == labelled
-    assert runner.relabelled(labelled, [*resume, "--label", "0.4.0-rc.3"], earlier) == labelled
+    assert resume.relabelled(run, read_command(argv), earlier) == labelled
+    assert resume.relabelled(labelled, read_command([*argv, "--label", "0.4.0-rc.3"]), earlier) == labelled
     with pytest.raises(SystemExit, match=r"not 'mega': leave out --label"):
-        _ = runner.relabelled(run, [*resume, "--label", "mega"], earlier)
+        _ = resume.relabelled(run, read_command([*argv, "--label", "mega"]), earlier)
 
 
 def test_a_resume_keeps_its_runs_start_and_adds_its_minutes() -> None:
@@ -659,22 +744,22 @@ def test_a_resume_keeps_its_runs_start_and_adds_its_minutes() -> None:
     first: str = "2026-10-18T10:10:00-07:00"
     second: str = "2026-10-18T11:48:00-07:00"
     third: str = "2026-10-18T12:30:00-07:00"
-    new: Record = runner.carried({"label": "x", "started": first}, {}, None)
+    new: Record = resume.carried({"label": "x", "started": first}, {}, None)
     assert new == {"label": "x", "started": first, "running": first}
-    done: Record = runner.finished(new, 74.4)
+    done: Record = resume.finished(new, 74.4)
     assert done == {"label": "x", "started": first, "minutes": 74}
-    again: Record = runner.carried({"label": "x", "started": second}, done, datetime.fromisoformat(third))
+    again: Record = resume.carried({"label": "x", "started": second}, done, datetime.fromisoformat(third))
     assert again == {"label": "x", "started": first, "minutes": 74, "running": second}
-    assert runner.finished(again, 30.0) == {"label": "x", "started": first, "minutes": 104}
+    assert resume.finished(again, 30.0) == {"label": "x", "started": first, "minutes": 104}
     stopped: datetime = datetime.fromisoformat("2026-10-18T12:00:00-07:00")
-    assert runner.carried({"started": third}, again, stopped) == {
+    assert resume.carried({"started": third}, again, stopped) == {
         "started": first,
         "minutes": 86,
         "running": third,
     }
     untimed: Record = {"started": first}
     last: datetime = datetime.fromisoformat(second)
-    assert runner.carried({"started": second}, untimed, last) == {
+    assert resume.carried({"started": second}, untimed, last) == {
         "started": first,
         "minutes": 98,
         "running": second,
@@ -704,6 +789,7 @@ def test_the_tests_as_released_are_an_earlier_runs_record_where_one_may_be_taken
         None,
         {},
         threading.Semaphore(),
+        {},
     )
     job: pipeline.Job = pipeline.Job(run, store, Tree("celery", "1", tmp_path), DEV)
     entry: catalog.Entry = catalog.load().entry("celery")
@@ -748,7 +834,7 @@ def test_a_runs_facts_name_each_checkers_version_and_the_parsers(
         return str(fake) if name == _PYREFLY else None
 
     monkeypatch.setattr(shutil, "which", which)
-    assert runner.checkers(run) == ["ty (not found)", "pyrefly 0.40.0"]
-    facts: Record = runner.run_facts(run, datetime(2026, 10, 16, tzinfo=UTC))
+    assert resume.checkers(run) == ["ty (not found)", "pyrefly 0.40.0"]
+    facts: Record = resume.run_facts(run, datetime(2026, 10, 16, tzinfo=UTC))
     assert facts["checkers"] == ["ty (not found)", "pyrefly 0.40.0"]
     assert facts["parser"] == corpus_suite.parser()

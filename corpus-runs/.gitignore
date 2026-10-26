@@ -1,0 +1,14 @@
+# A run's folder commits two files: `report.json`, its facts, every step's record (which later runs
+# size their steps by and take their released tests from) and its tables; and `listings.jsonl.gz`,
+# every listing the witness's and the guesses' analyses read, a line each (`archive.gather`). The
+# rest the run keeps on disk alone: each step's own record and listings under `records/`, the
+# tables as CSV, the facts and run file `--resume` reads, the copies it fixed, its logs and patches,
+# the Markdown docs/RUNS.md has.
+*
+!*/
+!.gitignore
+!report.json
+!listings.jsonl.gz
+records/
+work/
+logs/

@@ -20,11 +20,11 @@ from constricter.fix.values.reads import Members
 from constricter.offences import (
     Checks,
 )
-from constricter.rules.flow import Hierarchy, members
-from constricter.rules.quoted import parsed as unquoted
-from constricter.rules.quoted import unqualified
 from constricter.rules.rebinding import REBOUND
-from constricter.rules.syntax import FunctionDef, Start
+from constricter.source.flow import Hierarchy, members
+from constricter.source.quoted import parsed as unquoted
+from constricter.source.quoted import unqualified
+from constricter.source.syntax import FunctionDef, Start
 
 
 @dataclass(frozen=True)

@@ -285,11 +285,11 @@ jobs:
           PACKAGE: ${{ matrix.package }}
         run: |
           python -m tests.corpus tests/corpus/runs/profile.toml --only "${PACKAGE/#stdlib/standard library}"
-          cat local/corpus-runs/profile-*/records/*/*/profile.md >> "$GITHUB_STEP_SUMMARY"
+          cat corpus-runs/profile-*/records/*/*/profile.md >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: profile-${{ matrix.package }}
-          path: local/corpus-runs/
+          path: corpus-runs/profile-*/
           if-no-files-found: error
 
   test:

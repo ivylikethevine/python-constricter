@@ -8,7 +8,7 @@ import pytest
 from constricter import VAGUE_TYPE, Checks, check_source
 from constricter.cli import command as cli
 from constricter.cli import config
-from constricter.rules.annotations import vague_fits, vague_parts
+from constricter.source.annotations import vague_fits, vague_parts
 
 _SOURCE: str = """
 from typing import Any, Optional

@@ -24,7 +24,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Final, TypeAlias, TypedDict, cast
 
-from constricter.cli.lsp import connection, protocol, remembered
+from constricter.cli.lsp import connection, edits, protocol, remembered
 from constricter.cli.lsp.connection import FileHints, Found
 from constricter.fix.core.known import Offered
 from constricter.fix.index.stubs.installed import cache_directory, search_path
@@ -56,11 +56,12 @@ def key(checker: str, command: Sequence[str], root: Path, files: Mapping[Path, s
       A digest of everything they rest on (see the module docstring).
 
     """
-    build: str = ""
-    with contextlib.suppress(OSError):
-        build = remembered.build(checker, Path(command[0]))
+    build: str = remembered.build(checker, Path(command[0]))
     texts: list[str] = [checker, *command, build, *(os.environ.get(name, "") for name in _VARIABLES)]
-    parts: list[bytes] = [Path(cast("str", code.__file__)).read_bytes() for code in (connection, protocol)]
+    # The code that asks and reads them, `edits` the one that writes what the store keeps.
+    parts: list[bytes] = [
+        Path(cast("str", code.__file__)).read_bytes() for code in (connection, protocol, edits)
+    ]
     asked: dict[str, str] = {_relative(path, root): text for path, text in files.items()}
     name: str
     for name in sorted(asked):

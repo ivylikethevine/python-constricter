@@ -18,9 +18,8 @@ import sysconfig
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
-_Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 _Shape: TypeAlias = tuple[str, str]  # a value's shape, and what it resolves to through an import
-_Scopes: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
+Scopes: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
 _Found: TypeAlias = tuple[str, ast.expr | None]  # a binding's statement kind, and its value
 _ByNode: TypeAlias = Mapping[type[ast.expr], str]  # a name for each kind of node
 _Kinds: TypeAlias = tuple[tuple[str, Iterable[str]], ...]  # each kind of name, and the names of it
@@ -33,14 +32,14 @@ _RELATIVE: Final = "<relative>"
 _SELVES: Final = frozenset({"self", "cls"})
 _PARAM: Final = "param"
 _IMPORTED: Final = "imported"
-_STDLIB_ORIGIN: Final = "stdlib"
-_OWN: Final = "own package"
-_THIRD_PARTY: Final = "third-party"
-_MODULE_CALL: Final = "call: module.func()"
+STDLIB_ORIGIN: Final = "stdlib"
+OWN: Final = "own package"
+THIRD_PARTY: Final = "third-party"
+MODULE_CALL: Final = "call: module.func()"
 # Shapes whose name says it all, whatever the value's parts.
 _NAMED: Final[_ByNode] = {ast.IfExp: "conditional", ast.Compare: "compare"}
 _DISPLAYS: Final[_ByNode] = {ast.List: "list", ast.Tuple: "tuple", ast.Set: "set", ast.Dict: "dict"}
-_COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+COMPREHENSIONS: Final = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _UNPACKING: Final = (ast.Tuple, ast.List, ast.Starred)
 
 
@@ -169,7 +168,7 @@ class Names(NamedTuple):
         return self.kind(name) == _IMPORTED and name in self.module.modules
 
 
-def declares(function: _Scopes) -> bool:
+def declares(function: Scopes) -> bool:
     """Check whether a function declares anything: a return, a parameter's type, a type comment.
 
     Returns:
@@ -204,7 +203,7 @@ def names_in(scope: ast.AST, module: Module) -> Names:
       Them.
 
     """
-    if not isinstance(scope, _Scopes):
+    if not isinstance(scope, Scopes):
         return Names(module, {}, frozenset())
     stores: frozenset[str] = frozenset(
         node.id for node in ast.walk(scope) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
@@ -221,8 +220,8 @@ def origin_of(dotted: str, own: str) -> str:
     """
     top: str
     if (top := dotted.split(".", 1)[0]) in {_RELATIVE, own}:
-        return _OWN
-    return _STDLIB_ORIGIN if _standard(top) else _THIRD_PARTY
+        return OWN
+    return STDLIB_ORIGIN if _standard(top) else THIRD_PARTY
 
 
 @functools.cache
@@ -253,7 +252,7 @@ def _simple(value: ast.expr) -> str | None:
     """
     if type(value) in _NAMED:
         return _NAMED[type(value)]
-    if isinstance(value, _COMPREHENSIONS):
+    if isinstance(value, COMPREHENSIONS):
         return f"{type(value).__name__} (unknown elements)"
     if isinstance(value, ast.Constant):
         return "None literal" if value.value is None else "other constant"
@@ -438,7 +437,7 @@ def _method_call(name: str, attr: str, names: Names) -> _Shape:
     kind: str
     if (kind := names.kind(name)) != _IMPORTED:
         return f"call: {kind}.method()", ""
-    return (_MODULE_CALL if name in names.module.modules else "call: imported.attr()"), names.module.through(
+    return (MODULE_CALL if name in names.module.modules else "call: imported.attr()"), names.module.through(
         name,
         attr,
     )
@@ -455,7 +454,7 @@ def _chained_call(func: ast.Attribute, names: Names) -> _Shape:
     attributes: list[str]
     root, attributes = _chain(func.value, [func.attr])
     if isinstance(root, ast.Name) and names.is_module(root.id):
-        return _MODULE_CALL, names.module.through(root.id, *attributes)
+        return MODULE_CALL, names.module.through(root.id, *attributes)
     return "call: chained .method()", ""
 
 

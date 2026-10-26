@@ -17,9 +17,9 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
-from tests.corpus import catalog, pipeline, sizing, suite_steps
+from tests.corpus import catalog, pipeline, sizing, stages, suite_checkouts, suite_steps
 from tests.corpus.pipeline import Job, Store
-from tests.corpus.run_config import DEV, Run
+from tests.corpus.run_config import DEV, Run, directory
 from tests.corpus.trees import Tree
 
 if TYPE_CHECKING:
@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 _SECONDS: Final = 20.0  # the most the solver takes before the run starts
 _WORKERS: Final = 2  # its threads: the run's steps are what the machine is for
 _TENTHS: Final = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers
-_RELEASED: Final = pipeline.part(pipeline.TESTS, pipeline.RELEASED)
 
 
 class _Step:  # pylint: disable=too-few-public-methods
@@ -65,12 +64,8 @@ def ranks(
     """
     if importlib.util.find_spec("ortools") is None:
         return {}
-    steps: list[_Step] = _measured(run, entries, plan, chosen or _every)
+    steps: list[_Step] = _measured(run, entries, plan, chosen or stages.every)
     return _solved(steps, plan.cpus, plan.memory, {entry.name: entry.port for entry in entries if entry.port})
-
-
-def _every(_name: str) -> bool:
-    return True
 
 
 def _measured(
@@ -96,9 +91,9 @@ def _measured(
         needs: dict[str, frozenset[str]] = suite_steps.needs(job) if entry.suite is not None else {}
         name: str
         for name in names:
-            if (name == _RELEASED and not run.steps.tests_released) or not chosen(name):
+            if (name == pipeline.TESTS_RELEASED and not run.steps.tests_released) or not chosen(name):
                 continue  # an earlier run's, most likely, or another stage's: not run
-            if (entry.name.replace(" ", "-"), name) in plan.before:
+            if (directory(entry.name), name) in plan.before:
                 wanted: sizing.Wanted = plan.wanted(job.tree, name, heavy=entry.heavy)
                 found.append(_Step(entry.name, name, wanted, needs.get(name, frozenset())))
     return found
@@ -166,7 +161,7 @@ def _modelled(
     _ = model.add_cumulative(list(intervals.values()), [min(step.memory, held) for step in steps], held)
     bound: dict[str, list[cp_model.IntervalVar]] = {}
     for step in steps:
-        if suite_steps.binds(step.name) and step.corpus in ports:
+        if suite_checkouts.binds(step.name) and step.corpus in ports:
             bound.setdefault(ports[step.corpus], []).append(intervals[step.corpus, step.name])
     each: list[cp_model.IntervalVar]
     for each in bound.values():

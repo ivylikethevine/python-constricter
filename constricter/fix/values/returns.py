@@ -158,6 +158,7 @@ METHOD_RETURNS: Final = {
 _COUNTS: Final = frozenset({"count", "index"})  # a `list`'s or a `tuple`'s: an `int`
 _SET_TESTS: Final = frozenset({"isdisjoint", "issubset", "issuperset"})  # a `bool`
 _SET_KEEPS: Final = frozenset({"difference", "intersection"})  # the receiver's own type
+_SET_METHODS: Final = _SET_TESTS | _SET_KEEPS
 
 
 def element_method(root: ast.expr, receiver: str, call: ast.Call, method: str) -> str | None:
@@ -209,7 +210,7 @@ def uniform_method(root: ast.expr, receiver: str, method: str) -> str | None:
         case ast.Subscript(value=ast.Name(id="list" | "List" | "tuple" | "Tuple")) if method in _COUNTS:
             return "int"
         case ast.Subscript(value=ast.Name(id="set" | "Set" | "frozenset" | "FrozenSet")) if (
-            method in _SET_TESTS | _SET_KEEPS
+            method in _SET_METHODS
         ):
             return "bool" if method in _SET_TESTS else receiver
         case _:

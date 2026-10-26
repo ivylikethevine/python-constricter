@@ -29,9 +29,7 @@ def _marker(checker: str, command: Sequence[str], named: str) -> Path:
       Its path in the cache.
 
     """
-    made: str = ""
-    with contextlib.suppress(OSError):
-        made = build(checker, Path(command[0]))
+    made: str = build(checker, Path(command[0]))
     key: str = "\0".join((checker, command[0], made, named))
     return cache_directory().with_name("hung") / hashlib.sha256(key.encode("utf-8", "replace")).hexdigest()
 
@@ -43,15 +41,17 @@ def build(checker: str, executable: Path) -> str:
 
     Returns:
       The distribution's folder's name, which holds its version; else the executable's size and when
-      it changed.
+      it changed; empty where neither can be read.
 
     """
     pattern: str
-    for pattern in _DISTRIBUTIONS:
-        found: list[Path]
-        if found := sorted(executable.parent.parent.glob(f"{pattern}/{checker}-*.dist-info")):
-            return found[0].name
-    return f"{executable.stat().st_size}:{executable.stat().st_mtime_ns}"
+    with contextlib.suppress(OSError):
+        for pattern in _DISTRIBUTIONS:
+            found: list[Path]
+            if found := sorted(executable.parent.parent.glob(f"{pattern}/{checker}-*.dist-info")):
+                return found[0].name
+        return f"{executable.stat().st_size}:{executable.stat().st_mtime_ns}"
+    return ""
 
 
 def hung(checker: str, command: Sequence[str], text: str, path: Path | None = None) -> bool:

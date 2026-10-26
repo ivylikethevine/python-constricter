@@ -2,6 +2,7 @@
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
@@ -30,7 +31,7 @@ _TESTED_ROW: Final = (
     "            1 |    0 |     0 |"
 )
 _SUPER: Final = "## Super corpora\n"
-_SET_ROW: Final = "| unsafe  | constructor |     2 |         |      2 |       |"
+_SET_ROW: Final = "| unsafe      | constructor    |     2 |         |      2 |       |"
 _PROSE: Final = 100  # the width Prettier fills prose to
 _OLD: Final = "\nold\n"  # a section a run's replaces
 _MACHINE: Final = "constricter 0.3.6 (`abc`), Python 3.14.7, on 16CPU/60GB (Linux): `--jobs=0`"
@@ -138,6 +139,22 @@ _CHECKED: Final[Record] = {
     "offered": {"certain": 2, "likely": 1, "guess": 1},
     "seconds": 0.1,
 }
+
+
+def _read_tables(paths: Sequence[Path]) -> dict[str, _Rows]:
+    """Read each CSV table at `paths`.
+
+    Returns:
+      Their rows, by name.
+
+    """
+    found: dict[str, _Rows] = {}
+    path: Path
+    for path in paths:
+        file: IO[str]
+        with path.open(encoding="utf-8", newline="") as file:
+            found[path.stem] = list(csv.reader(file))
+    return found
 
 
 def _fixed(count: int, tiers: dict[str, int], left: int = 0) -> Record:
@@ -248,16 +265,12 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     text: str = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert _SECTION in text
     assert _FIXES in text
-    tables: dict[str, _Rows] = {}
-    path: Path
     assert all(
         row in written[2].read_text(encoding="utf-8")
         for row in (f"| assign: {_SHAPE}", "| `receiver` | 1 (100.0%) |", "| `call: self.method()` 1 |")
     )
-    for path in written[3:]:
-        file: IO[str]
-        with path.open(encoding="utf-8", newline="") as file:
-            tables[path.stem] = list(csv.reader(file))
+    tables: dict[str, _Rows] = _read_tables(written[3:])
+    assert cast("Record", report)["tables"] == tables  # every table the CSV files have, cell for cell
     assert tables["offences"] == [
         ["corpus", "corpus version", "constricter", "files", "LVA001", "LVA004", "total"],
         ["standard library", "3.14", "rc+dev", "2", "5", "1", "6"],
@@ -357,11 +370,16 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
 
 
 def test_fixes_are_counted_by_their_whole_set_of_mechanisms(tmp_path: Path) -> None:
-    """Each fix's sets, the corpora together, by tier: every one in the CSV, the most in the Markdown."""
-    run: Run = parse({"run": {"label": "rc"}})
+    """Each fix's sets, the corpora together, by tier: every one in the CSV, the most in the Markdown.
+
+    Every source's fix at once (`infer-union`) last, where the run makes it.
+    """
+    run: Run = parse({"run": {"label": "rc"}, "steps": {"infer-with": ["ty"], "tests": True}})
     store: Store
     tree: Tree
     store, tree = _recorded(tmp_path)
+    agreed: Record = {"agreed+checker": {"guess": 3}, "checker": {"guess": 1}}
+    store.write(tree.name, "rc+dev", "infer-union", _fixed(4, {"guess": 4}) | {"sets": agreed})
     written: list[Path] = render.write(render.gathered(run, store, [tree]), tmp_path, {"label": "rc"})
     file: IO[str]
     with (tmp_path / "tables" / "mechanisms.csv").open(encoding="utf-8") as file:
@@ -370,6 +388,10 @@ def test_fixes_are_counted_by_their_whole_set_of_mechanisms(tmp_path: Path) -> N
     assert rows[5:] == [
         ["unsafe", "rc+dev", "call", "2", "2", "", ""],
         ["unsafe", "rc+dev", "constructor", "2", "", "2", ""],
+        ["infer-ty", "rc+dev", "constructor", "3", "", "3", ""],
+        ["infer-ty", "rc+dev", "call", "2", "2", "", ""],
+        ["infer-union", "rc+dev", "agreed+checker", "3", "", "", "3"],
+        ["infer-union", "rc+dev", "checker", "1", "", "", "1"],
     ]
     assert _SET_ROW in written[1].read_text(encoding="utf-8")
 

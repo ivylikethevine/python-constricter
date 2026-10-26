@@ -9,11 +9,11 @@ from typing import Final, cast
 
 from constricter.fix.core.imports import rebound_names
 from constricter.fix.core.known import Inference
-from constricter.rules.annotations import node_name
-from constricter.rules.declarations import defined_type_vars
-from constricter.rules.quoted import written
-from constricter.rules.syntax import top_level
-from constricter.rules.walked import classes
+from constricter.source.annotations import node_name
+from constricter.source.declarations import defined_type_vars
+from constricter.source.quoted import written
+from constricter.source.syntax import top_level
+from constricter.source.walked import classes
 
 # Builtins that iterate over their (first) argument's elements, one to one.
 SAME_ELEMENTS: Final = frozenset({"reversed", "sorted"})
@@ -269,6 +269,19 @@ def dict_parts(annotation: str) -> tuple[str, str] | None:
             return ast.unparse(key), ast.unparse(value)
         case _:
             return None
+
+
+def dict_sides(found: Inference | None) -> tuple[Inference, Inference] | None:
+    """Split a mapping's inference into its keys' and its values' (see `dict_parts`), each as it's typed.
+
+    Returns:
+      Them, or `None` for an unknown value, or one of any other type.
+
+    """
+    types: tuple[str, str] | None = None if found is None else dict_parts(found.annotation)
+    if found is None or types is None:
+        return None
+    return found._replace(annotation=types[0]), found._replace(annotation=types[1])
 
 
 def counted(name: str, args: list[ast.expr]) -> list[ast.expr]:

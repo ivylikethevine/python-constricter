@@ -9,6 +9,7 @@ it (`hand`). And which of a method's reads of `self` an attribute's type, once k
 """
 
 import ast
+from collections import Counter
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, TypeAlias
@@ -17,8 +18,9 @@ from weakref import WeakKeyDictionary
 from constricter.fix.core.known import Inference, Returned
 from constricter.fix.values import fills
 from constricter.fix.values.inference import ASSIGNED
-from constricter.rules.syntax import FunctionDef, Start, within
-from constricter.rules.walked import classes, of_type
+from constricter.fix.values.shapes import NUMBERS
+from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.walked import classes, of_type
 
 # A `return` statement as the checker saw it: its value's inference (`None`: none, or unknown), and
 # what that rests on if it's a guess (`FIX_KINDS`; empty: certain). A generator has one: its type.
@@ -40,7 +42,6 @@ SELF: Final = "self"
 
 
 _NOT_METHODS: Final = frozenset({"staticmethod", "classmethod"})
-_NUMBERS: Final = ("bool", "int", "float", "complex")  # narrowest first: an attribute takes the widest
 FUNCTIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef)
 # The attributes each of a module's classes takes from another file's base that binds them to an
 # empty container and does no more with them: each one's kind, by class (see `hand`).
@@ -74,7 +75,7 @@ def untouched(tree: ast.Module) -> dict[str, dict[str, str]]:
     found: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in classes(tree):
-        stored: list[str] = _uses(tree)[2][1][within(_uses(tree)[2][0], node)]
+        stored: list[str] = _stored_in(tree, node)
         kinds: dict[str, str] = {
             attr: kind
             for attr, (kind, count) in _emptied(tree, node).items()
@@ -96,11 +97,7 @@ def class_names(tree: ast.Module) -> Mapping[str, int]:
       Each name's count.
 
     """
-    counts: dict[str, int] = {}
-    node: ast.ClassDef
-    for node in classes(tree):
-        counts[node.name] = counts.get(node.name, 0) + 1
-    return counts
+    return Counter(node.name for node in classes(tree))
 
 
 def attribute_types(
@@ -130,17 +127,12 @@ def attribute_types(
     yield from _handed(tree, node, uses, seen)
     if not values:
         return
-    starts: list[Start]
-    stored: list[str]
-    starts, stored = _uses(tree)[2]
-    stores: dict[str, int] = {}
-    attr: str
-    for attr in stored[within(starts, node)]:
-        stores[attr] = stores.get(attr, 0) + 1
+    stores: Counter[str] = Counter(_stored_in(tree, node))
     bound: frozenset[str] = class_bound(node)
     held: frozenset[str] = bound.union(
-        *((*class_bound(base), *stored[within(starts, base)]) for base in superclasses(tree, node)),
+        *((*class_bound(base), *_stored_in(tree, base)) for base in superclasses(tree, node)),
     )
+    attr: str
     found: list[Recorded]
     for attr in sorted(_emptied(tree, node).keys() & values.keys() - bound):
         filled: tuple[str, frozenset[str]] | None
@@ -187,7 +179,7 @@ def _handed(
             if more is None or more[0] or len(own) != _read(tree, node, attr) or attr in class_bound(node)
             else _filled((kind, 0), [], [*own, *more[1]])
         )
-        if filled is not None and _uses(tree)[2][1][within(_uses(tree)[2][0], node)].count(attr) == 0:
+        if filled is not None and _stored_in(tree, node).count(attr) == 0:
             yield attr, *filled
 
 
@@ -286,9 +278,6 @@ def _under(
 
     """
     found: _Under = ([], [], 0)
-    starts: list[Start]
-    stored: list[str]
-    starts, stored = _uses(tree)[2]
     node: ast.ClassDef
     for node in family:
         values: list[Recorded] = [
@@ -302,7 +291,7 @@ def _under(
         ]
         if (
             attr in class_bound(node)
-            or stored[within(starts, node)].count(attr) != len(values)
+            or _stored_in(tree, node).count(attr) != len(values)
             or _read(tree, node, attr) != len(uses)
         ):
             return None
@@ -450,6 +439,19 @@ def _read(module: ast.Module, node: ast.ClassDef, attr: str) -> int:
     return found[within(starts, node)].count(attr)
 
 
+def _stored_in(module: ast.Module, node: ast.ClassDef) -> list[str]:
+    """List the class's stores to attributes of `self`, anywhere in it: its deletions too.
+
+    Returns:
+      Each one's attribute, in source order.
+
+    """
+    starts: list[Start]
+    found: list[str]
+    starts, found = _uses(module)[2]
+    return found[within(starts, node)]
+
+
 def _widest(types: set[str]) -> str | None:
     """Find the one type every value's fits: the only one, or the widest of builtin numbers.
 
@@ -459,7 +461,7 @@ def _widest(types: set[str]) -> str | None:
     """
     if len(types) == 1:
         return next(iter(types))
-    return max(types, key=_NUMBERS.index) if types <= set(_NUMBERS) else None
+    return max(types, key=NUMBERS.index) if types <= set(NUMBERS) else None  # an attribute takes the widest
 
 
 @lru_cache(maxsize=4)  # asked of each function as it's checked

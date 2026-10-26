@@ -8,12 +8,12 @@ the same way, and kept from one file to the next (`constricter.fix.index.stubs.r
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
+from typing import TYPE_CHECKING, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.known import Guarded, Origin
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.fix.index import own_overloads, project
-from constricter.fix.index.modules import SUFFIX, Index, Module, module_name
+from constricter.fix.index.modules import Index, Module, module_at
 from constricter.fix.index.stubs import chained, classnames
 from constricter.fix.index.stubs.names import call_origin
 from constricter.fix.index.stubs.read import MEMO, Expanded, Memo
@@ -21,9 +21,6 @@ from constricter.fix.index.stubs.signatures import Reader, read_all
 
 if TYPE_CHECKING:
     from constricter.fix.index.stubs.declared import Class, Declarations, Signature
-
-_KIND: Final = "signatures"
-
 
 _Read: TypeAlias = dict[str, tuple[ReadSignature, ...]]  # functions' signatures, by a call's name
 
@@ -41,7 +38,7 @@ def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = 
     """
     modules: dict[str, Module] = catalog.modules
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return {}
     found: dict[str, tuple[ReadSignature, ...]] = {}
     memo: dict[tuple[str, str], tuple[ReadSignature, ...]] = MEMO.of(modules).read
@@ -49,7 +46,7 @@ def overloaded(catalog: Index, path: Path, guarded: dict[str, Guarded] | None = 
     for key in sorted(target.called):
         origin: Origin | None = call_origin(modules, target, key)
         defined: tuple[Module, str] | None
-        if origin is None or (defined := project.definition(modules, origin, _KIND)) is None:
+        if origin is None or (defined := project.definition(modules, origin, project.SIGNATURES)) is None:
             continue
         if not defined[0].installed:
             # Read each time: what a checked file's parameters take rests on the checked files' classes.
@@ -74,7 +71,7 @@ def classes(catalog: Index, path: Path) -> frozenset[str]:
     """
     modules: dict[str, Module] = catalog.modules
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None:
+    if (target := module_at(catalog, path)) is None:
         return frozenset()
     reader: Reader = Reader(modules)
     return frozenset(name for name in target.passed if reader.is_class(target, name))
@@ -111,7 +108,7 @@ def methods(catalog: Index, path: Path, guarded: Mapping[str, Guarded] | None = 
     modules: dict[str, Module] = catalog.modules
     found: Methods = Methods({}, {}, {}, {})
     target: Module | None
-    if path.suffix != SUFFIX or (target := modules.get(module_name(path))) is None or not target.method_calls:
+    if (target := module_at(catalog, path)) is None or not target.method_calls:
         return found
     reader: Reader = Reader(modules)
     memo: Memo = MEMO.of(modules)

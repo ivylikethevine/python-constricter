@@ -45,15 +45,39 @@ def bound(node: ast.stmt) -> list[str]:
 
 
 def read_names(node: ast.AST) -> set[str]:
-    """Every bare name a statement reads, and every string that could be a forward reference."""
-    found = {n.id for n in ast.walk(node) if isinstance(n, ast.Name)}
+    """Every bare name a statement reads, and every forward reference in its annotations.
+
+    A name it binds (a class's field) isn't a read; a string is a forward reference only where a
+    type is: an annotation, `cast`'s first argument, or a `TypeAlias`'s value.
+    """
+    found = {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and not isinstance(n.ctx, ast.Store)}
+    for typed in _types(node):
+        for each in ast.walk(typed):
+            if isinstance(each, ast.Constant) and isinstance(each.value, str):
+                try:
+                    annotation = ast.parse(each.value.strip(), mode="eval")
+                except SyntaxError:
+                    continue
+                found |= {n.id for n in ast.walk(annotation) if isinstance(n, ast.Name)}
+    return found
+
+
+def _types(node: ast.AST) -> list[ast.AST]:
+    """The parts of a statement that are types, where a string is a forward reference."""
+    found: list[ast.AST] = []
     for each in ast.walk(node):
-        if isinstance(each, ast.Constant) and isinstance(each.value, str):
-            try:
-                annotation = ast.parse(each.value.strip(), mode="eval")
-            except SyntaxError:
-                continue
-            found |= {n.id for n in ast.walk(annotation) if isinstance(n, ast.Name)}
+        if isinstance(each, ast.AnnAssign):
+            found.append(each.annotation)
+            if isinstance(each.annotation, ast.Name) and each.annotation.id == "TypeAlias" and each.value:
+                found.append(each.value)
+        elif isinstance(each, ast.arg) and each.annotation is not None:
+            found.append(each.annotation)
+        elif isinstance(each, (ast.FunctionDef, ast.AsyncFunctionDef)) and each.returns is not None:
+            found.append(each.returns)
+        elif isinstance(each, ast.Call) and isinstance(each.func, ast.Name) and each.func.id == "cast":
+            found.extend(each.args[:1])
+        elif isinstance(each, ast.ClassDef):
+            found.extend(each.bases)
     return found
 
 
@@ -75,7 +99,9 @@ def local_names(tree: ast.AST) -> set[str]:
     for func in ast.walk(tree):
         if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             found |= {arg.arg for arg in ast.walk(func.args) if isinstance(arg, ast.arg)}
-            found |= {n.id for n in ast.walk(func) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+            found |= {
+                n.id for n in ast.walk(func) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)
+            }
     return found
 
 
@@ -147,10 +173,14 @@ def main(argv: list[str]) -> int:
         there = ast.parse(new_path.read_text(encoding="utf-8"))
         taken_there = local_names(there) | {name for node in there.body for name in bound(node)}
         if moved & taken_there or set(renames.values()) & taken_there:
-            sys.exit(f"names {new_path} binds already: {sorted((moved | set(renames.values())) & taken_there)}")
+            sys.exit(
+                f"names {new_path} binds already: {sorted((moved | set(renames.values())) & taken_there)}"
+            )
     shadowed = sorted(new for new in renames.values() if new in local_names(tree) | taken_there)
     if shadowed:
-        sys.exit(f"public names a local or parameter of {source_path} has: {shadowed}; choose others with --as")
+        sys.exit(
+            f"public names a local or parameter of {source_path} has: {shadowed}; choose others with --as"
+        )
     cut = sorted(set(statements.values()))
     if cut[0][0] < last_import:
         sys.exit("a moved statement is above an import: move it by hand")
@@ -172,7 +202,9 @@ def main(argv: list[str]) -> int:
         kept = "".join(kept_lines)
     header = lines[0] if lines[0].startswith("# SPDX") else ""
     docstring = "" if docstring_file == "-" else Path(docstring_file).read_text(encoding="utf-8").strip()
-    back_import = f"from {module_of(source_path)} import {', '.join(sorted(renames.get(n, n) for n in back))}\n"
+    back_import = (
+        f"from {module_of(source_path)} import {', '.join(sorted(renames.get(n, n) for n in back))}\n"
+    )
     if docstring_file == "-":  # added to NEW: SOURCE's imports after its own, the definitions at its end
         existing = new_path.read_text(encoding="utf-8")
         existing_lines = existing.splitlines(keepends=True)
@@ -192,7 +224,16 @@ def main(argv: list[str]) -> int:
     for path in (source_path, new_path):
         for _ in range(2):  # the imports moved under `if TYPE_CHECKING:`, then sorted
             subprocess.run(
-                [RUFF, "check", "--fix", "--unsafe-fixes", "--select", "F401,I001,TC001,TC002,TC003", "--quiet", path],
+                [
+                    RUFF,
+                    "check",
+                    "--fix",
+                    "--unsafe-fixes",
+                    "--select",
+                    "F401,I001,TC001,TC002,TC003",
+                    "--quiet",
+                    path,
+                ],
                 check=False,
             )
         subprocess.run([RUFF, "format", "--quiet", path], check=False)

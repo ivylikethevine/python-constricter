@@ -8,10 +8,9 @@ from typing import Final, TypeAlias
 import pytest
 
 from constricter import Offence, check_source
-from constricter.cli import schedule
-from constricter.fix.index import decorated, project
-from constricter.rules import declarations
-from constricter.rules.decorators import Held
+from constricter.fix.index import across, decorated, project
+from constricter.source import declarations
+from constricter.source.decorators import Held
 
 _Fixes: TypeAlias = dict[str, str | None]
 _LOCAL: Final = """
@@ -326,7 +325,7 @@ def test_another_files_class_side_method_types_its_calls(catalog: project.Index,
     main: Path = tmp_path / "main.py"
     found: list[Offence] = check_source(
         main.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, main, {}),
+        outside=across.outside(catalog, main, {}),
     )
     assert {o.name: o.fix for o in found} == {
         "made": "Row",
@@ -351,6 +350,6 @@ def test_the_index_vouches_for_a_class_side_methods_decorators(
     assert decorated.own(catalog, tmp_path / "pkg" / "shadowed.py") == {}
     found: list[Offence] = check_source(
         models.read_text(encoding="utf-8"),
-        outside=schedule.outside(catalog, models, {}),
+        outside=across.outside(catalog, models, {}),
     )
     assert {o.name: o.fix for o in found} == {"made": "Row", "pairs": "Row", "boxed": None}

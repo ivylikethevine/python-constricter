@@ -14,21 +14,20 @@ them (`called`). A module's or a class body's name is one too: a plain class's, 
 
 import ast
 import builtins
-from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from itertools import islice
 from typing import Final, NamedTuple, TypeAlias
 
 from constricter.empty import Empty
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries import stdlib
+from constricter.fix.values import bodies
 from constricter.fix.values.fills import Uses
 from constricter.fix.values.guesses import fixed_by_callee
 from constricter.fix.values.inference import inference
-from constricter.rules.annotations import dotted, roots
-from constricter.rules.declarations import defined_type_vars
-from constricter.rules.syntax import FunctionDef
-from constricter.rules.walked import classes, walk
+from constricter.source.annotations import dotted, roots
+from constricter.source.declarations import defined_type_vars
+from constricter.source.syntax import FunctionDef
+from constricter.source.walked import walk
 
 KIND: Final = "callable"  # the fix kind of a function or method bound to a name
 _CALLERS: Final = "callers"  # and of what every call passes a parameter (see `constricter.fix.index.callers`)
@@ -64,12 +63,11 @@ def signatures(tree: ast.Module) -> dict[str, tuple[str, ...]]:
 
     """
     unusable: frozenset[str] = defined_type_vars(tree) | {_SELF}
-    found: dict[str, tuple[str, ...]] = _signatures(tree.body, "", unusable)
-    owners: Counter[str] = Counter(node.name for node in classes(tree))
-    node: ast.ClassDef
-    for node in classes(tree):
-        if owners[node.name] == 1:
-            found.update(_signatures(node.body, f"{node.name}.", unusable))
+    found: dict[str, tuple[str, ...]] = {}
+    body: Sequence[ast.stmt]
+    prefix: str
+    for body, prefix in bodies.owned_bodies(tree):
+        found.update(_signatures(body, prefix, unusable))
     return found
 
 
@@ -84,13 +82,10 @@ def _signatures(
       Each one's parameters' types, by its name after `prefix`.
 
     """
-    counts: Counter[str] = Counter(
-        stmt.name for stmt in body if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef)
-    )
     found: dict[str, tuple[str, ...]] = {}
-    stmt: ast.stmt
-    for stmt in body:
-        if not isinstance(stmt, ast.FunctionDef) or counts[stmt.name] != 1 or stmt.decorator_list:
+    stmt: FunctionDef
+    for stmt in bodies.plain(body):
+        if not isinstance(stmt, ast.FunctionDef) or stmt.decorator_list:
             continue
         args: ast.arguments = stmt.args
         skipped: int = 1 if prefix else 0  # a method's `self`
@@ -246,9 +241,7 @@ def called(
         return None
     given: list[Inference | None] = [inference(arg, known, declared) for arg in passed]
     typed: dict[str, str | None] = {
-        param.arg: _one(
-            {None if each is None else each.annotation for each in islice(given, at, None, len(params))},
-        )
+        param.arg: _one({None if each is None else each.annotation for each in given[at :: len(params)]})
         for at, param in enumerate(params)
     }
     found: Inference | None = (
