@@ -8,13 +8,15 @@ A folder with no report, a run stopped or under way, is read from `records/`.
 """
 
 import contextlib
+import csv
 import gzip
 import json
+import tomllib
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Final, TypeAlias, cast
+from typing import IO, Final, TypeAlias, cast
 
-from tests.corpus.run_config import REPORT, scrubbed
+from tests.corpus.run_config import FACTS, REPORT, scrubbed
 
 Record: TypeAlias = dict[str, object]
 Kept: TypeAlias = dict[tuple[str, str, str], Record]  # by a corpus's directory, a version and a step
@@ -67,6 +69,39 @@ def kept(folder: Path) -> Kept:
         with contextlib.suppress(OSError, ValueError):  # a record a stopped step left half written
             found[key] = cast("Record", json.loads(path.read_text("utf-8")))
     return found
+
+
+def facts(folder: Path) -> Record:
+    """Read the facts of the run in `folder`: its `facts.toml`, or else its report's.
+
+    Returns:
+      Them; none for a folder with neither.
+
+    """
+    with contextlib.suppress(OSError, ValueError):
+        return tomllib.loads((folder / FACTS).read_text(encoding="utf-8"))
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        report: Record = cast("Record", json.loads((folder / REPORT).read_text(encoding="utf-8")))
+        return cast("Record", report["run"])
+    return {}
+
+
+def table(folder: Path, name: str) -> list[list[str]]:
+    """Read the table `name` of the run in `folder`: its CSV file, or else its report's.
+
+    Returns:
+      Its rows, the header first, every cell as text; none for a run with no such table.
+
+    """
+    path: Path = folder / "tables" / f"{name}.csv"
+    if path.is_file():
+        file: IO[str]
+        with path.open(encoding="utf-8", newline="") as file:
+            return list(csv.reader(file))
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        report: Record = cast("Record", json.loads((folder / REPORT).read_text(encoding="utf-8")))
+        return cast("list[list[str]]", cast("Record", report["tables"]).get(name, []))
+    return []
 
 
 def listed(folder: Path, name: str) -> list[Record]:

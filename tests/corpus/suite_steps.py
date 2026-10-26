@@ -517,7 +517,8 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Coun
                     "annotation": each.annotation,
                     "tier": level,
                     "kinds": each.kinds.split("+"),
-                    "verdict": list(verdict),
+                    "verdict": list(verdict[:3]),  # fit, differing, unknown
+                    "differed": list(verdict.differed),
                     "seen": list(corpus_guesses.held(seen, each.path, each.line, each.name)),
                 },
             ),

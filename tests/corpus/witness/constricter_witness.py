@@ -61,6 +61,7 @@ FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
 _MOST: Final = 50  # how many times one binding is judged
+_TOLD: Final = 3  # how many of a binding's differing values are told of, the first
 # What an annotation's class takes besides its own instances: a number's narrower numbers.
 _TAKEN: Final = {
     float: (int, float),
@@ -91,7 +92,7 @@ _UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"
 # What to expect of a file: by the line, then the name, the annotation and the fix's imports.
 _Expected: TypeAlias = dict[str, dict[str, list[str]]]
 _Key: TypeAlias = tuple[str, int, str]  # a binding: its file's path, its line and its name
-_Judged: TypeAlias = list[str | int | list[int]]  # a binding's key, and its counts
+_Judged: TypeAlias = list[str | int | list[int] | list[str]]  # a binding's key, its counts, what differed
 
 
 class _Statement(Protocol):  # pylint: disable=too-few-public-methods
@@ -304,6 +305,7 @@ class Witness(recording.Recorder):
         self.expected, self.out = _settings()
         self.hints: dict[_Key, object] = {}  # each binding's annotation, evaluated; `_UNSET`: it can't be
         self.verdicts: dict[_Key, list[int]] = {}  # each binding's counts: fit, differing, unknown
+        self.differed: dict[_Key, list[str]] = {}  # the first values that differed: their type, the hint's
         # What's expected of each function's file (see `_told`), by the function's id, kept with it.
         self.told: dict[int, tuple[recording.Function, tuple[str, _Expected] | None]] = {}
 
@@ -353,6 +355,9 @@ class Witness(recording.Recorder):
             self.verdicts.setdefault(key, [0, 0, 0])[
                 UNKNOWN if fits is None else FIT if fits else DIFFER
             ] += 1
+            told: list[str] = self.differed.setdefault(key, [])
+            if fits is False and len(told) < _TOLD:  # what to read a verdict by: the value's, the hint's
+                told.append(f"{kind_of(bound[key[2]])} against {self.hints.get(key, _UNSET)!r}")
 
     @override
     def found(self) -> recording.Found:
@@ -365,7 +370,8 @@ class Witness(recording.Recorder):
         if self.out is not None:
             self.out.mkdir(parents=True, exist_ok=True)
             judged: list[_Judged] = [
-                [path, line, name, counts] for (path, line, name), counts in self.verdicts.items()
+                [path, line, name, counts, self.differed.get((path, line, name), [])]
+                for (path, line, name), counts in self.verdicts.items()
             ]
             _ = (self.out / f"{os.getpid()}.json").write_text(json.dumps(judged), encoding="utf-8")
         return super().found()
@@ -382,6 +388,20 @@ def _fits(value: object, hint: object) -> bool | None:
         return None if hint is _UNSET else holds(value, hint)
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
         return None
+
+
+def kind_of(value: object) -> str:
+    """Name `value`'s class, as the trace spells it where it can, whatever the value raises of it.
+
+    Returns:
+      It: `module:qualified.name`; `?` where it can't be read.
+
+    """
+    try:
+        named: str = f"{type(value).__module__}:{type(value).__qualname__}"
+    except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
+        return "?"
+    return named
 
 
 def _module(frame: FrameType) -> str:

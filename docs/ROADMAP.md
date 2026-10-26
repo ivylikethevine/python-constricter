@@ -161,8 +161,13 @@ measure before building.
    `int`, 3; sqlalchemy's `_CursorKeyMapRecType`, the value one the trace couldn't name), and 3 look
    like the witness's: pdm's `url: str` and `dep: str` (given a `str`, and tomlkit's `String`, a
    `str` subclass) and strawberry's `node: GQLFieldNode` (graphql's `FieldNode` imported under that
-   name, given a `FieldNode`). Done when those 3 are read through and the witness fixed where it's
-   wrong. Under an hour; coverage unchanged.
+   name, given a `FieldNode`). Read through: 1 of 131, 2 of 136 and 1 of 162 values differed, and
+   the trace saw nothing but those types at those bindings, so the witness misjudged a value of the
+   very class the annotation names; but a verdict kept only its counts, so which part did can't be
+   read from the run. A verdict tells of its first 3 differing values since, each the value's class
+   and the annotation evaluated (`differed` in `listings.jsonl.gz`'s verdicts). Done when the next
+   traced run's `differed` on those 3 is read and the witness fixed where it's wrong. Under an hour
+   beside the run; coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -262,7 +267,10 @@ measure before building.
    schedule mixing them with the later stages'; on the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), in one sitting, 81.3 minutes against a
    shortest 66.0 with 36 GB (23% over; a proved floor of 41.6), stripe's one-CPU step its last.
    On the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes): 64.3 against a shortest 55.6
-   (16% over); rc.7 (`5674049`, 68 minutes) 67.7 against 57.9 (17%). A stage plans its own steps alone since
+   (16% over); rc.7 (`5674049`, 68 minutes) 67.7 against 57.9 (17%); rc.8 (`7a075e4`, 70 minutes,
+   about 7 CPUs of other work at its start) 69.6 against 58.9 (18%); the super run of 2026-10-25
+   (`1c29529`, 33 minutes, in one sitting) 33.2 against 27.0 (23%), all with 16 CPUs and 36 GB to
+   the solver. A stage plans its own steps alone since
    (`planning.ranks`'s `chosen`); not yet run in stages. A run's share of its CPU seconds isn't the measure
    (85% was the target before): memory and the timed tail bound it whatever the order, and the
    0.4.0-rc.1 mega run, within a tenth of its floor, used 77.5%. Done when a super and a mega run

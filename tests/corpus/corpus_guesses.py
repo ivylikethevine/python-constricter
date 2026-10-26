@@ -28,7 +28,9 @@ Seen: TypeAlias = Mapping[str, Mapping[int, _Names]]
 _Lines: TypeAlias = dict[str, dict[str, list[str]]]  # a file's bindings, as a trace file writes them
 _File: TypeAlias = dict[str, str | _Lines]  # a traced file: its `path` and its `bindings`
 _Key: TypeAlias = tuple[str, int, str]  # a binding: its file's path, its line and its name
-_Written: TypeAlias = tuple[str, int, str, list[int]]  # a binding as a process writes it, with its counts
+# A binding as a process writes it: its key, its counts, and the first values that differed.
+_Written: TypeAlias = tuple[str, int, str, list[int], list[str]]
+_TOLD: Final = 3  # how many of a binding's differing values a verdict tells of, the first
 _Told: TypeAlias = dict[str, dict[str, list[str]]]  # what's expected of a file: by line, then name
 
 WITNESS: Final = Path(__file__).parent / "witness" / "constricter_witness.py"
@@ -73,6 +75,7 @@ class Verdict(NamedTuple):
     fit: int = 0
     differ: int = 0
     unknown: int = 0
+    differed: tuple[str, ...] = ()  # the first values that differed, each its class and the annotation's
 
     @property
     def held(self) -> bool:
@@ -122,18 +125,23 @@ def verdicts(root: Path) -> Verdicts:
 
     """
     counts: dict[_Key, list[int]] = {}
+    told: dict[_Key, list[str]] = {}
     part: Path
     for part in sorted((root / _VERDICTS).glob("*.json")):
-        path: str
-        line: int
-        name: str
-        each: list[int]
-        for path, line, name, each in cast("list[_Written]", json.loads(part.read_text(encoding="utf-8"))):
-            had: list[int] = counts.setdefault((path, line, name), [0, 0, 0])
-            counts[path, line, name] = [one + other for one, other in zip(had, each, strict=True)]
+        written: _Written
+        for written in cast("list[_Written]", json.loads(part.read_text(encoding="utf-8"))):
+            key: _Key = (written[0], written[1], written[2])
+            had: list[int] = counts.setdefault(key, [0, 0, 0])
+            counts[key] = [one + other for one, other in zip(had, written[3], strict=True)]
+            told.setdefault(key, []).extend(written[4])
     found: dict[str, _Judged] = {}
+    path: str
+    line: int
+    name: str
+    each: list[int]
     for (path, line, name), each in counts.items():
-        found.setdefault(path, {}).setdefault(line, {})[name] = Verdict(*each)
+        differed: tuple[str, ...] = tuple(dict.fromkeys(told.get((path, line, name), ())))[:_TOLD]
+        found.setdefault(path, {}).setdefault(line, {})[name] = Verdict(each[0], each[1], each[2], differed)
     return found
 
 

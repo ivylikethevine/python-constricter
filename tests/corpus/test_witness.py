@@ -4,21 +4,25 @@ import collections
 import collections.abc
 import importlib
 import io
+import json
 import tempfile
 import types
 import typing
 from collections.abc import Callable
+from pathlib import Path
 from typing import Final, TypeAlias, TypeVar
 from unittest import mock
 
 import pytest
 
 from constricter import trace
+from tests.corpus import corpus_guesses
 
 _Holds: TypeAlias = Callable[[object, object], bool | None]
 _Patched: TypeAlias = Callable[[object, str], bool]
 _Case: TypeAlias = tuple[object, object, bool | None]  # a value, an annotation, and whether it holds
 _T = TypeVar("_T")
+_Judged: TypeAlias = list[str | int | list[int] | list[str]]  # a binding as a witness process writes it
 _HELD: Final[tuple[_Case, ...]] = (
     ([1, 2], list[int], True),
     ([1, "a", 3], list[int], False),
@@ -159,3 +163,32 @@ def test_only_a_builtin_containers_elements_are_read(holds: _Holds) -> None:
     assert holds(_Rows([1, "a"]), list[int]) is True
     assert holds([*range(100), "a"], list[int]) is True
     assert holds({*range(200), "a"}, set[int]) is False
+
+
+def test_a_verdict_tells_of_the_values_that_differed(tmp_path: Path) -> None:
+    """The first ones its processes wrote, each once: the value's class and the annotation's."""
+    with mock.patch.dict(trace.__dict__):
+        kind: Callable[[_Rows | float], str] = typing.cast(
+            "Callable[[_Rows | float], str]",
+            importlib.import_module("tests.corpus.witness.constricter_witness").kind_of,
+        )
+    assert kind(_Rows()) == f"{__name__}:_Rows"
+    differed: str = f"{kind(1)} against <class 'str'>"
+    written: Path = tmp_path / ".venv" / "corpus-suite-verdicts"
+    written.mkdir(parents=True)
+    processes: list[list[_Judged]] = [
+        [["a.py", 1, "x", [3, 1, 0], [differed]], ["a.py", 2, "y", [1, 0, 0], []]],
+        [["a.py", 1, "x", [0, 2, 0], [differed, f"{kind(1.0)} against <class 'str'>"]]],
+    ]
+    pid: int
+    judged: list[_Judged]
+    for pid, judged in enumerate(processes):
+        _ = (written / f"{pid}.json").write_text(json.dumps(judged), encoding="utf-8")
+    verdicts: corpus_guesses.Verdicts = corpus_guesses.verdicts(tmp_path)
+    assert verdicts["a.py"][1]["x"] == corpus_guesses.Verdict(
+        3,
+        3,
+        0,
+        (differed, "builtins:float against <class 'str'>"),
+    )
+    assert verdicts["a.py"][2]["y"] == corpus_guesses.Verdict(1, 0, 0)
