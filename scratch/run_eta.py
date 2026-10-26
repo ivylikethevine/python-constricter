@@ -1,7 +1,7 @@
 """Project when a corpus run will end, from a finished run of the same steps.
 
-  local/.venv/bin/python -m scratch.run_eta local/corpus-runs/0.3.9-rc.1-10-16-2026-1902 \\
-      local/corpus-runs/0.3.7-rc.1-10-16-2026-0156 [--err local/runs/mega-0.3.9-rc.1.err]
+  local/.venv/bin/python -m scratch.run_eta corpus-runs/0.3.9-rc.1-10-16-2026-1902 \\
+      corpus-runs/0.3.7-rc.1-10-16-2026-0156 [--err local/runs/mega-0.3.9-rc.1.err]
 
 Each step the running folder's `runner.log` records as done is weighted by the seconds the same
 corpus and step took in the reference folder's `tables/steps.csv` (a step the reference lacks gets

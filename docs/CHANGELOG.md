@@ -4,6 +4,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 (grouped by `.github/release.yml`) on its
 [GitHub release](https://github.com/ivylikethevine/python-constricter/releases).
 
+## Unreleased
+
+- The corpus runs write their folders under `corpus-runs/`, each committed as about 20 files: its
+  `report.json` with every step's record, its tables and facts, and each kept listing as one file
+  of the whole run; their paths relative to the checkout or under `~`. A later run reads an earlier
+  one's records by when it started, not by its files' times, and a run's own output is no change to
+  the tree the next one records.
+
 ## 0.4.3
 
 - LVA014 (opt-in: `--extend-select LVA014`, pylint's `missing-return-type`): a plain function or

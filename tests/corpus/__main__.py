@@ -80,7 +80,7 @@ from tests.corpus import (
     trees,
 )
 from tests.corpus.pipeline import Record
-from tests.corpus.run_config import Run, percent, read
+from tests.corpus.run_config import FACTS, STARTED, Run, outside, percent, read
 
 if TYPE_CHECKING:
     import resource
@@ -105,8 +105,6 @@ _LOOK: Final = 60.0  # and between fittings of its hold to what it's using
 _DONE: Final = True  # what an event's `wait` says once it's set
 _MACOS: Final = "darwin"
 _LOG: Final = "runner.log"  # in a run's folder
-_FACTS: Final = "facts.toml"  # and the run as it was read
-_STARTED: Final = "started"  # in its facts: when its first execution started
 _RUNNING: Final = "running"  # and when the one under way did: gone once it ends
 _QUEUE: Final = "queue.log"  # and its queue, each minute steps wait
 _SUITE_WORKERS: Final = "CORPUS_SUITE_WORKERS"  # in a step's environment: its suite's tests' processes
@@ -151,7 +149,7 @@ def run_facts(run: Run, started: datetime) -> Record:
         "suite-workers": run.suite_workers,
         "constricter": __version__,
         "commit": commit,
-        "changes": changes(),
+        "changes": changes(run.output),
         "python": platform.python_version(),
         "system": platform.system(),
         "cpus": os.cpu_count() or 1,
@@ -172,15 +170,19 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True, check=False, cwd=_ROOT).stdout
 
 
-def changes() -> str:
+def changes(output: Path) -> str:
     """Name the checkout's uncommitted changes: tracked files' and the untracked files git sees.
+
+    Not those under `output`, where the runs write their folders: a run's own output leaves the
+    tree the next one measures as clean as it was.
 
     Returns:
       A hash of them; nothing for a clean tree.
 
     """
-    changed: str = _git("diff", "HEAD", "--binary")
-    untracked: list[str] = _git("ls-files", "--others", "--exclude-standard").splitlines()
+    beside: list[str] = outside(output, _ROOT)
+    changed: str = _git("diff", "HEAD", "--binary", *beside)
+    untracked: list[str] = _git("ls-files", "--others", "--exclude-standard", *beside).splitlines()
     path: str
     for path in untracked:
         changed += f"\n{path}\n" + (_ROOT / path).read_text(encoding="utf-8", errors="replace")
@@ -766,7 +768,7 @@ def main(argv: Sequence[str]) -> int:
     facts = finished(facts, (time.perf_counter() - start) / 60)
     if _STAGES in facts:
         facts[_LEFT] = stages.left(run.stages, _missing(run, store, [tree for tree, _ in measured if tree]))
-    _ = (folder / _FACTS).write_text(_toml(facts), encoding="utf-8")
+    _ = (folder / FACTS).write_text(_toml(facts), encoding="utf-8")
     records: report_tables.Records = render.gathered(run, store, [tree for tree, _ in measured if tree])
     written: list[Path] = render.write(records, folder, facts)
     # A part of its corpora, or of its stages, isn't what its section is of.
@@ -851,7 +853,7 @@ def resumed_facts(argv: Sequence[str]) -> Record:
     """
     if _RESUME not in argv:
         return {}
-    path: Path = Path(argv[argv.index(_RESUME) + 1]) / _FACTS
+    path: Path = Path(argv[argv.index(_RESUME) + 1]) / FACTS
     return tomllib.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
@@ -901,16 +903,16 @@ def carried(facts: Record, earlier: Record, last: datetime | None) -> Record:
       The facts, with the first execution's start, the minutes before this one, and this one's start.
 
     """
-    now: str = str(facts[_STARTED])
+    now: str = str(facts[STARTED])
     if not earlier:
         return facts | {_RUNNING: now}
     before: float = float(cast("float", earlier.get(render.MINUTES, 0)))
     stopped: str | None = cast("str | None", earlier.get(_RUNNING))
     if stopped is None and render.MINUTES not in earlier:  # no minutes: its one execution was stopped
-        stopped = cast("str | None", earlier.get(_STARTED))
+        stopped = cast("str | None", earlier.get(STARTED))
     if stopped is not None and last is not None:
         before += max(0.0, (last - datetime.fromisoformat(stopped)).total_seconds() / 60)
-    return facts | {_STARTED: earlier.get(_STARTED, now), render.MINUTES: round(before), _RUNNING: now}
+    return facts | {STARTED: earlier.get(STARTED, now), render.MINUTES: round(before), _RUNNING: now}
 
 
 def finished(facts: Record, minutes: float) -> Record:
@@ -943,7 +945,7 @@ def _folder(argv: Sequence[str], run: Run, facts: Record) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     if not (resumed and (folder / "run.toml").exists()):
         _ = shutil.copyfile(argv[0], folder / "run.toml")
-    _ = (folder / _FACTS).write_text(_toml(facts), encoding="utf-8")
+    _ = (folder / FACTS).write_text(_toml(facts), encoding="utf-8")
     return folder
 
 

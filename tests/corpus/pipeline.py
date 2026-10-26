@@ -49,7 +49,7 @@ from constricter import Level
 from constricter.cli import paths
 from constricter.offences import Tier, errs, reports
 from tests.corpus import corpus_profile, corpus_table, corpus_untyped, launch
-from tests.corpus.run_config import DEV, FIXES, Run
+from tests.corpus.run_config import DEV, FIXES, Run, scrubbed
 from tests.corpus.trees import Tree
 
 Record: TypeAlias = dict[str, object]
@@ -128,7 +128,8 @@ class Store(NamedTuple):
         path: Path = self.path(corpus, version, step)
         path.parent.mkdir(parents=True, exist_ok=True)
         written: Path = path.with_name(f".{path.name}.{os.getpid()}")
-        _ = written.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        text: str = scrubbed(json.dumps(record, indent=2, sort_keys=True))
+        _ = written.write_text(text + "\n", encoding="utf-8")
         _ = written.replace(path)
 
     def logged(self, corpus: str, version: str, step: str) -> Path:

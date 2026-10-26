@@ -51,6 +51,7 @@ from constricter import recording
 from constricter.empty import Empty
 from constricter.offences import Tier
 from tests.corpus import catalog
+from tests.corpus.run_config import scrubbed
 
 _Json: TypeAlias = "str | int | bool | list[_Json] | dict[str, _Json] | None"
 
@@ -455,7 +456,8 @@ def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Ou
     ]
     if data is not None and tests:
         data.parent.mkdir(parents=True, exist_ok=True)
-        _ = data.write_text("".join(json.dumps(test._asdict()) + "\n" for test in tests), encoding="utf-8")
+        listed: str = "".join(json.dumps(test._asdict()) + "\n" for test in tests)
+        _ = data.write_text(scrubbed(listed), encoding="utf-8")
     outcome: Outcome = _added([read(output) for output in outputs])
     if len(list(reports.glob("*.xml"))) != len(commands):  # a part that wrote none: read as text
         return outcome

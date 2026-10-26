@@ -1,6 +1,6 @@
 """Count a run's `rebound` guesses by two shapes of the later binding, to size a rule before writing it.
 
-  local/.venv/bin/python -m scratch.rebound_shapes local/corpus-runs/0.4.0-rc.2-10-17-2026-0417
+  local/.venv/bin/python -m scratch.rebound_shapes corpus-runs/0.4.0-rc.2-10-17-2026-0417
 
 For each `rebound` guess in the run's `guesses.jsonl`, finds the package's source under
 `local/mega-corpora/sources` or `local/super-corpora/sources`, and the guessed name's function, and

@@ -1,0 +1,17 @@
+# A run's folder keeps its report, `report.json`: every step's record, which later runs size their
+# steps by and take their released tests from; its tables, facts and run file; and its listings,
+# one file each of the whole run (`archive.gather`). The rest a run rebuilds, or is too large to
+# keep: each step's own record and listings under `records/` (the report holds them), the copies it
+# fixed, its logs and patches, the Markdown docs/RUNS.md has.
+records/
+work/
+logs/
+*.patch
+*.log
+*.md
+*.jsonl
+# What the witness's and the guesses' analyses read, and the released tests by name.
+!guesses.jsonl
+!traced.verdicts.jsonl
+!traced.seen.jsonl
+!tests-released.tests.jsonl

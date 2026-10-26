@@ -1,6 +1,6 @@
 """A corpus run's fixed test runs that weren't the released tests', and what the `tests` step made of each.
 
-    local/.venv/bin/python -m scratch.rerun_census local/corpus-runs/FOLDER
+    local/.venv/bin/python -m scratch.rerun_census corpus-runs/FOLDER
 
 For every suite's `tests` record: each fixed run whose first outcome wasn't the released tests'
 (not one implied by another part, nor one whose patch was refused), with its counts, how many

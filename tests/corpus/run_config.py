@@ -2,7 +2,7 @@
 
     [run]
     label = "0.3.7-rc.1"             # names the run's folder, and `dev` in its tables
-    output = "local/corpus-runs"     # each execution writes a folder of its own under it
+    output = "corpus-runs"           # each execution writes a folder of its own under it
     versions = ["0.3.1", "dev"]      # releases from PyPI, and `dev`: this checkout; or `NAME=PATH`,
                                      # the constricter the Python at PATH runs (another checkout's)
     formats = ["json", "markdown", "csv"]
@@ -53,8 +53,11 @@
 A key this doesn't know is an error, not ignored: a misspelt step would otherwise measure nothing.
 """
 
+import contextlib
+import json
+import os
 import tomllib
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
@@ -112,6 +115,9 @@ _KEYS: Final = {
 _RUNS_MD: Final = "runs-md"
 _STAGES: Final = "stages"  # the table regrouping the steps
 _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, day, year and time it started
+_ROOT: Final = Path(__file__).resolve().parents[2]  # the checkout
+FACTS: Final = "facts.toml"  # in a run's folder: the run as it was read, the commit, the machine
+STARTED: Final = "started"  # in its facts: when its first execution started
 _Table: TypeAlias = dict[str, object]
 
 
@@ -146,7 +152,7 @@ class Run(NamedTuple):
     """A run file, read."""
 
     label: str = CHECKOUT
-    output: Path = Path("local/corpus-runs")
+    output: Path = Path("corpus-runs")
     versions: tuple[str, ...] = (DEV,)
     formats: tuple[str, ...] = FORMATS
     jobs: int = 0
@@ -309,6 +315,52 @@ def percent(given: object) -> int:
         message: str = f"share must be a percent, 1 to {_WHOLE} (0: the machine's): {given!r}"
         raise ValueError(message)
     return given
+
+
+def scrubbed(text: str) -> str:
+    """Write a kept file's paths as no machine's: the checkout's relative to it, the home folder's as `~`.
+
+    A run's folder is committed: what it keeps names nothing of the machine that ran it.
+
+    Returns:
+      `text`, so written: as JSON writes a path, which is as it is but on Windows.
+
+    """
+    where: Path
+    written: str
+    for where, written in ((_ROOT, ""), (Path.home(), "~/")):
+        text = text.replace(json.dumps(f"{where}{os.sep}")[1:-1], written)
+    return text
+
+
+def started(folder: Path) -> datetime:
+    """Read when the run in `folder` first started, from its facts.
+
+    What orders runs, as a file's time can't: a checkout sets every file's at once. A folder with
+    no facts saying goes by its own time.
+
+    Returns:
+      It, in its zone.
+
+    """
+    with contextlib.suppress(OSError, ValueError, KeyError):
+        facts: _Table = tomllib.loads((folder / FACTS).read_text(encoding="utf-8"))
+        when: datetime = datetime.fromisoformat(str(facts[STARTED]))
+        return when if when.tzinfo else when.astimezone()
+    return datetime.fromtimestamp(folder.stat().st_mtime, UTC)
+
+
+def outside(output: Path, root: Path) -> list[str]:
+    """Name what git sees of the checkout at `root` but the runs' folders under `output`.
+
+    Returns:
+      A pathspec of every path but `output`'s, as git's arguments; nothing where it isn't a folder
+      under `root`, the checkout itself included.
+
+    """
+    where: Path = output.resolve()
+    inside: bool = where.is_relative_to(root) and where != root
+    return ["--", ".", f":(exclude){where.relative_to(root).as_posix()}"] if inside else []
 
 
 def read(path: Path) -> Run:

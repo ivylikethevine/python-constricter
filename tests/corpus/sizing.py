@@ -51,10 +51,8 @@ two readings too (`counted`). Elsewhere a step's use is read by `corpora_cpu`, w
 without it nothing is measured, and every step is sized as unmeasured.
 """
 
-import contextlib
 import importlib
 import importlib.util
-import json
 import math
 import os
 import re
@@ -73,6 +71,7 @@ from constricter.cli import paths
 from constricter.cli.lsp import hints
 from constricter.cli.lsp.protocol import SERVERS, Server
 from constricter.rules import parsed
+from tests.corpus import archive
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
     IMPLIED,
@@ -87,7 +86,7 @@ from tests.corpus.pipeline import (
     Record,
     parts,
 )
-from tests.corpus.run_config import Run
+from tests.corpus.run_config import Run, started
 from tests.corpus.trees import Tree
 
 GIB: Final = 1 << 30
@@ -611,22 +610,23 @@ def before(output: Path, run: Path) -> dict[tuple[str, str], Before]:
     """
     label: str = _STAMPED.sub("", run.name)
     earlier: list[Path] = sorted(
-        (each for each in output.glob("*/records") if each.parent != run),
-        key=lambda each: (_STAMPED.sub("", each.parent.name) == label, each.stat().st_mtime),
+        (each for each in archive.runs(output) if each != run),
+        key=lambda each: (_STAMPED.sub("", each.name) == label, started(each)),
     )
     found: dict[tuple[str, str], Before] = {}
-    kept: Path
-    for kept in (kept for records in earlier for kept in sorted(records.glob("*/*/*.json"))):
-        record: Record = {}
-        with contextlib.suppress(OSError, ValueError):
-            record = cast("Record", json.loads(kept.read_text(encoding="utf-8")))
+    corpus: str
+    step: str
+    record: Record
+    for (corpus, _, step), record in (
+        each for folder in earlier for each in sorted(archive.kept(folder).items())
+    ):
         used: Record = {} if IMPLIED in record else cast("Record", record.get(USED, {}))
         seconds: float = cast("float", used.get("seconds", 0.0))
         cpu: float = cast("float", used.get("cpu", 0.0))
         if seconds and cpu:
             held: int = int(cast("float", used.get("memory", 0.0)) * GIB)
             workers: int = cast("int", used.get(WORKERS, 0))
-            found[kept.parent.parent.name, kept.stem] = Before(cpu / seconds, seconds, held, workers)
+            found[corpus, step] = Before(cpu / seconds, seconds, held, workers)
     return found
 
 

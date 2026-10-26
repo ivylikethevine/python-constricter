@@ -79,7 +79,7 @@ measure before building.
    held and none blamed for an error, so it passes; `comment` 31 certain; `tested` 66 certain;
    `filled` 575 likely and 580 guesses (`defaultdict` and `Counter` not told apart from the older
    fills); `named` 11 guesses, none told of; `reads` 10, 5 told of, 2 held. LVA013, in a run of its
-   own beside it (`local/runs/mega-lva013.toml`: mega's corpora with `--extend-select LVA013`, no
+   own beside it (`tests/corpus/runs/mega-lva013.toml`: mega's corpora with `--extend-select LVA013`, no
    hints, census, timing or traced tests; 36 minutes on 16CPU/60GB): 4,521 more `fix-likely` fixes
    and 5,093 more `fix-unsafe`, none certain; every suite's tests the same but nibabel's randomised
    ones; 6 new type errors (0.12 for each hundred fixes), pandas's 5 from `self.index` stored after
@@ -88,8 +88,8 @@ measure before building.
    pass something on 22 corpora (mypy 228 lines): a guess one file declared reached the other files'
    reads only on the next run, and is checked again in the same run since. A generic class without
    its arguments is no LVA013 fix since, as it's none for a binding (`attributes.unannotated`).
-   Traced on 2026-10-23 (`local/runs/mega-lva013.toml`: the uncommitted tree past `15167da`, 51
-   minutes on 16CPU/60GB, `local/corpus-runs/mega-lva013-10-23-2026-1953`), held by
+   Traced on 2026-10-23 (`tests/corpus/runs/mega-lva013.toml`: the uncommitted tree past `15167da`, 51
+   minutes on 16CPU/60GB), held by
    `scratch/guess_report.py --from` on 42 packages: `assigned`, LVA013's kind, 4,703 guesses, 867 a
    test told of, 99.0% held and 2 blamed for an error (0.06 for each hundred), its set alone 3,147,
    134 told, 98.5% held and 1 blamed, so it passes [LIKELY.md](LIKELY.md)'s bars; `reads` 13, 5
@@ -388,7 +388,7 @@ measure before building.
    gains the callers' fixes the written returns make certain. Built in part, not yet run: LVA014 (opt-in), a plain
    function's or method's missing return type, its fix `-> T` before the header's `:` (`Edit.SIGNATURE`,
    `rules/returning.py`) from `returned`'s types or `None`; the parameters (`callers`, `fixture`)
-   still to do (`local/meanwhile/signatures-plan.md` has the rest). On pydantic (2026-10-24,
+   still to do ([the signatures plan](plans/signatures.md) has the rest). On pydantic (2026-10-24,
    `--fix --unsafe-fixes --extend-select LVA014`): 34 functions reported, 31 fixed (29 `-> None`, 2
    `-> str`; 29 of them methods' guesses), the other 1,596 fixes the same, `pyright pydantic` 0
    errors as without, and its 12,311 tests passing. About 10 hours; coverage unmeasured:
@@ -508,7 +508,7 @@ What to measure before building, smallest first.
     measured on networkx and pandas. About 4 hours; coverage under 0.5%.
 11. **Returns the trace records.** Of the 0.4.3-rc.1 mega run's 103,514 calls with no fix, the
     largest pool is a value a function returns: `member` 20,975, `untyped` 7,919, `local` 6,324
-    (`local/research/type-sources-2026-10-23.md`). `constricter.trace` already follows the traced
+    ([type sources](research/type-sources.md)). `constricter.trace` already follows the traced
     suites' lines; recording each function's return type too (`sys.monitoring`'s `PY_RETURN`, the
     type noted as a binding's is), for `--infer-from` to give a function with no return annotation
     one, is where the run-time pool would come from, rather than RightTyper ("Signatures from a

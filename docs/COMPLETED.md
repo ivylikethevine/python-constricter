@@ -366,7 +366,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
   with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
   seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
-  `local/research/type-sources-2026-10-23.md`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
+  [type sources](research/type-sources.md)). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
   certain fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from
   982, no new type error (narwhals's certain tier 19 from 23): the chains estimated didn't come.
   Done when a super run gives sphinx, seaborn,

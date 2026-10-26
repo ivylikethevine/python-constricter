@@ -1,6 +1,6 @@
 """Compare two corpus runs' timing tables, to see how far the published seconds move run to run.
 
-  local/.venv/bin/python -m scratch.timing_noise local/corpus-runs/A local/corpus-runs/B
+  local/.venv/bin/python -m scratch.timing_noise corpus-runs/A corpus-runs/B
 
 Reads each folder's `tables/timing.csv` and, for every corpus in both, prints the seconds in one
 process and with jobs, their change from A to B, and the instructions' change where hyperfine

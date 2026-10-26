@@ -1,6 +1,6 @@
 """Compare two versions' findings and fixes in one corpus run, corpus by corpus.
 
-    python3 scratch/version_diff.py local/corpus-runs/FOLDER [A B]
+    python3 scratch/version_diff.py corpus-runs/FOLDER [A B]
 
 A and B are two of the run's recorded versions (`records/<corpus>/<version>/`); by default the first
 two its run file names, in its order: `pure` and `compiled` for `tests/corpus/runs/compiled.toml`. For each

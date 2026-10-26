@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
 from constricter import Level
-from tests.corpus import corpus_table, corpus_untyped
+from tests.corpus import archive, corpus_table, corpus_untyped
 from tests.corpus.corpus_table import Corpus, Likely, Measured, Typed
 from tests.corpus.pipeline import (
     CENSUS,
@@ -52,7 +52,7 @@ from tests.corpus.report_tables import (
     json_lines,
     typed_share,
 )
-from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run
+from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run, scrubbed
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
 
@@ -446,7 +446,8 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
     written: list[Path] = []
     if JSON in records.run.formats:
         written.append(folder / "report.json")
-        _ = written[-1].write_text(json.dumps(report(records, facts), indent=2) + "\n", encoding="utf-8")
+        reported: str = scrubbed(json.dumps(report(records, facts), indent=2))
+        _ = written[-1].write_text(reported + "\n", encoding="utf-8")
         guessed: list[Record]
         if guessed := guesses(records, Store(folder)):
             written.append(folder / "guesses.jsonl")
@@ -470,4 +471,7 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
                 file: IO[str]
                 with written[-1].open("w", encoding="utf-8", newline="") as file:
                     csv.writer(file, lineterminator="\n").writerows(table)  # as git keeps text
-    return written
+    corpora: dict[tuple[str, str], None] = dict.fromkeys(
+        (corpus, version) for corpus, version, _ in records.found
+    )
+    return written + archive.gather(folder, corpora)

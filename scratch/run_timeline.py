@@ -1,6 +1,6 @@
 """Rebuild a corpus run's timeline from its records, and show where its CPUs sat idle.
 
-  local/.venv/bin/python -m scratch.run_timeline local/corpus-runs/0.4.0-rc.3-10-18-2026-1010
+  local/.venv/bin/python -m scratch.run_timeline corpus-runs/0.4.0-rc.3-10-18-2026-1010
   local/.venv/bin/python -m scratch.run_timeline FOLDER --top 20 --every 5   # 20 longest steps, 5-minute buckets
 
 A step's record says when it started (`used.started`); one from before it did is rewritten as it

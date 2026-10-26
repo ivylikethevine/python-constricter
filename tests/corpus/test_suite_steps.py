@@ -13,7 +13,7 @@ from tests.corpus import catalog, corpus_suite, suite_steps
 from tests.corpus.catalog import PYTEST, Suite
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Job, Record, Store
-from tests.corpus.run_config import Run, parse
+from tests.corpus.run_config import FACTS, Run, parse
 from tests.corpus.trees import Tree
 
 _SUITE: Final = Suite("https://example.invalid/a", "1", "src/a", (), PYTEST, (("mypy",),), at_once=2)
@@ -114,8 +114,9 @@ def test_each_part_has_a_checkout_of_its_kind(tmp_path: Path) -> None:
 def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
     """Those at the suite's tag, of any version, read by this parser, on the same checkout, latest first.
 
-    Each says whose run it is: the run that ran them, where a run took its record from another.
-    Not one stopped, nor this run's.
+    Latest by when each run started, not by its files' times, which a checkout sets at once. Each
+    says whose run it is: the run that ran them, where a run took its record from another. Not one
+    stopped, nor this run's.
     """
     runs: Path = tmp_path / "runs"
     job: Job = _job(runs / "this")
@@ -136,13 +137,22 @@ def test_the_tests_as_released_are_an_earlier_runs(tmp_path: Path) -> None:
     record: Record
     for when, (folder, version, record) in enumerate(written):
         Store(runs / folder).write("a", version, _RELEASED, record)
-        os.utime(runs / folder / "records" / "a" / version / "tests-released.json", (when, when))
+        facts: str = f'started = "2026-10-1{when}T09:00:00-07:00"\n'
+        _ = (runs / folder / FACTS).write_text(facts, encoding="utf-8")
+        os.utime(runs / folder / "records" / "a" / version / "tests-released.json", (10 - when, 10 - when))
     assert suite_steps.earlier(job) == [
         found | {"from": "older"},
         _keyed(_FAILED, "e2") | {"from": "other-checkout"},
         found | {"from": "old"},
     ]
     assert suite_steps.earlier(job, "e2") == [_keyed(_FAILED, "e2") | {"from": "other-checkout"}]
+    # A committed run keeps its report alone, its records left out.
+    reported: Path = runs / "reported"
+    reported.mkdir()
+    _ = (reported / FACTS).write_text('started = "2026-10-19T09:00:00-07:00"\n', encoding="utf-8")
+    nested: Record = {"records": {"a": {"dev": {_RELEASED: found}}}}
+    _ = (reported / "report.json").write_text(json.dumps(nested), encoding="utf-8")
+    assert suite_steps.earlier(job)[0] == found | {"from": "reported"}
 
 
 def test_an_earlier_runs_tests_are_taken_where_the_run_skips_them_or_the_trace_confirms_them(

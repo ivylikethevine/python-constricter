@@ -1,6 +1,6 @@
 """The new type errors a corpus run's hinted fixes caused, grouped for reading by cause.
 
-  local/.venv/bin/python -m scratch.hint_errors local/corpus-runs/0.4.0-rc.2-10-17-2026-0417
+  local/.venv/bin/python -m scratch.hint_errors corpus-runs/0.4.0-rc.2-10-17-2026-0417
   local/.venv/bin/python -m scratch.hint_errors FOLDER --step infer-pyrefly --corpus pandas --samples 5
 
 Reads each `records/<corpus>/<version>/types-<step>.json` the run wrote for a hinted fix

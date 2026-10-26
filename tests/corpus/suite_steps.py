@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import Tier
-from tests.corpus import corpus_guesses, corpus_suite, launch
+from tests.corpus import archive, corpus_guesses, corpus_suite, launch
 from tests.corpus.pipeline import (
     FIX,
     FROM,
@@ -52,7 +52,7 @@ from tests.corpus.pipeline import (
     parts,
     united,
 )
-from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE
+from tests.corpus.run_config import CERTAIN, DEV, LIKELY, UNSAFE, started
 
 _Entry: TypeAlias = dict[str, object]
 _Fixes: TypeAlias = frozenset[
@@ -583,18 +583,17 @@ def earlier(job: Job, environment: str | None = None) -> list[Record]:
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     name: str = part(TESTS, RELEASED)
     corpus: str = job.tree.name.replace(" ", "-")
-    paths: list[Path] = sorted(
-        job.store.root.parent.glob(f"*/records/{corpus}/*/{name}.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    folders: list[Path] = sorted(archive.runs(job.store.root.parent), key=started, reverse=True)
     found: list[Record] = []
-    path: Path
-    for path in paths:
-        folder: Path = path.parents[3]  # the run's: `records/CORPUS/VERSION/` under it
-        if folder.resolve() == job.store.root.resolve():
-            continue
-        record: Record = cast("Record", json.loads(path.read_text(encoding="utf-8")))
+    folder: Path
+    record: Record
+    for folder, record in (
+        (run, each)
+        for run in folders
+        if run.resolve() != job.store.root.resolve()
+        for (where, _, step), each in archive.kept(run).items()
+        if (where, step) == (corpus, name)
+    ):
         keyed: bool = record.get("tag") == suite.tag and record.get(_PARSER) == corpus_suite.parser()
         if environment is not None and record.get(_ENVIRONMENT) != environment:
             continue

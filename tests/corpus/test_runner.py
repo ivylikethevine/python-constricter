@@ -17,7 +17,7 @@ from tests.corpus import __main__ as runner
 from tests.corpus import catalog, corpus_suite, launch, pipeline, sizing, suite_steps, trees
 from tests.corpus.pipeline import Record, Store
 from tests.corpus.recorded import SHARE, USED
-from tests.corpus.run_config import CERTAIN, CSV, DEV, LIKELY, Run, Steps, parse
+from tests.corpus.run_config import CERTAIN, CSV, DEV, FACTS, LIKELY, Run, Steps, outside, parse
 from tests.corpus.trees import Tree
 
 _SLICED: Final = "--slice=constricter-corpus.slice"  # `systemd-run`'s, for a run with a share
@@ -617,18 +617,68 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
 
 
 def test_a_step_is_sized_by_a_run_of_its_own_label_first(tmp_path: Path) -> None:
-    """A later run under another label sizes only the steps this label's runs didn't measure."""
+    """A later run under another label sizes only the steps this label's runs didn't measure.
+
+    Later by when each started, not by its files' times, which a checkout sets at once.
+    """
     probe: Store = Store(tmp_path / "probe-10-13-2026-0900")
     probe.write("celery", "rc+dev", pipeline.TESTS, {"used": USED | {"memory": 0.1}})
     probe.write("celery", "rc+dev", pipeline.TYPES, {"used": USED})
     Store(tmp_path / "full-10-12-2026-0800").write("celery", "rc+dev", pipeline.TESTS, {"used": USED})
     os.utime(tmp_path / "full-10-12-2026-0800" / "records", (0, 0))
+    older: Store = Store(tmp_path / "full-10-11-2026-0800")
+    older.write("celery", "rc+dev", pipeline.TESTS, {"used": USED | {"memory": 0.2}})
+    folder: str
+    day: int
+    for folder, day in (("full-10-12-2026-0800", 12), ("full-10-11-2026-0800", 11)):
+        started: str = f'started = "2026-10-{day}T08:00:00-07:00"\n'
+        _ = (tmp_path / folder / FACTS).write_text(started, encoding="utf-8")
     labelled: dict[tuple[str, str], sizing.Before] = sizing.before(
         tmp_path,
         tmp_path / "full-10-13-2026-1000",
     )
     assert labelled["celery", pipeline.TESTS].memory == int(9.5 * sizing.GIB)
     assert ("celery", pipeline.TYPES) in labelled
+
+
+def test_the_runs_own_folders_are_no_change_to_the_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What's under the run's output is left out, changed or untracked; an output elsewhere, nothing."""
+    asked: list[tuple[str, ...]] = []
+
+    def git(*args: str) -> str:
+        asked.append(args)
+        return ""
+
+    monkeypatch.setattr(runner, "_git", git)
+    root: Path = Path(runner.__file__).resolve().parents[2]
+    assert not runner.changes(root / "runs")
+    beside: tuple[str, ...] = ("--", ".", ":(exclude)runs")
+    assert asked == [
+        ("diff", "HEAD", "--binary", *beside),
+        ("ls-files", "--others", "--exclude-standard", *beside),
+    ]
+    assert not outside(root, root)
+    assert not outside(tmp_path, root)
+
+
+def test_a_kept_record_names_nothing_of_the_machine(tmp_path: Path) -> None:
+    """The checkout's paths relative to it, the home folder's under `~`, others as they were."""
+    root: Path = Path(runner.__file__).resolve().parents[2]
+    given: Record = {
+        "options": [str(root / "local" / "trace.json")],
+        "errors": [[str(Path.home() / "lib" / "a.py"), "msg"]],
+        "path": "/opt/a.py",
+    }
+    store: Store = Store(tmp_path)
+    store.write("a", "dev", "infer-trace", given)
+    assert store.read("a", "dev", "infer-trace") == {
+        "options": [str(Path("local") / "trace.json")],
+        "errors": [[str(Path("~") / "lib" / "a.py").replace("\\", "/", 1), "msg"]],
+        "path": "/opt/a.py",
+    }
 
 
 def test_each_execution_has_a_folder_named_by_its_label_and_time() -> None:

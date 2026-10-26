@@ -111,9 +111,14 @@ fix's, and a test `corpora.toml` names under the suite's `differs`, with why, is
 They need `git`, `uv`, a C compiler, Rust (a default toolchain: `rustup default stable`) and
 the network, once.
 
-Each execution writes a folder of its own under `local/corpus-runs/`, named by the run's label and
+Each execution writes a folder of its own under `corpus-runs/`, named by the run's label and
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
-and `tables/*.csv` made from them. `--resume FOLDER` carries on a stopped run under its label, its
+and `tables/*.csv` made from them. The folder is committed as about 20 files: `report.json`, which
+holds every step's record, the tables, the facts and run file, and each kept listing gathered into
+one file of the whole run (`tests/corpus/archive.py`); its `.gitignore` leaves out `records/`, the
+fixed copies, logs, patches and Markdown. Its paths are written relative to the checkout or under
+`~`. A later run reads its records from its report (a stopped run's from `records/`), the latest by
+when each started, and its own output is no change to the tree its facts record. `--resume FOLDER` carries on a stopped run under its label, its
 time the sum of its executions', `--only NAME` keeps one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
 (`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a
 process of its own, started once the CPUs it's expected to keep busy and the memory it's expected to
