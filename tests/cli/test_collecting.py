@@ -1,24 +1,12 @@
 """The garbage collector, run by hand while the command runs."""
 
 import gc
-from collections.abc import Generator
 
 import pytest
 
 from constricter.cli import collecting
 
 _FREEZES: bool = hasattr(gc, "freeze")  # PyPy's collector has no freezing
-
-
-@pytest.fixture
-def restored() -> Generator[None]:
-    """Leave the collector as each test found it."""
-    was: bool = gc.isenabled()
-    yield
-    if was:
-        gc.enable()
-    else:
-        gc.disable()
 
 
 @pytest.mark.usefixtures("restored")
@@ -41,6 +29,16 @@ def test_by_hand_leaves_collection_off_if_it_was() -> None:
     with collecting.by_hand():
         assert not gc.isenabled()
     assert not gc.isenabled()
+
+
+@pytest.mark.usefixtures("restored")
+def test_by_hand_leaves_the_collector_as_the_run_left_it_for_a_process_leaving() -> None:
+    """Off, and what indexing built still frozen: turned on, it would look through all of it at once."""
+    gc.enable()
+    with collecting.by_hand(leaving=True):
+        collecting.indexed()
+    assert not gc.isenabled()
+    assert not _FREEZES or gc.get_freeze_count() > 0
 
 
 @pytest.mark.usefixtures("restored")

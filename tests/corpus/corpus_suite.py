@@ -21,8 +21,9 @@ A checkout with no settings for Pyright or pyrefly is given empty ones (`_settle
 checkers' servers `--infer-with` starts read this project's, above it.
 
 The tests are traced under `python -m constricter.trace` (this checkout's, which the package's
-environment is given the path of), where pytest runs them or the suite names a script that does in
-one process (`Suite.script`: Django's `runtests.py`).
+environment is given the path of), where pytest runs them, `python -c` does (Django's `runtests.py`,
+its workers forked, each recording itself), or the suite names a script that does in one process
+(`Suite.script`).
 """
 
 import ast
@@ -151,12 +152,16 @@ _NAME: Final = re.compile(r"[A-Za-z_]\w*")
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
-# What `constricter.trace` runs for a suite's tests, part by part, and what it needs on the path.
-_Traceable: TypeAlias = tuple[list[list[str]], list[str]]
+# What `constricter.trace` runs for a suite's tests, part by part, what it needs on the path, and
+# the interpreter's own options before it (`-Wall`).
+_Traceable: TypeAlias = tuple[list[list[str]], list[str], list[str]]
 TRACE_FILE: Final = ".venv/corpus-suite-trace.json"  # a checkout's tests' trace: out of its source's way
-_MODULE: Final = ("python", "-m")  # how a suite's tests start, where a module runs them
+_PYTHON: Final = "python"
+_MODULE: Final = (_PYTHON, "-m")  # how a suite's tests start, where a module runs them
+_CODE: Final = "-c"  # and where code does
 _PYTEST: Final = (*_MODULE, "pytest")  # and where pytest does
 _TRACER: Final = ("constricter.trace", "--output", TRACE_FILE, "--root", ".")
+_PART_TRACE: Final = ".venv/corpus-suite-trace-{}.json"  # each part's, where they're traced side by side
 # In a checkout: a directory with this checkout's `constricter` alone, for a traced run's path. Not
 # this checkout's root, whose `tests` package a suite's own would then share the path with.
 _TRACER_PATH: Final = ".venv/corpus-suite-path"
@@ -171,8 +176,9 @@ def _environment(cwd: Path) -> dict[str, str]:
     its packages by it); with an absolute uv cache (this project's `cache-dir` is relative, and uv
     finds this `pyproject.toml` above a checkout without its own `[tool.uv]`); and with a fixed hash
     seed (pytest-xdist's workers must collect the same tests); with a temporary directory of its
-    own; and without the user's uv settings (an `exclude-newer` there makes a suite's own lockfile
-    stale to `uv sync --locked`).
+    own; without the user's uv settings (an `exclude-newer` there makes a suite's own lockfile
+    stale to `uv sync --locked`); and with matplotlib drawing off screen (`Agg`), so a suite's
+    plotting tests open no window on the user's display.
 
     Returns:
       The environment.
@@ -190,6 +196,7 @@ def _environment(cwd: Path) -> dict[str, str]:
     _ = environment.setdefault("UV_CACHE_DIR", str(WORK.parent / ".uv-cache"))
     _ = environment.setdefault("PYTHONHASHSEED", "0")
     _ = environment.setdefault("UV_NO_CONFIG", "1")
+    environment["MPLBACKEND"] = "Agg"
     # Its own temporary files, under a short path (a suite's sockets go there): a suite's leave some
     # no one else can delete, which the next pytest run under the shared directory then trips on.
     temporary: Path = Path(tempfile.gettempdir()) / WORK.name / cwd.name
@@ -456,6 +463,42 @@ def tested(root: Path, suite: Suite, keep: Path | None, data: Path | None) -> Ou
 
 
 _FAILURES: Final = frozenset({"failed", "error"})
+_SKIP: Final = "skipped"  # a test's outcome, as `Test` has it
+
+
+def skips(released: Path, fixed: Path) -> tuple[list[str], list[str]] | None:
+    """Name the tests the `fixed` run skipped that the `released` one ran, and the reverse, by their tests.
+
+    Each a run's `data` (see `tested`): a count alone hides which skips moved, as sqlalchemy's do with
+    its drivers' order. Only the tests both ran.
+
+    Returns:
+      Those skipped anew and those skipped no more, the tests' ids; `None` where either run wrote none.
+
+    """
+    then: dict[str, str] | None = _outcomes(released)
+    now: dict[str, str] | None = _outcomes(fixed)
+    if then is None or now is None:
+        return None
+    both: set[str] = then.keys() & now.keys()
+    skipped: set[str] = {test for test in both if now[test] == _SKIP}
+    was: set[str] = {test for test in both if then[test] == _SKIP}
+    return sorted(skipped - was), sorted(was - skipped)
+
+
+def _outcomes(data: Path) -> dict[str, str] | None:
+    """Read a run's tests (`tested`'s `data`): each one's outcome, by its id.
+
+    Returns:
+      Them; `None` where the run wrote none.
+
+    """
+    try:
+        text: str = data.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    tests: list[dict[str, str]] = [json.loads(line) for line in text.splitlines() if line]
+    return {test["id"]: test["outcome"] for test in tests}
 
 
 def _commands(suite: Suite, reports: Path | None = None) -> list[list[str]]:
@@ -621,18 +664,25 @@ def _traceable(suite: Suite) -> _Traceable | None:
     """Find what `constricter.trace` runs for the suite's tests, and what it needs on the path.
 
     Returns:
-      The module and its arguments where pytest runs them, once for each of the suite's parts,
-      else the suite's script and its (with the script's directory); `None` where neither does.
+      The module and its arguments where pytest runs them, once for each of the suite's parts; or
+      the code `python -c` runs and its arguments, after the interpreter's options (Django's
+      `runtests.py` on its workers, forked); else the suite's script and its (with the script's
+      directory); `None` where none does.
 
     """
     commands: list[list[str]] = _commands(suite)
     if tuple(commands[0][:2]) == _MODULE:
-        return [command[1:] for command in commands], []
-    return ([list(suite.script)], [str(Path(suite.script[0]).parent)]) if suite.script else None
+        return [command[1:] for command in commands], [], []
+    first: list[str] = commands[0]
+    if first[:1] == [_PYTHON] and _CODE in first:
+        at: int = first.index(_CODE)
+        if all(word.startswith("-") for word in first[1:at]):
+            return [command[at:] for command in commands], [], first[1:at]
+    return ([list(suite.script)], [str(Path(suite.script[0]).parent)], []) if suite.script else None
 
 
 def traceable(suite: Suite) -> bool:
-    """Check whether the suite's tests can be traced: pytest runs them, or its script does.
+    """Check whether the suite's tests can be traced: pytest runs them, `python -c`, or its script.
 
     Returns:
       Whether they can.
@@ -662,11 +712,12 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
     """Run the checkout's tests as released under `python -m constricter.trace`, which writes `TRACE_FILE`.
 
     Or under the module `TRACER_VARIABLE` names, from the directory it names after `os.pathsep`.
-    Their output is written to `keep` unless it's `None`.
+    Its parts side by side, as `tested` runs them, each writing a trace of its own; merged, in the
+    parts' order. Their output is written to `keep` unless it's `None`.
 
     Returns:
-      The tests' summary and their outcome, or `None` for tests neither pytest nor a script of the
-      suite's runs: there's no trace.
+      The tests' summary and their outcome, or `None` for tests that can't be traced (see
+      `traceable`): there's no trace.
 
     """
     reset(root, suite)
@@ -675,24 +726,37 @@ def traced(root: Path, suite: Suite, keep: Path | None = None) -> tuple[str, Out
         return None
     tracer: list[str] = os.environ.get(TRACER_VARIABLE, _TRACER[0]).split(os.pathsep)  # and its directory
     path: list[str] = [str(tracer_path(root)), *target[1], *tracer[1:]]
-    outputs: list[str] = []
-    traces: list[recording.Found] = []
-    part: list[str]
-    for part in target[0]:
-        (root / TRACE_FILE).unlink(missing_ok=True)
+    files: list[str] = (
+        [TRACE_FILE] if len(target[0]) == 1 else [_PART_TRACE.format(n) for n in range(len(target[0]))]
+    )
+    (root / TRACE_FILE).unlink(missing_ok=True)
+
+    def run(part: list[str], trace: str) -> tuple[str, recording.Found | None]:
+        (root / trace).unlink(missing_ok=True)
+        words: list[str] = [tracer[0], _TRACER[1], trace, *_TRACER[3:], *part]
         done: subprocess.CompletedProcess[str] = _completed(
-            _venv(root, [*_MODULE, tracer[0], *_TRACER[1:], *part]),
+            _venv(root, [_PYTHON, *target[2], *_MODULE[1:], *words]),
             root,
             seconds=_TEST_SECONDS,
             more={"PYTHONPATH": os.pathsep.join(path)},
         )
-        outputs.append(_COLOUR.sub("", done.stdout + done.stderr))
-        if (root / TRACE_FILE).exists():
-            traces.append(
-                cast("recording.Found", json.loads((root / TRACE_FILE).read_text(encoding="utf-8"))),
-            )
-    if len(traces) > 1:  # each part wrote the trace anew
+        found: recording.Found | None = (
+            cast("recording.Found", json.loads((root / trace).read_text(encoding="utf-8")))
+            if (root / trace).exists()
+            else None
+        )
+        return _COLOUR.sub("", done.stdout + done.stderr), found
+
+    pool: ThreadPoolExecutor
+    with ThreadPoolExecutor(max(1, min(workers(suite), len(files)))) as pool:  # parts side by side
+        ran: list[tuple[str, recording.Found | None]] = list(pool.map(run, target[0], files))
+    outputs: list[str] = [output for output, _ in ran]
+    traces: list[recording.Found] = [found for _, found in ran if found is not None]
+    if len(files) > 1 and traces:  # each part wrote a trace of its own
         recording.write(root / TRACE_FILE, recording.merged(traces))
+        trace: str
+        for trace in files:
+            (root / trace).unlink(missing_ok=True)
     if keep is not None:
         keep.parent.mkdir(parents=True, exist_ok=True)
         _ = keep.write_text("\n".join(outputs), encoding="utf-8")

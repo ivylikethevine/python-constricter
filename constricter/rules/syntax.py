@@ -23,9 +23,18 @@ FUNCTION_DEFS: tuple[type[ast.FunctionDef], type[ast.AsyncFunctionDef]] = (
 # Statements whose nested statements may not all run (or not only once).
 BRANCHING: Final = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.Match)
 _LEAVING: Final = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+# The statements with statements directly in them (see `child_statements`).
+_COMPOUND: Final = (*BRANCHING, ast.With, ast.AsyncWith)
 # The nodes with a scope of their own: what's inside one isn't the enclosing function's.
 NESTED_SCOPES: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
 _END: Final = 1 << 62  # past any line: a module's span has no end
+_Ids: TypeAlias = tuple[int, ...]  # the `id()`s of the nodes a walk sets out from
+_Parented: TypeAlias = list[tuple[int, ast.AST]]  # a walk's parents (see `own_nodes`), as it found them
+_Walked: TypeAlias = tuple[list[ast.AST], _Parented | None]  # a walk's nodes, and its parents if asked
+# The last whole walks (see `own_nodes`), by the nodes each set out from, the latest last: the passes
+# over a function walk its body again and again. Each walk holds those nodes: their ids stay theirs.
+_OWN: dict[_Ids, _Walked] = {}
+_KEEP: Final = 1024  # the walks kept: all of most modules' functions, for a check's passes over each
 Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
 _FUTURE: Final = "__future__"
 _SELF: Final = "self"
@@ -258,22 +267,46 @@ def _bounds(starts: Sequence[Start], node: ast.AST, begin: Start | None) -> tupl
 def own_nodes(found: Sequence[ast.AST], parents: dict[int, ast.AST] | None = None) -> Iterator[ast.AST]:
     """Walk `found`, depth first in source order, without entering a nested function, lambda or class.
 
-    `parents`, if given, records each node's parent (by `id()`) before the node is yielded.
+    `parents`, if given, records each node's parent (by `id()`) before the node is yielded. The walk
+    is the last whole one of the same nodes, where it's kept (see `_OWN`): all its parents recorded
+    at once, before the first node.
 
     Yields:
       Each node, a nested scope's own too (but not what's inside it).
 
     """
+    ids: _Ids = tuple(id(node) for node in found)
+    kept: _Walked | None = _OWN.get(ids)
+    if kept is not None and (parents is None or kept[1] is not None):
+        _keep(ids, kept)
+        if parents is not None and kept[1] is not None:
+            parents.update(kept[1])
+        yield from kept[0]
+        return
+    walked: list[ast.AST] = []
+    parented: _Parented | None = None if parents is None else []
     # A stack, not a recursion: a nested generator passes each node up through every level above it.
     waiting: list[ast.AST | None] = [None, *reversed(found)]  # `None` at its bottom ends it
     node: ast.AST
     for node in iter(waiting.pop, None):
         yield node
+        walked.append(node)
         if not isinstance(node, NESTED_SCOPES):
             below: list[ast.AST] = child_nodes(node)
-            if parents is not None:
-                parents.update((id(child), node) for child in below)
+            if parents is not None and parented is not None:
+                pairs: _Parented = [(id(child), node) for child in below]
+                parents.update(pairs)
+                parented.extend(pairs)
             waiting.extend(reversed(below))
+    _keep(ids, (walked, parented))
+
+
+def _keep(ids: _Ids, walked: _Walked) -> None:
+    """Keep a whole walk (see `own_nodes`) as the latest, the earliest dropped past `_KEEP`."""
+    _ = _OWN.pop(ids, None)
+    _OWN[ids] = walked
+    if len(_OWN) > _KEEP:
+        del _OWN[next(iter(_OWN))]
 
 
 def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
@@ -298,6 +331,8 @@ def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
 
     """
     children: list[ast.stmt] = []
+    if not isinstance(stmt, _COMPOUND):  # most aren't: one check, not the `match`'s nine
+        return children
     handler: ast.ExceptHandler
     case: ast.match_case
     match stmt:
@@ -310,11 +345,9 @@ def child_statements(stmt: ast.stmt) -> list[ast.stmt]:
             for handler in stmt.handlers:
                 children += handler.body
             children += stmt.orelse + stmt.finalbody
-        case ast.Match():
+        case _:  # a `match`, the one other
             for case in stmt.cases:
                 children += case.body
-        case _:
-            pass
     return children
 
 

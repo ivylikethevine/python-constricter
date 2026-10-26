@@ -14,7 +14,7 @@ from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import ImportPlan, Inference, Known
 from constricter.fix.libraries.opened import opened
-from constricter.fix.values import shapes
+from constricter.fix.values import hinted, shapes
 from constricter.fix.values.doubts import bare
 from constricter.fix.values.entered import Entered, entered, entered_async, entering
 from constricter.fix.values.inference import inference
@@ -400,7 +400,7 @@ def _bind_declaration(
     found, unsafe, origins = typed
     hint: Inference | None
     if (found is None or not scope.writable(found)) and (hint := scope.hint(name)) is not None:
-        found, unsafe, origins = hint, True, hint.kinds
+        found, unsafe, origins = hint, True, hinted.resting(hint)
     fix: Fix | None = None
     noted: Bare | None = scope.assignments.bare.get(name.id)
     if found is not None:

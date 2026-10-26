@@ -410,6 +410,21 @@ def test_pytests_own_fixtures_are_read_from_its_installed_modules(
     assert SHADOWED_FIXED in fixed, fixed
 
 
+def test_an_index_by_hand_finds_pytests_own_fixtures_each_time() -> None:
+    """One with nothing kept (no memo) looks through its modules for pytest's again at each ask."""
+    own: project.Module = project.Module(
+        name="_pytest.capture",
+        returns={},
+        names={},
+        installed=True,
+        fixtures={"capsys": False},
+    )
+    bare: project.Module = project.Module(name="_pytest.tmpdir", returns={}, names={}, installed=True)
+    catalog: project.Index = project.Index({own.name: own, bare.name: bare}, [own.name, bare.name])
+    assert fixtures.providers(catalog, "test_it") == [own]
+    assert fixtures.providers(catalog, "test_it") == [own]
+
+
 PATH_CONFTEST: Final = """
 from pathlib import Path
 

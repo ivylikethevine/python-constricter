@@ -390,6 +390,47 @@ def test_a_display_of_a_narrowed_attribute_has_no_fix() -> None:
     assert _found(source) == {"offsets": (None, False), "others": ("list[int | list[int]]", False)}
 
 
+def test_a_self_return_on_a_receiver_an_isinstance_narrows_has_no_fix() -> None:
+    """`node.copy()` under `isinstance(node, (Ref, Title))` is the narrowed classes', not `Node`."""
+    source: str = """
+    from typing import Self
+
+    class Node:
+        def copy(self) -> Self:
+            return self
+
+    class Ref(Node):
+        pass
+
+    class Title(Node):
+        pass
+
+    def copied(node: Node, holder: "Holder") -> None:
+        if isinstance(node, (Ref, Title)):
+            narrowed = node.copy()
+        if isinstance(node, Node):
+            same = node.copy()
+        if isinstance(holder.node, Ref):
+            held = holder.node.copy()
+        if not isinstance(node, Ref):
+            failed = node.copy()
+        else:
+            passed = node.copy()
+        after = node.copy()
+
+    class Holder:
+        node: Node
+    """
+    assert _found(source) == {
+        "narrowed": (None, False),
+        "same": ("Node", False),
+        "held": (None, False),
+        "failed": ("Node", False),
+        "passed": (None, False),
+        "after": ("Node", False),
+    }
+
+
 def test_a_name_bound_in_another_arm_to_an_unknown_type_has_no_fix() -> None:
     """Only one arm runs: a checker that knows the other's type holds it to the first's."""
     source: str = """

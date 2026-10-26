@@ -173,8 +173,11 @@ def _class_methods(found: Methods, reader: Reader, target: Module, spelled: str,
     memo: Memo = MEMO.of(reader.modules)
     module: Module = reader.modules[origin[0]]
     klass: Class = cast("Declarations", module.declared).classes[origin[1] or ""]
+    called: list[str]
+    if called := sorted(memo.names[origin] & target.method_calls):
+        found.parameters[spelled] = tuple(param for param, _ in klass.params)
     name: str
-    for name in sorted(memo.names[origin] & target.method_calls):
+    for name in called:
         if (origin, name) not in memo.methods:
             # Its lineage has the method: the class or a base declares it.
             memo.methods[origin, name] = cast(
@@ -182,7 +185,6 @@ def _class_methods(found: Methods, reader: Reader, target: Module, spelled: str,
                 reader.method(module, klass, name, 0),
             )
         found.signatures[f"{spelled}.{name}"] = memo.methods[origin, name]
-        found.parameters[spelled] = tuple(param for param, _ in klass.params)
         attr: str
         each: tuple[Signature, ...]
         # What it reads of the method's return, off the call (see `chained`).

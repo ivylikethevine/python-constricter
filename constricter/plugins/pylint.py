@@ -1,4 +1,4 @@
-"""The rules as a pylint plugin (C9101-C9112); reports the codes the level makes errors."""
+"""The rules as a pylint plugin (C9101-C9114); reports the codes the level makes errors."""
 
 from typing import IO, NamedTuple, Protocol, cast, final
 
@@ -24,6 +24,7 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
+    UNANNOTATED_RETURN,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
     VAGUE,
@@ -58,6 +59,7 @@ SYMBOLS: dict[str, Message] = {
     LONG_TUPLE: Message("C9111", "long-tuple-annotation"),
     CAN_BE_FINAL: Message("C9112", "could-be-final"),
     UNANNOTATED_ATTRIBUTE: Message("C9113", "unannotated-instance-attribute"),
+    UNANNOTATED_RETURN: Message("C9114", "missing-return-type"),
 }
 
 
@@ -172,6 +174,7 @@ class ConstricterChecker(BaseRawFileChecker):
             narrower=parse_narrower(cast("str", self.linter.config.constricter_narrower)),
             final=self.linter.is_message_enabled(SYMBOLS[CAN_BE_FINAL].symbol),
             attributes=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_ATTRIBUTE].symbol),
+            returns=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_RETURN].symbol),
         )
         text: str = as_text(source)
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)

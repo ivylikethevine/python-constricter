@@ -28,7 +28,8 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
     a generation of nodes at a time, and each class's fields looked up once.
 
     Returns:
-      Each type's nodes, in `ast.walk`'s order (all but the `Load`, `Store` and `Del` markers).
+      Each type's nodes, in `ast.walk`'s order (all but the `Load`, `Store` and `Del` markers), the
+      module's own left out: a value naming its key would keep the tree alive for good.
 
     """
     found: dict[type[ast.AST], list[ast.AST]] | None
@@ -37,7 +38,7 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
     found = _WALKS[tree] = {}
     # A generation at a time (a breadth-first queue's order): each built from the one before.
     # `None` at the bottom ends it: a generation with no children adds none to follow it.
-    generations: list[list[ast.AST] | None] = [None, [tree]]
+    generations: list[list[ast.AST] | None] = [None, children(tree)]
     generation: list[ast.AST]
     for generation in iter(generations.pop, None):
         following: list[ast.AST] = []
@@ -45,8 +46,11 @@ def _by_type(tree: ast.Module) -> dict[type[ast.AST], list[ast.AST]]:
         for node in generation:
             kind: type[ast.AST] = type(node)
             found.setdefault(kind, []).append(node)
+            fields: tuple[str, ...] | None
+            if (fields := _FIELDS.get(kind)) is None:
+                fields = _fields_of(kind)
             field: str
-            for field in _fields_of(kind):
+            for field in fields:
                 value: _Value = cast("_Value", getattr(node, field, None))
                 if isinstance(value, list):
                     # A list, not a generator: none's resumed for each item (and it's inlined, 3.12+).
@@ -66,7 +70,7 @@ def of_type(tree: ast.Module, *kinds: type[ast.AST]) -> Sequence[ast.AST]:
 
     """
     table: dict[type[ast.AST], list[ast.AST]] = _by_type(tree)
-    return [node for kind in kinds for node in table.get(kind, [])]
+    return [node for kind in kinds for node in (table.get(kind, []) if kind is not ast.Module else [tree])]
 
 
 def classes(tree: ast.Module) -> Sequence[ast.ClassDef]:
@@ -87,8 +91,12 @@ def children(node: ast.AST) -> list[ast.AST]:
 
     """
     found: list[ast.AST] = []
+    kind: type[ast.AST] = type(node)
+    fields: tuple[str, ...] | None
+    if (fields := _FIELDS.get(kind)) is None:  # looked up here: a call per node was a seventh of a walk
+        fields = _fields_of(kind)
     field: str
-    for field in _fields_of(type(node)):
+    for field in fields:
         value: _Value = cast("_Value", getattr(node, field, None))
         if isinstance(value, list):
             found.extend([item for item in value if isinstance(item, ast.AST)])
@@ -114,13 +122,12 @@ def walk(node: ast.AST) -> list[ast.AST]:
 
 
 def _fields_of(kind: type[ast.AST]) -> tuple[str, ...]:
-    """Name a node class's fields but its `ctx`, worked out once per class.
+    """Name a node class's fields but its `ctx`, the first time a walk meets one (see `_FIELDS`).
 
     Returns:
-      Them.
+      Them, kept.
 
     """
-    fields: tuple[str, ...] | None
-    if (fields := _FIELDS.get(kind)) is None:
-        fields = _FIELDS[kind] = tuple(field for field in kind._fields if field != _CTX)
+    fields: tuple[str, ...] = tuple(field for field in kind._fields if field != _CTX)
+    _FIELDS[kind] = fields
     return fields

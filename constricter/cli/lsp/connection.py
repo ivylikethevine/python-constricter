@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import IO, Final, NamedTuple, TypeAlias, cast
 
 from constricter.cli.lsp import edits, guard, protocol
-from constricter.cli.lsp.protocol import HintError, HungError
+from constricter.cli.lsp.protocol import ExitedError, HintError, HungError
 from constricter.fix.core.known import Offered
 
 _Json: TypeAlias = protocol.Json
@@ -78,21 +78,23 @@ class _Documents:
     texts: dict[str, str] = field(default_factory=dict[str, str])
 
 
-class _Asked(NamedTuple):
+class Asked(NamedTuple):
     """Hint requests sent, not yet answered: each request's file, and each file's lines."""
 
     numbers: dict[int, Path]
     lines: dict[Path, list[str]]
 
 
-Sent: TypeAlias = tuple[dict[Path, str], _Asked]  # a batch of files, and its hint requests
+Sent: TypeAlias = tuple[dict[Path, str], Asked]  # a batch of files, and its hint requests
 
 
 class Connection:
     """A running language server, and the JSON-RPC conversation with it."""
 
-    def __init__(self, argv: Sequence[str], root: Path) -> None:
+    def __init__(self, argv: Sequence[str], root: Path, environment: Mapping[str, str] | None = None) -> None:
         """Start the server (`argv`) and initialize it, with `root` as its one workspace folder.
+
+        In `environment`, or else this process's.
 
         Raises:
           HintError: It can't be started, or fails to initialize.
@@ -114,6 +116,7 @@ class Connection:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 cwd=root,
+                env=environment,
             ),
         )
         self.inbox: _Inbox = _Inbox()
@@ -187,7 +190,7 @@ class Connection:
             return False
         return True
 
-    def ask(self, files: Mapping[Path, str]) -> "_Asked":
+    def ask(self, files: Mapping[Path, str]) -> "Asked":
         """Open each file (or send its new text), and ask for its hints over the whole of it.
 
         It doesn't wait for them. Each file is left open: basedpyright (1.40) fails the next file's
@@ -203,7 +206,7 @@ class Connection:
         text: str
         for path, text in files.items():
             self._opened(path.resolve().as_uri(), text)
-        return _Asked({self._ask_hints(path, lines[path]): path for path in files}, lines)
+        return Asked({self._ask_hints(path, lines[path]): path for path in files}, lines)
 
     def _ask_hints(self, path: Path, lines: Sequence[str]) -> int:
         """Ask for an open file's hints over the whole of it, without waiting for them.
@@ -220,7 +223,7 @@ class Connection:
             },
         )
 
-    def answers(self, asked: "_Asked") -> Found:
+    def answers(self, asked: "Asked") -> Found:
         """Wait for the answers to hint requests `ask` sent, asking again for those the server dropped.
 
         Returns:
@@ -390,7 +393,7 @@ class Connection:
           It.
 
         Raises:
-          HintError: The server exited, or took too long.
+          ExitedError: The server exited (`_waited` raises `HungError` where it took too long).
 
         """
         # `_waited` raises rather than end: there is always a next message, or an error.
@@ -399,7 +402,7 @@ class Connection:
         )
         if message is None:
             error: str = f"{self.name} exited while answering `{method}`"
-            raise HintError(error)
+            raise ExitedError(error)
         return message
 
     def _waited(self, method: str) -> _Object | None:
@@ -459,7 +462,7 @@ class Connection:
         """Frame and send one message.
 
         Raises:
-          HintError: The server has exited.
+          ExitedError: The server has exited.
 
         """
         body: bytes = json.dumps(message).encode()
@@ -471,4 +474,4 @@ class Connection:
                 )
             except (OSError, ValueError) as error:  # it has gone, or its input was closed to stop it
                 failure: str = f"{self.name} exited: {error}"
-                raise HintError(failure) from error
+                raise ExitedError(failure) from error

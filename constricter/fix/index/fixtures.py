@@ -18,7 +18,7 @@ from typing import Final
 
 from constricter.fix.core.known import Guarded, Passed
 from constricter.fix.index import project
-from constricter.fix.index.modules import CONFTEST, SUFFIX, Index, Module
+from constricter.fix.index.modules import CONFTEST, SUFFIX, Index, Memo, Module
 
 KIND: Final = "fixture"  # the guessing mechanism (`FIX_KINDS`)
 _DOT: Final = "."
@@ -70,14 +70,22 @@ def _own(catalog: Index) -> list[Module]:
     """Find pytest's modules that define its own fixtures, among the installed ones `catalog` has.
 
     Returns:
-      Them, by name.
+      Them, by name: named once for the index, which every file asks.
 
     """
-    return [
-        module
-        for name, module in sorted(catalog.modules.items())
-        if module.installed and module.fixtures and name.partition(_DOT)[0] == _PYTEST
-    ]
+    memo: Memo | None = catalog.memo
+    names: tuple[str, ...] | None
+    if (names := None if memo is None else memo.pytest) is None:
+        names = tuple(
+            sorted(
+                name
+                for name, module in catalog.modules.items()
+                if module.installed and module.fixtures and name.partition(_DOT)[0] == _PYTEST
+            ),
+        )
+        if memo is not None:
+            memo.pytest = names
+    return [catalog.modules[name] for name in names]
 
 
 def needed(catalog: Index, name: str) -> set[str]:

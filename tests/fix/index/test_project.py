@@ -545,6 +545,7 @@ def named() -> None:
 
 def test_parameter(given) -> None:
     given = pytest.importorskip("pkg.impl")
+    called = named()
 """
 
 
@@ -565,7 +566,7 @@ def test_importorskip_binds_its_module_as_an_import_does(tmp_path: Path) -> None
         "m": ("pkg.impl", None),
         "again": ("pkg.impl", None),
     }
-    assert not {"other", "caught", "given"} & module.names.keys()
+    assert not {"other", "caught", "given", "called"} & module.names.keys()
     assert module.names["named"] == ("test_uses", "named")
     guarded: dict[str, Guarded] = {}
     assert project.calls(catalog, uses, guarded) == {
@@ -607,3 +608,57 @@ def test_a_type_from_a_skipped_module_is_imported_for_type_checking(tmp_path: Pa
             a: Thing = m.make()
         """,
     )
+
+
+DESCRIBED: Final = """
+from typing import Any, overload
+
+
+class Impl: ...
+
+
+class Plain:
+    def __get__(self, instance: Any, owner: Any) -> Impl:
+        return Impl()
+
+
+class Over:
+    @overload
+    def __get__(self, instance: None, owner: Any) -> "Over": ...
+    @overload
+    def __get__(self, instance: object, owner: Any) -> Impl: ...
+    def __get__(self, instance: Any, owner: Any) -> Any:
+        return self
+"""
+FRAME: Final = """
+from pkg.described import Over, Plain
+
+
+class Frame:
+    plain: Plain = Plain()
+    over: Over = Over()
+"""
+GUARD: Final = "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from pkg.described import Impl\n"
+FRAME_READ: Final = f"""\
+from pkg.frame import Frame
+{GUARD}
+
+def read(frame: Frame) -> None:
+    a: Impl = frame.plain
+    b = frame.over
+"""
+
+
+@JOBS
+@pytest.mark.parametrize("jobs", ["1", "2"])
+def test_another_files_descriptor_is_read_by_its_get(tmp_path: Path, jobs: str) -> None:
+    """An attribute of another file's descriptor class, read through an instance, is its `__get__`'s return.
+
+    Its import written for type checking; an overloaded `__get__`'s, which a checker picks among, is no fix.
+    """
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "described.py", DESCRIBED)
+    _ = _write(tmp_path / "pkg" / "frame.py", FRAME)
+    uses: Path = _write(tmp_path / "use.py", FRAME_READ.replace("a: Impl", "a").replace(GUARD, ""))
+    _ = cli.main(["--fix", "-q", "--select=LVA001", f"--jobs={jobs}", str(tmp_path)])
+    assert uses.read_text(encoding="utf-8") == FRAME_READ

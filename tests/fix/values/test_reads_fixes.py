@@ -198,6 +198,10 @@ def test_members() -> None:
                     other.missed = 1
                     self.ran.deep = 1
 
+                @property
+                def sized(self):
+                    self.size = 1
+
                 class Inner:
                     inner_only = 1
 
@@ -211,13 +215,57 @@ def test_members() -> None:
             """,
         ),
     )
-    found: dict[str, reads.Members] = reads.members(tree)
-    names: frozenset[str] = frozenset({"kept", "self_attr", "bare", "run", "ran", "Inner", "child"})
+    found: reads.Read = reads.members(tree)
+    names: frozenset[str] = frozenset(
+        {"kept", "self_attr", "bare", "run", "ran", "sized", "size", "Inner", "child"},
+    )
     assert found == {
         "Base": reads.Members(names, frozenset({"Child"})),
         "Child": reads.Members(names, frozenset({"Base"})),
         "Grandchild": reads.Members(names, frozenset({"Base", "Child"})),
     }
+    assert found["Base"] is found["Base"]  # worked out once
+
+
+def test_readable() -> None:
+    """A parameter is typed by its reads only where the function reads two names or more of it."""
+    tree: ast.Module = ast.parse(
+        textwrap.dedent(
+            """
+            class Machine:
+                def go(self): ...
+                def halt(self): ...
+
+
+            def both(p, q):
+                p.go()
+                p.halt()
+                q.go()
+
+
+            def nested(p):
+                def inner():
+                    p.go()
+                    p.halt()
+
+
+            def dunder(p):
+                p.__class__
+                p.go()
+            """,
+        ),
+    )
+    found: reads.Read = reads.members(tree)
+    functions: dict[str, ast.FunctionDef] = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    assert reads.readable(found, functions["both"], ["p", "q", "r"]) == {"p"}
+    assert reads.readable(found, functions["nested"], ["p"]) == {"p"}  # within its span
+    assert not reads.readable(found, functions["dunder"], ["p"])
+    # Classes that don't say what the module reads: each may be typed.
+    assert reads.readable({"Machine": found["Machine"]}, functions["dunder"], ["p"]) == {"p"}
+    classless: reads.Read = reads.members(ast.parse("def f(p):\n    p.a\n    p.b\n"))
+    assert not reads.readable(classless, functions["both"], ["p"])
 
 
 def test_typed_reads_only_named_members() -> None:

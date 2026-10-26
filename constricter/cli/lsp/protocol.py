@@ -43,6 +43,7 @@ class Server(NamedTuple):
     memory: int
     per_byte: int
     whole: bool = False
+    node: bool = False  # it runs on Node, whose heap its share of the memory caps (`--max-old-space-size`)
 
     def fitting(self, budget: int, size: int) -> int:
         """Count the servers that fit in `budget` bytes, for files of `size` bytes together.
@@ -60,7 +61,15 @@ MAX_SERVERS: Final = 4  # a checker's, at most: each holds its own copy of the p
 SERVERS: Final = {
     # One thread each: more servers check more at once (sqlalchemy's hints: 10.8s with one, 7.2s with four).
     # Each holds the whole program: 1.2 GB for sqlalchemy's 8 MB, 3.4 for pandas's 21.
-    "basedpyright": Server("basedpyright-langserver", ("--stdio",), MAX_SERVERS, 600 << 20, 130, whole=True),
+    "basedpyright": Server(
+        "basedpyright-langserver",
+        ("--stdio",),
+        MAX_SERVERS,
+        600 << 20,
+        130,
+        whole=True,
+        node=True,
+    ),
     # Parallel itself, and still quicker shared out: a hinted check of pandas takes 36s with one, 25s
     # with two, 22s with three and 21s with four (1.2 GB with one, 1.7 with two, 2.5 with four).
     "ty": Server("ty", ("server",), MAX_SERVERS, 420 << 20, 38),
@@ -129,6 +138,10 @@ class HintError(Exception):
 
 class HungError(HintError):
     """The type checker's server said nothing for too long."""
+
+
+class ExitedError(HintError):
+    """The type checker's server exited while it was being asked: past its heap's cap, say."""
 
 
 def write(stream: IO[bytes], data: bytes) -> None:

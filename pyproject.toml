@@ -70,7 +70,7 @@ mypyc = [
     "hatchling>=1.27,<2",
     "hatch-mypyc==0.16.0",
     "mypy==2.4.0",
-    "setuptools==84.0.0",
+    "setuptools==84.1.0",
 ]
 dev = [
     { include-group = "test" },
@@ -140,7 +140,7 @@ packages = ["constricter"]
 # Built from the sdist (`python -m build`), so nothing compiled lands beside the checkout's sources.
 [tool.hatch.build.targets.wheel.hooks.mypyc]
 enable-by-default = false
-dependencies = ["hatch-mypyc==0.16.0", "mypy==2.4.0", "setuptools==84.0.0"] # the `mypyc` group's
+dependencies = ["hatch-mypyc==0.16.0", "mypy==2.4.0", "setuptools==84.1.0"] # the `mypyc` group's
 include = ["/constricter/rules", "/constricter/fix"]
 options = { debug_level = "0" }
 
@@ -282,6 +282,10 @@ max-attributes = 9
 [tool.uv]
 cache-dir = "local/.uv-cache"
 required-version = ">=0.12.17"
+# Past a cutoff of a week's age for these alone, for their security fixes: filelock 4.2.1's three
+# CVEs (CVE-2026-112907, -112913, -112940), setuptools 84.1.0's GHSA-xmj3-9gf7-h52w. Gone once each
+# is a week old: filelock from 2026-10-24 16:48 UTC, setuptools from 2026-10-26 20:11 UTC.
+exclude-newer-package = { filelock = "2026-10-18T00:00:00Z", setuptools = "2026-10-20T00:00:00Z" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

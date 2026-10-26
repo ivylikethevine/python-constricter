@@ -6,12 +6,13 @@ whose arguments decide its type (`constricter.fix.libraries.overloads`), an inst
 """
 
 import ast
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.core.imports import added_dotted
 from constricter.fix.core.known import ImportPlan, Inference, Known
-from constricter.fix.core.signatures import AWAIT
+from constricter.fix.core.signatures import AWAIT, ReadSignature
 from constricter.fix.libraries import overloads, stdlib
 from constricter.rules.annotations import dotted, vague_fits
 
@@ -26,6 +27,13 @@ _WITH_DEFAULT: Final = 2  # `os.environ.get(key, default)`'s arguments
 _TYPING_ANY: Final = "typing.Any"
 _ARITHMETIC: Final = "arithmetic"  # the fix kind
 _NUMBERS: Final = frozenset({"bool", "int", "float", "complex"})  # whose operators take these alone
+_NAMED: Final = (ast.Name, ast.Attribute)  # what a module's variable is written as: `argv`, `sys.argv`
+# A method an entry reads an attribute of the return of: `m` in `C.m().x` (see `chains`).
+_CHAIN: Final = re.compile(r"\.([^.]*)(?=\(\)\.)")
+_Installed: TypeAlias = Mapping[str, tuple[ReadSignature, ...]]  # `LibraryNames.installed`
+_Chained: TypeAlias = tuple[_Installed, frozenset[str]]  # one, and the methods it has a chain of
+# The last one `chains` asked of, kept alive beside its methods (see `_chained`).
+_CHAINED: Final[list[_Chained]] = []
 _Operator: TypeAlias = type[ast.operator]
 _Operands: TypeAlias = tuple[Inference | None, Inference | None]
 # The method each binary operator calls on its left operand (see `library_operator`).
@@ -141,9 +149,7 @@ def library_variable(value: ast.expr, known: Known) -> Inference | None:
       too (`sys.modules`: a `dict[str, ModuleType]`); or `None`.
 
     """
-    name: str | None = (
-        stdlib.resolved(value, known.names.stdlib) if isinstance(value, ast.Name | ast.Attribute) else None
-    )
+    name: str | None = stdlib.resolved(value, known.names.stdlib) if isinstance(value, _NAMED) else None
     found: str | None = None if name is None else stdlib.VARIABLES.get(name)
     plan: ImportPlan | None = known.names.plan
     if found is not None and stdlib.is_class(found):
@@ -304,9 +310,25 @@ def chains(value: ast.expr, known: Known) -> bool:
     name: str
     match value:
         case ast.Call(func=ast.Attribute(attr=name)):
-            return any(f".{name}()." in entry for entry in known.names.installed)
+            return name in _chained(known.names.installed)
         case _:
             return False
+
+
+def _chained(installed: _Installed) -> frozenset[str]:
+    """Name the methods an entry of `installed` reads an attribute of the return of: `m`, by `C.m().x`.
+
+    Kept for the last `installed` asked of: a file's every assignment asks of the same one.
+
+    Returns:
+      Each name a `.` comes before and a `().` after, in an entry.
+
+    """
+    if not _CHAINED or _CHAINED[0][0] is not installed:
+        _CHAINED[:] = [
+            (installed, frozenset(found[1] for entry in installed for found in _CHAIN.finditer(entry))),
+        ]
+    return _CHAINED[0][1]
 
 
 def _any(text: str, known: Known, found: Inference) -> Inference | None:

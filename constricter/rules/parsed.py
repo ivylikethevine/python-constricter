@@ -2,7 +2,7 @@
 
 The CLI reads every file to index what it offers other files (`fix.index.project`), then checks each; both
 parse it the same way (`parse`), and the index's tree is kept (`keep`) for the check to take
-(`take`), which keeps it again once it's done: a file may be checked a second time. One `--fix`
+(`take`), which keeps it again where a second check may resume it (`checker.checked_source`). One `--fix`
 changed is freed (`take`, by the text it had). What's kept is capped (`budget`): a tree takes about
 26 bytes of memory for each byte of source, so past the cap a file is parsed again, as it always
 was. The cap is a quarter of the machine's memory (`sized`), and never under 1 GB of trees.

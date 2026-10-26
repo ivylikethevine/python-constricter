@@ -56,8 +56,8 @@ def _fake(monkeypatch: pytest.MonkeyPatch, *behaviours: str) -> None:
     monkeypatch.setattr(connection, "_POLL", 0.05)
 
 
-def _session_hints(tmp_path: Path, text: str) -> Hints:
-    """Ask a session for one file's hints.
+def _session_hints(tmp_path: Path, text: str, checker: str = _CHECKER) -> Hints:
+    """Ask a session of `checker` for one file's hints.
 
     Returns:
       Them.
@@ -65,7 +65,7 @@ def _session_hints(tmp_path: Path, text: str) -> Hints:
     """
     path: Path = tmp_path / "hinted.py"
     session: hints.Session
-    with hints.Session([_CHECKER], tmp_path) as session:
+    with hints.Session([checker], tmp_path) as session:
         return session.hints({path: text})[path][0]
 
 
@@ -168,11 +168,14 @@ def test_a_round_asked_before_is_read_from_the_store(monkeypatch: pytest.MonkeyP
         patched.setattr(hints, "_start", _no_servers)
         with pytest.raises(AssertionError):  # the settings changed: asked again
             _ = _session_hints(tmp_path, text)
-    with hints.Session([_CHECKER], tmp_path, kept=False) as session:
+    with hints.Session([_CHECKER], tmp_path, how=hints.Asking(kept=False)) as session:
         assert session.hints({path: text})[path][0] == first
     with monkeypatch.context() as patched:
         patched.setattr(hints, "_start", _no_servers)
-        with hints.Session([_CHECKER], tmp_path, kept=False) as session, pytest.raises(AssertionError):
+        with (
+            hints.Session([_CHECKER], tmp_path, how=hints.Asking(kept=False)) as session,
+            pytest.raises(AssertionError),
+        ):
             _ = session.hints({path: text})
 
 
@@ -191,11 +194,14 @@ def test_a_failing_server_stops_the_run(
     behaviour: str,
     message: str,
 ) -> None:
-    """An error, an exit or no answer at all is an error: silently hinting nothing would mislead."""
+    """An error, an exit or no answer at all is an error: silently hinting nothing would mislead.
+
+    A server whose heap isn't capped (not Node's): one that is may exit past its cap.
+    """
     _fake(monkeypatch, behaviour)
     monkeypatch.setattr(connection, "_TIMEOUT", _IMPATIENT)
     with pytest.raises(protocol.HintError, match=message):
-        _ = _session_hints(tmp_path, "x = 1  # hint: int\n")
+        _ = _session_hints(tmp_path, "x = 1  # hint: int\n", _TY)
 
 
 def test_a_file_a_restarted_server_hangs_on_again_has_no_hints(

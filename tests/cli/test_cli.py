@@ -1,6 +1,7 @@
 """The `constricter` command: file discovery, `# noqa`, output and exit status."""
 
 import concurrent.futures
+import gc
 import io
 import json
 import os
@@ -133,16 +134,22 @@ def test_unparsable_files_exit_2(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert out.endswith("Found 2 error(s) and 1 warning(s) in 2 file(s).\n")
 
 
+@pytest.mark.usefixtures("restored")
 def test_runs_as_a_module(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`python -m constricter` runs the command, and leaves with its status without the interpreter's exit."""
+    """`python -m constricter` runs the command, and leaves with its status without the interpreter's exit.
+
+    Nor is the collector turned on again for it (see `collecting.by_hand`).
+    """
     monkeypatch.setattr(sys, "argv", ["constricter", str(written(tmp_path / "clean.py", CLEAN))])
     left: list[int] = []
     monkeypatch.setattr(os, "_exit", left.append)
+    gc.enable()
     _ = runpy.run_module("constricter", run_name="__main__")
+    assert not gc.isenabled()
     assert left == [cli.EXIT_CLEAN]
     assert capsys.readouterr().out.startswith("Found 0")
 

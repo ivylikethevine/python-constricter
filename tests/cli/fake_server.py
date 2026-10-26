@@ -11,8 +11,10 @@ return-type one, which `--infer-with` ignores; `# round N: T` hints only from th
 the top of the file, and `F` inserted at line `L` (from 0), character `C`; `# located: T @ N=P`
 gives the label as parts, the name `N` in it with the file `P` it's defined in. A file with a line
 `# hang` is never answered; with `# hang once`, only by a server started after one has hung on it
-(the first creates the file `FAKE_SERVER_HUNG` names). Positions count UTF-16 code units, or UTF-8
-bytes with the `utf-8` behaviour.
+(the first creates the file `FAKE_SERVER_HUNG` names). A file with a line `# heap N` takes N MB:
+asked about it, the server exits, as Node does past its heap's cap, where `NODE_OPTIONS` caps it
+lower (`--max-old-space-size`). Positions count UTF-16 code units, or UTF-8 bytes with the `utf-8`
+behaviour.
 
 Behaviours: `utf-8` (it negotiates UTF-8 positions), `ask` (before answering `initialize`, it asks
 for its settings, registers a capability and asks something the client can't answer, and logs a
@@ -72,6 +74,8 @@ _MODIFIED: Final = "modified"
 _ALWAYS_MODIFIED: Final = "always-modified"
 _CANCELLED: Final = "cancelled"
 _HANG: Final = "# hang"
+_HEAP: Final = re.compile(r"# heap (\d+)")  # the MB a file takes
+_CAP: Final = re.compile(r"--max-old-space-size=(\d+)")  # the heap's cap, in MB
 _HANG_ONCE: Final = "# hang once"
 _CONTENT_MODIFIED: Final = -32801
 _REQUEST_CANCELLED: Final = -32800
@@ -264,7 +268,8 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
       Whether to go on serving: not after an `exit`.
 
     """
-    if _EXIT in _BEHAVIOURS:
+    uri: str = str(cast("_Object", cast("_Object", message["params"])["textDocument"])["uri"])
+    if _EXIT in _BEHAVIOURS or _past_cap(documents.texts[uri]):
         return False
     if _TRUNCATE in _BEHAVIOURS:  # half a message, then gone
         _ = sys.stdout.buffer.write(b'Content-Length: 100\r\n\r\n{"jsonrpc": "2.0", "id": ')
@@ -272,7 +277,6 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
         return False
     if _SLOW in _BEHAVIOURS:
         _work()
-    uri: str = str(cast("_Object", cast("_Object", message["params"])["textDocument"])["uri"])
     if _hangs(documents.texts[uri]):
         return True
     reply: _Object = {"jsonrpc": "2.0", "id": message["id"]}
@@ -302,6 +306,18 @@ def _work() -> None:
     for _ in range(10):
         _send({"jsonrpc": "2.0", "method": "$/progress", "params": {"token": 1, "value": {"kind": "report"}}})
         time.sleep(0.1)
+
+
+def _past_cap(text: str) -> bool:
+    """Decide whether a file takes more than the heap's cap, as its `# heap N` line says.
+
+    Returns:
+      Whether it does: never where nothing caps it.
+
+    """
+    needed: re.Match[str] | None = _HEAP.search(text)
+    caps: list[str] = _CAP.findall(os.environ.get("NODE_OPTIONS", ""))
+    return needed is not None and bool(caps) and int(needed[1]) > int(caps[-1])
 
 
 def _hangs(text: str) -> bool:

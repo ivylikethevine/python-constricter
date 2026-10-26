@@ -435,6 +435,9 @@ class Known:  # pylint: disable=too-many-instance-attributes
     # The decorators that give a function back, as the module spells them (see `rules.decorators`).
     vouched: frozenset[str] = frozenset()
     generic: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
+    # Its descriptors and other checked files' it names, as it spells them: what each one's `__get__`
+    # gives an instance's attribute of it, `None` where that can't be read (see `Module.descriptors`).
+    descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
 
     def is_builtin(self, name: str) -> bool:
         """Check that `name` still means the builtin: nothing in the module binds it (a parameter, say).
@@ -577,6 +580,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them
     # Those classes' type parameters and the members it takes of them (see `GenericClass`).
     generic: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
+    # Their descriptors, as it spells them, each with what an instance's attribute of it gives.
+    descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     callees: Mapping[str, Callee] = field(default_factory=dict[str, Callee])
     # See `Seeds`
     parameters: Mapping[str, Mapping[str, Passed]] = field(
@@ -676,6 +681,11 @@ class Outside:  # pylint: disable=too-many-instance-attributes
             ),
             guarded={name: found for name, found in guarded.items() if name not in clashing},
             generics=self.generics,
+            # A descriptor stays one: its instance's attribute is unread, not its class.
+            descriptors={
+                name: None if gives is None or roots(gives) & clashing else gives
+                for name, gives in self.descriptors.items()
+            },
             callees=self.callees,
             parameters=self.parameters,
             overloaded={

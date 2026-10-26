@@ -58,6 +58,7 @@ from constricter.rules.annotations import ABSTRACT, depth, dotted, length, vague
 KIND: Final = "checker"  # the fix kind, and what the guess rests on
 TRACED: Final = "traced"  # the same, for a traced run's types (`--infer-from`)
 KINDS: Final = frozenset({KIND, TRACED})
+AGREED: Final = "agreed"  # beside `KIND`: another checker hints the same type there (a set of its own)
 _LITERAL: Final = "Literal"
 _NONE: Final = "None"
 _BUILTINS: Final = frozenset(dir(builtins))
@@ -209,17 +210,32 @@ def hinted(text: str, known: Known, site: Site, offered: Offered | None = None) 
     return None
 
 
-def inference(annotation: str, found: Hints) -> Inference:
+def inference(annotation: str, found: Hints, agreeing: int = 1) -> Inference:
     """Make the fix a hint of `found` gives, as `hinted` wrote it.
+
+    `agreeing`: the checkers whose hints give it, `found`'s included; two or more, it rests on their
+    agreement too (`AGREED`).
 
     Returns:
       It.
 
     """
-    reason: str = (
-        "what a traced run bound it to" if found.kind == TRACED else f"{found.checker}'s inferred type"
-    )
-    return Inference(annotation, reason, frozenset({found.kind}))
+    if found.kind == TRACED:
+        return Inference(annotation, "what a traced run bound it to", frozenset({TRACED}))
+    if agreeing > 1:
+        reason: str = f"{found.checker}'s inferred type, which {agreeing} type checkers agree on"
+        return Inference(annotation, reason, frozenset({found.kind, AGREED}))
+    return Inference(annotation, f"{found.checker}'s inferred type", frozenset({found.kind}))
+
+
+def resting(found: Inference) -> frozenset[str]:
+    """Name what a hint's guess rests on, to trust (`unsafe-fix-select`): its checker, not their agreement.
+
+    Returns:
+      Its kinds less `AGREED`: `--unsafe-fix-select checker` trusts an agreed hint as it does any.
+
+    """
+    return found.kinds - {AGREED}
 
 
 def type_alias(known: Known, before: int) -> str | None:

@@ -9,6 +9,7 @@ from tests.corpus import catalog, planning, sizing
 from tests.corpus.run_config import Run, parse
 
 _ALL: Final = 16  # the machine's CPUs here
+_CHECK: Final = "check"  # the step a stage of its own runs alone
 
 
 def test_steps_that_cant_share_the_machine_are_planned_one_after_another() -> None:
@@ -23,6 +24,24 @@ def test_steps_that_cant_share_the_machine_are_planned_one_after_another() -> No
     ranks: dict[tuple[str, str], float] = planning.ranks(run, [catalog.load().entry("pip")], plan)
     assert set(ranks) == {("pip", "check"), ("pip", "fix-certain")}
     assert abs(ranks["pip", "check"] - ranks["pip", "fix-certain"]) >= before["pip", "check"].seconds
+
+
+def test_a_stage_plans_its_own_steps_alone() -> None:
+    """Another stage's start after this one's end: planned beside it, they'd order this one's wrongly."""
+    if importlib.util.find_spec("ortools") is None:
+        pytest.skip("OR-Tools isn't installed: the dev group has it")
+    run: Run = parse({"steps": {"fix": ["certain", "unsafe"]}})
+    before: dict[tuple[str, str], sizing.Before] = {
+        ("pip", name): sizing.Before(1.0, 10.0, sizing.GIB) for name in (_CHECK, "fix-certain")
+    }
+    plan: sizing.Plan = sizing.Plan(run, _ALL, 32 * sizing.GIB, before)
+    staged: dict[tuple[str, str], float] = planning.ranks(
+        run,
+        [catalog.load().entry("pip")],
+        plan,
+        lambda name: name == _CHECK,
+    )
+    assert set(staged) == {("pip", _CHECK)}
 
 
 def test_nothing_is_planned_without_ortools(monkeypatch: pytest.MonkeyPatch) -> None:

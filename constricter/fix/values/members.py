@@ -168,7 +168,7 @@ def _declared(
     if receiver in known.generic:  # its members' types depend on its arguments (see `_own_generic`)
         return None
     if (found := None if call is not None else known.classes.get(receiver, {}).get(name)) is not None:
-        return _attribute(found, receiver, name)
+        return _attribute(found, receiver, name, known)
     lineage: Lineage = known.class_side.lineage
     owner: str | None = _declarer(receiver, name, known) if call is None else lineage.definer(receiver, name)
     found = (known.methods if call is not None else known.classes).get(owner or "", {}).get(prefix + name)
@@ -176,7 +176,7 @@ def _declared(
         return None
     if call is None:
         # Another file's base's: not one typed as that class, which may be its property's `Self`.
-        return None if found == owner else _attribute(found, owner, name)
+        return None if found == owner else _attribute(found, owner, name, known)
     if owner != receiver and name in lineage.selfish.get(owner, ()):
         found = receiver
     elif owner != receiver and owner not in lineage.bound and found == owner:
@@ -184,17 +184,30 @@ def _declared(
     return Inference(found, _declared_return(owner, name), frozenset({_METHOD}))
 
 
-def _attribute(found: str, owner: str, name: str) -> Inference | None:
-    """Offer an attribute's declared type, less the `ClassVar` or `Final` around it.
+def _attribute(found: str, owner: str, name: str, known: Known) -> Inference | None:
+    """Offer an attribute's declared type, less the `ClassVar` or `Final` around it, read through an instance.
 
     The tables keep those: a subclass's variable a base declares a `ClassVar` isn't one to annotate.
+    A descriptor's is what its `__get__` gives (see `through_instance`).
 
     Returns:
-      The inference; `None` for a bare `Final`, which leaves the type to the value.
+      The inference; `None` for a bare `Final`, which leaves the type to the value, and for a
+      descriptor whose `__get__` can't be read.
 
     """
-    text: str = unqualified(parsed(found))
+    text: str | None = through_instance(unqualified(parsed(found)), known)
     return Inference(text, _annotation_of(owner, name), frozenset({_ATTRIBUTE})) if text else None
+
+
+def through_instance(annotation: str, known: Known) -> str | None:
+    """Read an attribute of type `annotation` through an instance: a descriptor's is its `__get__`'s return.
+
+    Returns:
+      The type: `annotation` but for a descriptor's (see `Known.descriptors`); `None` for one whose
+      `__get__` can't be read (overloaded, say), whose instance's attribute is no fix.
+
+    """
+    return known.descriptors.get(annotation, annotation)
 
 
 def awaited(value: ast.expr, known: Known, infer: Callable[[ast.expr], Inference | None]) -> Inference | None:
@@ -382,10 +395,10 @@ def _own_generic(receiver: str, name: str, call: ast.Call | None, known: Known) 
     and a plain class of the module's under one (`class Rows(Result[Row])`) has the base's.
 
     Returns:
-      Its inference, or `None`.
+      Its inference, or `None`: always, where the module names no generic class.
 
     """
-    return _generic_member(receiver, _Asked(name, call, receiver), known)
+    return _generic_member(receiver, _Asked(name, call, receiver), known) if known.generic else None
 
 
 class _Asked(NamedTuple):
@@ -421,7 +434,7 @@ def _generic_member(receiver: str, asked: _Asked, known: Known, depth: int = 0) 
         return None
     text: str = _deduplicated(overloads.substituted(found, {**bound, _SELF_TYPE: asked.own}))
     if asked.call is None:
-        return _attribute(text, asked.own, asked.name)
+        return _attribute(text, asked.own, asked.name, known)
     return Inference(text, _declared_return(asked.own, asked.name), frozenset({_METHOD}))
 
 

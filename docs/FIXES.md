@@ -104,7 +104,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   too (`Box().name`), and its fix kinds include the value's. A member of an `X | None` (or
   `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the access
   (`m = re.match(...)`, then `m.start()` is an `int`); not one `None` has too (`__class__`), nor a
-  union of more types;
+  union of more types. A class-body attribute declared as a descriptor (a checked file's class whose
+  body defines `__get__`) is, through an instance, what its `__get__` declares it returns; none
+  where `__get__` is overloaded, declares no return or names a type variable;
 - a method a class doesn't define, called on `self` or any value typed as the class: the base's that
   defines it, in Python's method resolution order, among the module's own classes (each defined
   once, not generic) and then a class another checked file defines (the CLI only), which ends the
@@ -513,10 +515,12 @@ module's functions import (`import decimal` in a function's body), or that it im
 some platforms have, imported that way (`import pwd`, `import winreg`), is no fix: a type checker on
 another platform finds no such class.
 
-An installed package that declares its types (a `py.typed` package, its stubs first; a stub package,
-`pkg-stubs`; a lone `mod.pyi`) is read the same way for the calls into it, and never fixed: found on
-this Python's path and the active virtual environment's (`VIRTUAL_ENV`), as the import system would
-(an untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
+An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
+package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
+for the calls into it, and never fixed: found on the active virtual environment's path
+(`VIRTUAL_ENV`), then this Python's, as PEP 561 says: a stub package first wherever it is (a
+partial one leaving a module it lacks to the package), then as the import system would (an
+untyped copy earlier on the path shadows a typed one later), with the modules it re-exports
 from, its private twin's too (`pytest`'s, from `_pytest`). `pydantic_core.to_json(x)` is a `bytes`.
 A type it names is written through a public module re-exporting it that the file imports
 (`typed.Thing`, after `import typed`), else imported from one (`from typed import Thing`, not
@@ -605,7 +609,7 @@ it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n`
 `self.n: int = n`, which a type checker reads as the attribute's declaration. Always a guess, since
 another file's subclass or outside code may store it too; none where a store isn't a plain
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
-function's).
+function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
 
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.
@@ -743,7 +747,10 @@ Python running constricter), asks it for the inlay hints over each file, and tur
 into a fix. Every such fix is a guess (fix kind `checker`), applied with `--unsafe-fixes`: a hint is
 the type of the value where the name is bound, which a later binding can widen, and the checker can
 be wrong about what the code means. Its guesses feed the rest of the scope as `--fix`'s own do (a
-copy of a hinted local is typed too, as a guess).
+copy of a hinted local is typed too, as a guess). With several checkers, the first named whose hint the file can use
+types the name; where a later one's usable hint gives the same type, the fix rests on their
+agreement too (kind `agreed`, beside `checker`): a set of its own, measured apart from one checker's
+alone (see [LIKELY.md](LIKELY.md)).
 
 A hint is used only as an annotation the file can hold:
 
@@ -841,7 +848,13 @@ program it checks (about 1.2 GB for SQLAlchemy, 3.4 GB for pandas), while `ty`'s
 hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in four, 2.8 GB and 4.2
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
-server a checker always gets.
+server a checker always gets. basedpyright's heap is capped at nine tenths of each server's share
+(`NODE_OPTIONS=--max-old-space-size`, never under 600 MB): near the cap it empties its caches, and
+past it exits, so it's restarted and asked about its files one at a time, as a hung one is, a file
+it exits on again left without hints (and asked about again in a later run, where a larger share
+may fit it). `--infer-in-turn` asks the checkers one after another, each one's
+servers shut down before the next one's start: the most they hold is the largest checker's, not
+their sum, for their starts again every round.
 
 A round's hints are kept in the cache (`~/.cache/constricter/hints`, two weeks from their last use)
 and read from there while nothing they rest on has changed: the checker's build, the text of every
@@ -999,6 +1012,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
 | `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
+| `agreed`        | with `checker`: a later type checker's hint gives the same type (a guess)                 |
 | `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)       |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                      |

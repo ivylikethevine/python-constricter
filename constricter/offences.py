@@ -20,6 +20,7 @@ UNUSED_UNION_MEMBER: Final = "LVA010"
 LONG_TUPLE: Final = "LVA011"
 CAN_BE_FINAL: Final = "LVA012"
 UNANNOTATED_ATTRIBUTE: Final = "LVA013"
+UNANNOTATED_RETURN: Final = "LVA014"
 MESSAGES: dict[str, str] = {
     UNANNOTATED: "local variable {name} is not annotated where it's first bound",
     UNTYPED_TARGET: "for/match variable {name} is untyped; declare it before the statement",
@@ -34,9 +35,10 @@ MESSAGES: dict[str, str] = {
     LONG_TUPLE: "the annotation of {name} lists a tuple of {detail} elements; name them (a NamedTuple)",
     CAN_BE_FINAL: "{name} is bound once and never rebound; it could be `Final`",
     UNANNOTATED_ATTRIBUTE: "instance attribute {name} is not annotated where it's first stored",
+    UNANNOTATED_RETURN: "function {name} declares no return type",
 }
 # Codes reported only when selected by their full code (`--select LVA012`), never by a prefix.
-OPT_IN: Final = frozenset({CAN_BE_FINAL, UNANNOTATED_ATTRIBUTE})
+OPT_IN: Final = frozenset({CAN_BE_FINAL, UNANNOTATED_ATTRIBUTE, UNANNOTATED_RETURN})
 # Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
 FIX_KINDS: dict[str, str] = {
     "literal": "a literal, an f-string, `not x`, or `x in y` or `x is y`",
@@ -74,6 +76,7 @@ FIX_KINDS: dict[str, str] = {
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",
     "checker": "a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)",
     "traced": "what a traced run bound the name to (`--infer-from`; a guess)",
+    "agreed": "with `checker`: a later type checker's hint gives the same type (a guess)",
     "open": "`open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)",
     "text": "a function overloaded on `str` against `bytes` alone: its `str` signature's (a guess)",
     "loop": "what a loop (or `sorted`, `list`, ...) iterates over",
@@ -212,6 +215,7 @@ _ERROR_FROM: dict[str, Level] = {
     LONG_TUPLE: Level.SUFFOCATE,
     CAN_BE_FINAL: Level.SUFFOCATE,
     UNANNOTATED_ATTRIBUTE: Level.STRICT,
+    UNANNOTATED_RETURN: Level.STRICT,
 }
 # Codes reported only from a level up (the rest are reported at every level).
 _REPORTED_FROM: dict[str, Level] = {
@@ -229,6 +233,7 @@ class Edit(StrEnum):
     ANNOTATE = "annotate"  # `: T` after the offence's name
     REPLACE = "replace"  # over an annotation already there (`Fix.span`: its start and end column)
     DECLARE = "declare"  # `name: T` on a line of its own before a statement (`Fix.span`: its line and column)
+    SIGNATURE = "signature"  # ` -> T` ending a `def`'s header (`Fix.span`: its `:`'s line and column)
 
 
 class Fix(NamedTuple):
@@ -427,6 +432,7 @@ class Checks(NamedTuple):
     fixes: FixPolicy = FixPolicy()  # which fixes `--fix` offers; it never changes what's reported
     final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
     attributes: bool = False  # look for LVA013 (opt-in)
+    returns: bool = False  # look for LVA014 (opt-in)
     min_python: tuple[int, int] | None = None
     vague: int = VAGUE
     plain_bases: tuple[str, ...] = PLAIN_BASES

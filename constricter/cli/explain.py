@@ -15,6 +15,7 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
+    UNANNOTATED_RETURN,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
     VAGUE_TYPE,
@@ -87,6 +88,12 @@ _WHY: Final = {
         "An instance attribute a plain class's method first stores (`self.count = 0`), declared\n"
         "nowhere in the class, is typed by whatever a type checker infers from that store. Annotate\n"
         "it there: `self.count: int = 0`. Off unless selected by its full code (`--extend-select LVA013`)."
+    ),
+    UNANNOTATED_RETURN: (
+        "A plain function with no return annotation leaves its callers to whatever a type checker\n"
+        "infers. `--fix` writes what its own `return`s give (`-> int`), or `-> None` for one that\n"
+        "returns nothing. Off unless selected by its full code (`--extend-select LVA014`): ruff's ANN201\n"
+        "reports it too; this is for the fix."
     ),
 }
 

@@ -14,10 +14,9 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
   as any other step;
 - a part of a suite's tests or type checks takes what its kind's largest measured part took (the
   released tests', say), or else its kind's whole step, its seconds shared among its parts;
-- the fix with every checker at once (`infer-union`) takes what its corpus's checkers' steps took
-  together, no more than `_UNITED` times the largest's memory (each server of a checker reads the
-  program again, but the steps' every margin isn't taken at once: 1.4 to 2.2 times on 0.4.0-rc.2's
-  mega run), the most CPUs any kept busy, and their seconds together;
+- the fix with every checker (`infer-union`), asked in turn (`--infer-in-turn`), takes the memory
+  the largest of its corpus's checkers' steps took, the most CPUs any kept busy, and their seconds
+  together;
 - a step that starts the type checkers (`infer-CHECKER`, a suite's type checks) keeps `_STEP_CPUS`
   busy and holds `_UNSIZED_SHARE` of the memory: their servers', of no known size;
 - any other keeps `_STEP_CPUS` busy (a check runs in bursts between stretches in one process) and
@@ -25,7 +24,13 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
 
 A step that wants all the memory there is, or more, runs alone. A suite's tests start once half the
 CPUs they want are free, or `_MOST_SHARE` of the machine's, and take as many more as are free then,
-with as many workers, and the memory for each (`Slots.take`). The timed steps (`timing`,
+with as many workers, and the memory for each (`Slots.take`). A step that asks the type checkers
+for hints starts with as few CPUs as hold, by their share of its memory, one server of each of its
+checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`,
+rounded up to whole servers of its largest checker, one a CPU held (`--infer-memory`,
+`Wanted.hinted`); with all it wants, the default. Only one whose last run took `_BRIEF` seconds at
+most starts short: it keeps what it started with, so a long one on one CPU would hold the run's end
+(stripe's basedpyright, 36 minutes). The timed steps (`timing`,
 `profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
 a time.
 
@@ -60,10 +65,13 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 from typing import Final, NamedTuple, Protocol, cast
 
+from constricter.cli import paths
+from constricter.cli.lsp import hints
+from constricter.cli.lsp.protocol import SERVERS, Server
 from constricter.rules import parsed
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
@@ -93,7 +101,6 @@ _MEMORY_SHARE: Final = 0.8  # of the memory free as the run starts: the rest is 
 _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are seconds apart
 _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
 _UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
-_UNITED: Final = 2  # times its largest checker's step's memory the unmeasured `infer-union` holds at most
 _UNION_STEP: Final = f"{INFER}{UNION}"
 _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
 _CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's kinds of step: their parts wait for the kind before
@@ -109,6 +116,11 @@ def testing(step: str) -> bool:
     return step in {TESTS, TRACED} or step.startswith(f"{TESTS}-")
 
 
+@cache
+def _size(root: Path) -> int:  # the bytes of a tree's Python files, which its checkers' servers load
+    return sum(path.stat().st_size for path in paths.python_files([root]))
+
+
 def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
     return next((kind for kind in _CHAIN if step == kind or step.startswith(f"{kind}-")), step)
 
@@ -116,6 +128,7 @@ def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
 _PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept for it
 _BESIDE: Final = 300.0  # but from a step expected to end within so many seconds
 _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
+_BRIEF: Final = 300.0  # the most seconds a hinted step's last run took for it to start short (`Plan._hinted`)
 TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
 _MEMINFO: Final = Path("/proc/meminfo")
@@ -643,6 +656,22 @@ class Wanted(NamedTuple):
     least: int = 0  # the fewest CPUs it may start with, `memory` shared out among them (`Slots.take`)
     seconds: float = 0.0  # its own, as its last run took: 0 where none did
     workers: int = 0  # a suite's tests' processes, where they're more than its CPUs (`started`)
+    servers: int = 0  # a hinted step's servers' bytes with every CPU it wants: `hints.MEMORY` (`hinted`)
+    server: int = 0  # one of its largest checker's servers, for the corpus's files (`Plan._hinted`)
+
+    def hinted(self, held: int) -> int:
+        """Size the memory a hinted step's servers may use, holding `held` CPUs (`--infer-memory`).
+
+        Returns:
+          Its `servers`' bytes, as many fewer as it holds fewer CPUs, but whole servers for each CPU
+          held, as many as all of them hold: a share between two leaves one, a CPU idle. 0 where it
+          holds all it wants, or isn't hinted: its checkers' own default.
+
+        """
+        if not self.servers or held >= self.cpus:
+            return 0
+        whole: int = min(held, self.servers // self.server) * self.server if self.server else 0
+        return max(self.servers * held // self.cpus, whole)
 
     def started(self, held: int) -> int:
         """Count the processes a suite's tests start with, holding `held` CPUs.
@@ -713,13 +742,44 @@ class Plan(NamedTuple):
         else:
             memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
         seconds: float = known.seconds if known is not None else 0.0
+        least: int
+        server: int
+        least, server = self._hinted(tree, step, cpus) if seconds <= _BRIEF else (0, 0)
         return Wanted(
             self.cpus if step in TIMED else cpus,
             memory,
             lasting,
             known is not None,
+            least=least,
             seconds=seconds,
+            servers=hints.MEMORY if least else 0,
+            server=server,
         )
+
+    def _hinted(self, tree: Tree, step: str, cpus: int) -> tuple[int, int]:
+        """Find the fewest of `cpus` a step asking the type checkers for hints may start with.
+
+        As few as hold, by their share of `hints.MEMORY`, one server of each of its checkers for
+        the tree's files (`Server.fitting`): fewer, and a server's heap would be capped under what
+        it holds.
+
+        Returns:
+          Them, and the bytes of one of its largest checker's servers; 0 and 0 for one asking none.
+
+        """
+        checkers: Sequence[str] = (
+            self.run.steps.infer
+            if step == _UNION_STEP
+            else (step.removeprefix(INFER),)
+            if step.startswith(INFER)
+            else ()
+        )
+        named: list[Server]
+        if not (named := [SERVERS[each] for each in checkers if each in SERVERS]):
+            return 0, 0
+        size: int = _size(tree.root)
+        one: int = max(server.memory + server.per_byte * size for server in named)
+        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY))), one
 
     def _testing(
         self,
@@ -791,7 +851,7 @@ class Plan(NamedTuple):
         return whole._replace(seconds=whole.seconds / max(1, len(parts(self.run, kind))))
 
     def _united(self, directory: str, step: str) -> Before | None:
-        """Estimate the fix with every checker at once (`infer-union`), unmeasured, by its checkers' steps.
+        """Estimate the fix with every checker (`infer-union`), unmeasured, by its checkers' steps.
 
         Returns:
           It (see the module docstring); `None` for another step, or where no checker's is measured.
@@ -804,11 +864,11 @@ class Plan(NamedTuple):
         ]
         if step != _UNION_STEP or not checkers:
             return None
-        memory: int = min(
-            sum(each.memory for each in checkers),
-            _UNITED * max(each.memory for each in checkers),
+        return Before(
+            max(each.cpus for each in checkers),
+            sum(each.seconds for each in checkers),
+            max(each.memory for each in checkers),  # one checker's servers at a time
         )
-        return Before(max(each.cpus for each in checkers), sum(each.seconds for each in checkers), memory)
 
     def fitted(self, wanted: Wanted, held: tuple[int, int], busy: float, peak: int) -> tuple[int, int]:
         """Fit a running step's hold to what it's seen to use: `busy` CPUs of late, `peak` bytes at most.

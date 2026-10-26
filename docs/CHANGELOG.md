@@ -4,8 +4,72 @@ Notable changes, newest first. Each release's full notes are generated from its 
 (grouped by `.github/release.yml`) on its
 [GitHub release](https://github.com/ivylikethevine/python-constricter/releases).
 
-## Unreleased
+## 0.4.3
 
+- LVA014 (opt-in: `--extend-select LVA014`, pylint's `missing-return-type`): a plain function or
+  method with no return annotation, as ruff's ANN201 reports it, fixed with `-> T` by what its own
+  `return`s give, or `-> None` for one that returns nothing; a method's a guess.
+- With several `--infer-with` checkers, a hint a later checker's usable hint agrees with rests on
+  their agreement too: fix kind `agreed`, beside `checker`, a set of its own for `--likely`'s bars
+  to measure (`--fix-ignore agreed` leaves it a plain `checker` fix).
+- The corpus runner's tests table names the tests a fixed run skipped where the tests as released
+  ran them, and those it ran they skipped, from both runs' JUnit reports; and a new table holds the
+  bindings with neither a fix nor a guess to the types the traced tests saw them hold, by shape.
+- `--fix` offers no fix for a method returning its receiver's own type (a `Self`) called on a
+  receiver an `isinstance` narrows: `node.copy()` in `if isinstance(node, (Reference, Title)):` is
+  the narrowed classes', not the parameter's `Node`, so a list of it given where `Element`s are
+  wanted was a type error (sphinx's `toctree.py`, with `docutils-stubs`).
+- The corpus runner fails a fix or census step whose constricter ended at an exception, its
+  traceback in the step's log, where it recorded an empty fix (pandas's `infer-basedpyright` at a
+  `KeyError`). A hinted step starts with fewer CPUs than it wants once those hold one server of each
+  of its checkers, its servers given that share of the memory, rounded up to as many whole servers
+  as its CPUs and the default hold (`--infer-memory`); given all it wants, they take their default
+  as before. Only one whose last run took 5 minutes at most starts short: it keeps those CPUs to
+  its end. sqlalchemy's tests run a file's tests on one worker in order (`--dist loadfile`):
+  its harness carries a case's requirement onto the later cases of the same test function, so
+  its skip count changed with xdist's order.
+- `--infer-with basedpyright` caps each server's Node heap at nine tenths of its share of
+  `--infer-memory` (`--max-old-space-size`; Node's own cap was 4.2 GB whatever the share): near it
+  basedpyright empties its caches, and a server that exits past it is restarted and asked about its
+  files one at a time, as a hung one is.
+- `--infer-with` no longer stops with a `KeyError` on a file a checker hung on in an earlier run
+  (left without hints from the start), nor, with `--infer-in-turn`, on a round with no file to ask
+  a checker about.
+- `--infer-in-turn` asks `--infer-with`'s checkers one after another, each one's servers shut down
+  before the next one's start: the most memory held is the largest checker's, not their sum. The
+  corpus runner's `infer-union` asks in turn, and an unmeasured one is sized by its largest
+  checker's step.
+- A check holds less memory: a file's tree and finished check are kept for a second round only where
+  its callers may type an open function's parameters, the one second check that resumes the first;
+  any other is parsed again. A module's own node no longer keeps its tree alive for good. On the
+  standard library in one process, 2.65 GiB at the peak to 2.03, at 41.2s for 40.5.
+- `uv.lock` moves filelock to 4.2.1 and setuptools to 84.1.0 (the `mypyc` group and the compiled
+  build's hook), past CVE-2026-112907, CVE-2026-112913, CVE-2026-112940 and GHSA-xmj3-9gf7-h52w,
+  each excepted from a week's age (`[tool.uv] exclude-newer-package`) until it's that old.
+- `--fix` finds an installed package's types as PEP 561 orders them: the checked code's environment
+  (`VIRTUAL_ENV`) before constricter's own, a stub package (`pkg-stubs`) first wherever it is, a
+  partial one leaving a module it lacks to the package, and a namespace package's typed
+  subpackage (`google/auth/py.typed`). An untyped copy in constricter's own environment hid the
+  checked code's stubs: on the corpus runs, sphinx's `docutils-stubs` and the `pandas-stubs` of
+  altair, narwhals and seaborn.
+- A check is faster, with the same offences and fixes: the standard library's in one process in
+  40.6s from 50.9s, pandas's in 46.9s from 57.5s (the means of 3 runs, 16CPU/60GB). What changed:
+  - The members of a module's classes are worked out only where a function reads two names or more
+    of an unannotated parameter, from the module's shared walk; a function's own nodes are walked
+    only where a parameter can be given a type; a class's variables are typed only where its body
+    has a plain `name = value`; a generic class's members are looked up only where the module names
+    one; each repeated overload pick is written once.
+  - A function's body is walked once for the passes that walk it again (the last 1,024 whole walks
+    of a body's own nodes are kept, with their parents where a pass asks for them); a module's
+    classes are sorted once and each mapped once to the classes above it.
+  - What only `pytest` can give is looked for only in a module that imports it (the names
+    `pytest.importorskip` binds, the packages it may skip, pytest's own fixtures' modules, found once
+    for the index); whether a function takes an attribute its class hasn't is worked out only for
+    the classes it's asked of; an installed package's entries reading a call's return
+    (`cap.readouterr().out`) are looked up in the methods named once for the file, not scanned at
+    each assignment; and smaller passes skip what can't apply.
+  - The `constricter` command no longer turns the collector back on as it leaves, which looked
+    through everything the run left alive at once: about 3s of pandas's check.
 - `--format=json` says why a call bound with no fix has none, as each result's `unfixed`: a
   receiver of no known type, a function declaring no return, a standard-library or imported
   function whose arguments don't decide its type, a type vaguer than `vague` allows, ... (listed in
@@ -37,6 +101,21 @@ Notable changes, newest first. Each release's full notes are generated from its 
   ended at the same column there. On the 0.4.0-rc.3 mega run pandas's `result_kwargs = {}` took
   the `np.ndarray[...]` hinted for `update_deltas` four lines below, and `new_levels = []` an `int`.
   The hints now move past the lines the file's earlier checks added.
+- `python -m constricter.trace` runs code as `python -c` does (`-c CODE [ARG ...]`), and a process
+  the run forks records on and writes its trace where the run reads it as it ends:
+  `multiprocessing`'s `fork` workers (Django's `runtests.py --parallel`) and a plain `os.fork()`.
+  The corpus runner traces a suite run by `python -c` that way, on its workers: Django's suite,
+  traced in one process before. A suite's parts are traced side by side, as its tests run, each
+  writing a trace of its own merged in the parts' order: celery's 13, one after another before.
+- The corpus runner gives every suite's processes `MPLBACKEND=Agg`: a plotting test opens no window
+  on the display of the machine running it.
+- A corpus run can be made in stages, each at its own time into one folder: `--stage NAME` runs
+  that stage's steps alone (built in: `fixes`, `traced`, `tests`, `timed`; a run file's `[stages]`
+  regroups them by step name or pattern), and `--resume FOLDER --stage NAME` the next. A step
+  whose needs are a stage still to run is left for it; the report names the stages left, and the
+  run is published once every stage is in. A stage on another commit, other uncommitted changes or
+  another run file than the folder's is refused unless `--join-anyway`, and the report gives each
+  stage's commit.
 - A run file's `[run] options` (`["--vague", "0"]`) go to every constricter command of the corpus
   run, for a run at a setting other than the default.
 - The corpus runner reads a suite's failed tests from pytest's JUnit report, a file for each part
@@ -63,6 +142,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
   leave it, as a binding of it is: `self.index = index` after `if not isinstance(index,
 DatetimeIndex): raise` is a `DatetimeIndex`, not the parameter's `DatetimeIndex | None`. On
   pandas with LVA013, `self.index`'s fix set off 5 of mypy's errors.
+- `--fix --unsafe-fixes` checks a file again once LVA013's fix declares an attribute in it: a
+  method of a class above it that reads the attribute (`flag = self._opts.flag`) was checked before
+  the stores were seen. On litestar with LVA013, a second pass had 3 more lines to write.
+- LVA013's fix never writes a generic class without its arguments, as a binding's fix doesn't:
+  `self._dict = util.PopulateDict(self._access_cls)` has none, where it was declared
+  `util.PopulateDict`, an error to mypy (`type-arg`) on sqlalchemy.
+- `--fix` reads a class-body attribute whose class is a descriptor (its body defines `__get__`)
+  through an instance as `__get__` returns: `impl = self.implementation`, declared
+  `implementation: Plain = Plain()`, takes `Plain.__get__`'s declared return, the class's own or
+  another checked file's. Where `__get__` is overloaded, declares no return or names a type
+  variable, there's no fix: it was typed as the descriptor class, which no checker reads it as
+  (narwhals's `_Implementation`, whose 16 overloads pick by the instance's type).
 - The corpus runs' witness takes any value that reads, writes and closes for `typing.IO`'s
   classes, which nothing is an instance of; reads a `StringIO` or `BytesIO` where `io`'s or
   `typing`'s file class is named as a test's stand-in, saying nothing of the fix; and reads a

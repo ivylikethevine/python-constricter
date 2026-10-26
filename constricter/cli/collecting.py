@@ -23,8 +23,11 @@ _YOUNGER: Final = not sysconfig.get_config_var("Py_GIL_DISABLED")
 
 
 @contextlib.contextmanager
-def by_hand() -> Generator[None]:
+def by_hand(*, leaving: bool = False) -> Generator[None]:
     """Turn automatic collection off for the command's run, and back as it was after.
+
+    Not for a process that leaves once the run's done (`leaving`): turned on again, the collector
+    looked through all the run left alive, at once (a check of pandas: 3.4s, for nothing).
 
     Yields:
       Nothing: the run.
@@ -35,9 +38,9 @@ def by_hand() -> Generator[None]:
     try:
         yield
     finally:
-        if _FREEZES:
+        if _FREEZES and not leaving:
             gc.unfreeze()
-        if was:
+        if was and not leaving:
             gc.enable()
 
 

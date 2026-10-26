@@ -168,6 +168,51 @@ def test_a_dict_view_on_a_chained_receiver_is_certain() -> None:
     ]
 
 
+DESCRIPTORS: str = """
+from typing import Any, overload
+
+
+class Plain:
+  def __get__(self, instance: Any, owner: Any) -> int: ...
+
+
+class Over:
+  @overload
+  def __get__(self, instance: None, owner: Any) -> "Over": ...
+  @overload
+  def __get__(self, instance: object, owner: Any) -> str: ...
+  def __get__(self, instance: Any, owner: Any) -> Any: ...
+
+
+class Undeclared:
+  def __get__(self, instance, owner):
+    return 1
+
+
+class Frame:
+  plain: Plain = Plain()
+  over: Over = Over()
+  undeclared: Undeclared = Undeclared()
+
+  def read(self) -> None:
+    a = self.plain
+    b = self.over
+    c = self.undeclared
+"""
+
+
+def test_a_descriptor_is_read_through_an_instance_by_its_get() -> None:
+    """A class-body attribute of a descriptor class is what its `__get__` returns; none where that's unread.
+
+    Overloaded or undeclared, which return a checker picks isn't known here: no fix, not the class.
+    """
+    assert [(o.name, o.fix, o.unsafe) for o in check_source(DESCRIPTORS) if len(o.name) == 1] == [
+        ("a", "int", False),
+        ("b", None, False),
+        ("c", None, False),
+    ]
+
+
 def test_a_variable_a_base_declares_a_classvar_is_left_alone() -> None:
     """Annotated in the subclass, it would be an instance variable over the base's class variable."""
     source: str = _CLASSES + 'class Sub(Index):\n  kind = "sub"\n  other = "new"\n'

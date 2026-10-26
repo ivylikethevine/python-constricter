@@ -26,6 +26,7 @@ _Placed: TypeAlias = tuple[_Place, Offence | None]
 _IMPORTS: Final = 2
 _INLINE: Final = 1
 _DECLARATION: Final = 0
+_HEADER_END: Final = b":"  # where a `def`'s header ends, as `Edit.SIGNATURE`'s span names it
 
 
 class Replacement(NamedTuple):
@@ -57,7 +58,8 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
     An `Edit.ANNOTATE` adds `: T` after the name; an `Edit.REPLACE` writes over the annotation
     between its span's columns on the offence's line (an empty annotation deletes it); an
     `Edit.DECLARE` inserts `name: T` on a line of its own before the statement its span names, at
-    that statement's indentation. A declaration's `drop` is a second edit: see `dropped`.
+    that statement's indentation; an `Edit.SIGNATURE` adds ` -> T` before the `:` its span names,
+    which ends a `def`'s header. A declaration's `drop` is a second edit: see `dropped`.
 
     Returns:
       The edit; none without a fix, or when its columns don't land on UTF-8 character boundaries in
@@ -75,6 +77,11 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
             ending: str = statement.removeprefix(statement.rstrip("\r\n")) or "\n"
             mark: str = f"  {MARK}" if fix.kinds & WIDEN_KINDS else ""
             return Replacement(fix.span[0], "", "", f"{indent}{offence.name}: {fix.annotation}{mark}{ending}")
+        if fix.edit is Edit.SIGNATURE:
+            header: bytes = lines[fix.span[0] - 1].encode()
+            if header[fix.span[1] : fix.span[1] + 1] != _HEADER_END:  # not the header's end: left unmade
+                return None
+            return Replacement(fix.span[0], header[: fix.span[1]].decode(), "", f" -> {fix.annotation}")
         raw: bytes = lines[offence.line - 1].encode()
         start: int = fix.span[0] if fix.edit is Edit.REPLACE else _name_end(raw, offence)
         end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
@@ -307,10 +314,12 @@ def _position(offence: Offence) -> _Place:
     """Place an offence's edit in the file, to order the edits by (see `_Place`).
 
     Returns:
-      Its place: a declaration's line is the statement's it goes before.
+      Its place: a declaration's line is the statement's it goes before, a signature's its `:`.
 
     """
     fix: Fix | None = offence.edit
     if fix is not None and fix.edit is Edit.DECLARE:
         return fix.span[0], _DECLARATION, offence.line, offence.col
+    if fix is not None and fix.edit is Edit.SIGNATURE:
+        return fix.span[0], _INLINE, *fix.span
     return offence.line, _INLINE, offence.line, offence.col

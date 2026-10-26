@@ -12,6 +12,7 @@ from constricter.offences import (
     MAX_LENGTH,
     NESTING,
     UNANNOTATED_ATTRIBUTE,
+    UNANNOTATED_RETURN,
     VAGUE,
     Checks,
     Level,
@@ -41,6 +42,7 @@ class ConstricterChecker:
     narrower: ClassVar[tuple[Narrower, ...]] = ()
     can_be_final: ClassVar[bool] = False  # report LVA012
     attributes: ClassVar[bool] = False  # report LVA013
+    returns: ClassVar[bool] = False  # report LVA014
 
     def __init__(self, tree: ast.Module, lines: Sequence[str]) -> None:
         """Take the file flake8 parsed, and its lines."""
@@ -114,6 +116,7 @@ class ConstricterChecker:
         ]
         cls.can_be_final = CAN_BE_FINAL in chosen
         cls.attributes = UNANNOTATED_ATTRIBUTE in chosen
+        cls.returns = UNANNOTATED_RETURN in chosen
 
     def run(self) -> Iterator[tuple[int, int, str, type["ConstricterChecker"]]]:
         """Check the file.
@@ -133,6 +136,7 @@ class ConstricterChecker:
             narrower=self.narrower,
             final=self.can_be_final,
             attributes=self.attributes,
+            returns=self.returns,
         )
         offences: list[Offence] = (
             check_source(source, checks=checks)

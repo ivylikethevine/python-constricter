@@ -82,8 +82,31 @@ goes under `local/scratch/`.
   `tests/corpus/runs/compiled.toml`.
 - `version_diff.py FOLDER [A B]`: two versions' findings and fixes in one run, corpus by corpus, and
   how much faster one is.
-- `schedule_solve.py FOLDER... [--given] [--seconds N]`: the shortest schedule of finished runs'
-  steps by OR-Tools' CP-SAT, and the least it proves any can take; `uv run --with ortools` runs it.
+- `order_edges.py CORPUS` (with the corpus's `VIRTUAL_ENV`): the check order's edges by a method's
+  name alone (`loose.needs`), against those only a class the file names (or a base of it in its
+  module) gives, and none: each graph's edges, largest component and longest chain, in files and
+  bytes.
+- `schedule_solve.py FOLDER... [--given] [--seconds N] [--staged [--pauses SECONDS]]`: the shortest
+  schedule of finished runs' steps by OR-Tools' CP-SAT, and the least it proves any can take;
+  `--staged` holds the runner's stages one after another, as a run in stages does.
+- `mutation.py [--children N] [--only PATTERN ...] [--keep]`: mutmut over `constricter/` on a
+  worktree of HEAD under `local/mutation/`, the unit tests run for each mutant, the survivors
+  written to `local/mutation/survivors-<date>.txt`. Hours of every CPU for a full pass; outside the
+  sandbox (its workers fork).
+- `peak_phases.py PATH [--no-index-trees] [--trace-check] [--trim] [-- OPTIONS]`, from the checkout: a
+  one-process check's memory over time by phase (the index, its settling, each check round), with
+  the index keeping no trees, what the first round still holds as it ends (tracemalloc), or, with
+  `--trim` under `PYTHONMALLOC=malloc`, glibc's `malloc_trim` after each file's check.
+- `stage_compare.py BEFORE AFTER [--stage tests] [--top N]`: one stage's steps in two runs, from
+  their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
+  and the steps whose seconds or waits changed most.
+- `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
+[--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of its checkout, only the
+  signatures it adds taken (`righttyper_added.py`), then `--fix` and the check on a plain copy and
+  on that one: the fixes each got and the errors. Outside the sandbox.
+- `righttyper_added.py ORIGINAL ANNOTATED OUT`: of RightTyper's rewritten source, only the
+  parameter and return annotations the original lacked, with the imports they need under
+  `TYPE_CHECKING`, onto the original's text: its signatures measured without its overwrites.
 - `dmypy_suggest.py [CORPUS ...] [--sample N] [--daemons K]`: `dmypy suggest`'s signatures for a
   sample of each corpus's unannotated functions, written into a copy by daemons that start while the
   memory holds them, and `--fix`'s fixes and basedpyright's errors on it against a plain copy's. It

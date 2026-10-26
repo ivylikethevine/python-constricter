@@ -20,7 +20,7 @@ from constricter.empty import Empty
 from constricter.fix.core.known import Callee, Hints, Outside
 from constricter.fix.index import callers, decorated, loose, plain, project
 from constricter.fix.index.stubs import installed
-from constricter.offences import Fix
+from constricter.offences import UNANNOTATED_ATTRIBUTE, Fix
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
     from constricter.cli.lsp import hints
@@ -153,8 +153,10 @@ def _unsettled(run: FileRun, session: "hints.Session | None", guesses: Guesses) 
     Returns:
       Whether it fixed anything, with a type checker's hints: its new annotations change them.
       Without, whether it made a fix the scope's check comes to late (`_LATE_KINDS`): what's bound
-      to such a name's value was read before its type was known. Or, with `--likely` alone, wrote a
-      guess: what rests on it and on no other guess is certain once it's declared.
+      to such a name's value was read before its type was known. Or declared an attribute (LVA013),
+      which a method above its class's may have read before its stores were seen. Or, with
+      `--likely` alone, wrote a guess: what rests on it and on no other guess is certain once it's
+      declared.
 
     """
     checked: CheckRun = cast("CheckRun", run)
@@ -162,7 +164,11 @@ def _unsettled(run: FileRun, session: "hints.Session | None", guesses: Guesses) 
         session is not None
         or any(
             isinstance(made.offence.edit, Fix)
-            and (made.offence.edit.kinds & _LATE_KINDS or (guesses is Guesses.LIKELY and made.offence.unsafe))
+            and (
+                made.offence.edit.kinds & _LATE_KINDS
+                or made.offence.code == UNANNOTATED_ATTRIBUTE
+                or (guesses is Guesses.LIKELY and made.offence.unsafe)
+            )
             for made in checked.made
         )
     )

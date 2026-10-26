@@ -11,11 +11,14 @@ than one type.
 
 import ast
 import builtins
-from collections.abc import Iterable, Mapping, Sequence
-from typing import Final, NamedTuple, cast
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.known import Classes
 from constricter.fix.libraries import stdlib
+from constricter.overrides import override
+from constricter.rules.syntax import FunctionDef, Start, within
+from constricter.rules.walked import of_type
 
 KIND: Final = "reads"  # the guessing mechanism (`FIX_KINDS`)
 _LEAST: Final = 2  # names read: one alone (`p.name`) fits too many classes
@@ -27,6 +30,9 @@ _BUILTIN_MEMBERS: Final = tuple(
     for kind in cast("Iterable[object]", vars(builtins).values())
     if isinstance(kind, type)
 )
+# Where a module takes a name's attributes, in source order, and each attribute's name.
+_Spans: TypeAlias = tuple[list[Start], list[str]]
+_Taken: TypeAlias = tuple[Start, str]  # where one attribute is taken, and its name
 
 
 class Members(NamedTuple):
@@ -36,11 +42,95 @@ class Members(NamedTuple):
     ancestors: frozenset[str]
 
 
+class Read(Mapping[str, Members]):
+    """The members of a module's classes (see `members`), each class's worked out when it's first asked for.
+
+    Only a function reading two names or more of a parameter asks (see `readable`): most modules
+    have none. The attributes the module takes are kept to tell which, and to find what its methods
+    assign to their first parameter's without walking them.
+    """
+
+    def __init__(
+        self,
+        imported: dict[str, Members],
+        own: dict[str, ast.ClassDef],
+        attributes: Sequence[ast.Attribute],
+    ) -> None:
+        """Keep the imported classes' members, the module's own classes, and every attribute it takes."""
+        self.imported: dict[str, Members] = imported
+        self.own: dict[str, ast.ClassDef] = own
+        self.attributes: Sequence[ast.Attribute] = attributes
+        self.names: tuple[str, ...] = tuple(dict.fromkeys([*imported, *own]))
+        self.worked: dict[str, Members] = {}
+        self.read: dict[str, _Spans] | None = None
+        self.stored: dict[str, _Spans] | None = None
+
+    @override
+    def __getitem__(self, key: str) -> Members:
+        """Find a class's members, as `members` names them.
+
+        Returns:
+          They; a `KeyError` for a class the module has none of.
+
+        """
+        if key not in self.own:
+            return self.imported[key]
+        found: Members | None
+        if (found := self.worked.get(key)) is None:
+            if self.stored is None:
+                self.stored = _by_name(self.attributes, stored=True)
+            seen: set[str] = set()
+            names: set[str] = _inherited(key, self.own, seen, self.stored)
+            found = self.worked[key] = Members(frozenset(names), frozenset(seen - {key}))
+        return found
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        """Name the classes.
+
+        Returns:
+          An iterator of their names.
+
+        """
+        return iter(self.names)
+
+    @override
+    def __len__(self) -> int:
+        """Count the classes.
+
+        Returns:
+          How many.
+
+        """
+        return len(self.names)
+
+    def readable(self, function: FunctionDef, names: Iterable[str]) -> frozenset[str]:
+        """Name those of `names` the module reads two names or more of within `function`'s span.
+
+        Its nested functions' reads count too: no fewer than its own nodes read (see `typed`).
+
+        Returns:
+          Them.
+
+        """
+        if self.read is None:
+            self.read = _by_name(self.attributes, stored=False)
+        found: set[str] = set()
+        name: str
+        for name in names:
+            spans: _Spans | None
+            if (spans := self.read.get(name)) is not None and len(
+                set(spans[1][within(spans[0], function)]),
+            ) >= _LEAST:
+                found.add(name)
+        return frozenset(found)
+
+
 def members(
     tree: ast.Module,
     imported: Classes | None = None,
     same: Iterable[frozenset[str]] = (),
-) -> dict[str, Members]:
+) -> Read:
     """Name the members of each class `tree` defines once at its top level, and of those it imports.
 
     A class's own: what its body binds (methods, variables, nested classes), what its methods assign
@@ -59,12 +149,46 @@ def members(
         if isinstance(stmt, ast.ClassDef):
             defined.setdefault(stmt.name, []).append(stmt)
     own: dict[str, ast.ClassDef] = {name: nodes[0] for name, nodes in defined.items() if len(nodes) == 1}
+    # A module with no class types no parameter: its attributes needn't be kept.
+    attributes: Sequence[ast.AST] = of_type(tree, ast.Attribute) if found or own else ()
+    return Read(found, own, cast("Sequence[ast.Attribute]", attributes))
+
+
+def readable(classes: Mapping[str, Members], function: FunctionDef, names: Iterable[str]) -> frozenset[str]:
+    """Name those of `names` that `typed` may type in `function`: each it reads two names or more of.
+
+    `classes`: the module's (see `members`); where they don't say what it reads, each of `names`.
+
+    Returns:
+      Them; none where the module has no class.
+
+    """
+    if not classes:
+        return frozenset()
+    return classes.readable(function, names) if isinstance(classes, Read) else frozenset(names)
+
+
+def _by_name(attributes: Iterable[ast.Attribute], *, stored: bool) -> dict[str, _Spans]:
+    """Find where the module takes each name's attributes (`p.x`): any but a dunder, or those it assigns.
+
+    Returns:
+      Each name's, in source order: where each starts, and its name.
+
+    """
+    found: dict[str, list[_Taken]] = {}
+    node: ast.Attribute
+    for node in attributes:
+        if isinstance(node.value, ast.Name) and (
+            isinstance(node.ctx, ast.Store) if stored else not node.attr.startswith(_DUNDER)
+        ):
+            found.setdefault(node.value.id, []).append(((node.lineno, node.col_offset), node.attr))
+    spans: dict[str, _Spans] = {}
     name: str
-    for name in own:
-        seen: set[str] = set()
-        names: set[str] = _inherited(name, own, seen)
-        found[name] = Members(frozenset(names), frozenset(seen - {name}))
-    return found
+    each: list[_Taken]
+    for name, each in found.items():
+        each.sort()
+        spans[name] = ([start for start, _ in each], [attr for _, attr in each])
+    return spans
 
 
 def _imported(imported: Classes, same: Iterable[frozenset[str]]) -> dict[str, Members]:
@@ -88,8 +212,15 @@ def _imported(imported: Classes, same: Iterable[frozenset[str]]) -> dict[str, Me
     }
 
 
-def _inherited(name: str, own: Mapping[str, ast.ClassDef], seen: set[str]) -> set[str]:
+def _inherited(
+    name: str,
+    own: Mapping[str, ast.ClassDef],
+    seen: set[str],
+    stored: Mapping[str, _Spans],
+) -> set[str]:
     """Name the members of the class `own` has as `name`, with those of its bases `own` has too.
+
+    `stored`: where the module assigns each name's attributes (see `_by_name`).
 
     Returns:
       Them; nothing for a class `seen` already (a cycle of bases).
@@ -99,16 +230,18 @@ def _inherited(name: str, own: Mapping[str, ast.ClassDef], seen: set[str]) -> se
         return set()
     seen.add(name)
     node: ast.ClassDef = own[name]
-    found: set[str] = _own(node)
+    found: set[str] = _own(node, stored)
     base: ast.expr
     for base in node.bases:
         if isinstance(base, ast.Name) and base.id in own:
-            found |= _inherited(base.id, own, seen)
+            found |= _inherited(base.id, own, seen, stored)
     return found
 
 
-def _own(node: ast.ClassDef) -> set[str]:
+def _own(node: ast.ClassDef, stored: Mapping[str, _Spans]) -> set[str]:
     """Name what a class's own body binds, and what its methods assign to `self`'s attributes.
+
+    `stored`: where the module assigns each name's attributes (see `_by_name`).
 
     Returns:
       Them.
@@ -123,7 +256,7 @@ def _own(node: ast.ClassDef) -> set[str]:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
                 found.add(name)
                 if not isinstance(stmt, ast.ClassDef):
-                    found |= _assigned(stmt)
+                    found |= _assigned(stmt, stored)
             case ast.Assign(targets=targets):
                 found.update(target.id for target in targets if isinstance(target, ast.Name))
             case ast.AnnAssign(target=ast.Name(id=name)):
@@ -133,25 +266,29 @@ def _own(node: ast.ClassDef) -> set[str]:
     return found
 
 
-def _assigned(method: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Name the attributes a method assigns to its first parameter (`self.x = ...`).
+def _assigned(method: FunctionDef, stored: Mapping[str, _Spans]) -> set[str]:
+    """Name the attributes a method assigns to its first parameter (`self.x = ...`), anywhere in it.
+
+    `stored`: where the module assigns each name's attributes (see `_by_name`): those within the
+    method's span, from its first decorator on.
 
     Returns:
       Them.
 
     """
     named: list[ast.arg]
-    if not (named := [*method.args.posonlyargs, *method.args.args]):
+    spans: _Spans | None
+    if (
+        not (named := [*method.args.posonlyargs, *method.args.args])
+        or (spans := stored.get(named[0].arg)) is None
+    ):
         return set()
-    first: str = named[0].arg
-    return {
-        node.attr
-        for node in ast.walk(method)
-        if isinstance(node, ast.Attribute)
-        and isinstance(node.ctx, ast.Store)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == first
-    }
+    begin: Start | None = (
+        (method.decorator_list[0].lineno, method.decorator_list[0].col_offset)
+        if method.decorator_list
+        else None
+    )
+    return set(spans[1][within(spans[0], method, begin)])
 
 
 def typed(

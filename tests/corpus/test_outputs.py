@@ -7,7 +7,7 @@ from typing import IO, Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import pipeline, render, report_tables
+from tests.corpus import corpus_guesses, pipeline, render, report_tables
 from tests.corpus.pipeline import Measured, Record, Store
 from tests.corpus.recorded import SHARE, USED
 from tests.corpus.run_config import CERTAIN, JSON, LIKELY, MARKDOWN, Run, parse
@@ -16,6 +16,7 @@ from tests.corpus.trees import Tree
 _Nested: TypeAlias = dict[str, dict[str, dict[str, Record]]]  # corpus, version, step
 _Rows: TypeAlias = list[list[str]]  # a CSV table, read back
 _Named: TypeAlias = list[tuple[str, str]]  # a fix step's fixes, by name and annotation
+_Outcomes: TypeAlias = list[tuple[str, str]]  # a run's tests, by id and outcome
 _WARNING: Final = "a warning\n"
 _CRLF: Final = b"\r\n"  # a line's end that git keeps as LF
 _PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
@@ -289,10 +290,21 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     assert _INFERRED in text
     assert _COUNTED_ROW in text
     assert tables["tests"][1:] == [
-        ["standard library", "rc+dev", "released (from earlier-run)", "", "9 passed, 1 skipped", "", "", ""],
-        ["standard library", "rc+dev", "fix-certain", "True", "as fix-unsafe's (implied)", "0", "0", "0"],
-        ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1", "0", "0"],
-        ["standard library", "rc+dev", "infer-ty", "True", "error: patch failed", "0", "0", "0"],
+        ["standard library", "rc+dev", "released (from earlier-run)", "", "9 passed, 1 skipped", *[""] * 5],
+        [
+            "standard library",
+            "rc+dev",
+            "fix-certain",
+            "True",
+            "as fix-unsafe's (implied)",
+            "0",
+            "0",
+            "0",
+            "",
+            "",
+        ],
+        ["standard library", "rc+dev", "fix-unsafe", "False", "1 failed, 8 passed", "1", "0", "0", "", ""],
+        ["standard library", "rc+dev", "infer-ty", "True", "error: patch failed", "0", "0", "0", "", ""],
     ]
     assert _TESTED_ROW in text
     assert tables["types"][1:] == [
@@ -443,6 +455,67 @@ def test_what_the_records_hold_beside_the_tables_is_tabled_where_it_differs(tmp_
     ]
 
 
+def _bound(where: str, shape: str, source: str, *, guessed: bool = False) -> Record:
+    """Make a census row: a binding with no fix (but a guess, if `guessed`), its shape and its value's source.
+
+    `where`: its file, line and name, as `a.py:1:x`.
+
+    Returns:
+      It.
+
+    """
+    path: str
+    line: str
+    name: str
+    path, line, name = where.split(":")
+    row: Record = {"path": path, "line": int(line), "name": name, "fixed": False, "unsafe": guessed}
+    return row | {"shape": shape, "source": source}
+
+
+def test_the_bindings_with_no_fix_are_held_to_what_the_traced_tests_saw(tmp_path: Path) -> None:
+    """By shape: those reached, those of one type, and their commonest source; no fix or guess counted."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    census: list[Record] = [
+        _bound("a.py:1:x", "call", "f"),
+        _bound("a.py:2:y", "call", "f"),
+        _bound("a.py:3:z", "call", "g"),
+        _bound("a.py:4:w", "call", "h", guessed=True),
+        _bound("b.py:1:v", "attr", "k"),
+    ]
+    seen: list[Record] = [
+        {"path": "a.py", "line": 1, "name": "x", "seen": ["int"]},
+        {"path": "a.py", "line": 2, "name": "y", "seen": ["int", "str"]},
+        {"path": "a.py", "line": 4, "name": "w", "seen": ["int"]},
+    ]
+    files: dict[tuple[str, str], list[Record]] = {
+        (pipeline.CENSUS, pipeline.ROWS): census,
+        (pipeline.TRACED, corpus_guesses.SEEN): seen,
+    }
+    step: str
+    suffix: str
+    lines: list[Record]
+    for (step, suffix), lines in files.items():
+        _ = store.path(tree.name, "rc+dev", step, suffix).write_text(
+            "".join(f"{json.dumps(line)}\n" for line in lines),
+            encoding="utf-8",
+        )
+    records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
+    assert report_tables.TABLES["one-type"](records)[1:] == [
+        ["standard library", "rc+dev", "call", 3, 2, 1, "f"],
+        ["standard library", "rc+dev", "attr", 1, 0, 0, ""],
+    ]
+    # Its counts, not its sources: Python, which Markdown misreads.
+    laid: str = render.markdown(records).split("`tables/one-type.csv`):\n\n", 1)[1].split("\n\n", 1)[0]
+    assert laid.splitlines() == [
+        "| corpus           | shape  | no fix | traced | one type |",
+        "| ---------------- | ------ | -----: | -----: | -------: |",
+        "| standard library | `call` |      3 |      2 |        1 |",
+        "| standard library | `attr` |      1 |      0 |        0 |",
+    ]
+
+
 def test_a_hinted_step_whose_rounds_came_from_the_store_is_noted(tmp_path: Path) -> None:
     """Its seconds measure less of the checker, and the run's notes say so."""
     store: Store
@@ -503,3 +576,33 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts | {"share": SHARE})
     shared: str = " ".join(runs.read_text(encoding="utf-8").split())
     assert _MACHINE.replace("(Linux)", "(Linux), 75% of it") in shared
+
+
+def test_the_tests_table_names_the_skips_that_moved(tmp_path: Path) -> None:
+    """From both runs' tests: a test only the fixed run ran moved nothing; a run with none written, blanks."""
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path)
+    ran: dict[str, _Outcomes] = {
+        "tests-released": [("t::a", "passed"), ("t::b", "skipped"), ("t::c", "passed")],
+        "tests-fix-unsafe": [
+            ("t::a", "skipped"),
+            ("t::b", "passed"),
+            ("t::c", "passed"),
+            ("t::d", "skipped"),
+        ],
+    }
+    step: str
+    tests: _Outcomes
+    for step, tests in ran.items():
+        _ = store.path(tree.name, "rc+dev", step, pipeline.TESTED).write_text(
+            "".join(f"{json.dumps({'id': test, 'outcome': outcome})}\n" for test, outcome in tests),
+            encoding="utf-8",
+        )
+    records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
+    rows: report_tables.Rows = report_tables.TABLES["tests"](records)[2:]
+    assert [[row[2], *row[-2:]] for row in rows] == [
+        ["fix-certain", "", ""],
+        ["fix-unsafe", 1, 1],
+        ["infer-ty", "", ""],
+    ]
