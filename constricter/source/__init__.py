@@ -1,1 +1,1 @@
-"""The rules: what each code reports, and the analysis behind it."""
+"""What a module's source says: its syntax, declarations and value flow, read by the rules and the fixes."""
