@@ -591,7 +591,8 @@ def united(run: Run) -> bool:
 
     Where the tests run after each checker's hints: one run after every fix's at once stands for
     each fix's where it's the released tests' (`suite_steps.standing`); with no checker, the
-    guesses' fix is that already. Not among `fixing`'s or `parts`': no table lists it.
+    guesses' fix is that already. Not among `fixing`'s or `parts`': only the mechanisms table lists
+    it, where its hints can agree.
 
     Returns:
       Whether it does.

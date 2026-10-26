@@ -666,6 +666,22 @@ What constricter does today and what was measured on the way, by scope. What's n
   part (112s) stood for every fixed tree (`tests-fix-likely` 0s, implied). Done when a run's
   `infer-union` part stands for sqlalchemy's
   fixed trees again and its `tests` stage takes about rc.3's 12 minutes. Coverage unchanged.
+- **One type at run time, no fix**: the `traced` step keeps the types the trace saw each of the
+  package's bindings hold (`traced.seen.jsonl`), and the report holds the census's bindings with
+  neither a fix nor a guess to them, by shape (`one-type.csv`, its commonest source of each; the
+  Markdown leaves the sources out). On the 0.4.3-rc.7 mega run (`5674049`, 16CPU/60GB, 68
+  minutes), of 162,001 such bindings the traced tests reached 79,623 and saw 60,259 hold one type:
+  the upper bound of any inference there, and where a binding bound otherwise is worth a look.
+- **The hinted steps' servers, sized by the memory free**: memory, not CPUs, kept the 0.4.3-rc.2
+  super run's steps waiting (pandas's `infer-union`, all three checkers' servers at once, held
+  28.5 GB for 10.5 minutes). The runner's `infer-union` asks its checkers in turn
+  (`--infer-in-turn`, each one's servers shut down before the next's start), sized by its largest
+  checker's step until measured. A hinted step starts with as few CPUs as hold one server of each
+  of its checkers for the corpus (`Plan._hinted`) and takes more as they free, its servers given
+  that share of the 8 GB default rounded up to whole servers (`Wanted.hinted`, `Wanted.server`);
+  only one whose last run took 300s at most starts short (`sizing._BRIEF`), as a short start keeps
+  its CPUs for the whole step. On the 0.4.3-rc.6 mega run (`c7f4db0`, 16CPU/60GB, 65 minutes)
+  pandas's `infer-union` held 14.3 GB, and the run used 77% of its CPU seconds (rc.7 75%).
 
 ## CI, security and releases
 
@@ -708,13 +724,26 @@ What constricter does today and what was measured on the way, by scope. What's n
   lockfile, uv and actionlint by version. `tool-versions.yml` keeps one issue open while any of them
   is behind a release at least a week old; Dependabot opens no version-update pull request.
 - **harden-runner** blocks egress to all but the observed hosts in every Linux job, the release jobs
-  included; rulesets require every check on `main` and protect `v*` tags.
+  included. The rulesets hold `main` to pull requests and signed commits, with no required status
+  check, and protect `v*` tags.
 - **Releases** (`release.yml` on `v*` tags): CI, a reusable build workflow that checks the tag
   matches the version and attests the dists (SLSA Build Level 3), PyPI trusted publishing, and a
   GitHub release: the README's badges, each merged pull request's `## Release note` section (which
   `release-note.yml` makes every one write) under "What changed", then GitHub's generated list.
   Verify a download with
   `gh attestation verify FILE --repo ivylikethevine/python-constricter --signer-workflow ivylikethevine/python-constricter/.github/workflows/build.yml`.
+- **The compiled wheels, a job each**: a `python` matrix of cp311 to cp314 beside `os` in
+  `build.yml` (`CIBW_BUILD` set from it) builds the 20 wheels at once, each job's artifacts and
+  attestation named by both (`compiled-<os>-<python>`, which `release.yml`'s `compiled-*` patterns
+  take): 2 to 5 minutes a job, from 0.4.2's 10 to 20 a platform. 0.4.3's 20 are on PyPI and the
+  GitHub release (2026-10-25). A job can lose its start to a transient refusal as harden-runner
+  engages (an artifact download's `ECONNREFUSED`, an image pull's `unexpected EOF`), which a rerun
+  of the failed jobs clears.
+- **Ubuntu 26.04 runners, named**: every Linux job runs on `ubuntu-26.04` rather than
+  `ubuntu-latest`, so an image change is a commit, not the label moving under a release
+  (`.github/actionlint.yaml` names the label, which actionlint 1.7.12 doesn't know); the ARM wheels
+  stay on `ubuntu-24.04-arm`, there being no 26.04 ARM image. CI, Security, CodeQL and the 0.4.3
+  release passed on it, harden-runner's allowlists unchanged.
 
 ## Project
 

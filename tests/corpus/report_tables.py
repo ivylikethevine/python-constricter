@@ -21,6 +21,7 @@ from tests.corpus.pipeline import (
     FROM,
     GUESS,
     IMPLIED,
+    INFER,
     LOOP,
     RELEASED,
     ROWS,
@@ -29,9 +30,11 @@ from tests.corpus.pipeline import (
     TIMING,
     TRACED,
     TYPES,
+    UNION,
     Record,
     Store,
     fixing,
+    united,
 )
 from tests.corpus.run_config import CERTAIN, LIKELY, UNSAFE, Run
 from tests.corpus.sizing import USED
@@ -424,6 +427,9 @@ def _fixes(records: Records) -> Rows:
 def _mechanisms(records: Records, most: int | None = None) -> Rows:
     """Count each fix's fixes by their whole set of mechanisms and by tier, the corpora together.
 
+    With every source's fix at once (`infer-union`) last, where the run makes it: the one fix
+    whose hints can agree.
+
     `most`: only that many sets of each fix, those that made the most.
 
     Returns:
@@ -431,10 +437,11 @@ def _mechanisms(records: Records, most: int | None = None) -> Rows:
 
     """
     rows: Rows = [["fix", "constricter", "mechanisms", "fixed", CERTAIN, LIKELY, GUESS]]
+    union: list[str] = [f"{INFER}{UNION}"] if united(records.run) else []
     version: str
     for version in records.versions:
         mode: str
-        for mode in fixing(records.run):
+        for mode in (*fixing(records.run), *union):
             sets: dict[str, Counter[str]] = {}
             tiers: dict[str, int]
             tree: Tree
