@@ -6,9 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
-- The corpus runs write their folders under `corpus-runs/`, each committed as about 20 files: its
-  `report.json` with every step's record, its tables and facts, and each kept listing as one file
-  of the whole run; their paths relative to the checkout or under `~`. A later run reads an earlier
+- The corpus runs write their folders under `corpus-runs/`, each committed as two files: its
+  `report.json` with its facts, every step's record and its tables, and `listings.jsonl.gz` with
+  every listing a line each; their paths relative to the checkout or under `~`, their user unnamed. A later run reads an earlier
   one's records by when it started, not by its files' times, and a run's own output is no change to
   the tree the next one records.
 

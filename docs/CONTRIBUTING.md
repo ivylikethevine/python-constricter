@@ -113,11 +113,11 @@ the network, once.
 
 Each execution writes a folder of its own under `corpus-runs/`, named by the run's label and
 the time: the run file, a record for each corpus, version and step, and `report.json`, `report.md`
-and `tables/*.csv` made from them. The folder is committed as about 20 files: `report.json`, which
-holds every step's record, the tables, the facts and run file, and each kept listing gathered into
-one file of the whole run (`tests/corpus/archive.py`); its `.gitignore` leaves out `records/`, the
-fixed copies, logs, patches and Markdown. Its paths are written relative to the checkout or under
-`~`. A later run reads its records from its report (a stopped run's from `records/`), the latest by
+and `tables/*.csv` made from them. The folder is committed as two files: `report.json`, which holds
+the run's facts, every step's record and every table, and `listings.jsonl.gz`, its guesses, the
+witness's verdicts, the types the trace saw and the released tests by name, a line each
+(`tests/corpus/archive.py`); its `.gitignore` leaves out the rest, which stays on disk. Its paths
+are written relative to the checkout or under `~`, and its user unnamed. A later run reads its records from its report (a stopped run's from `records/`), the latest by
 when each started, and its own output is no change to the tree its facts record. `--resume FOLDER` carries on a stopped run under its label, its
 time the sum of its executions', `--only NAME` keeps one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
 (`super.toml --minus original` measures only what `super` adds). Neither publishes. Each step is a

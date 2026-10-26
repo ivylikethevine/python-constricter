@@ -2,6 +2,7 @@
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
@@ -140,6 +141,22 @@ _CHECKED: Final[Record] = {
 }
 
 
+def _read_tables(paths: Sequence[Path]) -> dict[str, _Rows]:
+    """Read each CSV table at `paths`.
+
+    Returns:
+      Their rows, by name.
+
+    """
+    found: dict[str, _Rows] = {}
+    path: Path
+    for path in paths:
+        file: IO[str]
+        with path.open(encoding="utf-8", newline="") as file:
+            found[path.stem] = list(csv.reader(file))
+    return found
+
+
 def _fixed(count: int, tiers: dict[str, int], left: int = 0) -> Record:
     return {
         "fixed": count,
@@ -248,16 +265,12 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
     text: str = (tmp_path / "report.md").read_text(encoding="utf-8")
     assert _SECTION in text
     assert _FIXES in text
-    tables: dict[str, _Rows] = {}
-    path: Path
     assert all(
         row in written[2].read_text(encoding="utf-8")
         for row in (f"| assign: {_SHAPE}", "| `receiver` | 1 (100.0%) |", "| `call: self.method()` 1 |")
     )
-    for path in written[3:]:
-        file: IO[str]
-        with path.open(encoding="utf-8", newline="") as file:
-            tables[path.stem] = list(csv.reader(file))
+    tables: dict[str, _Rows] = _read_tables(written[3:])
+    assert cast("Record", report)["tables"] == tables  # every table the CSV files have, cell for cell
     assert tables["offences"] == [
         ["corpus", "corpus version", "constricter", "files", "LVA001", "LVA004", "total"],
         ["standard library", "3.14", "rc+dev", "2", "5", "1", "6"],

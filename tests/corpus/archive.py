@@ -1,32 +1,35 @@
-"""A run's folder as later runs read it: its records and its listings, one file each.
+"""A run's folder as later runs read it: its report and its listings, a file each.
 
 As a run goes, each step keeps its record under `records/` (`pipeline.Store`), and some a listing
-beside it, a corpus's. Once it ends, its report gathers the records into `report.json` and each
-listing into one file of the whole run, a line a binding or a test with its corpus and version
-(`gather`): what the folder commits. A folder with no report, a run stopped or under way, is read
-from `records/`.
+beside it, a corpus's. Once it ends, its report gathers the records, the run's facts and its tables
+into `report.json`, and every listing into `listings.jsonl.gz`, a line a guess, a binding or a test
+with the listing it's from, its corpus and version (`gather`): the two files the folder commits.
+A folder with no report, a run stopped or under way, is read from `records/`.
 """
 
 import contextlib
+import gzip
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
-from tests.corpus.run_config import scrubbed
+from tests.corpus.run_config import REPORT, scrubbed
 
 Record: TypeAlias = dict[str, object]
 Kept: TypeAlias = dict[tuple[str, str, str], Record]  # by a corpus's directory, a version and a step
 _Steps: TypeAlias = dict[str, Record]  # a version's records, by step
 _Nested: TypeAlias = dict[str, dict[str, _Steps]]  # a report's, by corpus and version
 RECORDS: Final = "records"
-REPORT: Final = "report.json"
-# The listings a run's folder keeps, each a step's and its suffix: what the witness judged and
-# what the trace saw of each binding, and the released tests by name.
+LISTED: Final = "listings.jsonl.gz"  # compressed: a large suite's tests by name alone run past 100 MB
+LISTING: Final = "listing"  # in a line of it: the listing it's from
+GUESSES: Final = "guesses"  # the listing of every fix-unsafe fix with what blames it or bears it out
+# The listings each corpus keeps, each named, with the step's it is and its suffix: what the witness
+# judged and what the trace saw of each binding, and the released tests by name.
 LISTINGS: Final = (
-    ("traced", ".verdicts.jsonl"),
-    ("traced", ".seen.jsonl"),
-    ("tests-released", ".tests.jsonl"),
+    ("verdicts", "traced", ".verdicts.jsonl"),
+    ("seen", "traced", ".seen.jsonl"),
+    ("released-tests", "tests-released", ".tests.jsonl"),
 )
 
 
@@ -66,31 +69,47 @@ def kept(folder: Path) -> Kept:
     return found
 
 
-def gather(folder: Path, corpora: Iterable[tuple[str, str]]) -> list[Path]:
-    """Write each listing of the run in `folder` as one file of the whole run.
-
-    `corpora`: each corpus's name and version, in the run's order. A line keeps its corpus and its
-    version, first.
+def listed(folder: Path, name: str) -> list[Record]:
+    """Read one listing of the run in `folder`, from its `listings.jsonl.gz`.
 
     Returns:
-      The files written: none for a listing no corpus has.
+      Its lines, the `listing` field left out; none for a run with no such file.
 
     """
-    written: list[Path] = []
+    path: Path = folder / LISTED
+    text: str = gzip.decompress(path.read_bytes()).decode("utf-8") if path.is_file() else ""
+    lines: list[str] = text.splitlines()
+    rows: list[Record] = [cast("Record", json.loads(line)) for line in lines]
+    return [
+        {key: each for key, each in row.items() if key != LISTING} for row in rows if row[LISTING] == name
+    ]
+
+
+def gather(folder: Path, corpora: Iterable[tuple[str, str]], guessed: Sequence[Record] = ()) -> list[Path]:
+    """Write every listing of the run in `folder` into its `listings.jsonl.gz`: `guessed`, then each corpus's.
+
+    `corpora`: each corpus's name and version, in the run's order. A line keeps the listing it's from,
+    then its corpus and version.
+
+    Returns:
+      The file written: none for a run with no listing.
+
+    """
+    lines: list[str] = [json.dumps({LISTING: GUESSES} | dict(row)) for row in guessed]
+    pairs: list[tuple[str, str]] = list(corpora)
+    name: str
     step: str
     suffix: str
-    for step, suffix in LISTINGS:
-        lines: list[str] = []
+    for name, step, suffix in LISTINGS:
         corpus: str
         version: str
-        for corpus, version in corpora:
+        for corpus, version in pairs:
             path: Path = folder / RECORDS / corpus.replace(" ", "-") / version / f"{step}{suffix}"
             text: str = path.read_text(encoding="utf-8") if path.is_file() else ""
-            lines += [
-                json.dumps({"corpus": corpus, "constricter": version} | cast("Record", json.loads(line)))
-                for line in text.splitlines()
-            ]
-        if lines:
-            written.append(folder / f"{step}{suffix}")
-            _ = written[-1].write_text(scrubbed("".join(f"{line}\n" for line in lines)), encoding="utf-8")
-    return written
+            head: Record = {LISTING: name, "corpus": corpus, "constricter": version}
+            lines += [json.dumps(head | cast("Record", json.loads(line))) for line in text.splitlines()]
+    if not lines:
+        return []
+    packed: bytes = scrubbed("".join(f"{line}\n" for line in lines)).encode("utf-8")
+    _ = (folder / LISTED).write_bytes(gzip.compress(packed, compresslevel=9, mtime=0))  # the same bytes
+    return [folder / LISTED]

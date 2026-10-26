@@ -54,6 +54,7 @@ A key this doesn't know is an error, not ignored: a misspelt step would otherwis
 """
 
 import contextlib
+import getpass
 import json
 import os
 import tomllib
@@ -118,6 +119,7 @@ _STAMP: Final = "%m-%d-%Y-%H%M"  # a run's folder: its label, then the month, da
 _ROOT: Final = Path(__file__).resolve().parents[2]  # the checkout
 FACTS: Final = "facts.toml"  # in a run's folder: the run as it was read, the commit, the machine
 STARTED: Final = "started"  # in its facts: when its first execution started
+REPORT: Final = "report.json"  # in a run's folder once it ends: its facts, records and tables
 _Table: TypeAlias = dict[str, object]
 
 
@@ -320,7 +322,8 @@ def percent(given: object) -> int:
 def scrubbed(text: str) -> str:
     """Write a kept file's paths as no machine's: the checkout's relative to it, the home folder's as `~`.
 
-    A run's folder is committed: what it keeps names nothing of the machine that ran it.
+    A run's folder is committed: what it keeps names nothing of the machine that ran it, nor its
+    user, whom pytest's temporary folders are named for (`pytest-of-<user>`, in a test's id).
 
     Returns:
       `text`, so written: as JSON writes a path, which is as it is but on Windows.
@@ -330,11 +333,13 @@ def scrubbed(text: str) -> str:
     written: str
     for where, written in ((_ROOT, ""), (Path.home(), "~/")):
         text = text.replace(json.dumps(f"{where}{os.sep}")[1:-1], written)
+    with contextlib.suppress(OSError, KeyError):  # no user to name: nothing named for one
+        text = text.replace(f"pytest-of-{getpass.getuser()}", "pytest-of-user")
     return text
 
 
 def started(folder: Path) -> datetime:
-    """Read when the run in `folder` first started, from its facts.
+    """Read when the run in `folder` first started, from its facts: its `facts.toml`, or its report's.
 
     What orders runs, as a file's time can't: a checkout sets every file's at once. A folder with
     no facts saying goes by its own time.
@@ -343,11 +348,26 @@ def started(folder: Path) -> datetime:
       It, in its zone.
 
     """
-    with contextlib.suppress(OSError, ValueError, KeyError):
-        facts: _Table = tomllib.loads((folder / FACTS).read_text(encoding="utf-8"))
-        when: datetime = datetime.fromisoformat(str(facts[STARTED]))
+    with contextlib.suppress(ValueError):  # neither says, or not as a time
+        when: datetime = datetime.fromisoformat(_said(folder))
         return when if when.tzinfo else when.astimezone()
     return datetime.fromtimestamp(folder.stat().st_mtime, UTC)
+
+
+def _said(folder: Path) -> str:
+    """Read the `started` of the facts of the run in `folder`: its `facts.toml`'s, or else its report's.
+
+    Returns:
+      It; nothing where neither says.
+
+    """
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        facts: _Table = tomllib.loads((folder / FACTS).read_text(encoding="utf-8"))
+        return str(facts[STARTED])
+    with contextlib.suppress(OSError, ValueError, KeyError, TypeError):
+        report: _Table = cast("_Table", json.loads((folder / REPORT).read_text(encoding="utf-8")))
+        return str(cast("_Table", report["run"])[STARTED])
+    return ""
 
 
 def outside(output: Path, root: Path) -> list[str]:

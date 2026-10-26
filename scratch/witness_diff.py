@@ -2,27 +2,26 @@
 
   local/.venv/bin/python -m scratch.witness_diff OLD_RUN NEW_RUN [TIER=certain]
 
-Reads each run's `traced.verdicts.jsonl` (a stopped run's, each corpus's under `records/`) and
-keys a fix by its corpus, path, name and annotation (its line moves with the fixes above it).
-Prints the fixes that differ in the
-new run alone, then those in the old alone, each with its line, its kinds and the types the trace
-saw, and what the other run's traced fix of that binding was (`no fix` where it made none), and the
-counts.
+Reads each run's verdicts from its `listings.jsonl` (a stopped run's, each corpus's under
+`records/`) and keys a fix by its corpus, path, name and annotation (its line moves with the fixes
+above it). Prints the fixes that differ in the new run alone, then those in the old alone, each
+with its line, its kinds and the types the trace saw, and what the other run's traced fix of that
+binding was (`no fix` where it made none), and the counts.
 """
 
 import json
 import sys
 from pathlib import Path
 
+from tests.corpus import archive
+
 _Key = tuple[str, str, str, str]
 
 
 def verdicts(run: Path) -> list[tuple[str, dict]]:
     """Read every verdict in `run`, with its corpus's directory: the run's one listing, or each corpus's."""
-    whole: Path = run / "traced.verdicts.jsonl"  # a finished run's, every corpus's lines with its corpus
-    if whole.is_file():
-        rows = [json.loads(line) for line in whole.read_text(encoding="utf-8").splitlines()]
-        return [(row["corpus"].replace(" ", "-"), row) for row in rows]
+    if (run / archive.LISTED).is_file():  # a finished run's, every corpus's lines with its corpus
+        return [(row["corpus"].replace(" ", "-"), row) for row in archive.listed(run, "verdicts")]
     return [
         (path.parts[-3], json.loads(line))
         for path in sorted(run.glob("records/*/*/traced.verdicts.jsonl"))

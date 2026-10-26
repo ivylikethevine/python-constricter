@@ -1,5 +1,6 @@
 """The corpus runner's own parts that need no corpus: its run file, and how it runs and sizes its steps."""
 
+import getpass
 import json
 import os
 import shutil
@@ -665,12 +666,13 @@ def test_the_runs_own_folders_are_no_change_to_the_tree(
 
 
 def test_a_kept_record_names_nothing_of_the_machine(tmp_path: Path) -> None:
-    """The checkout's paths relative to it, the home folder's under `~`, others as they were."""
+    """The checkout's paths relative to it, the home folder's under `~`, its user unnamed, others kept."""
     root: Path = Path(runner.__file__).resolve().parents[2]
     given: Record = {
         "options": [str(root / "local" / "trace.json")],
         "errors": [[str(Path.home() / "lib" / "a.py"), "msg"]],
         "path": "/opt/a.py",
+        "test": f"t.py::test[/tmp/pytest-of-{getpass.getuser()}/x]",
     }
     store: Store = Store(tmp_path)
     store.write("a", "dev", "infer-trace", given)
@@ -678,6 +680,7 @@ def test_a_kept_record_names_nothing_of_the_machine(tmp_path: Path) -> None:
         "options": [str(Path("local") / "trace.json")],
         "errors": [[str(Path("~") / "lib" / "a.py").replace("\\", "/", 1), "msg"]],
         "path": "/opt/a.py",
+        "test": "t.py::test[/tmp/pytest-of-user/x]",
     }
 
 

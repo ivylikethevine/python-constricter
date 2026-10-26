@@ -16,7 +16,7 @@ import csv
 import itertools
 import json
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import IO, Final, TypeAlias, cast
 
@@ -52,7 +52,7 @@ from tests.corpus.report_tables import (
     json_lines,
     typed_share,
 )
-from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, UNSAFE, Run, scrubbed
+from tests.corpus.run_config import CERTAIN, CSV, JSON, LIKELY, MARKDOWN, REPORT, UNSAFE, Run, scrubbed
 from tests.corpus.sizing import USED
 from tests.corpus.trees import Tree
 
@@ -413,8 +413,10 @@ def publish(records: Records, root: Path, facts: Record) -> None:
     corpus_table.record(rows, root / target, replace=records.run.publish.replace)
 
 
-def report(records: Records, facts: Record) -> Record:
+def report(records: Records, facts: Record, tables: Mapping[str, Rows] | None = None) -> Record:
     """Gather the run's records under each corpus, version and step, with the run's own `facts`.
+
+    `tables`: each of its tables by name, kept as the CSV files have them (`TABLES`).
 
     Returns:
       Them, as `report.json` has them.
@@ -433,7 +435,28 @@ def report(records: Records, facts: Record) -> Record:
         "records": nested,
         "problems": problems(records),
         "notes": notes(records),
+        "tables": {
+            name: [["" if cell is None else str(cell) for cell in row] for row in rows]
+            for name, rows in (tables or {}).items()
+        },
     }
+
+
+def _tables(records: Records) -> dict[str, Rows]:
+    """Make each of the run's tables (`TABLES`).
+
+    Returns:
+      Them, by name: none for a step the run didn't ask for.
+
+    """
+    found: dict[str, Rows] = {}
+    name: str
+    rows: Table
+    for name, rows in TABLES.items():
+        table: Rows = rows(records)
+        if len(table) > 1:
+            found[name] = table
+    return found
 
 
 def write(records: Records, folder: Path, facts: Record) -> list[Path]:
@@ -444,11 +467,12 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
 
     """
     written: list[Path] = []
+    tables: dict[str, Rows] = _tables(records)
+    guessed: list[Record] = []
     if JSON in records.run.formats:
-        written.append(folder / "report.json")
-        reported: str = scrubbed(json.dumps(report(records, facts), indent=2))
+        written.append(folder / REPORT)
+        reported: str = scrubbed(json.dumps(report(records, facts, tables), indent=2))
         _ = written[-1].write_text(reported + "\n", encoding="utf-8")
-        guessed: list[Record]
         if guessed := guesses(records, Store(folder)):
             written.append(folder / "guesses.jsonl")
             _ = written[-1].write_text("".join(f"{json.dumps(each)}\n" for each in guessed), encoding="utf-8")
@@ -463,15 +487,13 @@ def write(records: Records, folder: Path, facts: Record) -> list[Path]:
     if CSV in records.run.formats:
         (folder / "tables").mkdir(exist_ok=True)
         name: str
-        rows: Callable[[Records], Rows]
-        for name, rows in TABLES.items():
-            table: Rows = rows(records)
-            if len(table) > 1:  # a step the run didn't ask for has no table
-                written.append(folder / "tables" / f"{name}.csv")
-                file: IO[str]
-                with written[-1].open("w", encoding="utf-8", newline="") as file:
-                    csv.writer(file, lineterminator="\n").writerows(table)  # as git keeps text
+        table: Rows
+        for name, table in tables.items():
+            written.append(folder / "tables" / f"{name}.csv")
+            file: IO[str]
+            with written[-1].open("w", encoding="utf-8", newline="") as file:
+                csv.writer(file, lineterminator="\n").writerows(table)  # as git keeps text
     corpora: dict[tuple[str, str], None] = dict.fromkeys(
         (corpus, version) for corpus, version, _ in records.found
     )
-    return written + archive.gather(folder, corpora)
+    return written + archive.gather(folder, corpora, guessed)

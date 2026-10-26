@@ -10,6 +10,8 @@ goes under `local/scratch/`.
   at run time. `guess_report.py --likely` lists the sets that pass `docs/LIKELY.md`'s bars.
 - `agreed_seen.py FOLDER`: a run's `infer-union` fixes held by name to the types its traced tests
   saw, by set of mechanisms, the certain fixes' share first; the witness judges `fix-unsafe` alone.
+- `pack_run.py DEST FOLDER...`: archived run folders packed as `corpus-runs/` commits a run's: its
+  report, tables and facts, and each listing gathered into one file, every text scrubbed.
 - `typeshed_reach.py FOLDER`: a run's third-party bindings with no fix that call into a package
   typeshed's third-party stubs cover, by stub set and by the census's reason.
 - `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
