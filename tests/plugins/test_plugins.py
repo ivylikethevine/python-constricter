@@ -152,7 +152,10 @@ def test_pylint_options(tmp_path: Path) -> None:
 def test_pylint_decodes_a_module_by_its_coding_declaration(tmp_path: Path) -> None:
     """A latin-1 module with its PEP 263 line is read as the CLI reads it, not as UTF-8."""
     path: Path = tmp_path / "latin.py"
-    _ = path.write_bytes(b"# -*- coding: latin-1 -*-\ndef f() -> None:\n    caf\xe9 = 1\n")
+    latin: bytes = (
+        b"# -*- coding: latin-1 -*-\ndef f() -> None:\n    caf\xe9 = 1\n"  # spellchecker: disable-line
+    )
+    _ = path.write_bytes(latin)
     assert _pylint(path) == [f"3:4: C9101 unannotated-local-variable {MESSAGE.format('café')}"]
 
 

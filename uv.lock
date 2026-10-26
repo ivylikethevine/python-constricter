@@ -2445,6 +2445,7 @@ corpus = [
     { name = "basedpyright" },
     { name = "django" },
     { name = "editables" },
+    { name = "filelock" },
     { name = "hatch-vcs" },
     { name = "hatchling" },
     { name = "ortools" },
@@ -2452,6 +2453,7 @@ corpus = [
     { name = "py-spy" },
     { name = "pydantic" },
     { name = "sqlalchemy" },
+    { name = "tomli-w" },
     { name = "typeshed-client" },
 ]
 dev = [
@@ -2533,6 +2535,7 @@ corpus = [
     { name = "basedpyright" },
     { name = "django", specifier = "==5.2.18" },
     { name = "editables" },
+    { name = "filelock" },
     { name = "hatch-vcs", specifier = ">=0.5,<1" },
     { name = "hatchling", specifier = ">=1.27,<2" },
     { name = "ortools" },
@@ -2540,6 +2543,7 @@ corpus = [
     { name = "py-spy" },
     { name = "pydantic", specifier = "==2.14.0" },
     { name = "sqlalchemy", specifier = "==2.1.4" },
+    { name = "tomli-w" },
     { name = "typeshed-client" },
 ]
 dev = [
