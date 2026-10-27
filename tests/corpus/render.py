@@ -328,6 +328,18 @@ def _shared(facts: Record) -> str:
     return f", {share}% of it" if share else ""
 
 
+def _beside(records: Records) -> str:
+    """Say that the timed checks ran beside the other steps, where they did (`timing-beside`).
+
+    Returns:
+      The clause, or nothing.
+
+    """
+    if not records.run.steps.timing_beside:
+        return ""
+    return ", nor their seconds across runs, taken beside the other steps: their instructions do"
+
+
 def staged(facts: Record) -> str:
     """Say what stages a run was made in, each with its commit, and which are left (`stages`).
 
@@ -359,7 +371,8 @@ def section(records: Records, facts: Record) -> str:
         f"{facts.get('python', '')}, on {facts.get('cpus', '')}CPU/{facts.get('gigabytes', '')}GB "
         f"({facts.get('system', '')}){_shared(facts)}: `--jobs={records.run.jobs}`, each "
         f"step a process of its own, started once the CPUs it's expected to keep busy and the memory "
-        f"it's expected to hold are free.{took}{staged(facts)} Timings don't compare across machines."
+        f"it's expected to hold are free.{took}{staged(facts)} Timings don't compare across machines"
+        f"{_beside(records)}."
     )
     rows: list[Measured] = [measured(records, tree, version) for tree in records.trees]
     broke: list[str] = [f"- {each}" for each in (*problems(records), *notes(records))]

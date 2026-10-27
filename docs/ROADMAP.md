@@ -161,8 +161,14 @@ measure before building.
    3.9 minutes too. Done when a mega
    run's tail is under 5 minutes with that noise unchanged (0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes): 5.4 minutes, its 47 timed
    steps 326s, from rc.1's 6.2 and 371s; rc.6's and rc.7's the same, 5.4 and 327s; rc.8's 5.7 and 340s, its machine running other
-   work). About 1 hour beside the run;
-   coverage unchanged.
+   work). Built on 2026-10-26: `timing-beside` (a run file's `[steps]` key, set in `super.toml` and
+   `mega.toml`) runs the timed checks beside the other steps, sized as measured, not alone at the
+   end (`sizing.held_last`): their instructions compare across runs (0.00% noise with jobs, 0.04 to
+   0.15% side by side), their seconds don't, which the timing table's `beside other steps` column
+   and RUNS.md's intro say. Replayed on the super run of 2026-10-26 (`scratch/schedule_sim.py
+   --timing-beside`, 16 CPUs and 36 GB): the runner's order 42.0 minutes from 43.5. Done when a
+   mega run with it has no tail: its timed steps end with the rest. About 1 hour spent beside the
+   run; coverage unchanged.
 2. **Signatures from a sampled run.** RightTyper runs a package's tests
    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
@@ -193,7 +199,12 @@ measure before building.
    than fixes. Left: django, which annotates nothing (its suite under RightTyper in the background,
    one process), for whether the returns alone help where there are none. Done when django is
    measured too; a corpus step only if it brings more fixes than the trace for no more errors.
-   About 2 hours left; coverage unchanged.
+   Not run on 2026-10-26: `scratch/righttyper_measure.py` wants RightTyper's process pool and the
+   suite's forks, which the sandbox denies, so it's a shell's to run:
+   `python3 scratch/righttyper_measure.py local/corpus-suites/django-5.2.18 --source django
+   --script tests/runtests.py --args "--parallel=1"`. What to read it against is in "Returns the
+   trace records": the tracer's returns on a third of django's tests gave 625 signatures and 467
+   bindings. About 2 hours left; coverage unchanged.
 3. **The runner's schedule, held to the solver's shortest.** Every corpus's steps wait for the
    machine alone, the one with the most seconds behind it first, and a running step's hold follows
    what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a
@@ -242,8 +253,14 @@ measure before building.
    (85% was the target before): memory and the timed tail bound it whatever the order, and the
    0.4.0-rc.1 mega run, within a tenth of its floor, used 77.5%. Done when a super and a mega run
    each take within a tenth of the solver's shortest schedule of their own steps, and one with no
-   earlier run under its output takes within a tenth of one sized by its own. About 3 hours beside
-   the runs; coverage unchanged.
+   earlier run under its output takes within a tenth of one sized by its own. Read on 2026-10-26
+   (16 CPUs and 36 GB to the solver): the super run of 2026-10-26 (`b5f720c`, 42.1 minutes, in one
+   sitting) against a solver's 43.2 in 60 seconds and 42.6 in 300 (proved at least 19.7): the run
+   is at the shortest the solver finds, its waits memory's (`scratch/run_timeline.py`: its steps
+   waited 3,791 minutes in all, the hinted steps holding 11 to 15 GB each). The timed tail was its
+   last 2.5 minutes at under one CPU, gone with `timing-beside`. Done, for the super run, by the
+   solver's measure; a mega run with `timing-beside` is still to read. About 3 hours beside the
+   runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -493,8 +510,19 @@ What to measure before building, smallest first.
    `Any`): pandas/core declares 73% of its functions' returns, wheel 86%, setuptools 54%, grpc 51%.
    About 400 of the 822 untyped direct calls, and dask's and xarray's chains (2,314 and 1,078
    `receiver`/`member` calls, perhaps a third pandas values). A fix kind of its own, held to the
-   witness. Done when measured against the installed stubs' baseline ("What stubs would add to the
-   corpora"). About 4 hours; coverage up to 1%.
+   witness. Built on 2026-10-26 (`installed.as_untyped`): such a package's modules join the index
+   with their functions' and methods' declared returns as `returned` guesses resting on `declared`,
+   followed through the package's re-exports (`pd.date_range`, which `spelling.spellings` follows
+   for `returned` as for declared functions since); its classes' attributes, classmethods and
+   overloads aren't offered, and its classes' bases still end a line of bases at the library class
+   (`beyond`). A call to an unannotated function carries what its `return`s rest on in its fix's
+   kinds since (`constructor+returned`), as a method's did. On dask (its environment's pandas
+   3.0.6 untyped; one process on 16CPU/60GB, `--fix --unsafe-fixes` listing, old code against the
+   tree): 5,788 fixes from 5,700 (+88 of 24,256 offences, 0.36%; 61 `declared`, `pd.DataFrame` 30,
+   `DatetimeIndex` 13, `DataFrame` 8, the rest what they reach), likely 1,766 from 1,749 (the
+   kinds change). Left: the hold rate from the next mega run's witness, and the stubs baseline
+   ("What stubs would add to the corpora") for what pandas-stubs would add over this. About 4 hours
+   spent; coverage 0.36% on dask.
 9. **typeshed's third-party stubs, not installed.** basedpyright ships them
    (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
    (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain where

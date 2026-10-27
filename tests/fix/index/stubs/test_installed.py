@@ -418,3 +418,57 @@ def test_a_method_of_what_importorskips_module_returns_is_typed_in_one_pass(
     _ = main.write_text(textwrap.dedent(_CHAINED), encoding="utf-8", newline="\n")
     _ = cli.main(["--fix", "-q", "--select=LVA001", str(main)])
     assert main.read_text(encoding="utf-8") == textwrap.dedent(_CHAINED_FIXED)
+
+
+# A package that declares no types, read for its own annotations: what pyright reads, as guesses.
+_UNTYPED: Final = {
+    "plain/__init__.py": "from plain.core import load, Store\n",
+    "plain/core.py": (
+        "class Store:\n"
+        "    def rows(self) -> list[str]:\n"
+        "        return []\n\n\n"
+        "def load(path) -> Store:\n"
+        "    return Store()\n\n\n"
+        "def guess(path):\n"
+        "    return path\n"
+    ),
+}
+_USING: Final = """
+import plain
+from plain import Store, load
+
+
+def run(s: Store):
+    a = plain.load("x")
+    b = load("y")
+    c = s.rows()
+    d = plain.guess("z")
+    return a, b, c, d
+"""
+_USING_FIXED: Final = (
+    '    a: Store = plain.load("x")\n',
+    '    b: Store = load("y")\n',
+    "    c: list[str] = s.rows()\n",
+    '    d = plain.guess("z")\n',  # unannotated there too
+)
+
+
+def test_an_untyped_packages_own_annotations_are_guesses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Its declared returns type calls through its re-exports as `declared` guesses, with `--unsafe-fixes`."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _UNTYPED)), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_USING), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == textwrap.dedent(_USING)  # guesses: nothing certain
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in _USING_FIXED), fixed
+    catalog: project.Index = installed.with_installed(project.index([main]), installed.search_path())
+    core: project.Module = catalog.modules["plain.core"]
+    assert core.untyped
+    assert (core.returns, core.returned.calls) == ({}, {"load": "Store"})
+    assert core.returned.guesses == {"load": {"declared"}, "Store.rows": {"declared"}}

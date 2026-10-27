@@ -128,7 +128,19 @@ _PATIENCE: Final = 300.0  # the seconds a step waits before what's free is kept 
 _BESIDE: Final = 300.0  # but from a step expected to end within so many seconds
 _SLACK: Final = 2.0  # over what an unmeasured step holds a minute in: it may hold more later
 _BRIEF: Final = 300.0  # the most seconds a hinted step's last run took for it to start short (`Plan._hinted`)
-TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside
+TIMED: Final = frozenset({TIMING, PROFILE})  # the steps nothing runs beside, unless `timing-beside`
+
+
+def held_last(run: Run) -> frozenset[str]:
+    """Name the steps a run holds to the end, each alone: the timed ones, unless they run beside the rest.
+
+    Returns:
+      Them: none with `timing-beside`, whose timed steps are sized as measured, as any other.
+
+    """
+    return frozenset() if run.steps.timing_beside else TIMED
+
+
 _AVAILABLE: Final = re.compile(r"^MemAvailable:\s*(\d+) kB", re.MULTILINE)
 _MEMINFO: Final = Path("/proc/meminfo")
 _STAMPED: Final = re.compile(r"(-\d+){4}$")  # after a run's label in its folder's name: when it started
@@ -745,7 +757,7 @@ class Plan(NamedTuple):
         server: int
         least, server = self._hinted(tree, step, cpus) if seconds <= _BRIEF else (0, 0)
         return Wanted(
-            self.cpus if step in TIMED else cpus,
+            self.cpus if step in held_last(self.run) else cpus,
             memory,
             lasting,
             known is not None,

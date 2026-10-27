@@ -55,7 +55,7 @@ def ranks(
 
     Only the steps the last runs measured are planned, and of a run in stages only the steps of the
     stage this execution runs (`chosen`): the others start once it has ended. The timed steps, which
-    run alone at the end, are not.
+    run alone at the end, are not (but with `timing-beside`, when they're steps as any other).
 
     Returns:
       Each planned step's start, in seconds, by its corpus's name and its own; none where nothing is
@@ -86,7 +86,7 @@ def _measured(
     entry: catalog.Entry
     for entry in entries:
         job: Job = Job(run, Store(Path()), Tree(entry.name, entry.version, Path(), suite=entry.suite), DEV)
-        names: list[str] = [name for name in pipeline.steps(run) if name not in sizing.TIMED]
+        names: list[str] = [name for name in pipeline.steps(run) if name not in sizing.held_last(run)]
         names += list(suite_steps.waiting(job)) if entry.suite is not None else []
         needs: dict[str, frozenset[str]] = suite_steps.needs(job) if entry.suite is not None else {}
         name: str

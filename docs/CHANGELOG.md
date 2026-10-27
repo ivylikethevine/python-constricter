@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- An installed package that declares no types (no `py.typed`) is read for its own annotations,
+  as pyright reads one: its functions' and methods' declared returns type their calls as guesses
+  (`declared`, with `returned`), through its package's re-exports (`pd.date_range`), for
+  `--unsafe-fixes` or `--likely` once the set passes the bars; its classes' attributes, its
+  classmethods and its overloads aren't offered. Before, nothing of such a package typed a call.
+- A call to an unannotated function typed by its `return`s rests on what those rest on too
+  (`constructor+returned` for `return Box()`), in its fix's kinds, as a method's does: the
+  mechanisms table's sets name them, and `--likely` applies the sets that pass.
+- The corpus runner's `timing-beside` (in `[steps]`): the timed checks run beside the other steps,
+  sized as measured, not one at a time alone at the end; their instructions compare across runs
+  (0.00% noise with jobs), their seconds don't, which the timing table's last column and RUNS.md
+  say. The super and mega run files set it: their tails of timed checks alone are gone.
 - LVA015 (opt-in: `--extend-select LVA015`, pylint's `missing-parameter-type`): a parameter with
   no annotation, as ruff's ANN001 reports it, fixed with `: T` by what typed it for the function's
   own check, a guess: what every call passes it (`callers`), the one class with every member the

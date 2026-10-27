@@ -84,10 +84,10 @@ goes under `local/scratch/`.
   this checkout and by a compiled wheel's install, their output compared and timed.
 - `corpus_quadrants.py FOLDER ...`: each corpus's files and its steps' wall and CPU seconds in
   finished runs, and its size-and-time group at the medians.
-- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep]`: finished runs' steps
-  replayed under other queueing orders, beside each run's length and the least any schedule could
-  take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
-  all.
+- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep] [--timing-beside]`: finished
+  runs' steps replayed under other queueing orders, beside each run's length and the least any
+  schedule could take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the
+  fastest over them all; `--timing-beside` replays the timed steps as any other, not alone at the end.
 - `compiled_venv.py`: builds the pure wheel and the compiled one (mypyc), each installed in a venv
   of its own beside the `corpus` group's packages (`local/.venv-pure`, `local/.venv-compiled`), for
   `tests/corpus/runs/compiled.toml`.

@@ -58,6 +58,7 @@ FIX_KINDS: dict[str, str] = {
     "member": "a plain class's variable, by its value in the class's body (a guess)",
     "fixture": "a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)",
     "named": "a bare parameter, by the one type the checked files annotate its name with (a guess)",
+    "declared": "an installed package's own annotation, with no `py.typed` to vouch for it (a guess)",
     "alias": "a module's type alias, a subscript or a union of types: `TypeAlias`",
     "callable": "a function or a bound method bound to a name, by what its call gives",
     "final": "LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)",

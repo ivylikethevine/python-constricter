@@ -325,7 +325,7 @@ def _timing(records: Records) -> Rows:
     rows: Rows = [
         [
             *("corpus", "constricter", "jobs", "one process", "with jobs", "runs"),
-            *("G instructions, one process", "with jobs", "timed by"),
+            *("G instructions, one process", "with jobs", "timed by", "beside other steps"),
         ],
     ]
     tree: Tree
@@ -343,6 +343,7 @@ def _timing(records: Records) -> Rows:
             runs,
             *instructions,
             record.get("by", LOOP),  # a record from before `by` was timed in a loop
+            "yes" if record.get("beside") else "no",  # a record from before it was timed alone
         ]
         rows.append([tree.name, version, record["jobs"], *timed])
     return rows

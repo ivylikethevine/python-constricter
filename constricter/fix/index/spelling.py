@@ -50,6 +50,7 @@ _BUILTINS_MODULE: Final = "builtins"
 _UNDERSCORE: Final = "_"
 _NO_NAMES: Final[frozenset[str]] = frozenset()  # no names left as they are (see `spelled_in`)
 _SELF: Final = "Self"  # a generic class's method returning its receiver (see `GenericClass`)
+_FOLLOWED: Final = frozenset({FUNCTION, RETURNED})  # the kinds followed through a package's re-exports
 
 
 _TYPES: Final = frozenset({CLASS, ALIAS})  # the kinds a fix may write a name of that the file doesn't
@@ -145,7 +146,8 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
             function: str
             for key, sub, function in written_under(target, local):  # of all it has, those the file calls
                 other: Module | None = catalog.modules.get(origin[0] + sub)
-                followed: bool = kind == FUNCTION and other is not None and takes(other, function)
+                # A function the package re-exports (`pd.date_range`): declared, or typed by its `return`s.
+                followed: bool = kind in _FOLLOWED and other is not None and takes(other, function)
                 if other is not None and (followed or function in kind_of(other, kind)):
                     yield key, (other.name, function)
 

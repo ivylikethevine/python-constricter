@@ -380,6 +380,6 @@ def test_a_package_declaring_no_types_is_followed_for_its_bases(
     assert [line.strip() for line in fixed if _CALL in line] == [
         "name: str = self.id()",
         "short = self.shortDescription()",
-        "helped = self.helper()",
+        "helped: int = self.helper()",  # the untyped package's own annotation: a guess (`declared`)
         "gone = self.id()",
     ]

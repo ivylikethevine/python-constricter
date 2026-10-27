@@ -193,7 +193,7 @@ def test_the_timing_table_has_the_instructions_where_hyperfine_counted_them(tmp_
     counted: Path = written["timing.csv"]
     file: IO[str]
     with counted.open(encoding="utf-8", newline="") as file:
-        assert list(csv.reader(file))[1][6:] == ["1.5", "2.0", "hyperfine"]
+        assert list(csv.reader(file))[1][6:] == ["1.5", "2.0", "hyperfine", "no"]
 
 
 def _recorded(root: Path) -> tuple[Store, Tree]:
@@ -356,7 +356,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         tmp_path / "report.json",
     ]
     assert MARKDOWN not in parse({"run": {"formats": [JSON]}}).formats
-    assert tables["timing"][1] == ["standard library", "rc+dev", "0", "3.0", "1.0", "2", "", "", "loop"]
+    assert tables["timing"][1] == ["standard library", "rc+dev", "0", "3.0", "1.0", "2", "", "", "loop", "no"]
     assert render.problems(records) == [
         "standard library, rc+dev, tests: the tests differ after fix-unsafe: 1 new",
         "standard library, rc+dev, tests: infer-ty's patch didn't apply: error: patch failed",

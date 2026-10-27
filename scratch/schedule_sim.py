@@ -11,7 +11,10 @@ For each run it prints how long it took, the least any schedule could take (`bou
 each order replays in. `--sweep` searches the runner's settings, its order, `_PATIENCE` and
 `_BESIDE`, for the ones that end soonest over every run given together.
 
-    python3 scratch/schedule_sim.py FOLDER... [--cpus 16] [--memory 36] [--given] [--sweep]
+    python3 scratch/schedule_sim.py FOLDER... [--cpus 16] [--memory 36] [--given] [--sweep] [--timing-beside]
+
+`--timing-beside` replays the timed steps as steps like any other (the run file's `timing-beside`),
+not one after another alone at the end.
 """
 
 import argparse
@@ -25,7 +28,7 @@ from pathlib import Path
 from tests.corpus import archive
 
 _ROOT = Path(__file__).resolve().parents[1]
-_TIMED = {"timing", "profile"}
+_TIMED = {"timing", "profile"}  # emptied by `--timing-beside`
 _SUITE = {"tests", "traced"}  # and a part of the tests: each binds the suite's port
 _MARGIN = 1.25
 _PATIENCE = 300.0  # the runner's: a step waits so long before what's free is kept for it
@@ -238,7 +241,10 @@ def main() -> None:
     parser.add_argument("--memory", type=float, default=36.0, help="gigabytes the steps share")
     parser.add_argument("--given", action="store_true", help="steps hold what the runner gave them")
     parser.add_argument("--sweep", action="store_true", help="search the runner's settings")
+    parser.add_argument("--timing-beside", action="store_true", help="the timed steps as any other, not alone at the end")
     args = parser.parse_args()
+    if args.timing_beside:
+        _TIMED.clear()
     runs: list[list[Step]] = []
     for folder in args.folders:
         steps = read(folder, given=args.given)

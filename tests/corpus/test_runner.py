@@ -838,3 +838,11 @@ def test_a_runs_facts_name_each_checkers_version_and_the_parsers(
     facts: Record = resume.run_facts(run, datetime(2026, 10, 16, tzinfo=UTC))
     assert facts["checkers"] == ["ty (not found)", "pyrefly 0.40.0"]
     assert facts["parser"] == corpus_suite.parser()
+
+
+def test_timing_beside_frees_the_timed_steps_from_the_end() -> None:
+    """With `timing-beside`, a timed step is sized as measured and held to the end by nothing."""
+    run: Run = parse(tomllib.loads('[run]\nlabel = "t"\n[steps]\ntiming = 1\ntiming-beside = true\n'))
+    assert run.steps.timing_beside
+    assert sizing.held_last(run) == frozenset()
+    assert sizing.held_last(parse(tomllib.loads('[run]\nlabel = "t"\n'))) == sizing.TIMED

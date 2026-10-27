@@ -72,7 +72,7 @@ def run():
 """
 GUESSED: Final = "    e: Row = row(1)\n    f: util.Local = hidden()\n"
 SHOWN: Final = (
-    "fix 'e': `Row`, from `row`'s `return`s [returned] (a guess: --unsafe-fixes)\n",
+    "fix 'e': `Row`, from `row`'s `return`s [constructor, returned] (a guess: --likely)\n",
     "fix 'b': `str`, from `util.helper`'s `return`s [returned]\n",
 )
 CYCLE_A: Final = """

@@ -60,6 +60,7 @@ _CLASS: Final = "class"  # `project.CLASS`: the kind of name `classes_under` spe
 _ANNOTATION: Final = 200  # the longest string read for the names a type in it is written with
 _DOTTED: Final = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
 STUB: Final = ".pyi"
+DECLARED: Final = frozenset({"declared"})  # what a fix by an untyped package's own annotation rests on
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -95,6 +96,9 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # Its generic classes' type parameters and members' types (see `declarations.generic_members`).
     generic_members: Mapping[str, GenericClass] = field(default_factory=dict[str, GenericClass])
     installed: bool = False  # an installed package's, read for its types alone (see `installed`)
+    # An installed package's that declares no types (no `py.typed`): what it declares is a guess
+    # (`declared`), held as its `returned` (see `installed.as_untyped`).
+    untyped: bool = False
     # Its plain top-level functions with a parameter left unannotated (see `open_functions`), and
     # what every call passes each such parameter, once they're all seen (see `callers`). Plain
     # `dict`s: the CLI's worker processes send modules back, pickled.

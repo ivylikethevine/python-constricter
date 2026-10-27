@@ -21,6 +21,7 @@ infer-with = ["basedpyright", "ty", "pyrefly"]
 census = true
 coverage = true
 timing = 1
+timing-beside = true # the instructions compare across runs; the tail of timed checks alone is gone
 tests = true
 types = true
 traced = true

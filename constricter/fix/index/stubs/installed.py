@@ -2,8 +2,10 @@
 
 `with_installed` adds to the cross-file index the modules the checked files import from installed
 packages that declare their types: a stub package (`numpy-stubs`), a `py.typed` package's stubs
-(`.pyi`) or source, or a lone stub module. Each is found on the search path (`search_path`: the
-running interpreter's, and the active virtual environment's) as the import system would, and read
+(`.pyi`) or source, or a lone stub module; and, as guesses (`declared`, see `as_untyped`), those of
+packages that declare none, read for their own annotations. Each is found on the search path (the
+running interpreter's, and the active virtual environment's, `search_path`) as the import system
+would, and read
 as `modules.read` reads a checked file, but never checked or fixed; the modules they import from
 their own package (re-exports) are read too, up to `LIMIT` modules in all. Each module read is
 cached (`cached`) under the user's cache directory, by its file's path, size and modification time
@@ -27,12 +29,16 @@ from pathlib import Path
 from typing import Final, cast
 
 from constricter._version import __version__  # not the package's: it imports the rules
-from constricter.fix.index.modules import PACKAGE, STUB, SUFFIX, Index, Memo, Module, read
+from constricter.empty import Empty
+from constricter.fix.core.known import Returns
+from constricter.fix.index.modules import DECLARED, PACKAGE, STUB, SUFFIX, Index, Memo, Module, read
 from constricter.fix.index.project import HOPS, STDLIB
+from constricter.fix.index.stubs.declared import Class, Declarations
 
 LIMIT: Final = 2000  # the most installed modules one run reads
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
+_UNREAD: Final[Mapping[str, str]] = Empty()  # an untyped package's class's attributes: not offered
 _PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
 _UNDERSCORE: Final = "_"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"
@@ -90,7 +96,12 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         seen.add(name)
         path: Path | None
         module: Module | None
-        if (path := locate(name, tuple(search))) is None or (module := cached(path, name)) is None:
+        if (path := locate(name, tuple(search))) is not None:
+            module = cached(path, name)
+        else:  # installed with no types declared, or not at all
+            module = _unseen(name, tuple(search))
+            module = None if module is None else as_untyped(module)
+        if module is None:
             continue
         found[name] = module
         top: str = name.partition(".")[0].lstrip(_UNDERSCORE)
@@ -374,6 +385,54 @@ def _partial(stubs: Path) -> bool:
     """
     marker: Path = stubs / _TYPED
     return marker.is_file() and _PARTIAL in marker.read_text(encoding="utf-8", errors="replace").split()
+
+
+def as_untyped(module: Module) -> Module:
+    """Take an installed module that declares no types as the guesses its own annotations are.
+
+    What pyright reads with `useLibraryCodeForTypes`, held to the source's own annotations: its
+    functions' declared returns become its `returned.calls`, and its classes' methods' its
+    `returned.methods`, each resting on `declared`, so a call to one is a guess (`--unsafe-fixes`,
+    or `--likely` where the set passes the bars) as an unannotated function's `return`s are; its
+    classes' attributes, its classmethods' returns and its overloads aren't offered, having no way
+    to be a guess.
+
+    Returns:
+      The module, so taken.
+
+    """
+    guesses: dict[str, frozenset[str]] = dict.fromkeys(module.returns, DECLARED)
+    methods: dict[str, dict[str, str]] = {owner: dict(each) for owner, each in module.methods.items()}
+    guesses.update({f"{owner}.{name}": DECLARED for owner, each in methods.items() for name in each})
+    return replace(
+        module,
+        untyped=True,
+        returns={},
+        methods={},
+        classes=dict.fromkeys(module.classes, _UNREAD),  # its classes by name, their attributes unread
+        sides={},
+        held_sides={},
+        # Its signatures would type a call as certain: not offered. Its classes' bases stay, for
+        # the library class a line of bases ends at (see `constricter.fix.index.beyond`).
+        declared=None
+        if module.declared is None
+        else Declarations(
+            {},
+            {},
+            {},
+            {},
+            module.declared.exports,
+            module.declared.bases,
+            {name: Class((), each.bases, {}, {}) for name, each in module.declared.classes.items()},
+        ),
+        returned=Returns(
+            {**module.returned.calls, **module.returns},
+            {**module.returned.guesses, **guesses},
+            module.returned.names,
+            {**module.returned.methods, **methods},
+        ),
+        loose=module.loose | frozenset(name for each in methods.values() for name in each),
+    )
 
 
 def unseen(name: str) -> Module | None:

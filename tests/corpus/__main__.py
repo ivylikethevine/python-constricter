@@ -407,7 +407,8 @@ class Running(NamedTuple):
           The steps that failed.
 
         """
-        beside: list[str] = [name for name in pipeline.steps(self.run) if name not in sizing.TIMED]
+        last: frozenset[str] = sizing.held_last(self.run)
+        beside: list[str] = [name for name in pipeline.steps(self.run) if name not in last]
         suited: list[str] = [name for name in suite_steps.waiting(job) if self._chosen(name)]
         needs: dict[str, frozenset[str]] = suite_steps.needs(job)
         names: list[str] = self._runnable(job, _ordered([*beside, *suited], needs), needs)
@@ -442,13 +443,14 @@ class Running(NamedTuple):
 
         """
         failed: list[str] = []
+        last: frozenset[str] = sizing.held_last(self.run)
         version: str
         for version in self.run.versions:
             job: pipeline.Job = pipeline.Job(self.run, self.store, tree, version)
             failed += self.steps(
                 entry,
                 job,
-                [name for name in pipeline.steps(self.run) if name in sizing.TIMED and self._chosen(name)],
+                [name for name in pipeline.steps(self.run) if name in last and self._chosen(name)],
             )
         return failed
 

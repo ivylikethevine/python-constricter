@@ -1039,6 +1039,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `reads`         | an unannotated parameter: the one class with every member read of it, the module's, another file's, an installed package's or the standard library's (a guess) |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
 | `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
+| `declared`      | an installed package's own annotation, with no `py.typed` to vouch for it (a guess)        |
 
 The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 
