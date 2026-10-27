@@ -199,12 +199,22 @@ measure before building.
    than fixes. Left: django, which annotates nothing (its suite under RightTyper in the background,
    one process), for whether the returns alone help where there are none. Done when django is
    measured too; a corpus step only if it brings more fixes than the trace for no more errors.
-   Not run on 2026-10-26: `scratch/righttyper_measure.py` wants RightTyper's process pool and the
-   suite's forks, which the sandbox denies, so it's a shell's to run:
-   `python3 scratch/righttyper_measure.py local/corpus-suites/django-5.2.18 --source django
-   --script tests/runtests.py --args "--parallel=1"`. What to read it against is in "Returns the
-   trace records": the tracer's returns on a third of django's tests gave 625 signatures and 467
-   bindings. About 2 hours left; coverage unchanged.
+   Measured on django on 2026-10-26 (`scratch/righttyper_measure.py local/corpus-suites/django-5.2.18
+   --source django --script tests/runtests.py --args=--parallel=1 --env
+   DJANGO_SETTINGS_MODULE=test_sqlite`; RightTyper 0.1.0 patched three ways in the script's copy:
+   a test-local class's name, a suite's nonzero exit before its post-processing, and its type
+   finder reading a lazy object's class through `__getattribute__`, which raised while django's
+   apps loaded; `--all-files`, since it records only the script's directory otherwise; one process
+   on 16CPU/60GB): its whole suite, 18,191 tests in 336s, 31 erroring in RightTyper's hooks
+   (`file_storage`, `migrations`) and 3 failing as under the tracer; 405 files annotated, 10,149
+   parameters and 6,842 returns. Plain `--fix` on django then makes 4,293 certain fixes from
+   2,622 (+1,697, 26 lost to the added imports), but basedpyright finds 12,879 errors where it
+   found 4,007: 11,367 new (`reportArgumentType` 3,280, `reportUndefinedVariable` 3,127 from
+   names it assumed imported, `reportAttributeAccessIssue` 1,442, `reportReturnType` 860), the
+   sampled types too narrow (`bool | dict[Never, Never]` for a setting, `type[AppConfig] | None`
+   for a class). Decided: not a corpus step, on django as on pydantic; the project's own tracer's
+   returns ("Returns the trace records") are held to every way out of a function and bring none
+   of this. Done; coverage unchanged.
 3. **The runner's schedule, held to the solver's shortest.** Every corpus's steps wait for the
    machine alone, the one with the most seconds behind it first, and a running step's hold follows
    what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a

@@ -112,9 +112,11 @@ goes under `local/scratch/`.
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
 - `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
-[--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of its checkout, only the
-  signatures it adds taken (`righttyper_added.py`), then `--fix` and the check on a plain copy and
-  on that one: the fixes each got and the errors. Outside the sandbox.
+  [--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
+  its checkout (a script's directory on the path, the environment given; RightTyper patched past a
+  failing suite's exit and its finder's reads of lazy objects), only the signatures it adds taken
+  (`righttyper_added.py`), then `--fix` and the check on a plain copy and on that one: the fixes
+  each got and the errors. Outside the sandbox. django, 2026-10-26: 1,697 fixes more, 11,367 errors.
 - `righttyper_added.py ORIGINAL ANNOTATED OUT`: of RightTyper's rewritten source, only the
   parameter and return annotations the original lacked, with the imports they need under
   `TYPE_CHECKING`, onto the original's text: its signatures measured without its overwrites.
