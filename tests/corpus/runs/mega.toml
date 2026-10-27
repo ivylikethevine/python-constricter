@@ -10,6 +10,7 @@ versions = ["dev"]
 jobs = 4
 at-once = 8
 suite-seconds = 900 # the longest suite's tests take 6 minutes a run
+options = ["--extend-select", "LVA014,LVA015"] # signatures in every fix step, and `traced` reads the returns
 
 [corpora]
 include = ["mega"]

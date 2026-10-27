@@ -494,6 +494,8 @@ class Hints(NamedTuple):
     types: Mapping[tuple[int, int], str] = Empty()
     offered: Mapping[tuple[int, int], Offered] = Empty()
     kind: str = "checker"
+    # A traced run's: what each function returned, by where its `def` starts (see `traced.hints`).
+    returns: Mapping[tuple[int, int], Offered] = Empty()
 
 
 # An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).
@@ -592,6 +594,9 @@ class Outside:  # pylint: disable=too-many-instance-attributes
         default_factory=dict[str, tuple[ReadSignature, ...]],
     )
     installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
+    # Every member of each class it names and reads a member of, as it spells the class, other checked
+    # files' and installed packages' (see `crossed.member_names`): what `fix.values.reads` matches.
+    read_members: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     # See `LibraryNames.parameters`
     installed_parameters: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     # See `LibraryNames.lineage`

@@ -82,6 +82,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         parameters=callers.own_parameters(modules, path),
         overloaded=overloaded,
         installed_classes=stubbed.classes(modules, path),
+        read_members=crossed.member_names(modules, path),
         installed_parameters=methods.parameters,
         installed_lineage=own_types.lineages(modules, path, guarded, methods.lineage),
         installed_aliases=methods.aliases,

@@ -2,10 +2,12 @@
 
 A `Recorder` is told each line a function of a file under its root arrives at, and notes the type
 of each name the statement it left binds: an assignment's, a loop's or a `with`'s targets, a
-`:=`'s. A statement that ends 20 times with nothing new is no longer looked at, nor a function that
-returns 20 times so; a statement an exception ends says nothing. What it found is a trace: each
-file by its SHA-256, each binding by its line and name, so a file edited since has none, and a copy
-of it has them all.
+`:=`'s; and, as the function returns, the type of what it returns, under `RETURN` at the line it
+returns from (a generator's or a coroutine's not: what a call to it gives isn't what it returns). A
+statement that ends 20 times with nothing new is no longer looked at, nor a function that returns
+20 times so; a statement an exception ends says nothing. What it found is a trace: each file by its
+SHA-256, each binding by its line and name, so a file edited since has none, and a copy of it has
+them all.
 
 A value is spelled as its annotation: `None`, a builtin scalar, a builtin container or one of
 `collections`' by its first elements' types (`list[int]`, `dict[str, Row | None]`), a tuple by its
@@ -36,6 +38,7 @@ VERSION: Final = 2  # the file's format
 UNKNOWN: Final = "?"  # a value that can't be spelled
 NONE: Final = "None"
 SEPARATOR: Final = ":"  # between a class's module and its name
+RETURN: Final = "<return>"  # the name a function's return value is recorded under, at its `return`'s line
 _DOT: Final = "."  # between a class's name and that of one defined in it
 _SEQUENCES: Final = frozenset({list, set, frozenset, collections.deque, collections.Counter})
 _TUPLES: Final = frozenset({tuple})
@@ -439,6 +442,16 @@ class Recorder:
         """
         return self._function(frame) is not None
 
+    def lined(self, frame: FrameType) -> bool:
+        """Check whether `frame`'s function has a statement binding a name: its lines are worth following.
+
+        Returns:
+          Whether it does; one with none has only its returns recorded.
+
+        """
+        function: _Function | None = self._function(frame)
+        return function is not None and bool(function.lines)
+
     def line(self, frame: FrameType, at: int = 0) -> bool:
         """Note what the statement `frame` was in bound, as it arrives at another's line.
 
@@ -457,13 +470,22 @@ class Recorder:
             self.ended(frame, function)
         if statement is not None:
             self.pending[id(frame)] = (frame.f_code, statement)
-        return self.functions[id(frame.f_code)] is function and not function.spent
+        # A function binding no name has no line worth following: its returns alone are.
+        return bool(function.lines) and self.functions[id(frame.f_code)] is function and not function.spent
 
-    def left(self, frame: FrameType, *, finished: bool = False) -> bool:
+    def left(
+        self,
+        frame: FrameType,
+        *,
+        finished: bool = False,
+        returned: bool = False,
+        value: object = None,
+    ) -> bool:
         """Note what `frame`'s last statement bound, as its function returns: not as it yields.
 
         `finished`: the caller was told of a return, not of a `yield` too (`sys.monitoring`): a
-        generator's or a coroutine's is counted then, as any function's.
+        generator's or a coroutine's is counted then, as any function's. `returned`: `value` is
+        what it returns, noted too (see `returning`).
 
         Returns:
           Whether `frame`'s function is one to record, still.
@@ -475,6 +497,8 @@ class Recorder:
         if not finished and frame.f_code.co_flags & _SUSPENDS:
             return True
         self.ended(frame, function)
+        if returned and not frame.f_code.co_flags & _SUSPENDS:
+            _returning(frame, function, value)
         function.idle = 0 if function.fresh else function.idle + 1
         function.fresh = False
         return self.functions[id(frame.f_code)] is function and not function.spent
@@ -518,9 +542,13 @@ class Recorder:
             if code.co_name == _MODULE:
                 _ = self._file(code.co_filename)  # read as it's imported: its functions' calls needn't
             file: _File | None = None if code.co_name.startswith("<") else self._file(code.co_filename)
-            lines: dict[int, _Statement] = {} if file is None else file.plans.get(code.co_firstlineno, {})
-            self.functions[id(code)] = _Function(file, lines) if file is not None and lines else None
-            if file is not None and lines:
+            lines: dict[int, _Statement] | None = (
+                None if file is None else file.plans.get(code.co_firstlineno)
+            )
+            self.functions[id(code)] = (
+                _Function(file, lines) if file is not None and lines is not None else None
+            )
+            if file is not None and lines is not None:
                 self.modules[str(frame.f_globals.get("__name__"))] = file.digest
         function: _Function | None = self.functions[id(code)]
         return None if function is None or function.spent else function
@@ -573,6 +601,22 @@ class Recorder:
     def write(self, output: Path) -> None:
         """Write what was recorded to `output`."""
         write(output, self.found())
+
+
+def _returning(frame: FrameType, function: _Function, value: object) -> None:
+    """Note the type of `value`, which `frame` returns, at the line it returns from (`RETURN`).
+
+    A `return` statement's line, or the last line run of one that falls off its end: a generator's
+    or a coroutine's isn't noted (what a call to it gives isn't what it returns).
+    """
+    text: str | None = spelled(value)
+    if text is None:
+        return
+    types: set[str] = function.file.held.setdefault(frame.f_lineno, {}).setdefault(RETURN, set())
+    if text not in types:
+        types.add(text)
+        function.fresh = True
+        function.quiet = 0
 
 
 def _written(held: _Held) -> Bindings:

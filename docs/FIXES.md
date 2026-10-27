@@ -611,6 +611,20 @@ another file's subclass or outside code may store it too; none where a store isn
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
 function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
 
+LVA014 (opt-in) offers a plain function's or method's return type, ` -> T` before the `:` ending
+its header: what its own `return`s give (`returned`, as a call to it is typed), or `None` for one
+that returns nothing; a method's is a guess (a subclass may return another), and a function's is
+where its `return`s' values are only guessed (`return Box()` rests on `constructor` too). Where
+those decide nothing, what a traced run saw it return (`--infer-from`, a guess, `traced`): the
+union of the types seen, only where the run took every way out of the function, each `return`
+with a value and its end where it can fall off it, since a way out never taken may give anything.
+Only where `T` names what the module already binds. LVA015 (opt-in) offers a parameter's, `: T` after its name
+(a default spaced after it), where a guessing mechanism typed it for the function's own check:
+`callers`, `reads`, `fixture` or `named` (see the table below), resting on that mechanism; never
+for a receiver (`self`, `cls`) or a parameter the function binds again. A signature written
+reaches the other files in the same run (the file is indexed again, its callers checked again), so
+what the declared return makes certain (`call`, where `returned` was a guess) needs no second pass.
+
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.
 With `type-comments` off, an assignment's comment is its LVA001 fix the same way, certain:
@@ -1022,7 +1036,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
 | `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
-| `reads`         | an unannotated parameter: the one module class with every member read of it (a guess)     |
+| `reads`         | an unannotated parameter: the one class with every member read of it, the module's, another file's, an installed package's or the standard library's (a guess) |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
 | `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
 

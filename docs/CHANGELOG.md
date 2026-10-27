@@ -6,6 +6,28 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- LVA015 (opt-in: `--extend-select LVA015`, pylint's `missing-parameter-type`): a parameter with
+  no annotation, as ruff's ANN001 reports it, fixed with `: T` by what typed it for the function's
+  own check, a guess: what every call passes it (`callers`), the one class with every member the
+  function reads of it (`reads`), its pytest fixture's value (`fixture`) or the one type the checked
+  files annotate its name with (`named`); a default is spaced after it (`n: int = 1`).
+- LVA014's fix is a guess where the function's `return`s' values are only guessed (`return Box()`,
+  a `constructor`), resting on those guesses with `returned`, which `--likely` and
+  `unsafe-fix-select` weigh as a binding's; before, a module function's was written as certain.
+- `python -m constricter.trace` records what each function returned, at the line it returned from
+  (`<return>`, a function binding no name too; not a generator's), and `--infer-from` gives LVA014
+  a function's return from it where its own `return`s decide nothing: a guess (`traced`), only
+  where the run took every way out of the function (each `return` with a value, and its end where
+  it can fall off it), up to three types' union.
+- `reads` (a parameter typed by the one class with every member the function reads of it) has
+  every class the file names as a candidate, not the module's own alone: another checked file's
+  with its members typed or not, an installed package's, a subclass's with its imported base's,
+  and the standard library's where one class the tables hold is what every other with those
+  members is under (`datetime.date` for `year` and `strftime`; not `pathlib.PurePath` for `stem`
+  and `suffix`, which `zipfile.Path` has too), through an import added.
+- A signature `--fix` writes (LVA014, LVA015) reaches the other files in the same run: the file is
+  indexed again and its callers checked again, as a guess written with `--likely` is, so what the
+  declared return makes certain needs no second pass.
 - The corpus runs write their folders under `corpus-runs/`, each committed as two files: its
   `report.json` with its facts, every step's record and its tables, and `listings.jsonl.gz` with
   every listing a line each; their paths relative to the checkout or under `~`, their user unnamed. A later run reads an earlier

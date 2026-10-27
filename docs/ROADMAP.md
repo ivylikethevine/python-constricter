@@ -45,7 +45,18 @@ measure before building.
      type's or standard-library class's; never one the function probes (`isinstance`, `hasattr`,
      `getattr`, `type`; `fix/values/reads.py`). 13,077 of the seven corpora's bindings with no fix
      copy, read a member of or call a method of an unannotated parameter: up to 5%. Kept where the
-     witness agrees. Left: the tables' and installed packages' classes as candidates.
+     witness agrees. Built on 2026-10-26: every class the file names is a candidate (another
+     checked file's with its members typed or not, from the index's `bound`; an installed
+     package's; a subclass's with its imported base's), and the standard library's where one class
+     the tables hold is what every other with those members is under (`datetime.date` for `year`
+     and `strftime`; not `pathlib.PurePath` for `stem` and `suffix`, which `zipfile.Path` has
+     too), through an import added. On django (`scratch/signatures_measure.py django --modes unsafe
+     --select LVA015`, one process on 16CPU/60GB): `--fix --unsafe-fixes` 5,428 from 5,408 with
+     the tables' classes (+20 bindings), and with `--extend-select LVA015` 537 parameters typed
+     from 525 with the index's members (+12); pydantic not measured. Left: the hold rate, read
+     from the next mega run's witness (`reads` held 2 of 5 before); and the check's time, untimed
+     since (`reads.members` keeps every module's attributes now, and each file's `Outside` carries
+     the members of the classes it names: "The timed tail" named `reads.members` a hot spot).
    - **Instance attributes, LVA013**: an attribute a plain class's method first stores unannotated,
      declared nowhere in the class (`rules/attributes.py`); opt-in as LVA012 is
      (`--extend-select LVA013`, pylint's `C9113`), an error from `strict` and counted by
@@ -355,8 +366,37 @@ measure before building.
    still to do ([the signatures plan](plans/signatures.md) has the rest). On pydantic (2026-10-24,
    `--fix --unsafe-fixes --extend-select LVA014`): 34 functions reported, 31 fixed (29 `-> None`, 2
    `-> str`; 29 of them methods' guesses), the other 1,596 fixes the same, `pyright pydantic` 0
-   errors as without, and its 12,311 tests passing. About 10 hours; coverage unmeasured:
-   it moves guesses to certain more than it adds fixes.
+   errors as without, and its 12,311 tests passing. Built on 2026-10-26: LVA015 (opt-in), a
+   parameter's `: T` from what typed it for the function's own check (`callers`, `reads`,
+   `fixture`, `named`; `rules/parameters.py`), a guess resting on that mechanism; LVA014's fix a
+   guess where the `return`s' values are guessed (`return Box()`), resting on their kinds, which
+   `--likely` and `unsafe-fix-select` weigh (before, a module function's was written certain:
+   `_lazy_re_compile`'s `-> SimpleLazyObject`, a `constructor`); and a signature written reaches
+   the other files in the same run (`rounds._reaching`: the file indexed again, its callers
+   checked again), so what a declared return makes certain needs no second pass. Measured on
+   django (`scratch/signatures_measure.py django --select LVA014,LVA015 --modes
+   certain,likely,unsafe,signed`: a copy fixed pass after pass until a pass fixes nothing, one
+   process on 16CPU/60GB, 6 to 21s a pass; `--coverage`'s first bindings, of 17,181):
+
+   | Mode                                                 | Plain | With the codes | Signatures written |
+   | ---------------------------------------------------- | ----: | -------------: | -----------------: |
+   | `--fix`                                              | 2,627 |          2,637 |                247 |
+   | `--fix --likely`                                     | 3,273 |          3,414 |                557 |
+   | `--fix --unsafe-fixes`                               | 5,413 |          5,460 |              3,476 + 605 |
+   | `--fix --unsafe-fixes --select LVA014,LVA015`, then `--fix` |     — |          2,956 |              3,467 + 467 |
+
+   The last row is the workflow the codes are for: the signatures written first (every guess among
+   them, 3,467 returns and 467 parameters, in one pass of 21s), plain `--fix` then types 2,956,
+   329 more than without them (12.5% of its fixes), and a second pass finds nothing. `--likely`
+   gains 141 since LVA014's guesses carry their `return`s' kinds (`constructor+returned`, a likely
+   set). Before the guess fix, `--fix` with LVA014 gave 2,737: 100 of them from a guessed return
+   written as certain. Left: under `--unsafe-fixes` 138 of the parameter fixes come only on a
+   second pass (a guess written on a caller's argument is a known type for `callers` on the next
+   pass: the second row's pass 2 to 4, 150 fixes), which a recheck after writing guesses would
+   bring in (`rounds._unsettled` does it with `--likely` alone); and LVA015's reach is the seeds',
+   1 of `--unsafe-fixes`' 5,408 binding fixes on django resting on one before the codes. The
+   roadmap's 10 hours spent; coverage: `--fix` +12.5% on django after a signatures pass, the
+   `--unsafe-fixes` row under 1%.
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
@@ -478,9 +518,27 @@ What to measure before building, smallest first.
     one, is where the run-time pool would come from, rather than RightTyper ("Signatures from a
     sampled run") or MonkeyType
     (`sys.setprofile`, up to 270× slower). Held to the rule the trace's locals are (a return the
-    checkers type wider than the run saw is no fix). Done when measured on pydantic and django: the
-    fixes, the new errors and the `traced` step's time. About 6 hours; coverage unknown until
-    measured.
+    checkers type wider than the run saw is no fix). Built on 2026-10-26: the tracer records what
+    each function returned at the line it returned from (`<return>`; a function binding no name
+    too, its lines not followed; not a generator's), and `--infer-from` gives LVA014 a function's
+    return where its own `return`s decide nothing (`traced.hints`, `Hints.returns`): a guess
+    (`traced`), only where the run took every way out of the function (each `return` with a
+    value, and its end where it can fall off it), up to three types' union, not a typing form
+    (`Union` from an `__or__`). Measured on pydantic (its tests under the tracer in one process
+    on 16CPU/60GB: 20.7s, 66 failing in the sandbox as released; 74 files, 1,386 return sites):
+    `--fix --unsafe-fixes --extend-select LVA014` 1,617 fixes without the trace, 1,620 with it, 2
+    returns from the trace (both `Union`, refused since) and 1 binding: pydantic annotates its
+    returns, so there's nothing to add. On django, 10 of its test labels (`basic queries
+    model_fields forms_tests template_tests many_to_one urlpatterns_reverse utils_tests
+    db_functions expressions`: 4,994 of its 17,578 tests, 7.6s under the tracer in one process,
+    258 of its 883 files reached, 9,035 return sites): `--fix --unsafe-fixes --extend-select
+    LVA014` types 5,912 bindings from 5,445 (+467, 8.6%; 199 from the trace itself, the rest what
+    they reach) and writes 4,122 signatures from 3,459, 625 from the trace (`str` 142, `bool` 56,
+    `None` 44, `int` 31, `str | None` 30, `tuple[str, ...]` 15, `dict[str, str]` 14, ...). Left:
+    its whole suite traced (about 10 minutes in one process on 16CPU/60GB, its traced step 98.7s on
+    7 CPUs in the super run), and the new type errors, which django's CI has no checker for: read
+    them from the next mega run's witness, which judges a traced return's fix as any guess's.
+    About 6 hours spent; coverage: `--unsafe-fixes` +8.6% on django from a third of its tests.
 12. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
     types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
     or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any

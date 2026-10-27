@@ -2,14 +2,18 @@
 
 import ast
 import textwrap
-from typing import Final
+from typing import Final, TypeAlias
 
 from constricter import Checks, Offence, check_source, check_tree
 from constricter.fix.core import fixes
-from constricter.offences import Edit, Fix
+from constricter.fix.core.known import Hints, Offered, Outside
+from constricter.offences import Edit, Fix, FixPolicy
 
 UNANNOTATED_RETURN: Final = "LVA014"
 _ON: Final = Checks(returns=True)
+_Guessed: TypeAlias = tuple[str | None, bool, frozenset[str]]  # a fix, whether a guess, and its kinds
+_BOTH: Final = frozenset({"constructor", "returned"})
+_ONE: Final = frozenset({"returned"})
 # The headers the fixes write: before the `:` that ends each, past a lambda's; `fail` has no fix.
 _HEADERS: Final = (
     "def size(items: list[str]) -> int:\n",
@@ -78,13 +82,16 @@ class Box:
 
     def show(self):
         print(self)
+
+
+def make():
+    return Box()
 """
 
 
-def _found(source: str = SOURCE) -> dict[str, Offence]:
-    return {
-        o.name: o for o in check_source(textwrap.dedent(source), checks=_ON) if o.code == UNANNOTATED_RETURN
-    }
+def _found(source: str = SOURCE, checks: Checks = _ON) -> dict[str, Offence]:
+    found: list[Offence] = check_source(textwrap.dedent(source), checks=checks)
+    return {o.name: o for o in found if o.code == UNANNOTATED_RETURN}
 
 
 def test_a_function_with_no_return_type_is_reported_only_where_selected() -> None:
@@ -101,6 +108,7 @@ def test_a_function_with_no_return_type_is_reported_only_where_selected() -> Non
         "fetch",
         "width",
         "show",
+        "make",
     }
 
 
@@ -117,9 +125,45 @@ def test_its_fix_is_what_its_returns_give() -> None:
         "fetch": ("int", False),
         "width": ("int", True),
         "show": ("None", True),
+        "make": ("Box", True),  # its `return`'s value is a guess (`constructor`)
     }
     # One that only raises, a stub, and values nothing typed (an unannotated parameter, a function) have none.
     assert all(found[name].edit is None for name in ("fail", "todo", "echo", "outer"))
+
+
+def test_a_guessed_return_rests_on_its_guess_and_is_trusted_as_one() -> None:
+    """`make`'s fix rests on `constructor` and `returned`: trusted both, it's certain; one alone, a guess."""
+    found: dict[str, Offence] = _found()
+    assert found["make"].edit is not None
+    assert found["make"].edit.kinds == {"constructor", "returned"}
+    assert found["width"].edit is not None
+    assert found["width"].edit.kinds == {"returned"}
+    trusted: dict[str, Offence] = _found(checks=Checks(returns=True, fixes=FixPolicy(unsafe_select=_BOTH)))
+    assert (trusted["make"].unsafe, trusted["width"].unsafe) == (False, False)
+    partly: dict[str, Offence] = _found(checks=Checks(returns=True, fixes=FixPolicy(unsafe_select=_ONE)))
+    assert (partly["make"].unsafe, partly["width"].unsafe) == (True, False)
+
+
+def test_a_traced_runs_return_is_the_fix_where_the_returns_decide_nothing() -> None:
+    """A guess (`traced`), for `echo` (returning its parameter), not `size` (its `return`s decide it)."""
+    tree: ast.Module = ast.parse(textwrap.dedent(SOURCE))
+    starts: dict[str, tuple[int, int]] = {
+        node.name: (node.lineno, node.col_offset)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    seen: dict[tuple[int, int], Offered] = {starts["echo"]: Offered("str"), starts["size"]: Offered("float")}
+    outside: Outside = Outside(hints=(Hints("a traced run", kind="traced", returns=seen),))
+    found: list[Offence] = check_tree(tree, _ON, lines=textwrap.dedent(SOURCE).splitlines(), outside=outside)
+    fixed: dict[str, _Guessed] = {
+        o.name: (o.fix, o.unsafe, o.edit.kinds if o.edit else frozenset())
+        for o in found
+        if o.code == UNANNOTATED_RETURN and o.name in {"echo", "size"}
+    }
+    assert fixed == {
+        "echo": ("str", True, frozenset({"traced"})),
+        "size": ("int", False, frozenset({"returned"})),
+    }
 
 
 def test_the_fix_goes_before_the_colon_ending_the_header() -> None:

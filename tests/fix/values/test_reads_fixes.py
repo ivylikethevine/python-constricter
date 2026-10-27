@@ -8,6 +8,7 @@ from typing import Final, TypeAlias
 from constricter import Checks, FixPolicy, Offence, check_source
 from constricter.cli import command as cli
 from constricter.fix.core.known import Classes, Outside
+from constricter.fix.libraries import stdlib
 from constricter.fix.values import reads
 
 # Each offence's fix and whether it's a guess.
@@ -325,6 +326,40 @@ def test_a_class_another_checked_file_defines() -> None:
     }
 
 
+def test_a_standard_library_class_with_every_member_read() -> None:
+    """`year` and `strftime` are `datetime.date`'s, under which every other class with them is: a guess.
+
+    `stem` and `suffix` are `pathlib.PurePath`'s, but `zipfile.Path`'s too, under no one class;
+    `read` and `seek` are a builtin file's; a module class with members a library class has too
+    is one of two (see `test_members_elsewhere_are_not_one_class`).
+    """
+    source: str = """
+    def when(day, path, stream):
+        y = day.year
+        s = day.strftime("%Y")
+        a = path.stem
+        b = path.suffix
+        c = stream.read()
+        stream.seek(0)
+    """
+    found: list[Offence] = check_source(textwrap.dedent(source), checks=Checks(parameters=True))
+    fixed: _Fixed = {o.name: (o.fix, o.unsafe) for o in found if o.code == "LVA015"}
+    assert fixed == {
+        "day": ("date", True),  # `from datetime import date`, added
+        "path": (None, False),
+        "stream": (None, False),
+    }
+    assert {o.name: o.fix for o in found if o.name in "ys"} == {"y": "int", "s": "str"}
+
+
+def test_root_class() -> None:
+    """The one class the others are under, by the tables; none for unrelated classes."""
+    assert stdlib.root_class(["datetime.datetime", "datetime.date"]) == "datetime.date"
+    assert stdlib.root_class(["datetime.date"]) == "datetime.date"
+    assert stdlib.root_class(["pathlib.Path", "zipfile.Path"]) is None
+    assert stdlib.root_class([]) is None
+
+
 def test_the_cli_types_by_another_files_class(tmp_path: Path) -> None:
     """Checked with the file defining it, a class it imports types what's read of a parameter."""
     _ = (tmp_path / "rows.py").write_text(
@@ -348,3 +383,47 @@ def test_the_cli_types_by_another_files_class(tmp_path: Path) -> None:
     fixed: str = app.read_text(encoding="utf-8")
     assert SHOWN in fixed
     assert WIDE in fixed
+
+
+def test_the_cli_types_by_another_files_unannotated_class(tmp_path: Path) -> None:
+    """Every member of a class another file defines counts, typed or not; a subclass's take its base's."""
+    _ = (tmp_path / "rows.py").write_text(
+        textwrap.dedent(
+            """
+            class Row:
+                def __init__(self):
+                    self.width = 0
+
+                def cells(self):
+                    return []
+
+                def shown(self):
+                    return True
+            """,
+        ),
+        encoding="utf-8",
+    )
+    app: Path = tmp_path / "app.py"
+    _ = app.write_text(
+        textwrap.dedent(
+            """
+            from rows import Row
+
+
+            class Wide(Row):
+                def span(self):
+                    return 2
+
+
+            def show(row, wide):
+                a = row.cells()
+                b = row.shown()
+                c = wide.span()
+                d = wide.cells()
+            """,
+        ),
+        encoding="utf-8",
+    )
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--extend-select=LVA015", str(tmp_path)])
+    fixed: str = app.read_text(encoding="utf-8")
+    assert "def show(row: Row, wide: Wide):" in fixed

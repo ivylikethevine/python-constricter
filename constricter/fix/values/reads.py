@@ -4,7 +4,10 @@ Where the members a function reads of a parameter (`p.x`, `p.m()`: two names or 
 are all members of exactly one class the module defines at its top level or imports from another
 checked file (see `members`), or of one it defines and others inheriting from it, and not all of
 any builtin type's nor any class's the standard-library tables hold, the parameter is that class's
-instance. A guess (`reads`): another module's class, or an installed package's, may have them too.
+instance; where no such class has them but the tables' classes do, and one of those is what every
+other is under (`sqlite3.Connection` for `cursor` and `commit`; not `pathlib.Path` for `stem` and
+`suffix`, which `zipfile.Path` has too), it's that one's. A guess (`reads`): another module's class,
+or an installed package's, may have them too.
 Not for a parameter the function probes (`isinstance(p, ...)`, `hasattr(p, ...)`): it expects more
 than one type.
 """
@@ -14,6 +17,7 @@ import builtins
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Final, NamedTuple, TypeAlias, cast
 
+from constricter.empty import Empty
 from constricter.fix.core.known import Classes
 from constricter.fix.libraries import stdlib
 from constricter.overrides import override
@@ -24,6 +28,8 @@ KIND: Final = "reads"  # the guessing mechanism (`FIX_KINDS`)
 _LEAST: Final = 2  # names read: one alone (`p.name`) fits too many classes
 _PROBES: Final = frozenset({"isinstance", "hasattr", "getattr", "type"})
 _DUNDER: Final = "__"
+Named: TypeAlias = Mapping[str, frozenset[str]]  # every member of each class a file names, by its spelling
+_UNNAMED: Final[Named] = Empty()  # a tree checked alone names no other file's class
 # Each builtin type's members, as the running Python has them.
 _BUILTIN_MEMBERS: Final = tuple(
     frozenset(dir(kind))
@@ -81,6 +87,11 @@ class Read(Mapping[str, Members]):
                 self.stored = _by_name(self.attributes, stored=True)
             seen: set[str] = set()
             names: set[str] = _inherited(key, self.own, seen, self.stored)
+            # With an imported base's (`class Thing(BaseModel)`), which is then its ancestor too.
+            base: str
+            for base in _imported_bases(self.own, seen, self.imported):
+                names |= self.imported[base].names
+                seen.add(base)
             found = self.worked[key] = Members(frozenset(names), frozenset(seen - {key}))
         return found
 
@@ -130,28 +141,35 @@ def members(
     tree: ast.Module,
     imported: Classes | None = None,
     same: Iterable[frozenset[str]] = (),
+    named: Named = _UNNAMED,
 ) -> Read:
     """Name the members of each class `tree` defines once at its top level, and of those it imports.
 
     A class's own: what its body binds (methods, variables, nested classes), what its methods assign
     to their first parameter's attributes (`self.x = ...`), and the same of its bases the module
-    defines. `imported`: the typed members of the classes it imports from other checked files, as it
-    spells each (see `Classes`), each by one spelling of those `same` groups (the shortest).
+    defines or imports. `imported`: the typed members of the classes it imports from other checked
+    files, as it spells each (see `Classes`), each by one spelling of those `same` groups (the
+    shortest); `named`: every member of the classes it names and reads a member of, typed or not,
+    other checked files' and installed packages' (see `crossed.member_names`).
 
     Returns:
       Each class's members, by its name as the module spells it.
 
     """
     found: dict[str, Members] = {} if imported is None else _imported(imported, same)
+    # Every member of the classes it names (`named`, see `crossed.member_names`), typed or not.
+    key: str
+    names: frozenset[str]
+    for key, names in named.items():
+        found[key] = Members(found[key].names | names if key in found else names, frozenset())
     defined: dict[str, list[ast.ClassDef]] = {}
     stmt: ast.stmt
     for stmt in tree.body:
         if isinstance(stmt, ast.ClassDef):
             defined.setdefault(stmt.name, []).append(stmt)
     own: dict[str, ast.ClassDef] = {name: nodes[0] for name, nodes in defined.items() if len(nodes) == 1}
-    # A module with no class types no parameter: its attributes needn't be kept.
-    attributes: Sequence[ast.AST] = of_type(tree, ast.Attribute) if found or own else ()
-    return Read(found, own, cast("Sequence[ast.Attribute]", attributes))
+    # Kept with no class too: a standard-library class may have every member read (see `typed`).
+    return Read(found, own, cast("Sequence[ast.Attribute]", of_type(tree, ast.Attribute)))
 
 
 def readable(classes: Mapping[str, Members], function: FunctionDef, names: Iterable[str]) -> frozenset[str]:
@@ -160,11 +178,9 @@ def readable(classes: Mapping[str, Members], function: FunctionDef, names: Itera
     `classes`: the module's (see `members`); where they don't say what it reads, each of `names`.
 
     Returns:
-      Them; none where the module has no class.
+      Them.
 
     """
-    if not classes:
-        return frozenset()
     return classes.readable(function, names) if isinstance(classes, Read) else frozenset(names)
 
 
@@ -210,6 +226,21 @@ def _imported(imported: Classes, same: Iterable[frozenset[str]]) -> dict[str, Me
         )
         for name in spelled
     }
+
+
+def _imported_bases(
+    own: Mapping[str, ast.ClassDef],
+    seen: Iterable[str],
+    imported: Mapping[str, Members],
+) -> frozenset[str]:
+    """Name the imported classes the module's classes `seen` have as bases (`Base`, `m.Base`).
+
+    Returns:
+      Them, as the module spells each.
+
+    """
+    spelled: list[str] = [ast.unparse(base) for name in seen for base in own[name].bases]
+    return frozenset(base for base in spelled if base in imported)
 
 
 def _inherited(
@@ -323,34 +354,35 @@ def typed(
     found: dict[str, str] = {}
     each: set[str]
     for name, each in read.items():
-        matched: list[str] = (
-            []
-            if len(each) < _LEAST or name in probed
-            else [c for c, has in classes.items() if each <= has.names]
-        )
+        if len(each) < _LEAST or name in probed or any(each <= has for has in _BUILTIN_MEMBERS):
+            continue
+        matched: list[str] = [c for c, has in classes.items() if each <= has.names]
         # The one every other inherits from: a cycle of bases has none.
         root: list[str] = [
             c for c in matched if all(other == c or c in classes[other].ancestors for other in matched)
         ]
-        if len(root) == 1 and not _elsewhere(each):
+        library: frozenset[str] = _library(each)
+        if len(root) == 1 and not library:
             found[name] = root[0]
-    return found
+        elif not matched and library:
+            # The standard-library class every other with them is under, by its path (`pathlib.Path`):
+            # the module spells it through an import (see `rules.calls`).
+            found[name] = stdlib.root_class(library) or ""
+    return {name: owner for name, owner in found.items() if owner}
 
 
-def _elsewhere(read: set[str]) -> bool:
-    """Check whether a builtin type or a class the standard-library tables hold has every name of `read`.
+def _library(read: set[str]) -> frozenset[str]:
+    """Find the classes the standard-library tables hold that have every name of `read`.
 
     Returns:
-      Whether one does.
+      Their paths.
 
     """
-    if any(read <= has for has in _BUILTIN_MEMBERS):
-        return True
     having: Mapping[str, frozenset[str]] = stdlib.member_classes()
     shared: frozenset[str] | None = None
     name: str
     for name in read:
         shared = having.get(name, frozenset()) if shared is None else shared & having.get(name, frozenset())
         if not shared:
-            return False
-    return True
+            return frozenset()
+    return shared or frozenset()

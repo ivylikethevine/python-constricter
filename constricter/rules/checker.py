@@ -10,6 +10,7 @@ from constricter.fix.core.known import (
     Guarded,
     ImportPlan,
     Observed,
+    Offered,
     Outside,
     Passed,
     Returned,
@@ -17,6 +18,7 @@ from constricter.fix.core.known import (
 )
 from constricter.fix.index.params import open_functions
 from constricter.fix.values import returned, stored
+from constricter.fix.values.hinted import TRACED
 from constricter.fix.values.tables import Tables, module_tables
 from constricter.jsonc import as_text
 from constricter.offences import (
@@ -27,7 +29,7 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import attributes, late, recorded, returning
+from constricter.rules import attributes, late, parameters, recorded, returning
 from constricter.rules.calls import keyed, observed
 from constricter.rules.narrowing import flow_offences, module_flow
 from constricter.rules.redundant import redundant
@@ -181,12 +183,32 @@ def checked_tree(
                 *flow_offences(module_flow(tree, scopes), settings.checks.fixes),
                 *finals,
                 *_attributes(tree, checks, done),
-                *(returning.unannotated(tree, done.found, lines) if checks.returns else ()),
+                *(
+                    returning.unannotated(tree, done.found, lines, checks.fixes, _traced_returns(outside))
+                    if checks.returns
+                    else ()
+                ),
+                *(parameters.unannotated(tree, done.functions) if checks.parameters else ()),
             ],
         ),
         exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
+
+
+def _traced_returns(outside: Outside | None) -> dict[tuple[int, int], Offered]:
+    """Gather what a traced run saw the module's functions return (`--infer-from`), from its hints.
+
+    Returns:
+      Each function's, by where its `def` starts; nothing without a trace.
+
+    """
+    return {
+        where: offered
+        for hints in (() if outside is None else outside.hints)
+        if hints.kind == TRACED
+        for where, offered in hints.returns.items()
+    }
 
 
 def _attributes(tree: ast.Module, checks: Checks, done: "_Round") -> list[Offence]:

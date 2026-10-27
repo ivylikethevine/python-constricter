@@ -5,8 +5,9 @@ return annotation is reported where it's asked for (`--extend-select LVA014`: ru
 the same, this is for its fix). The fix writes ` -> T` before the `:` ending its header: `T` is what
 `returned` read from its `return`s (`Returned.calls`, certain for a module's function;
 `Returned.methods`, a guess for a method, which a subclass may override), or `None` for one that can
-only fall off its end or `return` bare (a method's a guess too). None for a generator `returned`
-didn't type, one that only raises, a stub (a body of `...`, `pass`, a docstring or `raise
+only fall off its end or `return` bare (a method's a guess too); or, for one those don't decide,
+what a traced run saw it return (`--infer-from`, a guess). None for a generator `returned` didn't
+type, one that only raises, a stub (a body of `...`, `pass`, a docstring or `raise
 NotImplementedError`), or a type naming what the module can't use without an import.
 """
 
@@ -14,19 +15,24 @@ import ast
 import builtins
 import itertools
 import tokenize
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import partial
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, TypeAlias
 
-from constricter.fix.core.known import Returned
+from constricter.empty import Empty
+from constricter.fix.core.known import Offered, Returned
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values.bodies import is_generator, terminates
+from constricter.fix.values.hinted import TRACED
 from constricter.fix.values.inference import RETURNED
-from constricter.offences import UNANNOTATED_RETURN, Edit, Fix, Offence
+from constricter.offences import UNANNOTATED_RETURN, Edit, Fix, FixPolicy, Offence
 from constricter.source.annotations import roots
 from constricter.source.syntax import FUNCTION_DEFS, FunctionDef, own_returns
 
 _NONE: Final = "None"
+_TRUSTING_NONE: Final = FixPolicy()  # the policy a tree checked alone has: no guess trusted
+Traced: TypeAlias = Mapping[tuple[int, int], Offered]  # what a traced run saw each function return
+_UNTRACED: Final[Traced] = Empty()  # a tree checked with no trace
 _BUILTINS: Final = frozenset(dir(builtins))
 _OPENING: Final = frozenset("([{")
 _CLOSING: Final = frozenset(")]}")
@@ -34,8 +40,19 @@ _COLON: Final = ":"
 _STUB: Final = (ast.Pass,)  # a body of only these (and a docstring, `...`) declares nothing it does
 
 
-def unannotated(tree: ast.Module, found: Returned, lines: Sequence[str]) -> list[Offence]:
+def unannotated(
+    tree: ast.Module,
+    found: Returned,
+    lines: Sequence[str],
+    policy: FixPolicy = _TRUSTING_NONE,
+    traced: Traced = _UNTRACED,
+) -> list[Offence]:
     """Report each plain function with no return annotation, with the fix its returns decide.
+
+    `policy`: which guesses are trusted (`unsafe-fix-select`), as a binding's fix has it. `traced`:
+    what a traced run saw each function return, by where its `def` starts (`--infer-from`, see
+    `traced.hints`): a guess (`traced`) for one its `return`s don't decide, where the type names
+    only what the module binds.
 
     Returns:
       The offences, by the `def`.
@@ -50,10 +67,16 @@ def unannotated(tree: ast.Module, found: Returned, lines: Sequence[str]) -> list
             continue
         fix: Fix | None = None
         typed: tuple[str, bool] | None = _typed(tree, func, owner, found)
+        seen: Offered | None = traced.get((func.lineno, func.col_offset)) if typed is None else None
+        kinds: frozenset[str] = frozenset({RETURNED}) | found.guesses.get(_key(func, owner), frozenset())
+        reason: str = "what its `return`s give"
+        if typed is None and seen is not None:
+            typed, kinds, reason = (seen.text, True), frozenset({TRACED}), "what a traced run saw it return"
         colon: tuple[int, int] | None = _colon(lines, func) if typed is not None else None
         if typed is not None and roots(typed[0]) <= usable and colon is not None:
-            reason: str = "what its `return`s give" if typed[0] != _NONE else "it returns nothing"
-            fix = Fix(typed[0], reason, typed[1], Edit.SIGNATURE, colon, frozenset({RETURNED}))
+            reason = "it returns nothing" if typed[0] == _NONE and seen is None else reason
+            # A guess rests on its `return`s' guesses too, or the trace: a set the policy may trust.
+            fix = Fix(typed[0], reason, typed[1] and not policy.trusts(kinds), Edit.SIGNATURE, colon, kinds)
         offences.append(Offence(func.lineno, func.col_offset, func.name, UNANNOTATED_RETURN, fix))
     return offences
 
@@ -91,13 +114,25 @@ def _typed(
     key: str = f"{AWAIT}{func.name}" if isinstance(func, ast.AsyncFunctionDef) else func.name
     given: str | None = found.calls.get(key) if owner is None else found.methods.get(owner, {}).get(key)
     if given is not None:
-        return given, owner is not None
+        # A method's is a guess; a function's too where its `return`s' values are only guessed.
+        return given, owner is not None or _key(func, owner) in found.guesses
     if _stub(func.body) or is_generator(tree, func):
         return None
     returns: list[ast.Return] = own_returns(func.body)
     if any(each.value is not None for each in returns) or (terminates(func.body) and not returns):
         return None  # a value nothing typed, or it only raises
     return _NONE, owner is not None
+
+
+def _key(func: FunctionDef, owner: str | None) -> str:
+    """Name `func`'s entry in `Returned.guesses`: a method's after its class, an `async def`'s after `AWAIT`.
+
+    Returns:
+      It.
+
+    """
+    name: str = f"{AWAIT}{func.name}" if isinstance(func, ast.AsyncFunctionDef) else func.name
+    return name if owner is None else f"{owner}.{name}"
 
 
 def _stub(body: Sequence[ast.stmt]) -> bool:

@@ -21,8 +21,11 @@ LONG_TUPLE: Final = "LVA011"
 CAN_BE_FINAL: Final = "LVA012"
 UNANNOTATED_ATTRIBUTE: Final = "LVA013"
 UNANNOTATED_RETURN: Final = "LVA014"
+UNANNOTATED_PARAMETER: Final = "LVA015"
+# The guessing mechanisms that type a parameter (LVA015 writes what they give on it).
+PARAMETER_KINDS: Final = frozenset({"callers", "reads", "fixture", "named"})
 # Codes reported only when selected by their full code (`--select LVA012`), never by a prefix.
-OPT_IN: Final = frozenset({CAN_BE_FINAL, UNANNOTATED_ATTRIBUTE, UNANNOTATED_RETURN})
+OPT_IN: Final = frozenset({CAN_BE_FINAL, UNANNOTATED_ATTRIBUTE, UNANNOTATED_RETURN, UNANNOTATED_PARAMETER})
 # Each way `--fix` can decide an annotation, by its stable id (`--show-fixes`, `fix-select`).
 FIX_KINDS: dict[str, str] = {
     "literal": "a literal, an f-string, `not x`, or `x in y` or `x is y`",
@@ -51,7 +54,7 @@ FIX_KINDS: dict[str, str] = {
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
-    "reads": "an unannotated parameter: the one module class with every member read of it (a guess)",
+    "reads": "an unannotated parameter: the one class with every member read of it (a guess)",
     "member": "a plain class's variable, by its value in the class's body (a guess)",
     "fixture": "a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)",
     "named": "a bare parameter, by the one type the checked files annotate its name with (a guess)",
@@ -255,6 +258,10 @@ CODES: Final[dict[str, Code]] = {
     ),
     UNANNOTATED_RETURN: Code(
         "function {name} declares no return type",
+        Level.STRICT,
+    ),
+    UNANNOTATED_PARAMETER: Code(
+        "parameter {name} is not annotated",
         Level.STRICT,
     ),
 }
@@ -467,6 +474,7 @@ class Checks(NamedTuple):
     final: bool = False  # look for LVA012 (opt-in: see `OPT_IN`)
     attributes: bool = False  # look for LVA013 (opt-in)
     returns: bool = False  # look for LVA014 (opt-in)
+    parameters: bool = False  # look for LVA015 (opt-in)
     min_python: tuple[int, int] | None = None
     vague: int = VAGUE
     plain_bases: tuple[str, ...] = PLAIN_BASES

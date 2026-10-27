@@ -315,6 +315,67 @@ def test_a_local_has_what_its_bindings_held() -> None:
     }
 
 
+_RETURNING: Final = """
+def same(value):
+    return value
+
+
+def early(value):
+    if value:
+        return 1
+    print(value)
+
+
+def partly(value):
+    if value:
+        return 3
+    return 2
+
+
+def counting(value):
+    yield value
+
+
+def nested(value):
+    def inner():
+        return "x"
+
+    return inner()
+"""
+_RETURN: Final = recording.RETURN
+
+
+def test_a_functions_return_is_what_the_run_saw_where_it_took_every_way_out() -> None:
+    """`same` by both its calls; `early` by its `return` and its end; not `partly`, one `return` never run.
+
+    Nor a generator; a nested function's returns are its own.
+    """
+    lines: dict[str, int] = {text: at + 1 for at, text in enumerate(_RETURNING.splitlines())}
+    seen: _Bindings = {
+        lines["    return value"]: {_RETURN: ["int", "str"]},
+        lines["        return 1"]: {_RETURN: ["int"]},
+        lines["    print(value)"]: {_RETURN: ["None"]},
+        lines["        return 3"]: {_RETURN: ["int"]},  # `partly`'s other `return` never ran
+        lines["    yield value"]: {_RETURN: ["int"]},
+        lines['        return "x"']: {_RETURN: ["str"]},
+        lines["    return inner()"]: {_RETURN: ["str"]},
+    }
+    found: Hints | None = traced.hints(_trace(_RETURNING, seen), _RETURNING.encode())
+    assert found is not None
+    defs: dict[tuple[int, int], str] = {
+        (node.lineno, node.col_offset): node.name
+        for node in ast.walk(ast.parse(_RETURNING))
+        if isinstance(node, ast.FunctionDef)
+    }
+    assert {defs[where]: offered.text for where, offered in found.returns.items()} == {
+        "same": "int | str",
+        "early": "int | None",
+        "inner": "str",
+        "nested": "str",
+    }
+    assert not found.types
+
+
 def test_a_file_the_trace_doesnt_have_has_no_hints() -> None:
     """One edited since, one that doesn't parse, and one whose functions bind nothing it saw."""
     found: traced.Trace = _trace(_SOURCE, _seen(_SOURCE, _HELD, _LINES))

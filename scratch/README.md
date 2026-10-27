@@ -14,6 +14,11 @@ goes under `local/scratch/`.
   report, tables and facts, and each listing gathered into one file, every text scrubbed.
 - `typeshed_reach.py FOLDER`: a run's third-party bindings with no fix that call into a package
   typeshed's third-party stubs cover, by stub set and by the census's reason.
+- `signatures_measure.py CORPUS [--modes certain,likely,unsafe,signed] [--select LVA014,LVA015]
+  [--passes N] [--jobs N] [--label NAME]`: a copy of a corpus fixed pass after pass until a pass
+  fixes nothing, each mode with and without the signature codes, and `signed` (the codes' fixes
+  written first, then `--fix`): each pass's fixes split certain, likely and guess, the signatures
+  written, and `--coverage` after; each pass's listing kept under `local/scratch/signatures/`.
 - `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
   REF's code (HEAD) and by the working tree's, and those only one side has.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
