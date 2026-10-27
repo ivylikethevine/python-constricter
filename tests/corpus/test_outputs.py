@@ -624,7 +624,50 @@ def test_the_tests_table_names_the_skips_that_moved(tmp_path: Path) -> None:
     records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
     rows: report_tables.Rows = report_tables.TABLES["tests"](records)[2:]
     assert [[row[2], *row[-2:]] for row in rows] == [
-        ["fix-certain", "", ""],
+        ["fix-certain", 1, 1],  # implied by `fix-unsafe`: its run's
         ["fix-unsafe", 1, 1],
         ["infer-ty", "", ""],
+    ]
+
+
+def test_the_tests_table_lists_the_unions_run_and_reads_an_implied_parts_skips_from_it(
+    tmp_path: Path,
+) -> None:
+    """A part the union's run stands for has the union's skips; the union's own run is a row of its own.
+
+    The released tests are read from the earlier run's folder they were taken from, beside this one's.
+    """
+    store: Store
+    tree: Tree
+    store, tree = _recorded(tmp_path / "run")
+    counts: Record = {"counts": {"passed": 2, "skipped": 1}, "failed": [], "new": [], "same": True}
+    record: Record = {
+        "seconds": 8.0,
+        "from": "earlier-run",
+        "released": {"counts": {"passed": 2, "skipped": 1}, "failed": []},
+        "fixed": {"fix-unsafe": counts | {"implied": "infer-union", "patch": "union"}},
+        "union": counts,
+    }
+    store.write(tree.name, "rc+dev", pipeline.TESTS, record)
+    earlier: Store = Store(tmp_path / "earlier-run")
+    ran: dict[tuple[Store, str], _Outcomes] = {
+        (earlier, "tests-released"): [("t::a", "passed"), ("t::b", "skipped"), ("t::c", "passed")],
+        (store, "tests-infer-union"): [("t::a", "skipped"), ("t::b", "passed"), ("t::c", "passed")],
+    }
+    where: Store
+    step: str
+    tests: _Outcomes
+    for (where, step), tests in ran.items():
+        path: Path = where.path(tree.name, "rc+dev", step, pipeline.TESTED)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(
+            "".join(f"{json.dumps({'id': test, 'outcome': outcome})}\n" for test, outcome in tests),
+            encoding="utf-8",
+        )
+    records: report_tables.Records = render.gathered(parse({"run": {"label": "rc"}}), store, [tree])
+    rows: report_tables.Rows = report_tables.TABLES["tests"](records)[1:]
+    assert [[row[2], row[4], *row[-2:]] for row in rows] == [
+        ["released (from earlier-run)", "2 passed, 1 skipped", "", ""],
+        ["fix-unsafe", "as infer-union's (implied)", 1, 1],
+        ["infer-union", "2 passed, 1 skipped", 1, 1],
     ]

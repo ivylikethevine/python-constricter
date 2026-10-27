@@ -147,8 +147,10 @@ already binds. `LVA015` is opt-in the same way (pylint's
 `enable = missing-parameter-type`): a parameter with no annotation, as ruff's `ANN001` reports it,
 but a method's receiver; its fix, a guess, is what typed the parameter for the function's own
 check: what every call passes it, the one class with every member the function reads of it, its
-pytest fixture's value, or the one type the checked files annotate its name with. A signature
-`--fix` writes reaches the other files in the same run.
+pytest fixture's value, or the one type the checked files annotate its name with. A signature is
+written whole or not at all: a return on bare parameters, or one parameter's type among bare ones,
+is an error to a checker held to complete signatures where none was. A signature `--fix` writes
+reaches the other files in the same run.
 
 Python 3.11+, no runtime dependencies.
 

@@ -18,13 +18,14 @@ _ONE: Final = frozenset({"returned"})
 _HEADERS: Final = (
     "def size(items: list[str]) -> int:\n",
     "def log(message: str) -> None:\n",
-    "    pick=lambda pair: pair[0],\n) -> str:\n",
+    "    pick=lambda pair: pair[0],\n):\n",  # `pick` bare: no return written alone
     "async def fetch() -> int:\n",
     "    def width(self) -> int:\n",
     "def fail(message: str):\n",
 )
 SOURCE: Final = """
 import functools
+import json
 
 
 def count(items: list[str]) -> int:
@@ -86,6 +87,10 @@ class Box:
 
 def make():
     return Box()
+
+
+def loaded(path: str):
+    return json.loads(path)
 """
 
 
@@ -109,6 +114,7 @@ def test_a_function_with_no_return_type_is_reported_only_where_selected() -> Non
         "width",
         "show",
         "make",
+        "loaded",
     }
 
 
@@ -121,14 +127,14 @@ def test_its_fix_is_what_its_returns_give() -> None:
     assert fixed == {
         "size": ("int", False),
         "log": ("None", False),
-        "wrapped": ("str", False),
         "fetch": ("int", False),
         "width": ("int", True),
         "show": ("None", True),
         "make": ("Box", True),  # its `return`'s value is a guess (`constructor`)
     }
-    # One that only raises, a stub, and values nothing typed (an unannotated parameter, a function) have none.
-    assert all(found[name].edit is None for name in ("fail", "todo", "echo", "outer"))
+    # One that only raises, a stub, and values nothing typed (an unannotated parameter, a function, `Any`)
+    # have none; nor has `wrapped`, whole only with its bare `pick` typed too (see `signatures`).
+    assert all(found[name].edit is None for name in ("fail", "todo", "echo", "outer", "loaded", "wrapped"))
 
 
 def test_a_guessed_return_rests_on_its_guess_and_is_trusted_as_one() -> None:
@@ -145,23 +151,26 @@ def test_a_guessed_return_rests_on_its_guess_and_is_trusted_as_one() -> None:
 
 
 def test_a_traced_runs_return_is_the_fix_where_the_returns_decide_nothing() -> None:
-    """A guess (`traced`), for `echo` (returning its parameter), not `size` (its `return`s decide it)."""
+    """A guess (`traced`), for `loaded` (returning an `Any`), not `size` (its `return`s decide it)."""
     tree: ast.Module = ast.parse(textwrap.dedent(SOURCE))
     starts: dict[str, tuple[int, int]] = {
         node.name: (node.lineno, node.col_offset)
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
     }
-    seen: dict[tuple[int, int], Offered] = {starts["echo"]: Offered("str"), starts["size"]: Offered("float")}
+    seen: dict[tuple[int, int], Offered] = {
+        starts["loaded"]: Offered("str"),
+        starts["size"]: Offered("float"),
+    }
     outside: Outside = Outside(hints=(Hints("a traced run", kind="traced", returns=seen),))
     found: list[Offence] = check_tree(tree, _ON, lines=textwrap.dedent(SOURCE).splitlines(), outside=outside)
     fixed: dict[str, _Guessed] = {
         o.name: (o.fix, o.unsafe, o.edit.kinds if o.edit else frozenset())
         for o in found
-        if o.code == UNANNOTATED_RETURN and o.name in {"echo", "size"}
+        if o.code == UNANNOTATED_RETURN and o.name in {"loaded", "size"}
     }
     assert fixed == {
-        "echo": ("str", True, frozenset({"traced"})),
+        "loaded": ("str", True, frozenset({"traced"})),
         "size": ("int", False, frozenset({"returned"})),
     }
 

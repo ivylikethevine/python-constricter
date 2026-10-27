@@ -29,7 +29,7 @@ from constricter.offences import (
     Checks,
     Offence,
 )
-from constricter.rules import attributes, late, parameters, recorded, returning
+from constricter.rules import attributes, late, parameters, recorded, returning, signatures
 from constricter.rules.calls import keyed, observed
 from constricter.rules.narrowing import flow_offences, module_flow
 from constricter.rules.redundant import redundant
@@ -183,17 +183,33 @@ def checked_tree(
                 *flow_offences(module_flow(tree, scopes), settings.checks.fixes),
                 *finals,
                 *_attributes(tree, checks, done),
-                *(
-                    returning.unannotated(tree, done.found, lines, checks.fixes, _traced_returns(outside))
-                    if checks.returns
-                    else ()
-                ),
-                *(parameters.unannotated(tree, done.functions) if checks.parameters else ()),
+                *signatures.whole(tree, _signatures(tree, checks, done, lines, outside)),
             ],
         ),
         exported._replace(names=imports.exported_names(exported, guarded, plan.added)),
         observed(tree, scopes, settings.known, {} if outside is None else outside.callees),
     )
+
+
+def _signatures(
+    tree: ast.Module,
+    checks: Checks,
+    done: "_Round",
+    lines: Sequence[str],
+    outside: Outside | None,
+) -> list[Offence]:
+    """Report the functions' missing returns (LVA014) and parameters (LVA015), where asked for.
+
+    Returns:
+      Their offences, with the fixes each decides alone (see `signatures.whole` for the rest).
+
+    """
+    found: list[Offence] = []
+    if checks.returns:
+        found += returning.unannotated(tree, done.found, lines, checks.fixes, _traced_returns(outside))
+    if checks.parameters:
+        found += parameters.unannotated(tree, done.functions)
+    return found
 
 
 def _traced_returns(outside: Outside | None) -> dict[tuple[int, int], Offered]:

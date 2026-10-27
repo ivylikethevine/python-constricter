@@ -6,6 +6,18 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- LVA014's and LVA015's fixes are written whole or not at all: a function gets them only once
+  every parameter but its receiver and its return are annotated or fixed, since a checker held to
+  complete signatures (mypy's `disallow_incomplete_defs`) reports a def with some of its
+  annotations where it reported none with none. On the mega run of 2026-10-26 that was most of
+  the errors blamed on `reads` and `named`.
+- The super and mega run files no longer select LVA014 and LVA015 for every fix step: on the mega
+  run of 2026-10-26 the written signatures brought 54,366 new type errors where the run before had
+  403, for under 0.4% more bindings typed. The codes stay opt-in, for a project that reviews the
+  signatures first.
+- The corpus runner's tests table lists the union run's own tests as a row, gives a part that run
+  stands for the skips that moved in it, and reads the released tests from the earlier run's
+  folder they were taken from: sqlalchemy's skips by name, not blanks.
 - An installed package that declares no types (no `py.typed`) is read for its own annotations,
   as pyright reads one: its functions' and methods' declared returns type their calls as guesses
   (`declared`, with `returned`), through its package's re-exports (`pd.date_range`), for

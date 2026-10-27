@@ -334,11 +334,17 @@ def test_a_standard_library_class_with_every_member_read() -> None:
     is one of two (see `test_members_elsewhere_are_not_one_class`).
     """
     source: str = """
-    def when(day, path, stream):
+    def when(day) -> None:
         y = day.year
         s = day.strftime("%Y")
+
+
+    def where(path) -> None:
         a = path.stem
         b = path.suffix
+
+
+    def read(stream) -> None:
         c = stream.read()
         stream.seek(0)
     """
@@ -415,7 +421,7 @@ def test_the_cli_types_by_another_files_unannotated_class(tmp_path: Path) -> Non
                     return 2
 
 
-            def show(row, wide):
+            def show(row, wide) -> None:
                 a = row.cells()
                 b = row.shown()
                 c = wide.span()
@@ -426,4 +432,4 @@ def test_the_cli_types_by_another_files_unannotated_class(tmp_path: Path) -> Non
     )
     _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--extend-select=LVA015", str(tmp_path)])
     fixed: str = app.read_text(encoding="utf-8")
-    assert "def show(row: Row, wide: Wide):" in fixed
+    assert "def show(row: Row, wide: Wide) -> None:" in fixed

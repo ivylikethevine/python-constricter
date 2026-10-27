@@ -29,6 +29,7 @@ from tests.corpus.pipeline import (
     TIMING,
     TRACED,
     TYPES,
+    UNION,
     Record,
     Store,
     fixing,
@@ -262,30 +263,46 @@ def _tests(records: Records) -> Rows:
         step: str
         ran: Record
         for step, ran in cast("dict[str, Record]", record["fixed"]).items():
-            more: _Row = [len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")]
-            more += _moved(records, tree, version, step)
+            # An implied part's skips are the union's, whose run stands for it.
+            more: _Row = [*_counts(ran), *_moved(records, tree, version, record, str(ran.get(IMPLIED, step)))]
             summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
             rows.append([tree.name, version, step, not differs(record, ran), summary, *more])
+        if UNION in record:  # the union's own run, listed as the parts it stands for are
+            union: Record = cast("Record", record[UNION])
+            more = [*_counts(union), *_moved(records, tree, version, record, INFER_UNION)]
+            rows.append([tree.name, version, INFER_UNION, not differs(record, union), _summary(union), *more])
     return rows
 
 
-def _moved(records: Records, tree: Tree, version: str, step: str) -> _Row:
+def _counts(ran: Record) -> _Row:
+    return [len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")]
+
+
+def _moved(records: Records, tree: Tree, version: str, record: Record, step: str) -> _Row:
     """Count the tests a fixed run skipped where the tests as released ran them, and the reverse.
 
-    By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them.
+    By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them; the
+    released tests' from the earlier run's folder they were taken from (`FROM`), where this one
+    doesn't hold them.
 
     Returns:
       The two counts; blanks where a run wrote no tests, or the folder isn't there.
 
     """
     store: Store | None = records.store
-    moved: tuple[list[str], list[str]] | None = (
-        None
-        if store is None
-        else corpus_suite.skips(
-            store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED),
-            store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
+    if store is None:
+        return ["", ""]
+    released: Path = store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED)
+    if not released.is_file() and FROM in record:
+        released = Store(store.root.parent / str(record[FROM])).path(
+            tree.name,
+            version,
+            f"{TESTS}-{RELEASED}",
+            TESTED,
         )
+    moved: tuple[list[str], list[str]] | None = corpus_suite.skips(
+        released,
+        store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
     )
     return ["", ""] if moved is None else [len(moved[0]), len(moved[1])]
 

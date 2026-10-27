@@ -49,8 +49,9 @@ def run() -> None:
     k = keyed("a", b="b")
 """
 # What `--fix --unsafe-fixes --extend-select LVA015` writes in `lib.py`, and what it leaves.
-_TWICE: Final = "def twice(n: int):\n"
-_KEYED: Final = "def keyed(a: str, *, b: str = 1):\n"
+# Both codes' fixes at once: a signature is written whole (see `signatures`), the returns by `returned`.
+_TWICE: Final = "def twice(n: int) -> int:\n"
+_KEYED: Final = "def keyed(a: str, *, b: str = 1) -> str:\n"
 _LEFT: Final = ("def rebinds(value):\n", "    def method(self, m):\n", "    def make(cls, n=1):\n")
 
 
@@ -105,11 +106,10 @@ def test_its_fix_is_what_every_call_passes_as_a_guess(tmp_path: Path) -> None:
     """Written with `--unsafe-fixes`, a default spaced after it; never for a parameter bound again."""
     lib: Path
     lib, _ = _written(tmp_path)
-    assert cli.main(["--fix", "-q", "--extend-select=LVA015", str(tmp_path)]) == cli.EXIT_FOUND
+    codes: str = "--extend-select=LVA014,LVA015"
+    assert cli.main(["--fix", "-q", codes, str(tmp_path)]) == cli.EXIT_FOUND
     assert _TWICE not in lib.read_text(encoding="utf-8")  # a guess: not without `--unsafe-fixes`
-    assert (
-        cli.main(["--fix", "--unsafe-fixes", "-q", "--extend-select=LVA015", str(tmp_path)]) == cli.EXIT_FOUND
-    )
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", codes, str(tmp_path)]) == cli.EXIT_FOUND
     fixed: str = lib.read_text(encoding="utf-8")
     assert _TWICE in fixed
     assert _KEYED in fixed
@@ -131,6 +131,25 @@ def test_a_written_signature_reaches_its_callers_in_the_same_run(
     _ = capsys.readouterr()
     assert cli.main(["--diff", *args[1:], str(tmp_path)]) == cli.EXIT_CLEAN  # a second pass is left nothing
     assert not capsys.readouterr().out
+
+
+def test_a_signature_is_written_whole_or_not_at_all(tmp_path: Path) -> None:
+    """A return alone on bare parameters, or one parameter among bare ones, is no fix (`signatures`)."""
+    lib: Path = tmp_path / "lib.py"
+    source: str = "def twice(n):\n    return n + n\n\n\ndef spread(n, *rest):\n    return n\n\n\n"
+    _ = lib.write_text(source + "def count():\n    return 1\n", encoding="utf-8")
+    app: Path = tmp_path / "app.py"
+    _ = app.write_text(
+        "from lib import spread, twice\n\n\ndef run() -> None:\n    twice(1)\n    spread(2, 3)\n",
+        encoding="utf-8",
+    )
+    _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--extend-select=LVA014", str(tmp_path)])
+    assert "def twice(n):\n" in lib.read_text(encoding="utf-8")  # its parameter bare: no return alone
+    assert "def count() -> int:\n" in lib.read_text(encoding="utf-8")
+    _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--extend-select=LVA014,LVA015", str(tmp_path)])
+    fixed: str = lib.read_text(encoding="utf-8")
+    assert "def twice(n: int) -> int:\n" in fixed
+    assert "def spread(n, *rest):\n" in fixed  # `*rest` has no fix: nothing written
 
 
 def test_explain_says_it_is_opt_in(capsys: pytest.CaptureFixture[str]) -> None:

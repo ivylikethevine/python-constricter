@@ -621,7 +621,11 @@ with a value and its end where it can fall off it, since a way out never taken m
 Only where `T` names what the module already binds. LVA015 (opt-in) offers a parameter's, `: T` after its name
 (a default spaced after it), where a guessing mechanism typed it for the function's own check:
 `callers`, `reads`, `fixture` or `named` (see the table below), resting on that mechanism; never
-for a receiver (`self`, `cls`) or a parameter the function binds again. A signature written
+for a receiver (`self`, `cls`) or a parameter the function binds again. The two are written
+whole or not at all (`rules/signatures.py`): a function gets its fixes only once every parameter
+but its receiver, `*args` and `**kwargs` included, and its return are annotated or fixed, since
+mypy's `disallow_incomplete_defs` (pandas's, sqlalchemy's) reports a def with some of its
+annotations where it reported none with none. A signature written
 reaches the other files in the same run (the file is indexed again, its callers checked again), so
 what the declared return makes certain (`call`, where `returned` was a guess) needs no second pass.
 

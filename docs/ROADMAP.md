@@ -57,6 +57,9 @@ measure before building.
      from the next mega run's witness (`reads` held 2 of 5 before); and the check's time, untimed
      since (`reads.members` keeps every module's attributes now, and each file's `Outside` carries
      the members of the classes it names: "The timed tail" named `reads.members` a hot spot).
+     On the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step): `reads` 725 guesses, 21 told, 95.2% held, 44 of 450 read blamed (9.78 in each
+     100); `named` 1,794, 6 told, 78 of 750 blamed (10.4): neither passes, both lose more than
+     the index's members gained.
    - **Instance attributes, LVA013**: an attribute a plain class's method first stores unannotated,
      declared nowhere in the class (`rules/attributes.py`); opt-in as LVA012 is
      (`--extend-select LVA013`, pylint's `C9113`), an error from `strict` and counted by
@@ -167,8 +170,10 @@ measure before building.
    0.15% side by side), their seconds don't, which the timing table's `beside other steps` column
    and RUNS.md's intro say. Replayed on the super run of 2026-10-26 (`scratch/schedule_sim.py
    --timing-beside`, 16 CPUs and 36 GB): the runner's order 42.0 minutes from 43.5. Done when a
-   mega run with it has no tail: its timed steps end with the rest. About 1 hour spent beside the
-   run; coverage unchanged.
+   mega run with it has no tail: its timed steps end with the rest. Done on the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step)): its 47 timed steps ran from 21:59 to 22:03 beside the suites, the run ending at
+   22:58 with sqlalchemy's tests; the standard library's check took 682.4 G instructions in one
+   process (rc.8's 588.8, +16%: the signature codes' work, since the run's options reach the timed
+   check too). About 1 hour spent beside the run; coverage unchanged.
 2. **Signatures from a sampled run.** RightTyper runs a package's tests
    (`python -m righttyper run -m pytest`) and annotates the parameters and returns of the functions
    they called, sampling with `sys.monitoring` at a fraction of a full trace's cost. The traced
@@ -269,8 +274,10 @@ measure before building.
    is at the shortest the solver finds, its waits memory's (`scratch/run_timeline.py`: its steps
    waited 3,791 minutes in all, the hinted steps holding 11 to 15 GB each). The timed tail was its
    last 2.5 minutes at under one CPU, gone with `timing-beside`. Done, for the super run, by the
-   solver's measure; a mega run with `timing-beside` is still to read. About 3 hours beside the
-   runs; coverage unchanged.
+   solver's measure; a mega run with `timing-beside` is still to read: the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step)) took 96.0 minutes by the solver's reading against a shortest 93.5 in 300 seconds (proved at
+   least 56.0): within a tenth, as the super run. Done by the solver's measure for both; what's
+   left is the third kind of run, one with no earlier run under its output. About 3 hours beside
+   the runs; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -423,7 +430,23 @@ measure before building.
    bring in (`rounds._unsettled` does it with `--likely` alone); and LVA015's reach is the seeds',
    1 of `--unsafe-fixes`' 5,408 binding fixes on django resting on one before the codes. The
    roadmap's 10 hours spent; coverage: `--fix` +12.5% on django after a signatures pass, the
-   `--unsafe-fixes` row under 1%.
+   `--unsafe-fixes` row under 1%. On the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step): bindings typed, of 474,291, `--fix` 161,191 from 161,134, `--likely` 211,563 from
+   210,156, `--unsafe-fixes` 229,556 from 227,933; but the new type errors 54,366 from the
+   0.4.3-rc.8 mega run's 403 (`--fix` 1,145 from 1, pandas 1,002; 25,063 untraced to a line
+   with a fix, a signature written in another file), and the witness blames 893 certain fixes of
+   49,840 checked (1.79 in each 100; 1 of 42,073 before): a return written on the def constrains
+   every caller and every override where a local's annotation constrained one binding, and mypy's
+   incomplete-def check fires on sqlalchemy where a return is written on a function whose
+   parameters stay bare. The signatures-first workflow stands for a project that reviews them;
+   as a step of the fix runs they fail the bars, so the run files select them no more (the same
+   day). Built the same day: a signature written whole or not at all (`rules/signatures.py`), a
+   function's fixes held back until every parameter but its receiver and its return are annotated
+   or fixed, which was most of the errors blamed on `reads` and `named` (mypy's incomplete-def
+   check, overrides); what a return alone exposes in a body mypy didn't check (pandas's tests,
+   `check_untyped_defs = false` there) no rule here avoids. Under it, django's signatures-first
+   workflow writes 931 returns and 81 parameters (from 3,467 and 467), and `--fix` then types
+   2,749 bindings from 2,627 (+122, from +329). Left: the codes' errors read on a run with them
+   again, if they're to go back into one.
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript
@@ -473,8 +496,12 @@ What to measure before building, smallest first.
    skipped where the tests as released ran them, and those it ran they skipped (`skipped anew`,
    `skipped no more`, from both runs' tests, `suite_steps._skips`), and the tests table counts them:
    on the 0.4.3-rc.7 and rc.8 mega runs none moved, but sqlalchemy's columns are blank, each fixed
-   part implied by the union's, whose own part the table doesn't list. Done when the tests table
-   reads sqlalchemy's skips by name. About an hour; coverage unchanged.
+   part implied by the union's, whose own part the table doesn't list. Built on 2026-10-26
+   (`report_tables._tests`): the union's own run is a row of the tests table (`infer-union`, with
+   its summary, new failures and skips), an implied part shows the skips of the run that stands for
+   it, and the released tests are read from the earlier run's folder they were taken from (`from`)
+   where this one's doesn't hold them. Done when the mega run of 2026-10-26's table shows
+   sqlalchemy's columns filled. About an hour spent; coverage unchanged.
 3. **What stubs would add to the corpora.** Of the 5,751 third-party `imported` calls with no fix
    on the 0.4.3-rc.1 mega run, 822 are into a package untyped in the corpus's environment (pandas in
    dask 297 and xarray 200, kombu 52, tlz 47, fsspec 40, scipy in networkx 39) and 978 into one not
@@ -532,7 +559,9 @@ What to measure before building, smallest first.
    `DatetimeIndex` 13, `DataFrame` 8, the rest what they reach), likely 1,766 from 1,749 (the
    kinds change). Left: the hold rate from the next mega run's witness, and the stubs baseline
    ("What stubs would add to the corpora") for what pandas-stubs would add over this. About 4 hours
-   spent; coverage 0.36% on dask.
+   spent; coverage 0.36% on dask. On the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step): `declared` 623 guesses on 5 packages, 387 told, 99.5% held, but 30 of the 432 a
+   checker read blamed for 54 errors (6.94 in each 100 against the bar's 0.1): not likely as it
+   stands; `declared+returned` 355, 179 told, 100% held, 9 of 211 blamed.
 9. **typeshed's third-party stubs, not installed.** basedpyright ships them
    (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
    (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain where
@@ -576,7 +605,9 @@ What to measure before building, smallest first.
     its whole suite traced (about 10 minutes in one process on 16CPU/60GB, its traced step 98.7s on
     7 CPUs in the super run), and the new type errors, which django's CI has no checker for: read
     them from the next mega run's witness, which judges a traced return's fix as any guess's.
-    About 6 hours spent; coverage: `--unsafe-fixes` +8.6% on django from a third of its tests.
+    About 6 hours spent; coverage: `--unsafe-fixes` +8.6% on django from a third of its tests. On
+   the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step): the `infer-trace` step types 136,639 bindings of 292,568 from 133,865 (+2,774), 6,606
+   fixes of kind `traced`; its new type errors share the signature codes' rise (10,531 from 32).
 12. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
     types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
     or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any

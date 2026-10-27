@@ -37,7 +37,7 @@ def unannotated(tree: ast.Module, functions: Iterable[tuple[Scope, FunctionDef]]
       The offences, by the parameter; a method's receiver (`self`, `cls`) isn't one.
 
     """
-    receivers: frozenset[int] = _receivers(tree)
+    receivers: frozenset[int] = receivers_of(tree)
     offences: list[Offence] = []
     scope: Scope
     func: FunctionDef
@@ -52,7 +52,7 @@ def unannotated(tree: ast.Module, functions: Iterable[tuple[Scope, FunctionDef]]
     return offences
 
 
-def _receivers(tree: ast.Module) -> frozenset[int]:
+def receivers_of(tree: ast.Module) -> frozenset[int]:
     """Find the methods' receivers: the first parameter of each function directly in a class body.
 
     But a `@staticmethod`'s, which has none.

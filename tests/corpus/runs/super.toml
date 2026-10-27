@@ -9,7 +9,6 @@ label = "super"
 versions = ["dev"]
 jobs = 4
 at-once = 7
-options = ["--extend-select", "LVA014,LVA015"] # signatures in every fix step, and `traced` reads the returns
 
 [corpora]
 include = ["super"]
