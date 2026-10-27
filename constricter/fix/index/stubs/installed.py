@@ -38,6 +38,10 @@ from constricter.fix.index.stubs.declared import Class, Declarations
 LIMIT: Final = 2000  # the most installed modules one run reads
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
+# Modules whose classes are typing forms, typed by typeshed, installed with no `py.typed`: read as
+# untyped, their `TypeVar` and `TypeVarTuple` would be constructed, and `_T: TypeVar = TypeVar("_T")`
+# breaks every type named by `_T` (sqlalchemy's `util/typing.py`, the mega run of 2026-10-27).
+_FORMS: Final = frozenset({"typing_extensions", "mypy_extensions", "_typeshed"})
 _UNREAD: Final[Mapping[str, str]] = Empty()  # an untyped package's class's attributes: not offered
 _PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
 _UNDERSCORE: Final = "_"
@@ -98,6 +102,8 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         module: Module | None
         if (path := locate(name, tuple(search))) is not None:
             module = cached(path, name)
+        elif name.partition(".")[0] in _FORMS:  # typeshed's: its classes are special forms
+            module = None
         else:  # installed with no types declared, or not at all
             module = _unseen(name, tuple(search))
             module = None if module is None else as_untyped(module)

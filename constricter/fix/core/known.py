@@ -585,6 +585,9 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     # Their descriptors, as it spells them, each with what an instance's attribute of it gives.
     descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     callees: Mapping[str, Callee] = field(default_factory=dict[str, Callee])
+    # Whether a checked file calls one of its open functions: its check kept for a resume knowing
+    # their parameters (see `callers.resumable`); a tree checked alone keeps it.
+    resumable: bool = True
     # See `Seeds`
     parameters: Mapping[str, Mapping[str, Passed]] = field(
         default_factory=dict[str, Mapping[str, Passed]],

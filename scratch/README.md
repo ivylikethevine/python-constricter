@@ -19,6 +19,9 @@ goes under `local/scratch/`.
   fixes nothing, each mode with and without the signature codes, and `signed` (the codes' fixes
   written first, then `--fix`): each pass's fixes split certain, likely and guess, the signatures
   written, and `--coverage` after; each pass's listing kept under `local/scratch/signatures/`.
+- `order_experiment.py [--no-loose] -- ARGS...`: a check (`python -m constricter ARGS`) with the
+  order's method-name edges dropped, for the parallel check's ceiling; compare its `--format=json`
+  with a plain check's. Outside the sandbox for `--jobs`.
 - `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
   REF's code (HEAD) and by the working tree's, and those only one side has.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.

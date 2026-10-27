@@ -472,3 +472,51 @@ def test_an_untyped_packages_own_annotations_are_guesses(
     assert core.untyped
     assert (core.returns, core.returned.calls) == ({}, {"load": "Store"})
     assert core.returned.guesses == {"load": {"declared"}, "Store.rows": {"declared"}}
+
+
+# `typing_extensions` installed as source with no `py.typed`: typeshed types it, so it's never read.
+# Reached as sqlalchemy's `util.typing` reaches it: through a checked module's re-export.
+_FORMS: Final = {
+    "typing_extensions.py": (
+        "class TypeVar:\n"
+        "    def __init__(self, name: str) -> None:\n"
+        "        self.name = name\n\n\n"
+        "class TypeVarTuple:\n"
+        "    def __init__(self, name: str) -> None:\n"
+        "        self.name = name\n"
+    ),
+}
+_FORMING: Final = """
+if True:  # as sqlalchemy's `util.typing` keeps its import sorter off them
+    from typing_extensions import TypeVar as TypeVar
+    from typing_extensions import TypeVarTuple as TypeVarTuple
+"""
+_FORMED: Final = """
+from forms import TypeVar, TypeVarTuple
+
+_T = TypeVar("_T")
+_Ts = TypeVarTuple("_Ts")
+"""
+
+
+def test_a_typing_form_provider_without_py_typed_is_never_read_as_untyped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_T: TypeVar = TypeVar("_T")` would break every type named by `_T`: no guess, nothing indexed.
+
+    A module-scope binding (`--all-scopes`, as the corpus runs check), reported and left.
+    """
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _FORMS)), *sys.path])
+    project_: Path = tmp_path / "project"
+    project_.mkdir()
+    _ = (project_ / "forms.py").write_text(textwrap.dedent(_FORMING), encoding="utf-8", newline="\n")
+    main: Path = project_ / "main.py"
+    _ = main.write_text(textwrap.dedent(_FORMED), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "--unsafe-fixes", "--all-scopes", "-q", str(project_)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == textwrap.dedent(_FORMED)
+    catalog: project.Index = installed.with_installed(
+        project.index([project_ / "forms.py", main]),
+        installed.search_path(),
+    )
+    assert "typing_extensions" not in catalog.modules

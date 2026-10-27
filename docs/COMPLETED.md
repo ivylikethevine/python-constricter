@@ -443,7 +443,8 @@ What constricter does today and what was measured on the way, by scope. What's n
   16CPU/60GB, a fix step's 11 to 13 CPU seconds and 0.8 to 0.9 GB, where `psutil`'s readings, which
   count the rest, saw 1 and 0.1 to 0.2. An unmeasured traced step is sized by its suite's `tests`
   step; a step that wants all the memory runs alone, and one that held over 8 GB beside others is
-  noted. The timed checks hold every CPU, and run last, one at a time. A suite's tests of one port
+  noted. The timed checks hold every CPU, and run last, one at a time, or beside the other steps
+  (`timing-beside`, below). A suite's tests of one port
   run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes
   under its own label, keeping its start and adding each execution's minutes, and a run exits
   non-zero on anything a fix broke or a step that failed, whose traceback its log keeps. Every
@@ -528,6 +529,31 @@ What constricter does today and what was measured on the way, by scope. What's n
   were Pyright reading this project's settings, not its own); django's suite is the same after
   `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on any of
   the seven. Measured, with no gain: the fixed copies on a `tmpfs`.
+- **The timed checks beside the other steps** (`timing-beside`, a run file's `[steps]` key, set in
+  `super.toml` and `mega.toml`): the timed checks once ran last, alone and one at a time, since
+  three corpora at once on disjoint 5-CPU sets ran 4 to 5% slower in one process and 10 to 17% with
+  jobs (`scratch/timed_tail_trial.py`); that tail took 5.3 to 6.2 minutes of a mega run. But their
+  instructions didn't move side by side (0.04 to 0.15%, 0.00% with jobs across runs at one commit,
+  `scratch/timing_noise.py`), so the timing table compares instructions across runs (its
+  `beside other steps` column, RUNS.md's intro) and the checks run sized as measured, not held to
+  the end (`sizing.held_last`). Replayed on the super run of 2026-10-26 (`scratch/schedule_sim.py
+  --timing-beside`): 42.0 minutes from 43.5. On the mega runs of 2026-10-26 and 2026-10-27
+  (16CPU/60GB) the 47 timed steps ran beside the suites and ended an hour before the run. The
+  profile on the way (`py-spy`, `scratch/profile_diff.py`, 2026-10-23) took the standard library's
+  check from 50.9s to 40.6s and pandas's from 57.5s to 46.9s in one process: `reads.members`
+  walked every method each check, a function's body was walked again for each parameter, and
+  `overloads._agreed` was hot.
+- **RightTyper, measured and declined** (`scratch/righttyper_measure.py`): a sampled run's
+  signatures as a corpus step. On pydantic (2026-10-24, `--ignore-annotations`, its tests in
+  25.9s) the 23 parameters and 22 returns it added brought 3 more certain fixes and 45 pyright
+  errors, the sampled types narrower than the functions take (`**kwargs: None`, `Self` in a
+  metaclass). On django (2026-10-26, its whole suite in 336s, RightTyper 0.1.0 patched three
+  ways in the script's copy: a test-local class's name, a nonzero exit before its post-processing,
+  a lazy object's class read through `__getattribute__`; `--all-files`): 10,149 parameters and
+  6,842 returns in 405 files, `--fix` then 4,293 certain fixes from 2,622, but basedpyright 12,879
+  errors from 4,007 (`bool | dict[Never, Never]` for a setting, `type[AppConfig] | None` for a
+  class). Not a corpus step: the project's own tracer's returns are held to every way out of a
+  function and bring none of this.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; the runner's **`timing`** step checks each version of

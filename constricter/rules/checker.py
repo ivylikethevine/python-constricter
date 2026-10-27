@@ -159,8 +159,9 @@ def checked_tree(
     finished: frozenset[int] = _kept_scopes(tree)
     done: _Round = _resumed(tree, checks, outside) or _started(tree, checks, lines, own, outside)
     # Kept with the tree, for as long as it is: a second check may only know its parameters anew,
-    # which only a module with an open function's can (`callers` types no other's).
-    if open_functions(tree):
+    # which only a module with an open function's can (`callers` types no other's), and only one
+    # some checked file calls (`Outside.resumable`).
+    if open_functions(tree) and (outside is None or outside.resumable):
         vars(tree)[_KEPT] = _Kept(outside, checks, done)
     settings: Settings = done.settings
     scopes: list[Scope] = done.scopes()

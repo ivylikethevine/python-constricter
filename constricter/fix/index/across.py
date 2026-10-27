@@ -29,6 +29,7 @@ from constricter.fix.index import (
     taken,
     tuples,
 )
+from constricter.fix.index.modules import module_at
 from constricter.fix.index.stubs import stubbed
 
 if TYPE_CHECKING:
@@ -79,6 +80,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         generic=dict(imported.generic),
         descriptors=dict(imported.descriptors),
         callees=callers.callees(modules, path),
+        resumable=_resumable(modules, path),
         parameters=callers.own_parameters(modules, path),
         overloaded=overloaded,
         installed_classes=stubbed.classes(modules, path),
@@ -104,3 +106,14 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         takers=taken.calls(modules, path, guarded),
         emptied=beyond.emptied(modules, path),
     )
+
+
+def _resumable(modules: project.Index, path: Path) -> bool:
+    """Check whether the file at `path`'s check is to be kept for a resume (see `callers.resumable`).
+
+    Returns:
+      Whether a checked file calls one of its open functions; yes for a file `modules` doesn't have.
+
+    """
+    target: project.Module | None = module_at(modules, path)
+    return target is None or target.name in callers.resumable(modules)

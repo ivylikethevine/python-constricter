@@ -115,7 +115,7 @@ the value decides it, for a plain `name = value` in a function or module body:
   ancestor with it: `class Both(threading.Thread, unittest.TestCase)`), by its members there
   (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a `threading.Thread` a `str`),
   which another checked file's class is followed to as well, through its own bases in any checked
-  file or installed package (one that declares no types is read for its classes' bases alone:
+  file or installed package (one that declares no types gives its classes' bases:
   `django.test.TestCase`), each line of them reaching a library class at most (a mixin beside it
   ends at none; two lines reaching one each give both, in order, where they share no ancestor): what
   none of them binds is the library class's (`self.id()` under a project's own
@@ -528,6 +528,14 @@ A type it names is written through a public module re-exporting it that the file
 itself, `from m import x as x`), or not written; and one of its generic classes is never written
 bare (`np.ndarray`). A class a module the file imports re-exports has its members there
 (`pytest.LogCaptureFixture`'s `text`, `pkg.Row`'s).
+
+An installed package that declares no types (no `py.typed`, no stubs) is read for its own
+annotations, as pyright reads one: its functions' and methods' declared returns type the calls
+into it as guesses (`declared`, with `returned`), through its re-exports (`pd.date_range(...)` is a
+`DatetimeIndex` under `--unsafe-fixes`); its classes' attributes, its classmethods and its
+overloads aren't offered. Not the modules whose classes are typing forms, typed by typeshed
+(`typing_extensions`, `mypy_extensions`): `TypeVar("T")` is never
+a `TypeVar`.
 
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns

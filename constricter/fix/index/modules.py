@@ -243,6 +243,9 @@ class Memo:
     named: dict[str, tuple[str, str]] | None = None
     # The installed modules pytest defines its own fixtures in, by name (see `fixtures`).
     pytest: tuple[str, ...] | None = None
+    # The checked modules whose open functions a checked file calls: those a resume can start from
+    # (see `callers.resumable`).
+    resumable: frozenset[str] | None = None
 
 
 class Index(NamedTuple):
