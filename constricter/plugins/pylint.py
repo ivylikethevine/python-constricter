@@ -21,6 +21,7 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
+    UNANNOTATED_PARAMETER,
     UNANNOTATED_RETURN,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
@@ -59,6 +60,7 @@ SYMBOLS: dict[str, Message] = {
     CAN_BE_FINAL: Message("C9112", "could-be-final"),
     UNANNOTATED_ATTRIBUTE: Message("C9113", "unannotated-instance-attribute"),
     UNANNOTATED_RETURN: Message("C9114", "missing-return-type"),
+    UNANNOTATED_PARAMETER: Message("C9115", "missing-parameter-type"),
 }
 
 
@@ -138,6 +140,7 @@ class ConstricterChecker(BaseRawFileChecker):
             final=self.linter.is_message_enabled(SYMBOLS[CAN_BE_FINAL].symbol),
             attributes=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_ATTRIBUTE].symbol),
             returns=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_RETURN].symbol),
+            parameters=self.linter.is_message_enabled(SYMBOLS[UNANNOTATED_PARAMETER].symbol),
         )
         text: str = parsed.text(source)  # by its PEP 263 declaration or BOM, as the CLI decodes it
         offences: list[Offence] = check_source(text, node.file or "<unknown>", checks)

@@ -1,14 +1,16 @@
 """Measure RightTyper's signatures on a corpus: the fixes they add to `--fix`, and the type errors.
 
   python3 scratch/righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) \\
-      [--args "..."] [--check "basedpyright PKG"] [--out DIR]
+      [--args "..."] [--env KEY=VALUE ...] [--check "basedpyright PKG"] [--out DIR]
 
 On copies of the suite's CHECKOUT (its `.venv` is the environment): RightTyper 0.1.0 runs its tests
 (`--module`, or `--script` with `--args`) with `--ignore-annotations`, from a copy of it patched to
 write a test-local class's name without `<locals>.` (it crashes on one otherwise); of what it wrote
 under PKG, only the annotations the package lacked are taken (`righttyper_added.py`); `--fix
 --show-fixes` runs on a plain copy and on that one (`local/.venv`'s constricter, the checkout's
-environment), and `--check`, a type checker run in each copy, after the fix. Prints the signatures
+environment), and `--check`, a type checker run in each copy, after the fix. A suite that exits 1 still has
+its signatures written (RightTyper's exit re-raise patched out too), and its type finder reads no
+lazy object's class (django's `settings` raised while its apps loaded). Prints the signatures
 added, the certain fixes each copy got and those only one did, and the checker's errors on each
 (`errorCount` from a pyright's `--outputjson`, else the lines that say `error`). Writes everything
 under `--out` (default `local/righttyper/<checkout's name>`). Its forked workers and the tests' own
@@ -57,6 +59,26 @@ def patched_righttyper(python: Path, out: Path) -> Path:
     writer.write_text(
         text.replace(old, f'cst.parse_expression(str(annotation).replace("{_LOCALS}", ""))'), encoding="utf-8"
     )
+    # A suite that exits 1 (django's: four tests fail under it) still gets its signatures written:
+    # RightTyper re-raises the exit before its post-processing otherwise.
+    runner = target / "righttyper.py"
+    text = runner.read_text(encoding="utf-8")
+    old = "    except SystemExit as e:\n        if e.code not in (None, 0):\n            raise\n"
+    if old not in text:
+        sys.exit(f"RightTyper's {runner.name} has changed: the exit patch doesn't apply")
+    runner.write_text(text.replace(old, "    except SystemExit as e:\n        print(f'tests exited {e.code}')\n"), encoding="utf-8")
+    # Its type finder asks `isinstance` of every module attribute, which reads a lazy object's class
+    # through its `__getattribute__` (django's `settings`, `admin.site`) and raises while apps load:
+    # asked of `type(obj)` instead, which reads nothing.
+    finder = target / "righttyper_runtime.py"
+    text = finder.read_text(encoding="utf-8")
+    old = "                isinstance(obj, (type, ModuleType))\n                # also include typing's"
+    if old not in text:
+        sys.exit(f"RightTyper's {finder.name} has changed: the finder patch doesn't apply")
+    finder.write_text(
+        text.replace(old, "                issubclass(type(obj), (type, ModuleType))\n                # also include typing's"),
+        encoding="utf-8",
+    )
     return target.parent
 
 
@@ -64,7 +86,7 @@ def _uv(python: Path) -> list[str]:
     return ["uv", "run", "--no-project", "--python", str(python), "--with", RIGHTTYPER]
 
 
-def annotated(python: Path, copy: Path, patch: Path, source: str, tests: list[str]) -> int:
+def annotated(python: Path, copy: Path, patch: Path, source: str, tests: list[str], extra: dict[str, str]) -> int:
     """Run the tests under RightTyper in `copy`, which it rewrites."""
     start = (
         "import runpy, sys; "
@@ -72,14 +94,23 @@ def annotated(python: Path, copy: Path, patch: Path, source: str, tests: list[st
         "sys.argv = ['righttyper', *sys.argv[1:]]; "
         "runpy.run_module('righttyper', run_name='__main__', alter_sys=True)"
     )
-    options = ["--ignore-annotations", "--output-files", "--overwrite", "--include-files", f"/{source}/"]
+    # `--all-files`: RightTyper records only files under the script's directory otherwise (django's
+    # `tests/runtests.py` would record its tests alone); `--include-files` still keeps it to the package.
+    options = ["--ignore-annotations", "--output-files", "--overwrite", "--all-files"]
+    options += ["--include-files", f"/{source}/"]
     print("+ righttyper", *options, *tests, flush=True)
+    # A script's directory on the path, as `python script.py` puts it (`runpy.run_path` doesn't):
+    # django's `tests/runtests.py` imports its settings module from there.
+    script = next((Path(each) for each in tests if each.endswith(".py")), None)
+    env = dict(os.environ) | extra
+    if script is not None:
+        env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(copy / script.parent), env.get("PYTHONPATH")]))
     return subprocess.run(
-        [*_uv(python), "python", "-c", start, *options, *tests], cwd=copy, check=False
+        [*_uv(python), "python", "-c", start, *options, *tests], cwd=copy, check=False, env=env
     ).returncode
 
 
-def fixes(copy: Path, source: str, environment: Path, out: Path) -> set[tuple[str, int, str]]:
+def fixes(copy: Path, source: str, environment: Path, out: Path) -> set[tuple[str, int, int]]:
     listed = out / f"{copy.name}.fixes.json"
     with listed.open("w", encoding="utf-8") as file:
         _ = subprocess.run(
@@ -98,7 +129,7 @@ def fixes(copy: Path, source: str, environment: Path, out: Path) -> set[tuple[st
             check=False,
         )
     found = json.loads(listed.read_text(encoding="utf-8") or "[]")
-    return {(each["path"], each["line"], each["name"]) for each in found if each.get("fixed")}
+    return {(each["path"], each["line"], each["column"]) for each in found if each.get("fixed")}
 
 
 def errors(copy: Path, check: str, environment: Path) -> int:
@@ -120,6 +151,7 @@ def main() -> int:
     tests.add_argument("--module")
     tests.add_argument("--script")
     parser.add_argument("--args", default="")
+    parser.add_argument("--env", action="append", default=[], help="KEY=VALUE for the tests' environment")
     parser.add_argument("--check", default="")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -131,7 +163,8 @@ def main() -> int:
     patch = patched_righttyper(python, out)
     rewritten = copied(checkout, out / "rewritten")
     run = ["-m", args.module] if args.module else [args.script]
-    status = annotated(python, rewritten, patch, args.source, [*run, *shlex.split(args.args)])
+    extra = dict(each.split("=", 1) for each in args.env)
+    status = annotated(python, rewritten, patch, args.source, [*run, *shlex.split(args.args)], extra)
     print(f"tests under RightTyper: exit {status}")
     plain = copied(checkout, out / "plain")
     merged = copied(checkout, out / "merged")

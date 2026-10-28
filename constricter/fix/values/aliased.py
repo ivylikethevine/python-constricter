@@ -37,7 +37,7 @@ _CLASSES: Final = frozenset(
 _ALWAYS: Final = frozenset({"typing.TypeAlias", "typing_extensions.TypeAlias", "typing_extensions"})
 _REASON: Final = "a type alias, written as a type made of others"
 # What makes a type of a call's result, by where it's from.
-_FACTORIES: Final = frozenset(
+FACTORIES: Final = frozenset(
     {
         *(f"{module}.{name}" for module in ("typing", "typing_extensions") for name in TYPING_FACTORIES),
         *(f"enum.{name}" for name in ENUM_FACTORIES),
@@ -53,7 +53,8 @@ def factory(value: ast.expr, known: Known) -> bool:
 
     What it's bound to can't be annotated: a type checker would take the name for a variable. However
     the factory is imported (`TypeVar`, `typing.TypeVar`, `t.TypeVar`), as long as it's `typing`'s,
-    `typing_extensions`', `enum`'s or `collections.namedtuple`.
+    `typing_extensions`', `enum`'s or `collections.namedtuple`, through another checked file's
+    re-export too (`ImportPlan.factories`).
 
     Returns:
       Whether it does.
@@ -63,7 +64,7 @@ def factory(value: ast.expr, known: Known) -> bool:
     return (
         isinstance(value, ast.Call)
         and plan is not None
-        and stdlib.resolved(value.func, plan.bound) in _FACTORIES
+        and (stdlib.resolved(value.func, plan.bound) in FACTORIES or dotted(value.func) in plan.factories)
     )
 
 

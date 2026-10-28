@@ -291,9 +291,29 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
         elif given is not None and plain(given[0], scope.settings.known):
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
         elif arg.arg in read:
-            scope.inferred.learn(arg.arg, read[arg.arg], frozenset({reads.KIND}))
+            _learn_read(scope, arg.arg, read[arg.arg], seeded.reads)
         elif arg.arg in seeded.named and arg.arg in bare:
             scope.inferred.learn(arg.arg, *seeded.named[arg.arg])
+
+
+def _learn_read(scope: Scope, name: str, owner: str, owned: Mapping[str, reads.Members]) -> None:
+    """Type the parameter `name` as the class `reads` gave it, where the module can write that class."""
+    spelled: str | None
+    if (spelled := _spelled(owner, owned, scope.settings.known)) is not None:
+        scope.inferred.learn(name, spelled, frozenset({reads.KIND}))
+
+
+def _spelled(owner: str, owned: Mapping[str, reads.Members], known: Known) -> str | None:
+    """Spell the class `reads` typed a parameter as: a module class as it is, a library one through an import.
+
+    Returns:
+      The name, or `None` where the module can't write a library class's (see `ImportPlan.spell`).
+
+    """
+    if owner in owned:
+        return owner
+    plan: ImportPlan | None = known.names.plan
+    return None if plan is None else plan.spell(owner)
 
 
 def _read(

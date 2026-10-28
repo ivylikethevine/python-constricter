@@ -6,6 +6,65 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--likely` applies an installed package's declared returns where it has no `py.typed`: the sets
+  `declared+returned`, `declared+returned+unpack` and `constructor+declared+returned` pass
+  [LIKELY.md](LIKELY.md)'s bars on the mega run of 2026-10-28.
+- `mypy_extensions` installed with no `py.typed` is read for its classes alone (`u8`, `i64`), its
+  functions' returns not: mypy's 23 `tag: u8` fixes, gone since its typing forms were kept out,
+  come back.
+- A file's check is kept for a second one knowing its parameters only where a checked file calls
+  one of its functions with a parameter left unannotated: the standard library's check in one
+  process peaks at 2.06 GiB from 2.15.
+- LVA014's and LVA015's fixes are written whole or not at all: a function gets them only once
+  every parameter but its receiver and its return are annotated or fixed, since a checker held to
+  complete signatures (mypy's `disallow_incomplete_defs`) reports a def with some of its
+  annotations where it reported none with none. On the mega run of 2026-10-26 that was most of
+  the errors blamed on `reads` and `named`.
+- The super and mega run files no longer select LVA014 and LVA015 for every fix step: on the mega
+  run of 2026-10-26 the written signatures brought 54,366 new type errors where the run before had
+  403, for under 0.4% more bindings typed. The codes stay opt-in, for a project that reviews the
+  signatures first.
+- The corpus runner's tests table lists the union run's own tests as a row, gives a part that run
+  stands for the skips that moved in it, and reads the released tests from the earlier run's
+  folder they were taken from: sqlalchemy's skips by name, not blanks.
+- An installed package that declares no types (no `py.typed`) is read for its own annotations,
+  as pyright reads one: its functions' and methods' declared returns type their calls as guesses
+  (`declared`, with `returned`), through its package's re-exports (`pd.date_range`), for
+  `--unsafe-fixes` or `--likely` once the set passes the bars; its classes' attributes, its
+  classmethods and its overloads aren't offered. Before, nothing of such a package typed a call.
+  The modules whose classes are typing forms, typed by typeshed (`typing_extensions`,
+  `_typeshed`), are never read so: on the mega run of 2026-10-27, `typing_extensions` installed as
+  source made `TypeVar` and `TypeVarTuple` constructor guesses, and `_T: TypeVar = TypeVar("_T")`
+  left `_T` naming no type, 5,516 new errors in sqlalchemy.
+- A call to an unannotated function typed by its `return`s rests on what those rest on too
+  (`constructor+returned` for `return Box()`), in its fix's kinds, as a method's does: the
+  mechanisms table's sets name them, and `--likely` applies the sets that pass.
+- The corpus runner's `timing-beside` (in `[steps]`): the timed checks run beside the other steps,
+  sized as measured, not one at a time alone at the end; their instructions compare across runs
+  (0.00% noise with jobs), their seconds don't, which the timing table's last column and RUNS.md
+  say. The super and mega run files set it: their tails of timed checks alone are gone.
+- LVA015 (opt-in: `--extend-select LVA015`, pylint's `missing-parameter-type`): a parameter with
+  no annotation, as ruff's ANN001 reports it, fixed with `: T` by what typed it for the function's
+  own check, a guess: what every call passes it (`callers`), the one class with every member the
+  function reads of it (`reads`), its pytest fixture's value (`fixture`) or the one type the checked
+  files annotate its name with (`named`); a default is spaced after it (`n: int = 1`).
+- LVA014's fix is a guess where the function's `return`s' values are only guessed (`return Box()`,
+  a `constructor`), resting on those guesses with `returned`, which `--likely` and
+  `unsafe-fix-select` weigh as a binding's; before, a module function's was written as certain.
+- `python -m constricter.trace` records what each function returned, at the line it returned from
+  (`<return>`, a function binding no name too; not a generator's), and `--infer-from` gives LVA014
+  a function's return from it where its own `return`s decide nothing: a guess (`traced`), only
+  where the run took every way out of the function (each `return` with a value, and its end where
+  it can fall off it), up to three types' union.
+- `reads` (a parameter typed by the one class with every member the function reads of it) has
+  every class the file names as a candidate, not the module's own alone: another checked file's
+  with its members typed or not, an installed package's, a subclass's with its imported base's,
+  and the standard library's where one class the tables hold is what every other with those
+  members is under (`datetime.date` for `year` and `strftime`; not `pathlib.PurePath` for `stem`
+  and `suffix`, which `zipfile.Path` has too), through an import added.
+- A signature `--fix` writes (LVA014, LVA015) reaches the other files in the same run: the file is
+  indexed again and its callers checked again, as a guess written with `--likely` is, so what the
+  declared return makes certain needs no second pass.
 - The corpus runs write their folders under `corpus-runs/`, each committed as two files: its
   `report.json` with its facts, every step's record and its tables, and `listings.jsonl.gz` with
   every listing a line each; their paths relative to the checkout or under `~`, their user unnamed. A later run reads an earlier

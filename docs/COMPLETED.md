@@ -7,6 +7,11 @@ What constricter does today and what was measured on the way, by scope. What's n
 
 - **LVA001–LVA004**, with `all-scopes` for module and class bodies (LVA004), and `# type:` comments
   counted automatically in modules importing Python 2 `__future__` features.
+- **A type's factory through a re-export**: `_Ts = TypeVarTuple("_Ts")` is a type, not a variable
+  to annotate, where `TypeVarTuple` comes through a checked module's re-export too (sqlalchemy's
+  `util.typing`, from `typing_extensions`), followed through the index (`across.factories`). On
+  sqlalchemy 2.1.4 with `--all-scopes`, LVA004 30 offences fewer (2,471 from 2,501; 17
+  `TypeVarTuple`, 13 `TypeVar`), the rest the same.
 - **LVA005 and LVA006** (vague past `vague`'s level, deeply nested), with what makes a type
   (`T = TypeVar("T")`, a `NewType`, a functional `NamedTuple`) exempt from LVA001 and LVA004,
   **LVA007** (annotated again the same way, per straight-line block), **LVA011** (a tuple longer
@@ -125,11 +130,11 @@ What constricter does today and what was measured on the way, by scope. What's n
   file's type is.
 - **Installed packages**: calls into an installed package that declares its types (`py.typed`, a
   stub package, a lone stub module) are typed by their declared returns as a checked file's are,
-  found as PEP 561 says on `VIRTUAL_ENV`'s path and this Python's (a stub package first); types are imported
-  from a public module that re-exports them. Functions whose overloads or type variables their
-  arguments decide are matched as the tables' are (`constricter.fix.index.stubs.stubbed`), through the
-  package's aliases, type variables and protocols, the standard-library classes it names by the
-  `scalars` table, and a class argument binding `type[T]`: 83 more fixes on pandas
+  found as PEP 561 says on `VIRTUAL_ENV`'s path and this Python's (a stub package first); types are
+  imported from a public module that re-exports them. Functions whose overloads or type variables
+  their arguments decide are matched as the tables' are (`constricter.fix.index.stubs.stubbed`),
+  through the package's aliases, type variables and protocols, the standard-library classes it names
+  by the `scalars` table, and a class argument binding `type[T]`: 83 more fixes on pandas
   (`np.empty(n, dtype=np.float64)`), no new type error. They're read at run time through the index,
   not by `stdlib_tables/`'s reader, which needs typeshed's standard-library stubs. Their classes'
   methods too, the receiver's type binding the class's type parameters and `Self`, or matched
@@ -145,9 +150,9 @@ What constricter does today and what was measured on the way, by scope. What's n
   have is no fix where a function alone imports it, by a table generated from typeshed (`platform`:
   35 modules).
 - **Re-exports, one way**: a name is followed to where it's defined through what a module imports
-  for type checking alone too (`project.definition`, as `canonical_origin` does), so a class a package's
-  `__init__` imports only when it's asked for (pydantic's `TypeAdapter`) has its members, its
-  methods' returns and its aliases; a package's re-exports are spelled from both
+  for type checking alone too (`project.definition`, as `canonical_origin` does), so a class a
+  package's `__init__` imports only when it's asked for (pydantic's `TypeAdapter`) has its members,
+  its methods' returns and its aliases; a package's re-exports are spelled from both
   (`modules.exported`). On pydantic's checkout with its tests, 42 fixes more (36 certain, none
   lost), and basedpyright finds no error the fixed copy didn't have; mcp, the standard library and
   pandas are the same.
@@ -277,10 +282,10 @@ What constricter does today and what was measured on the way, by scope. What's n
   pyrefly's `Self` where the method's signature doesn't say `Self`, and a standard-library module's
   attribute the module hasn't at run time (`sys.OptExcInfo`); an alias of a union is the union, for
   the narrowing rule and inside a container (pandas's `Scalar`); a name the function compares with
-  `None` takes `None`; and a file checked again within a round has its hints moved past the lines its
-  earlier checks added (`runs.shifted`), where they sat on the wrong name. Left, by rc.2's causes:
-  an annotation narrower than a later value (the hint is the first value's type), a hint narrower
-  than the package's own checker reads the value (`message.get("more_body")`, `bool` to
+  `None` takes `None`; and a file checked again within a round has its hints moved past the lines
+  its earlier checks added (`runs.shifted`), where they sat on the wrong name. Left, by rc.2's
+  causes: an annotation narrower than a later value (the hint is the first value's type), a hint
+  narrower than the package's own checker reads the value (`message.get("more_body")`, `bool` to
   basedpyright and `bool | None` to mypy), the same name imported from elsewhere (`Image`,
   `ValidationError`), which only the checker's definition link tells apart.
 - **No new type errors**: a corpus run's `types` step runs pydantic's, sqlalchemy's and pandas's own
@@ -357,30 +362,65 @@ What constricter does today and what was measured on the way, by scope. What's n
   in one process and 1.26 times with 4 workers (the medians of 47 corpora, on 16CPU/60GB). A wheel
   beside other packages fixes by their types too: against `dev`'s venv, which has the dev group's,
   five corpora differed (docutils's types for sphinx, click's for uvicorn).
-- **Installed stubs, as PEP 561 orders them.** Built in `44c05d5`: `installed.search_path()`
-  reads the checked code's environment (`VIRTUAL_ENV`) before constricter's own, `locate()` takes
-  a `-stubs` package first in any directory, a partial one leaving a module it lacks to the
-  package, and a namespace package's typed subpackage (`google/auth/py.typed`). On the corpus runs
+- **Installed stubs, as PEP 561 orders them.** Built in `44c05d5`: `installed.search_path()` reads
+  the checked code's environment (`VIRTUAL_ENV`) before constricter's own, `locate()` takes a
+  `-stubs` package first in any directory, a partial one leaving a module it lacks to the package,
+  and a namespace package's typed subpackage (`google/auth/py.typed`). On the corpus runs
   `local/.venv`'s untyped `docutils`, `pandas`, `pygments`, `yaml`, `dateutil` and `six` shadowed
   the corpus environments' `docutils-stubs`, `pygments-stubs` (sphinx), `pandas-stubs` (altair,
-  narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls
-  with no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491,
-  seaborn 383 `receiver`/`member` calls; a few hundred, estimated:
-  [type sources](research/type-sources.md)). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`):
-  certain fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from
-  982, no new type error (narwhals's certain tier 19 from 23): the chains estimated didn't come.
-  Done when a super run gives sphinx, seaborn,
-  altair and narwhals the stubs' fixes, no new type error. Coverage up to 0.2%. The 0.4.3-rc.2
-  super run already ran on `44c05d5`: sphinx's certain fixes 3,128 to 3,230 (+102) against the
-  0.4.3-rc.1 mega run (`264d149`), unsafe 3,949 to 4,130, rc.3 the same again; seaborn, altair and
-  narwhals are mega corpora, so not yet measured. One new type error in every tier:
-  `sub_node_copy = node.copy()` (`sphinx/environment/adapters/toctree.py:552`) is fixed `Node`,
-  the parameter's declared type, where the stubs' `copy() -> Self` meets a receiver an `isinstance`
-  narrowed to `nodes.reference | nodes.title`, and mypy then rejects `[sub_node_copy]` as a
-  `list[Element]`. A method returning its receiver's type on a receiver an `isinstance` narrows is
-  no fix since (`Scope._takes_narrowed`, `narrowed.checked_to`): on the 0.4.3-rc.4 super run
-  (`46bdc27`) no patch types `sub_node_copy`, and sphinx has one type error fewer in every tier
-  than rc.3 (certain 4 from 5, basedpyright 8 from 9), its certain fixes 3,228.
+  narwhals, seaborn), `yaml-stubs` and `dateutil-stubs`: sphinx's 102 `docutils.nodes.*` calls with
+  no fix were `imported`. About 145 direct calls and the chains they start (sphinx 491, seaborn 383
+  `receiver`/`member` calls; a few hundred, estimated: [type sources](research/type-sources.md)). On
+  the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes), against rc.1's (`264d149`): certain
+  fixes sphinx 3,228 from 3,128, seaborn 650 from 639, altair 378 and narwhals 980 from 982, no new
+  type error (narwhals's certain tier 19 from 23): the chains estimated didn't come. Done when a
+  super run gives sphinx, seaborn, altair and narwhals the stubs' fixes, no new type error. Coverage
+  up to 0.2%. The 0.4.3-rc.2 super run already ran on `44c05d5`: sphinx's certain fixes 3,128 to
+  3,230 (+102) against the 0.4.3-rc.1 mega run (`264d149`), unsafe 3,949 to 4,130, rc.3 the same
+  again; seaborn, altair and narwhals are mega corpora, so not yet measured. One new type error in
+  every tier: `sub_node_copy = node.copy()` (`sphinx/environment/adapters/toctree.py:552`) is fixed
+  `Node`, the parameter's declared type, where the stubs' `copy() -> Self` meets a receiver an
+  `isinstance` narrowed to `nodes.reference | nodes.title`, and mypy then rejects `[sub_node_copy]`
+  as a `list[Element]`. A method returning its receiver's type on a receiver an `isinstance` narrows
+  is no fix since (`Scope._takes_narrowed`, `narrowed.checked_to`): on the 0.4.3-rc.4 super run
+  (`46bdc27`) no patch types `sub_node_copy`, and sphinx has one type error fewer in every tier than
+  rc.3 (certain 4 from 5, basedpyright 8 from 9), its certain fixes 3,228.
+- **Returns the trace records** (`traced`, a guess): the tracer records what each function returned
+  at the line it returned from (`<return>`, `sys.monitoring`'s `PY_RETURN`; a function binding no
+  name too, its lines not followed; not a generator's), and `--infer-from` gives LVA014 a function's
+  return where its own `return`s decide nothing (`traced.hints`, `Hints.returns`): only where the
+  run took every way out of the function (each `return` with a value, and its end where it can fall
+  off it), up to three types' union, not a typing form (`Union` from an `__or__`). A value a
+  function returns was the largest pool of the 0.4.3-rc.1 mega run's 103,514 calls with no fix
+  (`member` 20,975, `untyped` 7,919, `local` 6,324). On pydantic, which annotates its returns, 2
+  returns and 1 binding; on django, 10 of its test labels (4,994 of its 17,578 tests, one process on
+  16CPU/60GB), `--fix --unsafe-fixes --extend-select LVA014` typed 5,912 bindings from 5,445 (+8.6%)
+  and wrote 625 signatures from the trace. On the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91
+  minutes on 16CPU/60GB, django's whole suite traced) the `infer-trace` step typed 134,844 bindings
+  of 292,568 (+979 on rc.8), its new type errors 29 outside sqlalchemy's `typing_extensions` cascade
+  (rc.8's 32), 2 of them blamed on `traced`: clean.
+- **Declared types of installed packages with no `py.typed`, as guesses** (`declared`,
+  `installed.as_untyped`): such a package's modules join the index with their functions' and
+  methods' declared returns as `returned` guesses resting on `declared`, followed through its
+  re-exports (`pd.date_range`), as pyright reads one with `useLibraryCodeForTypes`; its classes'
+  attributes, classmethods and overloads aren't offered. pandas/core declares 73% of its functions'
+  returns, wheel 86%, setuptools 54%. On dask (its pandas 3.0.6 untyped; one process on
+  16CPU/60GB), `--fix --unsafe-fixes` 5,788 fixes from 5,700 (+0.36% of its offences). The modules
+  whose classes are typing forms, typed by typeshed (`typing_extensions`, `_typeshed`), are never
+  read so (`installed._FORMS`): on the mega run of 2026-10-27, sqlalchemy's `typing_extensions`
+  4.16.0, installed as source, made `_T: TypeVar = TypeVar("_T")` guesses and 5,516 new type
+  errors. `mypy_extensions` is read for its classes alone (`u8`, `i64`; `_CLASSES_ALONE`), its
+  typing forms being no class: listed on mypy's checkout (`--unsafe-fixes --show-fixes`, one
+  process), 6,337 fixes from 6,314, the 23 `tag: u8` the guard had cost. On the mega runs of
+  2026-10-27 and 10-28 (`mega-10-27-2026-0131`, `mega-10-28-2026-0057`, 16CPU/60GB) the whole sets
+  `declared+returned` (350 guesses, 179 told, 100% held, none of 211 checked blamed),
+  `declared+returned+unpack` (128, 121, 98.3%, none of 121) and `constructor+declared+returned`
+  (57, 44, 100%, none of 47) passed [LIKELY.md](LIKELY.md)'s bars and are in `offences.LIKELY`
+  since. `reads`, which passed as a mechanism (57 guesses, 26 told, 96.2%, none of 19 blamed),
+  passes as no whole set: its 12 sets have 14 guesses at most. On the mega run of 2026-10-28 on
+  `6b0ab18` (`mega-10-28-2026-0826`, 69 minutes on 16CPU/60GB), with both: new type errors 428, as
+  on `b6ac32b`, none blamed on the three sets; `--likely` 211,064 bindings typed from 210,500, and
+  mypy's 23 `tag: u8` back in every tier.
 
 ## Command and output
 
@@ -443,7 +483,8 @@ What constricter does today and what was measured on the way, by scope. What's n
   16CPU/60GB, a fix step's 11 to 13 CPU seconds and 0.8 to 0.9 GB, where `psutil`'s readings, which
   count the rest, saw 1 and 0.1 to 0.2. An unmeasured traced step is sized by its suite's `tests`
   step; a step that wants all the memory runs alone, and one that held over 8 GB beside others is
-  noted. The timed checks hold every CPU, and run last, one at a time. A suite's tests of one port
+  noted. The timed checks hold every CPU, and run last, one at a time, or beside the other steps
+  (`timing-beside`, below). A suite's tests of one port
   run one suite at a time, and its tests are stopped after `suite-seconds`. A stopped run resumes
   under its own label, keeping its start and adding each execution's minutes, and a run exits
   non-zero on anything a fix broke or a step that failed, whose traceback its log keeps. Every
@@ -528,6 +569,31 @@ What constricter does today and what was measured on the way, by scope. What's n
   were Pyright reading this project's settings, not its own); django's suite is the same after
   `fix-plain-bases`' guesses, and one `--fix --unsafe-fixes` pass leaves a second nothing on any of
   the seven. Measured, with no gain: the fixed copies on a `tmpfs`.
+- **The timed checks beside the other steps** (`timing-beside`, a run file's `[steps]` key, set in
+  `super.toml` and `mega.toml`): the timed checks once ran last, alone and one at a time, since
+  three corpora at once on disjoint 5-CPU sets ran 4 to 5% slower in one process and 10 to 17% with
+  jobs (`scratch/timed_tail_trial.py`); that tail took 5.3 to 6.2 minutes of a mega run. But their
+  instructions didn't move side by side (0.04 to 0.15%, 0.00% with jobs across runs at one commit,
+  `scratch/timing_noise.py`), so the timing table compares instructions across runs (its
+  `beside other steps` column, RUNS.md's intro) and the checks run sized as measured, not held to
+  the end (`sizing.held_last`). Replayed on the super run of 2026-10-26
+  (`scratch/schedule_sim.py --timing-beside`): 42.0 minutes from 43.5. On the mega runs of
+  2026-10-26 and 2026-10-27 (16CPU/60GB) the 47 timed steps ran beside the suites and ended an hour
+  before the run. The profile on the way (`py-spy`, `scratch/profile_diff.py`, 2026-10-23) took the
+  standard library's check from 50.9s to 40.6s and pandas's from 57.5s to 46.9s in one process:
+  `reads.members` walked every method each check, a function's body was walked again for each
+  parameter, and `overloads._agreed` was hot.
+- **RightTyper, measured and declined** (`scratch/righttyper_measure.py`): a sampled run's
+  signatures as a corpus step. On pydantic (2026-10-24, `--ignore-annotations`, its tests in
+  25.9s) the 23 parameters and 22 returns it added brought 3 more certain fixes and 45 pyright
+  errors, the sampled types narrower than the functions take (`**kwargs: None`, `Self` in a
+  metaclass). On django (2026-10-26, its whole suite in 336s, RightTyper 0.1.0 patched three
+  ways in the script's copy: a test-local class's name, a nonzero exit before its post-processing,
+  a lazy object's class read through `__getattribute__`; `--all-files`): 10,149 parameters and
+  6,842 returns in 405 files, `--fix` then 4,293 certain fixes from 2,622, but basedpyright 12,879
+  errors from 4,007 (`bool | dict[Never, Never]` for a setting, `type[AppConfig] | None` for a
+  class). Not a corpus step: the project's own tracer's returns are held to every way out of a
+  function and bring none of this.
 - **Profiles and timings that can be trusted**: **`tests/corpus/corpus_profile.py`** runs the check
   under `py-spy`, which samples it from outside, its workers too (`--jobs N`), and prints each
   module's and function's own and whole time; the runner's **`timing`** step checks each version of
@@ -553,28 +619,27 @@ What constricter does today and what was measured on the way, by scope. What's n
   untyped binding, classified by the statement that binds it, the shape of its value, its scope,
   whether its function is annotated, and what a call through an import resolves to and where from.
   On the seven corpora at 0.4.0: 251,517 untyped bindings, 140,562 with no fix at all, 79.0% of
-  those in functions with no annotations. The items under [the roadmap](ROADMAP.md#next) are sized by it: each count
-  is the bindings with no fix an item could reach, not what it would fix. Measured and too small to
-  build: an
-  unannotated parameter typed by its literal default (76 bindings) or its docstring (325); and
-  signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes on the six Python 3
-  corpora (19.8% of their untyped bindings fixed, then 20.8%), since it annotates 8% of the
-  unannotated parameters, most of the returns it adds are `-> None`, and it left one of pydantic's
-  files unparsable; and the same from mypy's daemon (`dmypy suggest`, `scratch/dmypy_suggest.py`,
-  500 functions of each corpus but the standard library, which mypy won't check as a project's own):
-  it stops on every one of sqlalchemy's and pandas's, takes 30s to 90s a function on 16CPU/60GB with
-  14 daemons, and on django, the one with no type comments, brings 19 certain fixes for 415 new
-  basedpyright errors, most an `X | None` read without a check; and an unannotated function's
-  `return`s of two types, or of one and `None`, joined into a union: 275 more fixes, and 38 new
-  basedpyright errors (a union one of whose types is wrong, or that the caller never narrows); and a
-  class variable or an attribute first `None`, set in another method (`timeout = None` in a class
-  body, `self.conn = None` in `__init__`): of the 894 class-body `name = None`s on the Python 3
-  corpora, 402 aren't in a plain class, 275 are never stored by their module (a subclass's to set),
-  131 are stored another way or from outside the class, and 82 are assigned no literal, only values
-  that are mostly parameters; an attribute's `T | None` types no read its function tests or stores,
-  since that isn't offered; and a name a plain class's body binds more than once: of 594 on Django,
-  pandas, SQLAlchemy and the standard library, 425 are a method or a class too, 122 are bound in an
-  `if`'s or a `try`'s branches, and 14 by two plain assignments.
+  those in functions with no annotations. The items under [the roadmap](ROADMAP.md#next) are sized
+  by it: each count is the bindings with no fix an item could reach, not what it would fix. Measured
+  and too small to build: an unannotated parameter typed by its literal default (76 bindings) or its
+  docstring (325); and signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes
+  on the six Python 3 corpora (19.8% of their untyped bindings fixed, then 20.8%), since it
+  annotates 8% of the unannotated parameters, most of the returns it adds are `-> None`, and it left
+  one of pydantic's files unparsable; and the same from mypy's daemon (`dmypy suggest`,
+  `scratch/dmypy_suggest.py`, 500 functions of each corpus but the standard library, which mypy
+  won't check as a project's own): it stops on every one of sqlalchemy's and pandas's, takes 30s to
+  90s a function on 16CPU/60GB with 14 daemons, and on django, the one with no type comments, brings
+  19 certain fixes for 415 new basedpyright errors, most an `X | None` read without a check; and an
+  unannotated function's `return`s of two types, or of one and `None`, joined into a union: 275 more
+  fixes, and 38 new basedpyright errors (a union one of whose types is wrong, or that the caller
+  never narrows); and a class variable or an attribute first `None`, set in another method
+  (`timeout = None` in a class body, `self.conn = None` in `__init__`): of the 894 class-body
+  `name = None`s on the Python 3 corpora, 402 aren't in a plain class, 275 are never stored by their
+  module (a subclass's to set), 131 are stored another way or from outside the class, and 82 are
+  assigned no literal, only values that are mostly parameters; an attribute's `T | None` types no
+  read its function tests or stores, since that isn't offered; and a name a plain class's body binds
+  more than once: of 594 on Django, pandas, SQLAlchemy and the standard library, 425 are a method or
+  a class too, 122 are bound in an `if`'s or a `try`'s branches, and 14 by two plain assignments.
 - **Why a call has no fix, counted**: `--format=json` gives a call bound with no fix the reason it
   has none (`unfixed`, `fix/values/refused.py`), and the census keeps it on each row and counts the
   calls by it (`census.md`'s "Calls with no fix, by why", the record's `reasons`). On the 0.4.3-rc.1
@@ -585,10 +650,10 @@ What constricter does today and what was measured on the way, by scope. What's n
   a subclass sets (`self.type2test()`, `self.dumps()`: 28%, left alone), or a library base's (5%).
   Of the 5,479 found, 4,078 have a `return` whose value has no type: a name (1,779: an unannotated
   parameter, or a local with no fix), a call on another value (823), another `self.method()` (408).
-- **Other type checkers' servers**, driven through `constricter.cli.lsp.hints` on pydantic, sqlalchemy
-  and django (26,716 bindings with no fix): the share of them each one's hints type, as `--fix`
-  judges hints now, is 8.2% for ty, 10.7% for basedpyright and 13.7% for pyrefly. Plain Pyright's
-  server has no inlay hints (they're Pylance's and basedpyright's), mypy has no server
+- **Other type checkers' servers**, driven through `constricter.cli.lsp.hints` on pydantic,
+  sqlalchemy and django (26,716 bindings with no fix): the share of them each one's hints type, as
+  `--fix` judges hints now, is 8.2% for ty, 10.7% for basedpyright and 13.7% for pyrefly. Plain
+  Pyright's server has no inlay hints (they're Pylance's and basedpyright's), mypy has no server
   (`dmypy inspect` answers one location at a time), and pytype is discontinued.
 
 - **Fewer of a suite's test runs for the same answer**: a part after a fix whose patch another
@@ -637,23 +702,23 @@ What constricter does today and what was measured on the way, by scope. What's n
   0.4.3-rc.2 super run (`44c05d5`, 16CPU/60GB) django's `traced` step took 65.1s, from 643s on the
   0.4.0-rc.3 mega run, its tests 52.8s against 48.2s untraced, 482 fixes resting on the trace.
   celery's 13 parts are now traced side by side too, as its tests run (`corpus_suite.traced`), each
-  writing a trace of its own, merged in the parts' order. On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) celery's `traced` took 85s, from
-  163s and 182s on rc.1's two, its released tests 59s there. Done when a mega run's celery `traced`
-  step takes about its `tests` step's time, the fixes resting on the trace the same. Coverage
-  unchanged.
-- **sqlalchemy's tests in a fixed order.** A part stands for another only where its counts equal
-  the released tests' exactly (`_tests_part`, `standing`). On the 0.4.3-rc.4 super run (`46bdc27`)
+  writing a trace of its own, merged in the parts' order. On the 0.4.3-rc.5 mega run (`9892f71`,
+  16CPU/60GB, 82 minutes) celery's `traced` took 85s, from 163s and 182s on rc.1's two, its released
+  tests 59s there. Done when a mega run's celery `traced` step takes about its `tests` step's time,
+  the fixes resting on the trace the same. Coverage unchanged.
+- **sqlalchemy's tests in a fixed order.** A part stands for another only where its counts equal the
+  released tests' exactly (`_tests_part`, `standing`). On the 0.4.3-rc.4 super run (`46bdc27`)
   sqlalchemy's traced tests skipped 971, so rc.3's released record (975) wasn't confirmed and the
   released tests ran again (973), and `infer-union`'s skipped 975, two of `ReturningTest`'s
-  `test_imv_returning_datatypes[...LargeBinary1/2]` skipped where they passed: so it stood for
-  none, and six fixed trees ran the suite apart, 83 to 111s on 7 to 15 CPUs each, 6,229 CPU
-  seconds more than rc.3, on one checkout one after another, while 22 steps wanting 8 CPUs waited
-  up to 15 minutes: the `tests` stage 20.5 minutes from 12 (`scratch/stage_compare.py`). The flake
-  is sqlalchemy's test harness: a `testing.combinations` case's own requirement
-  (`uuid_data_type`) is added at call time to the compound exclusion the test function already
-  carries (`exclusions.compound.__call__` extends `fn._sa_exclusion_extend` in place), so once a
-  UUID case of `test_imv_returning_datatypes` runs, every later case in that process skips (alone,
-  its LargeBinary cases pass 8 of 8; after the UUID ones, 2 pass and 26 skip), and xdist's `load`
+  `test_imv_returning_datatypes[...LargeBinary1/2]` skipped where they passed: so it stood for none,
+  and six fixed trees ran the suite apart, 83 to 111s on 7 to 15 CPUs each, 6,229 CPU seconds more
+  than rc.3, on one checkout one after another, while 22 steps wanting 8 CPUs waited up to 15
+  minutes: the `tests` stage 20.5 minutes from 12 (`scratch/stage_compare.py`). The flake is
+  sqlalchemy's test harness: a `testing.combinations` case's own requirement (`uuid_data_type`) is
+  added at call time to the compound exclusion the test function already carries
+  (`exclusions.compound.__call__` extends `fn._sa_exclusion_extend` in place), so once a UUID case
+  of `test_imv_returning_datatypes` runs, every later case in that process skips (alone, its
+  LargeBinary cases pass 8 of 8; after the UUID ones, 2 pass and 26 skip), and xdist's `load`
   distribution changes, run to run and by worker count, which cases follow one on a worker.
   `--dist loadscope` isn't enough: the three drivers' classes share the suite's functions, and
   `ReturningTest` alone gave 91 passed with 2 workers and 93 with 8. sqlalchemy's tests run
@@ -662,9 +727,9 @@ What constricter does today and what was measured on the way, by scope. What's n
   outcome for each of its 3,259 tests with 2 workers and with 8, 2,971 passed and 288 skipped, in
   6.3s and 6.9s; the whole suite (`test/`, 30,448 tests on 16CPU/60GB) the same outcome for each
   test with 13 workers and with 4, 29,457 passed and 991 skipped, in 88s and 112s (the released
-  tests' 90s on 13 under `load`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) the released tests ran again (114s) and the union's
-  part (112s) stood for every fixed tree (`tests-fix-likely` 0s, implied). Done when a run's
-  `infer-union` part stands for sqlalchemy's
+  tests' 90s on 13 under `load`). On the 0.4.3-rc.5 mega run (`9892f71`, 16CPU/60GB, 82 minutes) the
+  released tests ran again (114s) and the union's part (112s) stood for every fixed tree
+  (`tests-fix-likely` 0s, implied). Done when a run's `infer-union` part stands for sqlalchemy's
   fixed trees again and its `tests` stage takes about rc.3's 12 minutes. Coverage unchanged.
 - **One type at run time, no fix**: the `traced` step keeps the types the trace saw each of the
   package's bindings hold (`traced.seen.jsonl`), and the report holds the census's bindings with
@@ -707,6 +772,70 @@ What constricter does today and what was measured on the way, by scope. What's n
   didn't differ again; strawberry's other differing fixes are its own `cast("Edge[NodeType]", ...)`
   of a class and declarations of instances given classes. The one misjudgment, pdm's
   `mock.sentinel` values, is fixed.
+- **The runner's schedule, held to the solver's shortest**: every corpus's steps wait for the
+  machine alone, the one with the most seconds behind it first, and a running step's hold follows
+  what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a
+  suite's measured tests hold the CPUs they kept busy with a margin over, an unmeasured part takes
+  its kind's largest measured part, and an unmeasured `infer-union`, its checkers asked in turn, the
+  largest checker's step's memory. Where OR-Tools is installed (the `corpus` and `dev` groups, and
+  CI's corpus setup), the runner plans its steps with CP-SAT before it starts
+  (`tests/corpus/planning.py`: each step held to what the runner will hold for it,
+  `sizing.Plan.wanted`, ports, each step after those it reads) and, of the steps that could start,
+  starts the one planned first; a step no run has measured keeps the rules (the longest chain first,
+  `_PATIENCE`, backfilling), and a stage plans its own steps alone (`planning.ranks`'s `chosen`).
+  `scratch/run_timeline.py` lays a run out from its records, `scratch/schedule_sim.py` replays it,
+  and `scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
+  schedule of them can be. Read against the solver with 16 CPUs and 36 GB: the 0.4.3-rc.1 mega run
+  95.2 minutes against a shortest 85.2 (11.7% over), rc.5 81.3 against 66.0 (23%), rc.6 64.3 against
+  55.6 (16%), rc.7 67.7 against 57.9 (17%), rc.8 69.6 against 58.9 (18%), and the 0.4.3-rc.1
+  mega-fast run 56.2 against 45.6 (23%); the 0.4.3-rc.2 super run, in one sitting, 47.6 against a
+  shortest 47.7, its pandas `infer-union` of 630s the floor; the super run of 2026-10-26 (`b5f720c`,
+  42.1 minutes on 16CPU/60GB, in one sitting) at the shortest the solver finds (43.2 in 60 seconds,
+  42.6 in 300, proved at least 19.7), its waits memory's (3,791 minutes in all, the hinted steps
+  holding 11 to 15 GB each); and the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on
+  16CPU/60GB, with `timing-beside`) 96.0 against 93.5 in 300 seconds (proved at least 56.0), within
+  a tenth. In stages, the barriers cost most, not the order: replayed on 2026-10-24 with 16 CPUs and
+  29 GB, the runner's order replays the 0.4.3-rc.4 super run in 38.5 minutes against its 51.8 in
+  stages, and rc.3 and rc.4 took 47.7 and 51.8 against a shortest 30.5 and 35.7 with no stages. A
+  run's share of its CPU seconds isn't the measure (85% was the target before): memory and the timed
+  tail bound it whatever the order, and the 0.4.0-rc.1 mega run, within a tenth of its floor, used
+  77.5%; the timed tail, a super run's last 2.5 minutes at under one CPU, went with `timing-beside`.
+  Weighed and left: ordering by most CPU seconds with `_PATIENCE` 600s and `_BESIDE` 60s replays
+  three super runs in 87.6 minutes summed against the rules' (300s, 300s) 102, but the rules order
+  only the steps no run has measured; and no library runs subprocess steps in a graph under CPUs and
+  memory as the runner does (Snakemake's scheduler comes nearest, a workflow engine whole; Dask's
+  and Ray's resources are their workers' Python tasks').
+- **Test results as data**: a suite's tests were read from pytest's and unittest's text alone, which
+  misread sphinx's captured log lines as failures and spelled 4 suites' failure ids two ways between
+  runs. Each part pytest runs writes a JUnit report (`--junitxml`, the `xunit1` family), read into
+  `records/<corpus>/<version>/tests-<run>.tests.jsonl`, a line a test with its id (from the class
+  name: pytest's cached rewritten modules keep the `file` of where a checkout was before), outcome,
+  seconds and skip reason; the failed tests are the reports' where every part wrote one, the counts
+  stay the summary's (the reports don't tell an unexpected pass from a pass), and a suite unittest
+  runs (django, mkdocs, twisted) is read as text still. Each fixed run's record names the tests it
+  skipped where the tests as released ran them, and the reverse (`skipped anew`, `skipped no more`;
+  `suite_steps._skips`), and the tests table counts them (`report_tables._tests`): the union's own
+  run is a row of its own (`infer-union`), an implied part shows the skips of the run that stands
+  for it, and the released tests are read from the earlier run's folder they were taken from
+  (`from`) where this one's doesn't hold them. On the 0.4.3-rc.7 and rc.8 mega runs no test's skip
+  moved. The released tests are found in the earlier run's folder under whichever version label it
+  kept them (`report_tables._released`): the mega run of 2026-10-27 took sqlalchemy's from a super
+  run's `super+dev`, and its columns were blank until then; written again from its records, none of
+  sqlalchemy's skips moved.
+- **What stub packages add to the corpora, measured** (`scratch/stubs_measure.py`, 2026-10-28, one
+  process on 16CPU/60GB): pandas-stubs 3.0.5.260914, scipy-stubs 1.18.1.1, pyarrow-stubs
+  20.0.0.20260819 and types-PyYAML 6.0.12.20260906, each put on `PYTHONPATH` alone, then together,
+  against each environment as installed and against pyrefly's `stubgen` stubs of the same package.
+  Fixes listed by `--unsafe-fixes --show-fixes`; bindings no checker's error was read for.
+  pandas-stubs moves fixes to certain but adds none: on dask 5,811 from 5,815 (certain 3,216 from
+  3,120, likely 1,736 from 1,769, guesses 859 from 926), on xarray 6,937 from 7,018 (certain 3,662
+  from 3,557, guesses 259 from 384). What it loses is chiefly dask's 133 `pd.Series(...)`
+  constructor guesses: its `Series` is generic, and a generic class written without its arguments is
+  no fix. pyrefly's stubs of pandas give dask 5,848 and xarray 6,999, fewer certain gains (3,134,
+  3,641) and fewer losses. pyarrow-stubs: dask 3 more (its pyarrow is 26, the stubs 20), pandas,
+  where pyarrow isn't installed, 5 fewer (`pa.Scalar` generic there too); types-PyYAML nothing on
+  dask or xarray; networkx nothing under any set, pandas-stubs or scipy-stubs, its scipy calls
+  inside functions and their returns arrays `vague` refuses.
 
 ## CI, security and releases
 
@@ -777,27 +906,27 @@ What constricter does today and what was measured on the way, by scope. What's n
   checker. Code for any Python 3 version can still be checked.
 - **Layout**: `constricter/` in `rules/`, `fix/`, `source/` (what a module's source says: its walks,
   annotations and declarations, which the rules and the fixes both read and which reads neither),
-  `cli/` and `plugins/`; `fix/` in four layers, each
-  importing only those before it: `core/` (what every part shares), `libraries/` (the standard
-  library's and installed packages' types), `values/` (what a value makes its type) and `index/`
-  (the cross-file index), its tests laid out the same. Modules are split along what each grouped
-  as they near pylint's 1,000 lines (a reader of stubs' signatures out of `stubbed.py`, and its
-  names' resolution out of `stubs/signatures.py`; what a file takes of another's classes out of
-  `project.py`, and how a file spells another's types and calls (`spelling.py`); loops out of
-  `inference.py`; what a module declares out of `source/annotations.py`; where a module's names
-  come from and its open functions out of `fix/index/modules.py`; the hint rounds out of
-  `cli/command.py`; the language server's connection out of `cli/lsp/hints.py`; building the
-  scopes out of `rules/checker.py`; how a function binds a name again out of `rules/late.py`
-  (`rebound.py`); operators out of `fix/libraries/overloads.py` (`operators.py`); the annotation
-  forms out of `stdlib_tables/reading.py`; a run report's tables out of `tests/corpus/render.py`; a
-  run's facts and resuming out of the corpus runner's `__main__.py` (`resume.py`); a suite's
-  checkouts and type checks out of `tests/corpus/suite_steps.py` (`suite_checkouts.py`)); the Lint
-  job warns past 800 lines, where `fix/values/hinted.py`, `rules/scope.py`,
-  `source/declarations.py`, `fix/libraries/overloads.py` and `cli/options.py` are; the standard-library tables in
-  `constricter/fix/tables/`, their generator in `stdlib_tables/`; the language servers' modules
-  under `cli/lsp/`, the installed packages' stub readers under `fix/index/stubs/`; docs in `docs/` (changelog,
-  contributing, security, integrations, fixes, likely, runs), release notes grouped by
-  `.github/release.yml`, issue and PR templates, CODEOWNERS.
+  `cli/` and `plugins/`; `fix/` in four layers, each importing only those before it: `core/` (what
+  every part shares), `libraries/` (the standard library's and installed packages' types), `values/`
+  (what a value makes its type) and `index/` (the cross-file index), its tests laid out the same.
+  Modules are split along what each grouped as they near pylint's 1,000 lines (a reader of stubs'
+  signatures out of `stubbed.py`, and its names' resolution out of `stubs/signatures.py`; what a
+  file takes of another's classes out of `project.py`, and how a file spells another's types and
+  calls (`spelling.py`); loops out of `inference.py`; what a module declares out of
+  `source/annotations.py`; where a module's names come from and its open functions out of
+  `fix/index/modules.py`; the hint rounds out of `cli/command.py`; the language server's connection
+  out of `cli/lsp/hints.py`; building the scopes out of `rules/checker.py`; how a function binds a
+  name again out of `rules/late.py` (`rebound.py`); operators out of `fix/libraries/overloads.py`
+  (`operators.py`); the annotation forms out of `stdlib_tables/reading.py`; a run report's tables
+  out of `tests/corpus/render.py`; a run's facts and resuming out of the corpus runner's
+  `__main__.py` (`resume.py`); a suite's checkouts and type checks out of
+  `tests/corpus/suite_steps.py` (`suite_checkouts.py`)); the Lint job warns past 800 lines, where
+  `fix/values/hinted.py`, `rules/scope.py`, `source/declarations.py`, `fix/libraries/overloads.py`
+  and `cli/options.py` are; the standard-library tables in `constricter/fix/tables/`, their
+  generator in `stdlib_tables/`; the language servers' modules under `cli/lsp/`, the installed
+  packages' stub readers under `fix/index/stubs/`; docs in `docs/` (changelog, contributing,
+  security, integrations, fixes, likely, runs), release notes grouped by `.github/release.yml`,
+  issue and PR templates, CODEOWNERS.
 - **`Module` and `Outside`, by name**: frozen dataclasses with slots, every field given by keyword
   (they were tuples of 25 to 40 fields built by position). A check is no slower: the standard
   library's 48.3s in one process and 13.0s on 16 CPUs (48.5s and 13.0s before), pandas's 51.6s and
@@ -827,12 +956,13 @@ What constricter does today and what was measured on the way, by scope. What's n
   released-tests records.
 - **Packages weighed and left out.** constricter has no runtime dependency, and installs where only
   pure Python does (PyPy, free-threaded builds). `pygls` or `lsprotocol` for the checkers' servers
-  (`cli/lsp/hints.py`): the protocol's types are the small part, and the rest (servers sized by memory,
-  a hung one found, restarted and asked again) no library has. `LibCST` for the edits: a native
-  parser, for edits already proven on 59 packages. `platformdirs` for one function of ten lines.
-  `networkx` or `graphlib` for the files' order: `graphlib` refuses the cycles it's there to find.
-  `msgspec` or `orjson` for the index sent to workers: native, and the index is sent more often than
-  it needs to be first. `nox` for `tests/ci_local.py`, which reads its steps from CI's own workflow.
+  (`cli/lsp/hints.py`): the protocol's types are the small part, and the rest (servers sized by
+  memory, a hung one found, restarted and asked again) no library has. `LibCST` for the edits: a
+  native parser, for edits already proven on 59 packages. `platformdirs` for one function of ten
+  lines. `networkx` or `graphlib` for the files' order: `graphlib` refuses the cycles it's there to
+  find. `msgspec` or `orjson` for the index sent to workers: native, and the index is sent more
+  often than it needs to be first. `nox` for `tests/ci_local.py`, which reads its steps from CI's
+  own workflow.
 - **Pyright and basedpyright in editors**: `pyrightconfig.json`, which both read first, holds the
   shared settings (`local/.venv`, and the code checked alone) and extends `pyproject.toml`, where
   only basedpyright finds a section (`typeCheckingMode = "all"`). Plain Pyright resolves the dev

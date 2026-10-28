@@ -9,7 +9,8 @@ of `self` its class stores nothing else in (see `_undeclared`). Anything else a 
 checker may type wider than the run saw (an `X | None` that was never `None`, a base class, a
 `TypedDict`), which the narrower annotation would make an error. A name bound more than once has
 what all its bindings held, where each is such a binding the run reached. Up to three types seen
-are their union, `None` last.
+are their union, `None` last. What a function returned is a hint for LVA014 (`Hints.returns`), where
+the run took every way out of it (see `_returned`).
 
 A class is shown bare (one defined in another as `Outer.Inner`), with the import that names it for
 type checking alone (`Offered`), unless the file defines it: `constricter.fix.index.offers` then
@@ -28,6 +29,7 @@ from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter import recording
 from constricter.fix.core.known import Hints, Offered
+from constricter.fix.values.bodies import terminates
 from constricter.fix.values.hinted import TRACED
 
 _LABEL: Final = "a traced run"
@@ -35,6 +37,7 @@ _SUFFIX: Final = ".py"
 _MEMBERS: Final = 3  # how many types seen make a union
 _CLASS: Final = re.compile(rf"([\w.]+){recording.SEPARATOR}([\w.]+)")
 _STDLIB: Final = sys.stdlib_module_names
+_FORMS: Final = frozenset({"typing", "typing_extensions"})  # whose "classes" are special forms
 _SELF: Final = "self"
 _TYPED: Final = frozenset({_SELF, "cls"})  # the parameters a class types, unannotated
 _Function: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
@@ -139,11 +142,15 @@ def hints(found: Trace, source: bytes) -> Hints | None:
         tree = None
     types: dict[tuple[int, int], str] = {}
     offered: dict[tuple[int, int], Offered] = {}
+    returns: dict[tuple[int, int], Offered] = {}
     stored: dict[int, frozenset[str]] = {} if tree is None else _undeclared(tree)
     node: ast.AST
     for node in ast.walk(tree) if tree is not None else ():
         if not isinstance(node, _Function):
             continue
+        returned: Offered | None
+        if (returned := _returned(node, bindings, found.modules, digest)) is not None:
+            returns[node.lineno, node.col_offset] = returned
         targets: list[ast.Name]
         for targets in _untyped(node, stored.get(id(node), frozenset())).values():
             # A binding the run never reached may hold anything.
@@ -159,7 +166,45 @@ def hints(found: Trace, source: bytes) -> Hints | None:
                 types.update({(target.lineno, target.end_col_offset or 0): typed.text for target in targets})
             if typed is not None and typed.imports:
                 offered.update({(target.lineno, target.end_col_offset or 0): typed for target in targets})
-    return Hints(_LABEL, types, offered, TRACED) if types else None
+    return Hints(_LABEL, types, offered, TRACED, returns) if types or returns else None
+
+
+def _returned(
+    node: _Function,
+    bindings: _Bindings,
+    modules: Mapping[str, str],
+    digest: str,
+) -> Offered | None:
+    """Join what the run saw a function return, where it reached every way out of it.
+
+    Each `return` of the function's own (not a nested function's) has to have returned in the run,
+    and so has its end, where it can fall off it (a `return` with no value, or none at all, gives
+    `None` there): a way out the run never took may give anything. Not a generator.
+
+    Returns:
+      The type, with the imports its classes need; `None` where the run didn't see every way out,
+      or something it saw couldn't be spelled.
+
+    """
+    own: list[ast.AST] = list(_own(node))
+    if any(isinstance(each, ast.Yield | ast.YieldFrom) for each in own):
+        return None
+    nested: list[tuple[int, int]] = [
+        (each.lineno, each.end_lineno or each.lineno) for each in own if isinstance(each, _Function)
+    ]
+    seen: dict[int, tuple[str, ...]] = {
+        line: names[recording.RETURN]
+        for line, names in bindings.items()
+        if recording.RETURN in names
+        and node.lineno <= line <= (node.end_lineno or node.lineno)
+        and not any(start <= line <= end for start, end in nested)
+    }
+    returning: frozenset[int] = frozenset(
+        each.lineno for each in own if isinstance(each, ast.Return) and each.value is not None
+    )
+    if not returning <= seen.keys() or (returning == seen.keys() and not terminates(node.body)):
+        return None  # a `return` never run, or an end it can fall off that the run never reached
+    return _typed(sorted({spelling for each in seen.values() for spelling in each}), modules, digest)
 
 
 def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) -> Offered | None:
@@ -169,7 +214,7 @@ def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) ->
 
     Returns:
       It, or `None`: nothing seen, something that couldn't be spelled, more than `_MEMBERS` types,
-      two classes of one name, or one of a private module of the standard library.
+      two classes of one name, one of a private module of the standard library, or a typing form.
 
     """
     if not spellings or recording.UNKNOWN in spellings or len(spellings) > _MEMBERS:
@@ -183,8 +228,9 @@ def _typed(spellings: Sequence[str], modules: Mapping[str, str], digest: str) ->
             private: bool = module.partition(".")[0] in _STDLIB and any(
                 part.startswith("_") for part in module.split(".")
             )
-            # A class defined in another is imported by the outer one's name.
-            if private or origins.setdefault(name.partition(".")[0], module) != module:
+            # A class defined in another is imported by the outer one's name. `typing`'s are special
+            # forms (`Union`, from an `__or__`), no class a value is an instance of.
+            if private or module in _FORMS or origins.setdefault(name.partition(".")[0], module) != module:
                 return None
     return Offered(
         " | ".join(

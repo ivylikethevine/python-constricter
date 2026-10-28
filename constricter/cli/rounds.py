@@ -20,7 +20,7 @@ from constricter.empty import Empty
 from constricter.fix.core.known import Callee, Hints, Outside
 from constricter.fix.index import callers, decorated, loose, plain, project
 from constricter.fix.index.stubs import installed
-from constricter.offences import UNANNOTATED_ATTRIBUTE, Fix
+from constricter.offences import UNANNOTATED_ATTRIBUTE, UNANNOTATED_PARAMETER, Edit, Fix
 
 if TYPE_CHECKING:  # slow to import, and only needed for `--infer-with`
     from constricter.cli.lsp import hints
@@ -61,12 +61,17 @@ def settled(
     )
     fixing: bool = options.mode is Mode.FIX
     onward: bool = fixing and session is None and options.guesses is not Guesses.NONE
+    # A signature written (LVA014, LVA015) changes what the other files know of the file whatever
+    # the guesses: it's indexed again, and they're checked again where that reaches them.
+    signing: bool = fixing and session is None and (options.checks.returns or options.checks.parameters)
     again: list[int] = [
         index
         for index, run in enumerate(runs)
         if fixing and paths[index] != STDIN and _unsettled(run, session, options.guesses)
     ]
-    changed: list[int] = [at for at in range(len(runs)) if onward and _changed(paths[at], runs[at])]
+    changed: list[int] = [
+        at for at in range(len(runs)) if _reaching(paths[at], runs[at], onward=onward, signing=signing)
+    ]
     for _ in range(HINT_ROUNDS - 1):
         held: dict[int, FileRun] = {}
         if changed:
@@ -77,10 +82,32 @@ def settled(
         fresh: list[tuple[int, FileRun]]
         latest: project.Index
         fresh, latest = _round(paths, runs, (again, held), _How(check, options, session), modules)
-        modules = latest if onward else modules
+        modules = latest if onward or signing else modules
         again = [index for index, run in fresh if _unsettled(run, session, options.guesses)]
-        changed = [index for index, run in fresh if _changed(paths[index], run)]
+        changed = [
+            index for index, run in fresh if _reaching(paths[index], run, onward=onward, signing=signing)
+        ]
     return runs
+
+
+def _reaching(path: Path, run: FileRun, *, onward: bool, signing: bool) -> bool:
+    """Check whether a round of `--fix` changed a file in a way the other files may see.
+
+    Returns:
+      Whether it fixed anything, where `onward` (guesses on); else whether it wrote a signature,
+      where `signing` (LVA014 or LVA015 selected).
+
+    """
+    if not _changed(path, run):
+        return False
+    return onward or (
+        signing
+        and any(
+            isinstance(made.offence.edit, Fix)
+            and (made.offence.edit.edit is Edit.SIGNATURE or made.offence.code == UNANNOTATED_PARAMETER)
+            for made in cast("CheckRun", run).made
+        )
+    )
 
 
 class _How(NamedTuple):

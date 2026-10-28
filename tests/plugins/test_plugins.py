@@ -119,6 +119,8 @@ def _pylint(path: Path, *args: str) -> list[str]:
             "--enable=constricter",
             "--disable=could-be-final",  # enabling the checker enables its opt-in messages too
             "--disable=unannotated-instance-attribute",
+            "--disable=missing-return-type",
+            "--disable=missing-parameter-type",
             "--msg-template={line}:{column}: {msg_id} {symbol} {msg}",
             "--score=n",
             *args,
@@ -290,4 +292,21 @@ def test_lva013_only_when_selected_by_its_full_code(
     assert flake8("--extend-select=LVA013", str(path)) == [f"{path}:3:9: LVA013 {message}"]
     assert _pylint(path, "--enable=unannotated-instance-attribute") == [
         f"3:8: C9113 unannotated-instance-attribute {message}",
+    ]
+
+
+def test_lva015_only_when_selected_by_its_full_code(
+    tmp_path: Path,
+    flake8: Callable[..., list[str]],
+) -> None:
+    """LVA015 is opt-in as LVA014 is, and a method's receiver is no parameter to annotate."""
+    path: Path = tmp_path / "twice.py"
+    _ = path.write_text("class C:\n    def twice(self, n):\n        return n + n\n", encoding="utf-8")
+    message: str = "parameter 'n' is not annotated"
+    returns: str = "function 'twice' declares no return type"
+    assert flake8(str(path)) == []
+    assert flake8("--extend-select=LVA014", str(path)) == [f"{path}:2:5: LVA014 {returns}"]
+    assert flake8("--extend-select=LVA015", str(path)) == [f"{path}:2:21: LVA015 {message}"]
+    assert _pylint(path, "--enable=missing-parameter-type") == [
+        f"2:20: C9115 missing-parameter-type {message}",
     ]

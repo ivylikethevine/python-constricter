@@ -83,11 +83,12 @@ def shifted(hints: Hints, rounds: Sequence[Added]) -> Hints:
       The hints, each at its place in the text as it is now.
 
     """
-    if not rounds or not (hints.types or hints.offered):
+    if not rounds or not (hints.types or hints.offered or hints.returns):
         return hints
     return hints._replace(
         types={_shifted(where, rounds): text for where, text in hints.types.items()},
         offered={_shifted(where, rounds): offered for where, offered in hints.offered.items()},
+        returns={_shifted(where, rounds): offered for where, offered in hints.returns.items()},
     )
 
 

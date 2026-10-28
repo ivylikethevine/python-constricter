@@ -96,6 +96,40 @@ def shared(tell, leave):
 def nameless(tell):
     return tell(), (lambda: tell())()
 """
+# Functions returning a value, an empty container (saying nothing), falling off their end, binding no
+# name, and a generator (not recorded).
+_RETURNING: Final = """
+def same(value):
+    return value
+
+
+def empty(value):
+    return []
+
+
+def early(value):
+    if value:
+        return 1
+    print(value)
+
+
+def doubled(value):
+    doubled = value * 2
+    return value * 2
+
+
+def counting(value):
+    yield value
+
+
+same(1)
+same("a")
+empty(1)
+early(1)
+early(0)
+doubled(2)
+list(counting(1))
+"""
 _MODULE: Final = """
 import sys
 
@@ -173,7 +207,8 @@ _Hook: TypeAlias = "Callable[[], object]"
 _Callback: TypeAlias = "Callable[..., object]"
 _Functions: TypeAlias = "Mapping[str, _Callback]"  # a script's, by name
 _Found: TypeAlias = "Mapping[str, object]"  # what a recorder writes
-_Files: TypeAlias = dict[str, dict[str, object]]  # its files' entries
+_Entry: TypeAlias = dict[str, object]  # one file's entry: its path and bindings
+_Files: TypeAlias = dict[str, _Entry]  # its files' entries
 _Bindings: TypeAlias = dict[str, dict[str, list[str]]]  # each binding's spellings, by its line and name
 _Asked: TypeAlias = list[tuple[object, ...]]
 # What a forked child registers to write its trace: at its exit, after a fork, and as a finalizer.
@@ -359,17 +394,48 @@ def _line(source: str, text: str) -> str:
 
 
 def _files(found: _Found) -> _Files:
+    """Read a trace's files, their locals' bindings alone: the harness's `leave` hook returns `None`.
+
+    Returns:
+      Each file with a local's binding, by its SHA-256.
+
+    """
+    files: _Files = {}
+    digest: str
+    entry: _Entry
+    for digest, entry in _whole(found).items():
+        kept: _Bindings
+        if kept := _locals(cast("_Bindings", entry["bindings"])):
+            files[digest] = {**entry, "bindings": kept}
+    return files
+
+
+def _whole(found: _Found) -> _Files:
     return cast("_Files", found["files"])
 
 
 def _bindings(recorder: recording.Recorder, source: str = _STEPS) -> _Bindings:
-    """Read what `recorder` holds of the file holding `source`.
+    """Read what `recorder` holds of the file holding `source`: its locals' bindings, not its returns.
 
     Returns:
       Its bindings.
 
     """
     return cast("_Bindings", _files(recorder.found())[_digest(source)]["bindings"])
+
+
+def _locals(bindings: _Bindings) -> _Bindings:
+    """Keep the locals' bindings of a file's (see `_returns` for the rest).
+
+    Returns:
+      Them, by line.
+
+    """
+    return {
+        line: {name: types for name, types in names.items() if name != recording.RETURN}
+        for line, names in bindings.items()
+        if any(name != recording.RETURN for name in names)
+    }
 
 
 def test_each_binding_has_what_its_statement_left(run: _Run) -> None:
@@ -508,7 +574,7 @@ def test_an_empty_container_isnt_written(run: _Run) -> None:
 
 
 def test_only_the_roots_own_functions_are_recorded(run: _Run) -> None:
-    """Not another directory's, an installed package's, a lambda's, or one that binds nothing.
+    """Not another directory's, an installed package's, or a lambda's.
 
     Nor one whose file is gone, or no longer parses.
     """
@@ -519,10 +585,34 @@ def test_only_the_roots_own_functions_are_recorded(run: _Run) -> None:
         (run.root / "gone.py").unlink(missing_ok=True)
         _ = (run.root / "broken.py").write_text("def (", encoding="utf-8")
         _ = functions["bound"](run.hooks.tell, run.hooks.leave, 1)
-    _ = run.functions["nameless"](run.hooks.tell)
     assert not _files(run.recorder.found())
     assert not run.recorder.found()["modules"]
     assert set(run.recorder.functions.values()) == {None}
+
+
+def test_a_functions_returns_are_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """What each returns, at the line it returns from: one binding no name too; not a generator's.
+
+    Nor an empty container's, which says nothing.
+
+    One that falls off its end returns `None` at its last line run.
+    """
+    path: Path = tmp_path / "returning.py"
+    _ = path.write_text(_RETURNING, encoding="utf-8", newline="\n")
+    monkeypatch.chdir(tmp_path)
+    assert trace.main(["--output", _OUTPUT, f"--root={tmp_path}", str(path)]) == 0
+    found: _Found = cast("_Found", json.loads((tmp_path / _OUTPUT).read_text(encoding="utf-8")))
+    bindings: _Bindings = cast("_Bindings", _whole(found)[_digest(_RETURNING)]["bindings"])
+    returned: dict[str, list[str]] = {
+        line: names[recording.RETURN] for line, names in bindings.items() if recording.RETURN in names
+    }
+    assert returned == {
+        _line(_RETURNING, "    return value"): ["int", "str"],
+        _line(_RETURNING, "        return 1"): _ONE,
+        _line(_RETURNING, "    print(value)"): ["None"],
+        _line(_RETURNING, "    return value * 2"): _ONE,
+    }
+    assert _locals(bindings) == {_line(_RETURNING, "    doubled = value * 2"): {"doubled": _ONE}}
 
 
 def test_a_files_copies_are_one_file(run: _Run) -> None:
@@ -556,12 +646,17 @@ def test_a_monitor_asks_for_its_functions_lines(tmp_path: Path) -> None:
     ]
     monitoring.asked.clear()
     assert functions["begun"](partial(monitor.started, begun, 0)) == monitoring.DISABLE
+    # `nameless` binds no name: its returns alone are asked for, not its lines; its lambda's nothing.
     assert functions["nameless"](partial(monitor.started, begun, 0)) == (monitoring.DISABLE,) * 2
-    assert monitoring.asked == [("local", 3, begun, events.LINE | events.PY_RETURN)]
+    assert monitoring.asked == [
+        ("local", 3, begun, events.LINE | events.PY_RETURN),
+        ("local", 3, begun, events.PY_RETURN),
+    ]
     monitoring.asked.clear()
     monitor.stop()
     assert monitoring.asked == [
         ("events", 3, 0),
+        ("local", 3, begun, 0),
         ("local", 3, begun, 0),
         *(("register", 3, event, None) for event in registered),
         ("free", 3),
@@ -569,15 +664,16 @@ def test_a_monitor_asks_for_its_functions_lines(tmp_path: Path) -> None:
 
 
 def test_a_monitor_disables_what_isnt_recorded(tmp_path: Path) -> None:
-    """A line or a return of a function that isn't, or is no longer."""
+    """A line or a return of a function that isn't, or is no longer; a line of one binding no name."""
     monitoring: _Monitoring = _Monitoring()
     monitor: trace.Monitor = trace.Monitor(recording.Recorder(tmp_path), monitoring)
     functions: _Functions = _steps(tmp_path / "steps.py")
     code: CodeType = _caller.__code__
-    hook: _Hook
-    for hook in (partial(monitor.line, code, 0), partial(monitor.returned, code, 0, None)):
-        assert functions["begun"](hook) is None
-        assert functions["nameless"](hook) == (monitoring.DISABLE,) * 2
+    assert functions["begun"](partial(monitor.line, code, 0)) is None
+    assert functions["begun"](partial(monitor.returned, code, 0, None)) is None
+    # `nameless` binds no name: its lines aren't followed, its returns are; its lambda's neither.
+    assert functions["nameless"](partial(monitor.line, code, 0)) == (monitoring.DISABLE,) * 2
+    assert functions["nameless"](partial(monitor.returned, code, 0, None)) == (None, monitoring.DISABLE)
 
 
 def test_a_monitor_finds_its_frames_without_sys(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -645,12 +741,13 @@ def test_a_module_or_a_script_is_run_and_recorded(
     assert exited.value.code == _STATUS  # the run's own
     assert (sys.gettrace(), threading.gettrace()) == before
     found: _Found = cast("_Found", json.loads((tmp_path / _OUTPUT).read_text(encoding="utf-8")))
-    assert _files(found)[_digest(_MODULE)]["bindings"] == {
+    assert _whole(found)[_digest(_MODULE)]["bindings"] == {
         _line(_MODULE, "    made = Local()"): {"made": ["__main__:Local"]},
         _line(_MODULE, "    count = len(argv)"): {"count": _ONE},
         _line(_MODULE, "    for arg in argv:"): {"arg": ["str"]},
         _line(_MODULE, "        size = len(arg)"): {"size": _ONE},
         _line(_MODULE, "    count = str("): {"count": ["str"]},
+        _line(_MODULE, "    return made"): {recording.RETURN: ["__main__:Local"]},  # what it returned
     }
     assert found["modules"] == {"__main__": _digest(path.read_text(encoding="utf-8"))}
 
@@ -681,34 +778,6 @@ def test_nothing_to_run_exits_2(argv: list[str], capsys: pytest.CaptureFixture[s
     with pytest.raises(SystemExit):
         _ = trace.main(argv)
     assert _NOTHING in capsys.readouterr().err
-
-
-def test_traces_are_joined() -> None:
-    """Each binding has its spellings in them all; a file has the first path it's under."""
-    one: recording.Found = {
-        "version": recording.VERSION,
-        "files": {"d": {"path": "a.py", "bindings": {"1": {"x": ["int"]}, "2": {"y": ["str"]}}}},
-        "modules": {"a": "d"},
-    }
-    other: recording.Found = {
-        "version": recording.VERSION,
-        "files": {
-            "d": {"path": "copy.py", "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}}},
-            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
-        },
-        "modules": {"b": "e"},
-    }
-    assert recording.merged([one, other]) == {
-        "version": recording.VERSION,
-        "files": {
-            "d": {
-                "path": "a.py",
-                "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}, "2": {"y": ["str"]}},
-            },
-            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
-        },
-        "modules": {"a": "d", "b": "e"},
-    }
 
 
 def test_a_run_tells_its_pytest_processes_and_reads_what_they_wrote(
@@ -748,7 +817,7 @@ def test_a_pytest_process_a_run_started_records_itself(
         trace.pytest_unconfigure()
     assert not early
     found: _Found = cast("_Found", json.loads(part.read_text(encoding="utf-8")))
-    assert _files(found)[_digest(_WORKED)]["bindings"] == {"2": {"y": _ONE}}
+    assert _whole(found)[_digest(_WORKED)]["bindings"] == {"2": {"y": _ONE}, "3": {recording.RETURN: _ONE}}
     part.unlink()
     trace.pytest_unconfigure()  # no session left
     assert not part.exists()

@@ -15,6 +15,7 @@ from constricter.offences import (
     UNANNOTATED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
+    UNANNOTATED_PARAMETER,
     UNANNOTATED_RETURN,
     UNTYPED_TARGET,
     UNUSED_UNION_MEMBER,
@@ -94,6 +95,13 @@ _WHY: Final = {
         "infers. `--fix` writes what its own `return`s give (`-> int`), or `-> None` for one that\n"
         "returns nothing. Off unless selected by its full code (`--extend-select LVA014`): ruff's ANN201\n"
         "reports it too; this is for the fix."
+    ),
+    UNANNOTATED_PARAMETER: (
+        "A parameter with no annotation leaves the function's body to whatever a type checker\n"
+        "infers of it. `--fix` writes what typed it from outside, a guess: what every call passes it,\n"
+        "the one class with every member the function reads of it, its pytest fixture's value, or\n"
+        "the one type the checked files annotate its name with. Off unless selected by its full code\n"
+        "(`--extend-select LVA015`): ruff's ANN001 reports it too; this is for the fix."
     ),
 }
 

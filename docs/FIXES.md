@@ -115,7 +115,7 @@ the value decides it, for a plain `name = value` in a function or module body:
   ancestor with it: `class Both(threading.Thread, unittest.TestCase)`), by its members there
   (`self.id()` in a `unittest.TestCase` is a `str`, `self.name` in a `threading.Thread` a `str`),
   which another checked file's class is followed to as well, through its own bases in any checked
-  file or installed package (one that declares no types is read for its classes' bases alone:
+  file or installed package (one that declares no types gives its classes' bases:
   `django.test.TestCase`), each line of them reaching a library class at most (a mixin beside it
   ends at none; two lines reaching one each give both, in order, where they share no ancestor): what
   none of them binds is the library class's (`self.id()` under a project's own
@@ -529,6 +529,14 @@ itself, `from m import x as x`), or not written; and one of its generic classes 
 bare (`np.ndarray`). A class a module the file imports re-exports has its members there
 (`pytest.LogCaptureFixture`'s `text`, `pkg.Row`'s).
 
+An installed package that declares no types (no `py.typed`, no stubs) is read for its own
+annotations, as pyright reads one: its functions' and methods' declared returns type the calls
+into it as guesses (`declared`, with `returned`), through its re-exports (`pd.date_range(...)` is a
+`DatetimeIndex` under `--unsafe-fixes`); its classes' attributes, its classmethods and its
+overloads aren't offered. Not `typing_extensions`, whose classes are typing forms typed by
+typeshed: `TypeVar("T")` is never a `TypeVar`. `mypy_extensions` is read for its classes alone
+(`tag: u8 = read_tag(data)`), its typing forms (`TypedDict`, `Arg`) being none.
+
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
 one. What a parameter takes is read as below. One typed as nothing but checked files' classes
@@ -610,6 +618,24 @@ it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n`
 another file's subclass or outside code may store it too; none where a store isn't a plain
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
 function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
+
+LVA014 (opt-in) offers a plain function's or method's return type, `-> T` before the `:` ending
+its header: what its own `return`s give (`returned`, as a call to it is typed), or `None` for one
+that returns nothing; a method's is a guess (a subclass may return another), and a function's is
+where its `return`s' values are only guessed (`return Box()` rests on `constructor` too). Where
+those decide nothing, what a traced run saw it return (`--infer-from`, a guess, `traced`): the
+union of the types seen, only where the run took every way out of the function, each `return`
+with a value and its end where it can fall off it, since a way out never taken may give anything.
+Only where `T` names what the module already binds. LVA015 (opt-in) offers a parameter's, `: T` after its name
+(a default spaced after it), where a guessing mechanism typed it for the function's own check:
+`callers`, `reads`, `fixture` or `named` (see the table below), resting on that mechanism; never
+for a receiver (`self`, `cls`) or a parameter the function binds again. The two are written
+whole or not at all (`rules/signatures.py`): a function gets its fixes only once every parameter
+but its receiver, `*args` and `**kwargs` included, and its return are annotated or fixed, since
+mypy's `disallow_incomplete_defs` (pandas's, sqlalchemy's) reports a def with some of its
+annotations where it reported none with none. A signature written
+reaches the other files in the same run (the file is indexed again, its callers checked again), so
+what the declared return makes certain (`call`, where `returned` was a guess) needs no second pass.
 
 A loop whose target is typed only by `# type: T` (LVA003) gets `name: T` declared before it and the
 comment dropped (a type checker would see the name declared twice), when its header is on one line.
@@ -1022,9 +1048,10 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
 | `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
-| `reads`         | an unannotated parameter: the one module class with every member read of it (a guess)     |
+| `reads`         | an unannotated parameter, by the one class with every member read of it (a guess)         |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
 | `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
+| `declared`      | an installed package's own annotation, with no `py.typed` to vouch for it (a guess)       |
 
 The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 

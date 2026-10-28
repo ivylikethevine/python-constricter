@@ -377,10 +377,11 @@ def _returns(value: ast.expr, known: Known) -> Inference | None:
         case ast.Call(func=ast.Name() | ast.Attribute() as func) if (
             callee := dotted(func)
         ) in known.returned.calls and callee not in known.calls:
+            # With what the function's own `return`s rest on (`constructor`, `declared`), as a method's.
             return Inference(
                 known.returned.calls[callee or ""],
                 f"`{callee}`'s `return`s",
-                frozenset({RETURNED}),
+                frozenset({RETURNED}) | known.returned.guesses.get(callee or "", frozenset()),
             )
         case _:
             return None

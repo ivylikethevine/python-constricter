@@ -16,7 +16,7 @@ from typing import Final, TypeAlias
 
 from constricter.fix.core.known import Call, Callee, Observed, Origin, Passed, Seeds
 from constricter.fix.index import project, spelling
-from constricter.fix.index.modules import Index, module_at
+from constricter.fix.index.modules import Index, Memo, module_at
 from constricter.fix.index.params import Param
 
 KIND: Final = "callers"  # the guessing mechanism (`FIX_KINDS`)
@@ -117,6 +117,10 @@ def callees(catalog: project.Index, path: Path) -> dict[str, Callee]:
     target: project.Module | None
     if (target := module_at(catalog, path)) is None:
         return {}
+    return _callees(catalog, target)
+
+
+def _callees(catalog: project.Index, target: project.Module) -> dict[str, Callee]:
     found: dict[str, Callee] = {name: (target.name, name) for name in target.open}
     key: str
     origin: Origin
@@ -125,6 +129,34 @@ def callees(catalog: project.Index, path: Path) -> dict[str, Callee]:
         if defined is not None and not defined[0].installed:
             found[key] = (defined[0].name, defined[1])
     return found
+
+
+def resumable(catalog: project.Index) -> frozenset[str]:
+    """Name the checked modules whose open functions a checked file calls, as it spells them.
+
+    Only such a module's check is resumed knowing its parameters (`rules.checker._resumed`): the
+    others needn't keep theirs. Worked out once for the index (`Memo.resumable`).
+
+    Returns:
+      Their names.
+
+    """
+    memo: Memo | None = catalog.memo
+    if memo is not None and memo.resumable is not None:
+        return memo.resumable
+    found: set[str] = set()
+    target: project.Module
+    for target in catalog.modules.values():
+        if target.installed:
+            continue
+        key: str
+        callee: Callee
+        for key, callee in _callees(catalog, target).items():
+            if key in target.called:
+                found.add(callee[0])
+    if memo is not None:
+        memo.resumable = frozenset(found)
+    return frozenset(found)
 
 
 def own_parameters(catalog: project.Index, path: Path) -> Seeds:

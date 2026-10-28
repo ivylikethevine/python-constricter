@@ -33,6 +33,7 @@ from constricter.offences import (
     OPT_IN,
     PLAIN_BASES,
     UNANNOTATED_ATTRIBUTE,
+    UNANNOTATED_PARAMETER,
     UNANNOTATED_RETURN,
     VAGUE,
     Checks,
@@ -679,6 +680,7 @@ class Options:  # pylint: disable=too-many-instance-attributes
                 final=CAN_BE_FINAL in {*_select(args), *cast("list[str]", args.extend_select)},
                 attributes=UNANNOTATED_ATTRIBUTE in {*_select(args), *cast("list[str]", args.extend_select)},
                 returns=UNANNOTATED_RETURN in {*_select(args), *cast("list[str]", args.extend_select)},
+                parameters=UNANNOTATED_PARAMETER in {*_select(args), *cast("list[str]", args.extend_select)},
                 fixes=FixPolicy(
                     frozenset(cast("list[str]", args.fix_select)),
                     frozenset(cast("list[str]", args.fix_ignore)),
@@ -744,7 +746,10 @@ def _maximal(args: argparse.Namespace) -> argparse.Namespace:
         args.per_path_levels = {}
         args.all_scopes = True
         # LVA014 only selected by itself: it's ruff's ANN201 again, for its fix.
-        args.extend_select = [*cast("list[str]", args.extend_select), *sorted(OPT_IN - {UNANNOTATED_RETURN})]
+        args.extend_select = [
+            *cast("list[str]", args.extend_select),
+            *sorted(OPT_IN - {UNANNOTATED_RETURN, UNANNOTATED_PARAMETER}),
+        ]
     return args
 
 

@@ -493,6 +493,20 @@ def operand(annotation: str, known: Known) -> str | None:
     return _path(root, known) if isinstance(root, ast.Name | ast.Attribute) else None
 
 
+def root_class(paths: Iterable[str]) -> str | None:
+    """Find the one of `paths` every other is under (see `inherits`): what a value of any of them is.
+
+    Returns:
+      Its path; `None` for none, or for several no one of which the rest are under.
+
+    """
+    found: list[str] = list(dict.fromkeys(paths))
+    roots: list[str] = [
+        path for path in found if all(other == path or inherits(other, path) for other in found)
+    ]
+    return roots[0] if len(roots) == 1 else None
+
+
 def inherits(path: str, ancestor: str) -> bool:
     """Check whether the class at `path` is under `ancestor`, as far as the tables know its bases.
 

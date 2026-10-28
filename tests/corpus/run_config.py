@@ -31,6 +31,8 @@
     traced = true                    # its tests traced: each fix held to what they bind; a fix by the trace
 
     timing = 3                       # a check timed that many times, in one process and with `jobs`
+    timing-beside = false            # true: the timed checks run beside the other steps, not alone at the
+                                     # end: their instructions compare across runs, their seconds don't
     profile = true                   # a check in one process `py-spy` samples
     tests-hinted = true              # false: no test run after a checker's hints or the trace's fix
     tests-released = true            # false: the tests as released not run, their record the latest
@@ -108,6 +110,7 @@ _KEYS: Final = {
         "types",
         "traced",
         "timing",
+        "timing-beside",
         "profile",
         "tests-hinted",
         "every-level",
@@ -138,6 +141,9 @@ class Steps(NamedTuple):
     traced: bool = False  # and its tests once more, traced (it needs `fix`'s `unsafe`)
     timing: int = 0  # how many times a check is timed, each way: 0 is not at all
     profile: bool = False
+    timing_beside: bool = (
+        False  # the timed steps beside the others, not alone at the end (see `sizing.TIMED`)
+    )
     tests_hinted: bool = True  # a suite's tests after each checker's hints and the trace's fix too
     every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
     tests_released: bool = True  # the tests as released run, unless the traced tests confirm an earlier run's
@@ -254,6 +260,7 @@ def parse(data: _Table) -> Run:
             bool(steps.get("traced", default.steps.traced)),
             cast("int", steps.get("timing", default.steps.timing)),
             bool(steps.get("profile", default.steps.profile)),
+            bool(steps.get("timing-beside", default.steps.timing_beside)),
             bool(steps.get("tests-hinted", default.steps.tests_hinted)),
             bool(steps.get("every-level", default.steps.every_level)),
             bool(steps.get("tests-released", default.steps.tests_released)),

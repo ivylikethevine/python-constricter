@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from operator import itemgetter
 from typing import Final, NamedTuple, TypeAlias
 
-from constricter.offences import MARK, WIDEN_KINDS, Edit, Fix, Offence
+from constricter.offences import MARK, UNANNOTATED_PARAMETER, WIDEN_KINDS, Edit, Fix, Offence
 
 _HEADER: Final = 2  # a file's shebang and coding lines come first, if it has them
 # The last lines `_missing` read, stripped each way (see there): the lines, their count, and the set.
@@ -27,6 +27,7 @@ _IMPORTS: Final = 2
 _INLINE: Final = 1
 _DECLARATION: Final = 0
 _HEADER_END: Final = b":"  # where a `def`'s header ends, as `Edit.SIGNATURE`'s span names it
+_DEFAULT: Final = b"="  # what follows a parameter's name when its default does
 
 
 class Replacement(NamedTuple):
@@ -86,6 +87,9 @@ def replacement(lines: Sequence[str], offence: Offence) -> Replacement | None:
         start: int = fix.span[0] if fix.edit is Edit.REPLACE else _name_end(raw, offence)
         end: int = fix.span[1] if fix.edit is Edit.REPLACE else start
         written: str = fix.annotation if fix.edit is Edit.REPLACE else f": {fix.annotation}"
+        # A parameter's default follows its name straight (`x=1`): annotated, it's spaced (`x: T = 1`).
+        if offence.code == UNANNOTATED_PARAMETER and raw[start : start + 1] == _DEFAULT:
+            end, written = start + 1, f"{written} = "
         return Replacement(offence.line, raw[:start].decode(), raw[start:end].decode(), written)
     return None
 

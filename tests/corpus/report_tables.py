@@ -29,6 +29,7 @@ from tests.corpus.pipeline import (
     TIMING,
     TRACED,
     TYPES,
+    UNION,
     Record,
     Store,
     fixing,
@@ -262,32 +263,58 @@ def _tests(records: Records) -> Rows:
         step: str
         ran: Record
         for step, ran in cast("dict[str, Record]", record["fixed"]).items():
-            more: _Row = [len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")]
-            more += _moved(records, tree, version, step)
+            # An implied part's skips are the union's, whose run stands for it.
+            more: _Row = [*_counts(ran), *_moved(records, tree, version, record, str(ran.get(IMPLIED, step)))]
             summary: str = f"as {ran[IMPLIED]}'s (implied)" if IMPLIED in ran else _summary(ran)
             rows.append([tree.name, version, step, not differs(record, ran), summary, *more])
+        if UNION in record:  # the union's own run, listed as the parts it stands for are
+            union: Record = cast("Record", record[UNION])
+            more = [*_counts(union), *_moved(records, tree, version, record, INFER_UNION)]
+            rows.append([tree.name, version, INFER_UNION, not differs(record, union), _summary(union), *more])
     return rows
 
 
-def _moved(records: Records, tree: Tree, version: str, step: str) -> _Row:
+def _counts(ran: Record) -> _Row:
+    return [len(cast("list[str]", ran.get(key, []))) for key in ("new", "gone", "named")]
+
+
+def _moved(records: Records, tree: Tree, version: str, record: Record, step: str) -> _Row:
     """Count the tests a fixed run skipped where the tests as released ran them, and the reverse.
 
-    By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them.
+    By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them; the
+    released tests' from the earlier run's folder they were taken from (`FROM`), where this one
+    doesn't hold them (`_released`).
 
     Returns:
       The two counts; blanks where a run wrote no tests, or the folder isn't there.
 
     """
-    store: Store | None = records.store
-    moved: tuple[list[str], list[str]] | None = (
-        None
-        if store is None
-        else corpus_suite.skips(
-            store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED),
-            store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
-        )
+    store: Store | None
+    if (store := records.store) is None:
+        return ["", ""]
+    released: Path = store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED)
+    if not released.is_file() and FROM in record:
+        released = _released(Store(store.root.parent / str(record[FROM])), tree.name, version)
+    moved: tuple[list[str], list[str]] | None = corpus_suite.skips(
+        released,
+        store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
     )
     return ["", ""] if moved is None else [len(moved[0]), len(moved[1])]
+
+
+def _released(earlier: Store, corpus: str, version: str) -> "Path":
+    """Find a suite's released tests in an earlier run's folder, under whichever version it ran.
+
+    The released tests run no constricter, so any version's are the same tests: an earlier run of
+    another label keeps them under its own (`super+dev` for a mega run's `mega+dev`).
+
+    Returns:
+      This version's path where it's there, else the first version's that is; this version's if none.
+
+    """
+    path: Path = earlier.path(corpus, version, f"{TESTS}-{RELEASED}", TESTED)
+    found: list[Path] = sorted(path.parent.parent.glob(f"*/{path.name}"))
+    return path if path.is_file() or not found else found[0]
 
 
 def differs(record: Record, ran: Record) -> bool:
@@ -325,7 +352,7 @@ def _timing(records: Records) -> Rows:
     rows: Rows = [
         [
             *("corpus", "constricter", "jobs", "one process", "with jobs", "runs"),
-            *("G instructions, one process", "with jobs", "timed by"),
+            *("G instructions, one process", "with jobs", "timed by", "beside other steps"),
         ],
     ]
     tree: Tree
@@ -343,6 +370,7 @@ def _timing(records: Records) -> Rows:
             runs,
             *instructions,
             record.get("by", LOOP),  # a record from before `by` was timed in a loop
+            "yes" if record.get("beside") else "no",  # a record from before it was timed alone
         ]
         rows.append([tree.name, version, record["jobs"], *timed])
     return rows

@@ -3,9 +3,12 @@
 import collections
 import fractions
 import importlib.util
+import inspect
 import io
 import pathlib
+import runpy
 import sys
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 from unittest import mock
@@ -15,8 +18,9 @@ import pytest
 from constricter import recording
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from importlib.machinery import ModuleSpec
-    from types import ModuleType
+    from types import FrameType, ModuleType
 
 _KEPT: list[str] = ["int", "int", recording.UNKNOWN, recording.UNKNOWN, "Odd", "Odd"]
 _ASKED: list[str] = ["int", "float", "float", "Odd", "Odd"]
@@ -226,3 +230,59 @@ def test_a_modules_class_is_spelled_as_its_annotation(
     spec.loader.exec_module(module)
     assert recording.spelled(cast("dict[str, object]", module.MADE)[made]) == spelling
     assert not cast("list[str]", module.ASKED)
+
+
+def test_traces_are_joined() -> None:
+    """Each binding has its spellings in them all; a file has the first path it's under."""
+    one: recording.Found = {
+        "version": recording.VERSION,
+        "files": {"d": {"path": "a.py", "bindings": {"1": {"x": ["int"]}, "2": {"y": ["str"]}}}},
+        "modules": {"a": "d"},
+    }
+    other: recording.Found = {
+        "version": recording.VERSION,
+        "files": {
+            "d": {"path": "copy.py", "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}}},
+            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
+        },
+        "modules": {"b": "e"},
+    }
+    assert recording.merged([one, other]) == {
+        "version": recording.VERSION,
+        "files": {
+            "d": {
+                "path": "a.py",
+                "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}, "2": {"y": ["str"]}},
+            },
+            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
+        },
+        "modules": {"a": "d", "b": "e"},
+    }
+
+
+# A function that calls `leave` as it would return: what it's told to return is what it's given.
+_GIVING: Final = "def give(leave):\n    given = leave()\n    return given\n"
+
+
+def test_a_return_that_says_nothing_isnt_noted(tmp_path: Path) -> None:
+    """An empty container returned says nothing of what the function returns: no type is noted for it."""
+    path: Path = tmp_path / "giving.py"
+    _ = path.write_text(_GIVING, encoding="utf-8", newline="\n")
+    give: Callable[[Callable[[], bool]], bool] = cast(
+        "Callable[[Callable[[], bool]], bool]",
+        runpy.run_path(str(path))["give"],
+    )
+    recorder: recording.Recorder = recording.Recorder(tmp_path)
+
+    def leave(value: object) -> bool:
+        frame: FrameType | None = inspect.currentframe()
+        assert frame is not None
+        assert frame.f_back is not None
+        return recorder.left(frame.f_back, finished=True, returned=True, value=value)
+
+    _ = give(partial(leave, []))
+    assert not recorder.found()["files"]  # nothing noted: no file written
+    _ = give(partial(leave, 1))
+    assert [entry["bindings"] for entry in recorder.found()["files"].values()] == [
+        {"2": {recording.RETURN: ["int"]}},
+    ]

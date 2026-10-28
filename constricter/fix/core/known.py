@@ -158,7 +158,7 @@ class Classes(NamedTuple):
 
 
 @dataclass
-class ImportPlan:
+class ImportPlan:  # pylint: disable=too-many-instance-attributes
     """How a module can name a library type, and the imports that takes (see `fix.core.imports.plan`).
 
     `bound`: each name its imports bind, and what that is (`io`, `io.BytesIO`); `taken`: every name
@@ -180,6 +180,8 @@ class ImportPlan:
     checking: Checking = field(default_factory=Checking)
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
+    # Names it imports from another checked file that re-exports a type's factory there (`Outside`).
+    factories: frozenset[str] = frozenset()
 
     def type_checking(self) -> str | None:
         """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.
@@ -494,6 +496,8 @@ class Hints(NamedTuple):
     types: Mapping[tuple[int, int], str] = Empty()
     offered: Mapping[tuple[int, int], Offered] = Empty()
     kind: str = "checker"
+    # A traced run's: what each function returned, by where its `def` starts (see `traced.hints`).
+    returns: Mapping[tuple[int, int], Offered] = Empty()
 
 
 # An argument's type, and what it rests on if it's a guess (`FIX_KINDS`; none: it's certain).
@@ -583,6 +587,9 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     # Their descriptors, as it spells them, each with what an instance's attribute of it gives.
     descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     callees: Mapping[str, Callee] = field(default_factory=dict[str, Callee])
+    # Whether a checked file calls one of its open functions: its check kept for a resume knowing
+    # their parameters (see `callers.resumable`); a tree checked alone keeps it.
+    resumable: bool = True
     # See `Seeds`
     parameters: Mapping[str, Mapping[str, Passed]] = field(
         default_factory=dict[str, Mapping[str, Passed]],
@@ -592,6 +599,9 @@ class Outside:  # pylint: disable=too-many-instance-attributes
         default_factory=dict[str, tuple[ReadSignature, ...]],
     )
     installed_classes: frozenset[str] = frozenset()  # see `LibraryNames.classes`
+    # Every member of each class it names and reads a member of, as it spells the class, other checked
+    # files' and installed packages' (see `crossed.member_names`): what `fix.values.reads` matches.
+    read_members: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     # See `LibraryNames.parameters`
     installed_parameters: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     # See `LibraryNames.lineage`
@@ -627,6 +637,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     managers: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
     # The decorators it uses that give a function back, by the index (see `index.decorated.vouched`).
     vouched: frozenset[str] = frozenset()
+    # The names it imports that are a type's factory where they're defined (see `across.factories`).
+    factories: frozenset[str] = frozenset()
 
     @override
     def __getstate__(self) -> dict[str, object]:

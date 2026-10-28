@@ -143,13 +143,15 @@ class Monitor:
           `DISABLE`: no start of it is reported again.
 
         """
-        if self.recorder.wanted(_frame(1)):
+        frame: FrameType = _frame(1)
+        if self.recorder.wanted(frame):
             self.codes.append(code)
             events: Events = self.monitoring.events
+            # A function binding no name has only its returns reported.
             self.monitoring.set_local_events(
                 self.tool,
                 code,
-                events.LINE | events.PY_RETURN,
+                (events.LINE if self.recorder.lined(frame) else 0) | events.PY_RETURN,
             )
         return self.monitoring.DISABLE
 
@@ -162,14 +164,15 @@ class Monitor:
         """
         return None if self.recorder.line(_frame(1), line) else self.monitoring.DISABLE
 
-    def returned(self, _code: CodeType, _offset: int, _value: object) -> object:
-        """Tell the recorder its caller returns.
+    def returned(self, _code: CodeType, _offset: int, value: object) -> object:
+        """Tell the recorder its caller returns, and what.
 
         Returns:
           `DISABLE` for a function no longer recorded.
 
         """
-        return None if self.recorder.left(_frame(1), finished=True) else self.monitoring.DISABLE
+        left: bool = self.recorder.left(_frame(1), finished=True, returned=True, value=value)
+        return None if left else self.monitoring.DISABLE
 
     def raised(self, _code: CodeType, _offset: int, _error: BaseException) -> None:
         """Tell the recorder an exception is raised in its caller, or through it."""
@@ -206,7 +209,7 @@ class Tracer:
         """
         return self.within if self.recorder.wanted(frame) else None
 
-    def within(self, frame: FrameType, event: str, _arg: object) -> _Trace | None:
+    def within(self, frame: FrameType, event: str, arg: object) -> _Trace | None:
         """Tell the recorder what a recorded function's frame does.
 
         Returns:
@@ -216,7 +219,7 @@ class Tracer:
         if event == _LINE:
             _ = self.recorder.line(frame)
         elif event == _RETURN:
-            _ = self.recorder.left(frame)
+            _ = self.recorder.left(frame, returned=True, value=arg)
         elif event == _EXCEPTION:
             self.recorder.raised(frame)
         return self.within

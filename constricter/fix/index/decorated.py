@@ -12,8 +12,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from constricter.fix.core.known import Returns
 from constricter.fix.index import project, spelling
-from constricter.fix.index.modules import Index, Module, module_at
+from constricter.fix.index.modules import DECLARED, Index, Module, module_at
 from constricter.fix.index.project import DECORATOR
 
 if TYPE_CHECKING:
@@ -50,7 +51,19 @@ def passed(catalog: Index) -> Index:
         freed: frozenset[str] = frozenset(
             name for name, spellings in module.decorated.items() if trusted.issuperset(spellings)
         )
-        if more or sides or freed:
+        if module.untyped and (more or freed):
+            # An untyped package's: what it declares is a guess (see `installed.as_untyped`).
+            found[module.name] = replace(
+                module,
+                returned=Returns(
+                    {**module.returned.calls, **more},
+                    {**module.returned.guesses, **dict.fromkeys(more, DECLARED)},
+                    module.returned.names,
+                    module.returned.methods,
+                ),
+                unannotated=module.unannotated | freed,
+            )
+        elif more or sides or freed:
             found[module.name] = replace(
                 module,
                 returns={**module.returns, **more},

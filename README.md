@@ -80,6 +80,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA012` | opt-in: a local bound once, outside any loop, and never rebound                           | `name: Final = ...`                            |
 | `LVA013` | opt-in: an instance attribute a plain class's method first stores, declared nowhere in it | `self.x: T = ...`                              |
 | `LVA014` | opt-in: a plain function that declares no return type                                     | `def f(...) -> T:`                             |
+| `LVA015` | opt-in: a parameter with no annotation                                                    | `def f(x: T):`                                 |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and
@@ -139,8 +140,17 @@ nested function, and names the class's body or a base of the module's binds are 
 
 `LVA014` is opt-in too (pylint's `enable = missing-return-type`), an error from `strict`. It
 reports a plain function or method (not decorated) with no return annotation, as ruff's `ANN201`
-does; its fix is what the function's own `return`s give (`-> int`, a method's a guess), or `-> None`
-for one that returns nothing, where the type names only what the module already binds.
+does; its fix is what the function's own `return`s give (`-> int`, a method's a guess, as is a
+function's whose `return`s' values are guessed), or `-> None` for one that returns nothing, or what
+a traced run saw it return (`--infer-from`, a guess), where the type names only what the module
+already binds. `LVA015` is opt-in the same way (pylint's
+`enable = missing-parameter-type`): a parameter with no annotation, as ruff's `ANN001` reports it,
+but a method's receiver; its fix, a guess, is what typed the parameter for the function's own
+check: what every call passes it, the one class with every member the function reads of it, its
+pytest fixture's value, or the one type the checked files annotate its name with. A signature is
+written whole or not at all: a return on bare parameters, or one parameter's type among bare ones,
+is an error to a checker held to complete signatures where none was. A signature `--fix` writes
+reaches the other files in the same run.
 
 Python 3.11+, no runtime dependencies.
 
@@ -148,16 +158,17 @@ Python 3.11+, no runtime dependencies.
 
 | Tool   | Setup                                                 | Reports                         | Suppress                                         |
 | ------ | ----------------------------------------------------- | ------------------------------- | ------------------------------------------------ |
-| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
-| flake8 | install it (on by default)                            | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
-| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9114` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
-| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA014`               | `# noqa: LVA001`                                 |
+| CLI    | `constricter [PATH...] [--level L] [--format F] [-q]` | `LVA001`–`LVA015`               | `# noqa: LVA001`                                 |
+| flake8 | install it (on by default)                            | `LVA001`–`LVA015`               | `# noqa: LVA001`                                 |
+| pylint | `load-plugins = ["constricter.plugins.pylint"]`       | `C9101`–`C9115` (symbols below) | `# noqa: LVA001` or `# pylint: disable=<symbol>` |
+| ruff   | run the CLI after ruff; set `lint.external = ["LVA"]` | `LVA001`–`LVA015`               | `# noqa: LVA001`                                 |
 
 pylint symbols: `unannotated-local-variable`, `untyped-for-or-match-variable`,
 `comment-typed-for-variable`, `unannotated-module-or-class-variable`, `vague-annotation`,
 `deeply-nested-annotation`, `redundant-annotation`, `narrowable-annotation`,
 `mismatched-value-type`, `unused-union-member`, `long-tuple-annotation`, and, off until enabled,
-`could-be-final`, `unannotated-instance-attribute` and `missing-return-type`.
+`could-be-final`, `unannotated-instance-attribute`, `missing-return-type` and
+`missing-parameter-type`.
 
 Options:
 

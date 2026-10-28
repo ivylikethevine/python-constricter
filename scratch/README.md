@@ -14,6 +14,21 @@ goes under `local/scratch/`.
   report, tables and facts, and each listing gathered into one file, every text scrubbed.
 - `typeshed_reach.py FOLDER`: a run's third-party bindings with no fix that call into a package
   typeshed's third-party stubs cover, by stub set and by the census's reason.
+- `signatures_measure.py CORPUS [--modes certain,likely,unsafe,signed] [--select LVA014,LVA015]
+[--passes N] [--jobs N] [--label NAME]`: a copy of a corpus fixed pass after pass until a pass
+  fixes nothing, each mode with and without the signature codes, and `signed` (the codes' fixes
+  written first, then `--fix`): each pass's fixes split certain, likely and guess, the signatures
+  written, and `--coverage` after; each pass's listing kept under `local/scratch/signatures/`.
+- `stubs_measure.py CHECKOUT SOURCE PACKAGE=STUBS...`: a corpus's fixes as installed, with each
+  stub package alone on `PYTHONPATH`, with pyrefly's stubs of each package, and with every stub
+  package at once, by tier, gained and lost.
+- `stubgen_measure.py CHECKOUT SOURCE PACKAGE...`: each untyped PACKAGE of a suite's checkout
+  stubbed by `pyrefly stubgen` as a `-stubs` package, and the corpus's fixes listed with and without
+  them, by tier, and what only one side has.
+- `order_experiment.py [--no-loose] [--fork] -- ARGS...`: a check (`python -m constricter ARGS`)
+  with the order's method-name edges dropped, for the parallel check's ceiling, timed; compare its
+  `--format=json` with a plain check's. `--fork` starts the workers by forking, which a sandbox
+  allows.
 - `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
   REF's code (HEAD) and by the working tree's, and those only one side has.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
@@ -79,10 +94,10 @@ goes under `local/scratch/`.
   this checkout and by a compiled wheel's install, their output compared and timed.
 - `corpus_quadrants.py FOLDER ...`: each corpus's files and its steps' wall and CPU seconds in
   finished runs, and its size-and-time group at the medians.
-- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep]`: finished runs' steps
-  replayed under other queueing orders, beside each run's length and the least any schedule could
-  take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the fastest over them
-  all.
+- `schedule_sim.py FOLDER... [--cpus N] [--memory GB] [--given] [--sweep] [--timing-beside]`: finished
+  runs' steps replayed under other queueing orders, beside each run's length and the least any
+  schedule could take; `--sweep` searches the runner's order, `_PATIENCE` and `_BESIDE` for the
+  fastest over them all; `--timing-beside` replays the timed steps as any other, not alone at the end.
 - `compiled_venv.py`: builds the pure wheel and the compiled one (mypyc), each installed in a venv
   of its own beside the `corpus` group's packages (`local/.venv-pure`, `local/.venv-compiled`), for
   `tests/corpus/runs/compiled.toml`.
@@ -107,9 +122,11 @@ goes under `local/scratch/`.
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
 - `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
-[--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of its checkout, only the
-  signatures it adds taken (`righttyper_added.py`), then `--fix` and the check on a plain copy and
-  on that one: the fixes each got and the errors. Outside the sandbox.
+[--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
+  its checkout (a script's directory on the path, the environment given; RightTyper patched past a
+  failing suite's exit and its finder's reads of lazy objects), only the signatures it adds taken
+  (`righttyper_added.py`), then `--fix` and the check on a plain copy and on that one: the fixes
+  each got and the errors. Outside the sandbox. django, 2026-10-26: 1,697 fixes more, 11,367 errors.
 - `righttyper_added.py ORIGINAL ANNOTATED OUT`: of RightTyper's rewritten source, only the
   parameter and return annotations the original lacked, with the imports they need under
   `TYPE_CHECKING`, onto the original's text: its signatures measured without its overwrites.

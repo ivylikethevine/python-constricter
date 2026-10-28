@@ -620,7 +620,8 @@ def timing(job: Job) -> Record:
 
     Returns:
       The step's record: what timed it, each way's seconds and instructions, a run each, and their
-      medians.
+      medians; and whether the other steps ran beside it (`timing-beside`), when the seconds say
+      little and the instructions are what to compare.
 
     """
     where: launch.Place = launch.place(job.tree, job.work(TIMING))
@@ -629,7 +630,11 @@ def timing(job: Job) -> Record:
     ways: dict[str, Timed] = (
         _looped(job, where, options) if hyperfine is None else _by_hyperfine(job, where, options, hyperfine)
     )
-    record: Record = {"jobs": job.run.jobs, "by": LOOP if hyperfine is None else _HYPERFINE}
+    record: Record = {
+        "jobs": job.run.jobs,
+        "by": LOOP if hyperfine is None else _HYPERFINE,
+        "beside": job.run.steps.timing_beside,  # other steps ran meanwhile: the seconds don't compare
+    }
     way: str
     timed: Timed
     for way, timed in ways.items():

@@ -88,6 +88,45 @@ def imported(
     )
 
 
+def member_names(catalog: Index, path: Path) -> dict[str, frozenset[str]]:
+    """Name every member of each class the file at `path` names and reads a member of, as it spells the class.
+
+    What the class's body binds (`Module.bound`), typed or not, with its bases' in its own module;
+    an installed package's class too. For `fix.values.reads`, which asks what a class has, not what
+    type each member is.
+
+    Returns:
+      Each such class's members, by its spelling; nothing for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if (target := module_at(catalog, path)) is None:
+        return {}
+    found: dict[str, frozenset[str]] = {}
+    key: str
+    defined: tuple[Module, str]
+    for key, defined in spelled_classes(catalog, target, (target.names, target.attributes), set()):
+        names: frozenset[str] = _bound_members(defined[0], defined[1], set())
+        if names & target.attributes:
+            found[key] = names
+    return found
+
+
+def _bound_members(module: Module, name: str, seen: set[str]) -> frozenset[str]:
+    """Name what the class `name` of `module` binds in its body, with its bases' there (see `member_names`).
+
+    Returns:
+      Them; nothing for a class `seen` already (a cycle of bases).
+
+    """
+    if name in seen or name not in module.bound:
+        return frozenset()
+    seen.add(name)
+    return frozenset(module.bound[name]).union(
+        *(_bound_members(module, base, seen) for base in module.bases.get(name, ())),
+    )
+
+
 def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mapping[str, Guarded]) -> Classes:
     """Add the members of the classes `guarded` names that `found` hasn't taken, as the file names them.
 

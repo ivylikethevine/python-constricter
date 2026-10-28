@@ -407,7 +407,8 @@ class Running(NamedTuple):
           The steps that failed.
 
         """
-        beside: list[str] = [name for name in pipeline.steps(self.run) if name not in sizing.TIMED]
+        last: frozenset[str] = sizing.held_last(self.run)
+        beside: list[str] = [name for name in pipeline.steps(self.run) if name not in last]
         suited: list[str] = [name for name in suite_steps.waiting(job) if self._chosen(name)]
         needs: dict[str, frozenset[str]] = suite_steps.needs(job)
         names: list[str] = self._runnable(job, _ordered([*beside, *suited], needs), needs)
@@ -425,9 +426,12 @@ class Running(NamedTuple):
             }
             name: str
             for name in names:  # those a step waits for come before it
-                used: tuple[str, ...] = suite_checkouts.checkouts(job, name) if name in suited else ()
                 after: list[Future[bool]] = [ended[each] for each in needs.get(name, ()) if each in ended]
-                ready: list[Future[Path]] = [installed[each] for each in used]
+                ready: list[Future[Path]] = (
+                    [installed[each] for each in suite_checkouts.checkouts(job, name)]
+                    if name in suited
+                    else []
+                )
                 ended[name] = pool.submit(self._after, entry, job, name, after, ready)
         return self._failed(entry, job, names, [ended[name].result() for name in names])
 
@@ -442,13 +446,14 @@ class Running(NamedTuple):
 
         """
         failed: list[str] = []
+        last: frozenset[str] = sizing.held_last(self.run)
         version: str
         for version in self.run.versions:
             job: pipeline.Job = pipeline.Job(self.run, self.store, tree, version)
             failed += self.steps(
                 entry,
                 job,
-                [name for name in pipeline.steps(self.run) if name in sizing.TIMED and self._chosen(name)],
+                [name for name in pipeline.steps(self.run) if name in last and self._chosen(name)],
             )
         return failed
 

@@ -133,6 +133,15 @@ type its package's tests contradict (`prop: Optional[QueryableAttribute[_T_co]]`
 SQLAlchemy; `f_type: FieldType`, a `type[int]`, in strawberry). `call+rebound` and `method+unpack`:
 pandas's tests' scalars (`res: float`, a `Timestamp`; `s_start: int`, a `numpy.int64`).
 
+Joined since, by the listing of the mega run of 2026-10-28 (`mega-10-28-2026-0057`): the return
+an installed package with no `py.typed` declares (`declared`), in three sets.
+
+| Mechanisms                      | Guesses | Packages | Checked | Blamed | Told | Held |  Share |
+| ------------------------------- | ------: | -------: | ------: | -----: | ---: | ---: | -----: |
+| `declared+returned`             |     350 |        4 |     211 |      0 |  179 |  179 | 100.0% |
+| `declared+returned+unpack`      |     128 |        3 |     121 |      0 |  121 |  119 |  98.3% |
+| `constructor+declared+returned` |      57 |        3 |      47 |      0 |   44 |   44 | 100.0% |
+
 ## What isn't likely
 
 Short of a bar, with what it missed:
