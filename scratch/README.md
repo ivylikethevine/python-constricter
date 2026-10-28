@@ -19,6 +19,9 @@ goes under `local/scratch/`.
   fixes nothing, each mode with and without the signature codes, and `signed` (the codes' fixes
   written first, then `--fix`): each pass's fixes split certain, likely and guess, the signatures
   written, and `--coverage` after; each pass's listing kept under `local/scratch/signatures/`.
+- `stubs_measure.py CHECKOUT SOURCE PACKAGE=STUBS...`: a corpus's fixes as installed, with each
+  stub package alone on `PYTHONPATH`, with pyrefly's stubs of each package, and with every stub
+  package at once, by tier, gained and lost.
 - `stubgen_measure.py CHECKOUT SOURCE PACKAGE...`: each untyped PACKAGE of a suite's checkout
   stubbed by `pyrefly stubgen` as a `-stubs` package, and the corpus's fixes listed with and without
   them, by tier, and what only one side has.
