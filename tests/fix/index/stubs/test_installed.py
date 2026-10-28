@@ -10,7 +10,7 @@ import pytest
 
 from constricter.cli import command as cli
 from constricter.fix.core.known import Returns
-from constricter.fix.index import project
+from constricter.fix.index import decorated, project
 from constricter.fix.index.stubs import installed
 
 # Each installed file, under the site directory: a typed package (its source and a stub), a stub
@@ -489,6 +489,40 @@ def test_an_untyped_packages_declared_returns_are_likely(
     fixed: str = main.read_text(encoding="utf-8")
     assert all(line in fixed for line in _USING_FIXED[:2]), fixed
     assert _METHOD_UNFIXED in fixed
+
+
+# An untyped package's function under a decorator that gives it back, from another of its modules:
+# only the index vouches for it.
+_DECORATED: Final = {
+    "wrapped/__init__.py": "from wrapped._kept import kept\n\n\n@kept\ndef made() -> int:\n    return 1\n",
+    "wrapped/_kept.py": (
+        'from typing import TypeVar\n\nF = TypeVar("F")\n\n\ndef kept(func: F) -> F:\n    return func\n'
+    ),
+}
+_MADE: Final = "from wrapped import made\n\n\ndef run() -> None:\n    n = made()\n"
+_MADE_FIXED: Final = "    n: int = made()\n"
+_MADE_NAME: Final = "made"
+
+
+def test_an_untyped_packages_decorated_returns_are_guesses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Under a decorator the index vouches for, a declared return types its calls as a `declared` guess."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _DECORATED)), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(_MADE, encoding="utf-8", newline="\n")
+    catalog: project.Index = installed.with_installed(project.index([main]), installed.search_path())
+    assert _MADE_NAME not in catalog.modules["wrapped"].returned.calls
+    wrapped: project.Module = decorated.passed(catalog).modules["wrapped"]
+    found: tuple[str, frozenset[str]] = (
+        wrapped.returned.calls[_MADE_NAME],
+        wrapped.returned.guesses[_MADE_NAME],
+    )
+    assert found == ("int", frozenset({"declared"}))
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_CLEAN  # all fixed
+    assert _MADE_FIXED in main.read_text(encoding="utf-8")
 
 
 # `typing_extensions` installed as source with no `py.typed`: typeshed types it, so it's never read.

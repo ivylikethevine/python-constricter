@@ -53,6 +53,10 @@ def run() -> None:
 _TWICE: Final = "def twice(n: int) -> int:\n"
 _KEYED: Final = "def keyed(a: str, *, b: str = 1) -> str:\n"
 _LEFT: Final = ("def rebinds(value):\n", "    def method(self, m):\n", "    def make(cls, n=1):\n")
+_CALLED: Final = "    d: int = twice(1)\n"
+_BARE: Final = "def twice(n):\n"
+_COUNT: Final = "def count() -> int:\n"
+_SPREAD: Final = "def spread(n, *rest):\n"
 
 
 def _written(root: Path) -> tuple[Path, Path]:
@@ -126,8 +130,8 @@ def test_a_written_signature_reaches_its_callers_in_the_same_run(
     lib, app = _written(tmp_path)
     args: list[str] = ["--fix", "-q", "--unsafe-fix-select=callers", "--extend-select=LVA014,LVA015"]
     assert cli.main([*args, str(tmp_path)]) == cli.EXIT_FOUND
-    assert "def twice(n: int) -> int:\n" in lib.read_text(encoding="utf-8")
-    assert "    d: int = twice(1)\n" in app.read_text(encoding="utf-8")
+    assert _TWICE in lib.read_text(encoding="utf-8")
+    assert _CALLED in app.read_text(encoding="utf-8")
     _ = capsys.readouterr()
     assert cli.main(["--diff", *args[1:], str(tmp_path)]) == cli.EXIT_CLEAN  # a second pass is left nothing
     assert not capsys.readouterr().out
@@ -144,12 +148,12 @@ def test_a_signature_is_written_whole_or_not_at_all(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--extend-select=LVA014", str(tmp_path)])
-    assert "def twice(n):\n" in lib.read_text(encoding="utf-8")  # its parameter bare: no return alone
-    assert "def count() -> int:\n" in lib.read_text(encoding="utf-8")
+    assert _BARE in lib.read_text(encoding="utf-8")  # its parameter bare: no return alone
+    assert _COUNT in lib.read_text(encoding="utf-8")
     _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--extend-select=LVA014,LVA015", str(tmp_path)])
     fixed: str = lib.read_text(encoding="utf-8")
-    assert "def twice(n: int) -> int:\n" in fixed
-    assert "def spread(n, *rest):\n" in fixed  # `*rest` has no fix: nothing written
+    assert _TWICE in fixed
+    assert _SPREAD in fixed  # `*rest` has no fix: nothing written
 
 
 def test_explain_says_it_is_opt_in(capsys: pytest.CaptureFixture[str]) -> None:

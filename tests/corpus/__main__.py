@@ -426,9 +426,12 @@ class Running(NamedTuple):
             }
             name: str
             for name in names:  # those a step waits for come before it
-                used: tuple[str, ...] = suite_checkouts.checkouts(job, name) if name in suited else ()
                 after: list[Future[bool]] = [ended[each] for each in needs.get(name, ()) if each in ended]
-                ready: list[Future[Path]] = [installed[each] for each in used]
+                ready: list[Future[Path]] = (
+                    [installed[each] for each in suite_checkouts.checkouts(job, name)]
+                    if name in suited
+                    else []
+                )
                 ended[name] = pool.submit(self._after, entry, job, name, after, ready)
         return self._failed(entry, job, names, [ended[name].result() for name in names])
 

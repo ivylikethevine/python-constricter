@@ -291,11 +291,16 @@ def seed_parameters(scope: Scope, func: FunctionDef, named: Sequence[ast.arg]) -
         elif given is not None and plain(given[0], scope.settings.known):
             scope.inferred.learn(arg.arg, given[0], frozenset({callers.KIND}) | given[1])
         elif arg.arg in read:
-            owner: str | None = _spelled(read[arg.arg], seeded.reads, scope.settings.known)
-            if owner is not None:
-                scope.inferred.learn(arg.arg, owner, frozenset({reads.KIND}))
+            _learn_read(scope, arg.arg, read[arg.arg], seeded.reads)
         elif arg.arg in seeded.named and arg.arg in bare:
             scope.inferred.learn(arg.arg, *seeded.named[arg.arg])
+
+
+def _learn_read(scope: Scope, name: str, owner: str, owned: Mapping[str, reads.Members]) -> None:
+    """Type the parameter `name` as the class `reads` gave it, where the module can write that class."""
+    spelled: str | None
+    if (spelled := _spelled(owner, owned, scope.settings.known)) is not None:
+        scope.inferred.learn(name, spelled, frozenset({reads.KIND}))
 
 
 def _spelled(owner: str, owned: Mapping[str, reads.Members], known: Known) -> str | None:

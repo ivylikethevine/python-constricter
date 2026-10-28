@@ -72,8 +72,8 @@ def receivers_of(tree: ast.Module) -> frozenset[int]:
                 isinstance(each, ast.Name) and each.id == _STATIC for each in member.decorator_list
             ):
                 continue
-            first: list[ast.arg] = [*member.args.posonlyargs, *member.args.args]
-            if first:
+            first: list[ast.arg]
+            if first := [*member.args.posonlyargs, *member.args.args]:
                 found.add(id(first[0]))
     return frozenset(found)
 

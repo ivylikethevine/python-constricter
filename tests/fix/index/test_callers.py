@@ -147,6 +147,11 @@ def test_modules_of_one_name_arent_checked_again(tmp_path: Path) -> None:
     assert UNFIXED in lib.read_text(encoding="utf-8")
 
 
+def test_an_index_made_by_hand_keeps_no_resumable_modules() -> None:
+    """With no memo (`Index.memo`), the modules to resume are worked out each time: none here."""
+    assert callers.resumable(project.Index({}, [])) == frozenset()
+
+
 def test_calls_bind_as_python_binds_them() -> None:
     """Too many arguments, an unknown keyword, one bound twice, or unpacking: nothing is typed."""
     params: tuple[tuple[str, str, bool, bool], ...] = (("a", "p", False, False), ("b", "e", False, False))

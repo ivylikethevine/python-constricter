@@ -148,8 +148,8 @@ def hints(found: Trace, source: bytes) -> Hints | None:
     for node in ast.walk(tree) if tree is not None else ():
         if not isinstance(node, _Function):
             continue
-        returned: Offered | None = _returned(node, bindings, found.modules, digest)
-        if returned is not None:
+        returned: Offered | None
+        if (returned := _returned(node, bindings, found.modules, digest)) is not None:
             returns[node.lineno, node.col_offset] = returned
         targets: list[ast.Name]
         for targets in _untyped(node, stored.get(id(node), frozenset())).values():

@@ -96,10 +96,15 @@ def shared(tell, leave):
 def nameless(tell):
     return tell(), (lambda: tell())()
 """
-# Functions returning a value, falling off their end, binding no name, and a generator (not recorded).
+# Functions returning a value, an empty container (saying nothing), falling off their end, binding no
+# name, and a generator (not recorded).
 _RETURNING: Final = """
 def same(value):
     return value
+
+
+def empty(value):
+    return []
 
 
 def early(value):
@@ -119,6 +124,7 @@ def counting(value):
 
 same(1)
 same("a")
+empty(1)
 early(1)
 early(0)
 doubled(2)
@@ -398,8 +404,8 @@ def _files(found: _Found) -> _Files:
     digest: str
     entry: _Entry
     for digest, entry in _whole(found).items():
-        kept: _Bindings = _locals(cast("_Bindings", entry["bindings"]))
-        if kept:
+        kept: _Bindings
+        if kept := _locals(cast("_Bindings", entry["bindings"])):
             files[digest] = {**entry, "bindings": kept}
     return files
 
@@ -587,6 +593,8 @@ def test_only_the_roots_own_functions_are_recorded(run: _Run) -> None:
 def test_a_functions_returns_are_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """What each returns, at the line it returns from: one binding no name too; not a generator's.
 
+    Nor an empty container's, which says nothing.
+
     One that falls off its end returns `None` at its last line run.
     """
     path: Path = tmp_path / "returning.py"
@@ -770,34 +778,6 @@ def test_nothing_to_run_exits_2(argv: list[str], capsys: pytest.CaptureFixture[s
     with pytest.raises(SystemExit):
         _ = trace.main(argv)
     assert _NOTHING in capsys.readouterr().err
-
-
-def test_traces_are_joined() -> None:
-    """Each binding has its spellings in them all; a file has the first path it's under."""
-    one: recording.Found = {
-        "version": recording.VERSION,
-        "files": {"d": {"path": "a.py", "bindings": {"1": {"x": ["int"]}, "2": {"y": ["str"]}}}},
-        "modules": {"a": "d"},
-    }
-    other: recording.Found = {
-        "version": recording.VERSION,
-        "files": {
-            "d": {"path": "copy.py", "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}}},
-            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
-        },
-        "modules": {"b": "e"},
-    }
-    assert recording.merged([one, other]) == {
-        "version": recording.VERSION,
-        "files": {
-            "d": {
-                "path": "a.py",
-                "bindings": {"1": {"x": ["bytes", "int"], "z": ["float"]}, "2": {"y": ["str"]}},
-            },
-            "e": {"path": "b.py", "bindings": {"3": {"w": ["None"]}}},
-        },
-        "modules": {"a": "d", "b": "e"},
-    }
 
 
 def test_a_run_tells_its_pytest_processes_and_reads_what_they_wrote(

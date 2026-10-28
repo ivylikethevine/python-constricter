@@ -609,8 +609,8 @@ def _returning(frame: FrameType, function: _Function, value: object) -> None:
     A `return` statement's line, or the last line run of one that falls off its end: a generator's
     or a coroutine's isn't noted (what a call to it gives isn't what it returns).
     """
-    text: str | None = spelled(value)
-    if text is None:
+    text: str | None
+    if (text := spelled(value)) is None:
         return
     types: set[str] = function.file.held.setdefault(frame.f_lineno, {}).setdefault(RETURN, set())
     if text not in types:
