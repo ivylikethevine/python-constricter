@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `--likely` applies an installed package's declared returns where it has no `py.typed`: the sets
+  `declared+returned`, `declared+returned+unpack` and `constructor+declared+returned` pass
+  [LIKELY.md](LIKELY.md)'s bars on the mega run of 2026-10-28.
+- `mypy_extensions` installed with no `py.typed` is read for its classes alone (`u8`, `i64`), its
+  functions' returns not: mypy's 23 `tag: u8` fixes, gone since its typing forms were kept out,
+  come back.
 - A file's check is kept for a second one knowing its parameters only where a checked file calls
   one of its functions with a parameter left unannotated: the standard library's check in one
   process peaks at 2.06 GiB from 2.15.
@@ -27,7 +33,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `--unsafe-fixes` or `--likely` once the set passes the bars; its classes' attributes, its
   classmethods and its overloads aren't offered. Before, nothing of such a package typed a call.
   The modules whose classes are typing forms, typed by typeshed (`typing_extensions`,
-  `mypy_extensions`, `_typeshed`), are never read so: on the mega run of 2026-10-27, `typing_extensions` installed as
+  `_typeshed`), are never read so: on the mega run of 2026-10-27, `typing_extensions` installed as
   source made `TypeVar` and `TypeVarTuple` constructor guesses, and `_T: TypeVar = TypeVar("_T")`
   left `_T` naming no type, 5,516 new errors in sqlalchemy.
 - A call to an unannotated function typed by its `return`s rests on what those rest on too

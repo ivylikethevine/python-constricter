@@ -9,6 +9,7 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
+from constricter.fix.core.known import Returns
 from constricter.fix.index import project
 from constricter.fix.index.stubs import installed
 
@@ -451,6 +452,7 @@ _USING_FIXED: Final = (
     "    c: list[str] = s.rows()\n",
     '    d = plain.guess("z")\n',  # unannotated there too
 )
+_METHOD_UNFIXED: Final = "    c = s.rows()\n"  # `returned` alone: not likely
 
 
 def test_an_untyped_packages_own_annotations_are_guesses(
@@ -474,6 +476,21 @@ def test_an_untyped_packages_own_annotations_are_guesses(
     assert core.returned.guesses == {"load": {"declared"}, "Store.rows": {"declared"}}
 
 
+def test_an_untyped_packages_declared_returns_are_likely(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`declared+returned` passes LIKELY.md's bars: `--likely` takes a function's, not a method's."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _UNTYPED)), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_USING), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "--likely", "-q", str(main)]) == cli.EXIT_FOUND
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in _USING_FIXED[:2]), fixed
+    assert _METHOD_UNFIXED in fixed
+
+
 # `typing_extensions` installed as source with no `py.typed`: typeshed types it, so it's never read.
 # Reached as sqlalchemy's `util.typing` reaches it: through a checked module's re-export.
 _FORMS: Final = {
@@ -491,6 +508,7 @@ if True:  # as sqlalchemy's `util.typing` keeps its import sorter off them
     from typing_extensions import TypeVar as TypeVar
     from typing_extensions import TypeVarTuple as TypeVarTuple
 """
+_FORMS_MODULE: Final = "typing_extensions"
 _FORMED: Final = """
 from forms import TypeVar, TypeVarTuple
 
@@ -520,4 +538,52 @@ def test_a_typing_form_provider_without_py_typed_is_never_read_as_untyped(
         project.index([project_ / "forms.py", main]),
         installed.search_path(),
     )
-    assert "typing_extensions" not in catalog.modules
+    assert _FORMS_MODULE not in catalog.modules
+
+
+# `mypy_extensions` installed as source with no `py.typed`, as mypy's environment has it.
+_NATIVE: Final = {
+    "mypy_extensions.py": (
+        "class _NativeIntMeta(type):\n"
+        "    def __instancecheck__(cls, inst):\n"
+        "        return isinstance(inst, int)\n\n\n"
+        "class u8(metaclass=_NativeIntMeta):\n"
+        "    def __new__(cls, x=0):\n"
+        "        return int(x)\n\n\n"
+        "def width() -> int:\n"
+        "    return 8\n"
+    ),
+}
+_NATIVE_USING: Final = """
+from mypy_extensions import u8, width
+
+
+def read_tag(data: bytes) -> u8:
+    return u8(data[0])
+
+
+def run(data: bytes):
+    tag = read_tag(data)
+    bits = width()
+    return tag, bits
+"""
+_NATIVE_FIXED: Final = ("    tag: u8 = read_tag(data)\n", "    bits = width()\n")
+_NATIVE_INT: Final = "u8"
+
+
+def test_mypy_extensions_is_read_for_its_classes_alone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`u8` is a class, so `tag: u8` is certain; its functions' declared returns type nothing."""
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _NATIVE)), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(_NATIVE_USING), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in _NATIVE_FIXED), fixed
+    catalog: project.Index = installed.with_installed(project.index([main]), installed.search_path())
+    native: project.Module = catalog.modules["mypy_extensions"]
+    assert _NATIVE_INT in native.classes
+    assert native.returned == Returns()

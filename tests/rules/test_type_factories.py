@@ -54,6 +54,13 @@ def test_what_a_type_factory_makes_is_neither_reported_nor_counted() -> None:
     assert annotation_coverage(source, Checks(all_scopes=True)) == Coverage(0, 2)
 
 
+_USES: Final = """\
+from .util.typing import TypeVar, TypeVarTuple
+Ts = TypeVarTuple("Ts")
+T = TypeVar("T")
+"""
+
+
 def test_a_factory_another_checked_file_re_exports_makes_a_type_too(tmp_path: Path) -> None:
     """`TypeVarTuple` as a package's `util.typing` re-exports it, followed to `typing_extensions`.
 
@@ -65,8 +72,7 @@ def test_a_factory_another_checked_file_re_exports_makes_a_type_too(tmp_path: Pa
         "__init__.py": "",
         "util/__init__.py": "",
         "util/typing.py": "from typing_extensions import TypeVarTuple as TypeVarTuple\nclass TypeVar: ...\n",
-        "uses.py": 'from .util.typing import TypeVar, TypeVarTuple\nTs = TypeVarTuple("Ts")\n'
-        'T = TypeVar("T")\n',
+        "uses.py": _USES,
     }
     name: str
     text: str

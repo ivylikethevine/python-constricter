@@ -25,23 +25,25 @@ measure before building.
 - New type errors 428 in all, rc.8's 403 (5,927 on 2026-10-27): sqlalchemy's 17, the
   `typing_extensions` cascade gone. `constructor` passes LIKELY.md's bars again (15 of 25,834
   checked blamed, 0.06 in each 100).
-- `declared`, `declared+returned` and `reads` pass the bars a second time, with the counts of
-  2026-10-27: 603 guesses, 387 told, 99.5% held, none of 428 blamed; 350, 179, 100%, none of 211;
-  57, 26, 96.2%, none of 19. Left: whether they go into `offences.LIKELY`.
+- The whole sets `declared+returned`, `declared+returned+unpack` and `constructor+declared+returned`
+  pass the bars a second time, and are in `offences.LIKELY` since ([COMPLETED.md](COMPLETED.md));
+  `declared` and `reads` pass only as mechanisms, every guess with them counted, and no `reads` set
+  has 20 guesses.
 - `method` as on 2026-10-27: 2 of 1,047 blamed (0.19 in each 100, the bar 0.1), nibabel's and
   pandas's `subarr: Index`.
 - `infer-trace` types 134,785 of 292,568 bindings; its new type errors 36, rc.8's 32.
 - sqlalchemy's tests table filled (no test's skip moved), and its LVA004 offences 2,471 from 2,501.
 - Bindings typed of 474,291: `--fix` 161,090, `--likely` 210,500, `--unsafe-fixes` 228,976 (161,111,
   210,548 and 229,024 on 2026-10-27). sqlalchemy 28 fewer, the type variables it now exempts, which
-  took a guess before; mypy 23 fewer in every tier, its `tag: u8` fixes: `mypy_extensions` ships no
-  `py.typed`, and since it's never read as an untyped package (`installed._FORMS`, for its typing
-  forms) its class `u8` isn't known. Left: reading its classes but not its typing forms.
+  took a guess before; mypy 23 fewer in every tier, its `tag: u8` fixes, `mypy_extensions` unread
+  for its typing forms. It's read for its classes alone since: 6,337 fixes on mypy from 6,314.
 - sphinx's `test_html5_rubric` failed after `infer-basedpyright` and `infer-pyrefly`, the
   order-dependent test named under "Eight mechanisms, counted", not a fix's doing.
 
 **What the next mega run reads**: the runner's order against the solver's shortest, for a run with
-no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
+no earlier run under its output ("A run with no earlier run, held to the solver's shortest");
+`fix-likely` with the three `declared` sets, their blame and new type errors; mypy's `tag: u8` back
+in every tier, and no new type error from `mypy_extensions`.
 
 1. **Eight mechanisms, counted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
@@ -86,7 +88,8 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
      1,794, 6 told, 78 of 750 blamed (10.4): neither passes, both lose more than the index's members
      gained. On the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the
      signature codes out of the run files): `reads` 57 guesses, 26 told, 96.2% held, none of 19 read
-     blamed, so it passes the bars, narrowly; `named` 2, none told.
+     blamed, so it passes the bars as a mechanism, but no set of it has 20 guesses (`LIKELY` takes
+     whole sets); `named` 2, none told.
    - **Instance attributes, LVA013**: an attribute a plain class's method first stores unannotated,
      declared nowhere in the class (`rules/attributes.py`); opt-in as LVA012 is
      (`--extend-select LVA013`, pylint's `C9113`), an error from `strict` and counted by
@@ -372,10 +375,10 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the signature codes
    out of the run files): bindings typed, of 474,291, `--fix` 161,111, `--likely` 210,548,
    `--unsafe-fixes` 229,024 (rc.8's 161,134, 210,156 and 227,933); new type errors 5,927, 5,516
-   sqlalchemy's from `typing_extensions` read as an untyped package ("Declared types of installed
-   packages with no `py.typed`"), 411 elsewhere (rc.8's 403). The witness there: `constructor` fails
-   the bars only through the cascade (183 of its 199 blamed errors sqlalchemy's); `method` 2 blamed
-   of 1,047 (0.19 in each 100, the bar 0.1): nibabel's `magic_number: bytes` as on rc.8, and
+   sqlalchemy's from `typing_extensions` read as an untyped package ([COMPLETED.md](COMPLETED.md)),
+   411 elsewhere (rc.8's 403). The witness there: `constructor` fails the bars only through the
+   cascade (183 of its 199 blamed errors sqlalchemy's); `method` 2 blamed of 1,047 (0.19 in each
+   100, the bar 0.1): nibabel's `magic_number: bytes` as on rc.8, and
    pandas's `subarr: Index` in a method returning `Self` (`core/indexes/datetimes.py`), new since
    rc.8, to read before `method` is counted out.
 
@@ -454,41 +457,7 @@ What to measure before building, smallest first.
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-6. **Declared types of installed packages with no `py.typed`, as guesses.** What pyright reads with
-   `useLibraryCodeForTypes`, held to the source's own annotations (mypy reads such a package as
-   `Any`): pandas/core declares 73% of its functions' returns, wheel 86%, setuptools 54%, grpc 51%.
-   About 400 of the 822 untyped direct calls, and dask's and xarray's chains (2,314 and 1,078
-   `receiver`/`member` calls, perhaps a third pandas values). A fix kind of its own, held to the
-   witness. Built on 2026-10-26 (`installed.as_untyped`): such a package's modules join the index
-   with their functions' and methods' declared returns as `returned` guesses resting on `declared`,
-   followed through the package's re-exports (`pd.date_range`, which `spelling.spellings` follows
-   for `returned` as for declared functions since); its classes' attributes, classmethods and
-   overloads aren't offered, and its classes' bases still end a line of bases at the library class
-   (`beyond`). A call to an unannotated function carries what its `return`s rest on in its fix's
-   kinds since (`constructor+returned`), as a method's did. On dask (its environment's pandas 3.0.6
-   untyped; one process on 16CPU/60GB, `--fix --unsafe-fixes` listing, old code against the tree):
-   5,788 fixes from 5,700 (+88 of 24,256 offences, 0.36%; 61 `declared`, `pd.DataFrame` 30,
-   `DatetimeIndex` 13, `DataFrame` 8, the rest what they reach), likely 1,766 from 1,749 (the kinds
-   change). The hold rate is read since (above); against pandas-stubs, see
-   [COMPLETED.md](COMPLETED.md). About 4 hours spent; coverage 0.36% on dask. On the mega run of
-   2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix
-   step): `declared` 623 guesses on 5 packages, 387 told, 99.5% held, but 30 of the 432 a checker
-   read blamed for 54 errors (6.94 in each 100 against the bar's 0.1): not likely as it stands;
-   `declared+returned` 355, 179 told, 100% held, 9 of 211 blamed. On the mega run of 2026-10-27
-   (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the signature codes out of the run files):
-   `declared` 603 guesses on 5 packages, 387 told, 99.5% held, none of 428 blamed;
-   `declared+returned` 350, 179 told, 100% held, none of 211 blamed: both pass the bars. But
-   sqlalchemy's environment holds `typing_extensions` 4.16.0 as a source module with no `py.typed`,
-   read as an untyped package: its `TypeVar`, `TypeVarTuple` and `TypeAlias` became constructor
-   guesses (`_T: TypeVar = TypeVar("_T")`), and `_T` then names no type: 5,516 of the run's 5,927
-   new type errors, 1,098 blamed on `constructor (likely)`, 102 on `alias`, 4,255 untraced to a line
-   with a fix ("Variable ... is not valid as a type", "Unpack is only valid in a variadic
-   position"). Fixed the same day (`installed._FORMS`): the modules whose classes are typing forms,
-   typed by typeshed (`typing_extensions`, `mypy_extensions`, `_typeshed`), are never read as
-   untyped, and sqlalchemy fixed with `--likely` under its environment and the run's options
-   (`--all-scopes`: the bindings are the modules') writes no such binding, its mypy clean. Left: the
-   two sets into `offences.LIKELY` (their blame read clean on this run, the cascade aside).
-7. **typeshed's third-party stubs, not installed.** basedpyright ships them
+6. **typeshed's third-party stubs, not installed.** basedpyright ships them
    (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
    (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain
    where the installed version matches `METADATA.toml`'s, a guess where not. Its reach is users'
@@ -497,14 +466,14 @@ What to measure before building, smallest first.
    pywin32 35, PyYAML 13, python-dateutil 7), some of them where the stubs are installed already.
    Done when decided: built for users' code, or left at under 0.1% on the corpora. About 4 hours to
    build.
-8. **numpydoc Returns sections.** A docstring's `Returns` section names what a function with no
+7. **numpydoc Returns sections.** A docstring's `Returns` section names what a function with no
    return annotation returns (docstub and docs2stubs read them): networkx has 2,301 such
    functions, 868 with a Returns section and 485 naming one plain type; pandas 1,787 (360, 108),
    dask 3,912 (181, 56), xarray 1,088 (60, 38). Many names are vague (`dictionary`, `graph`), and
    `nx.path_graph`, the most called (460 calls), has none: under 1,000 usable. A guess, a
    docstring's name resolved where the module would resolve it, held to the witness. Done when
    measured on networkx and pandas. About 4 hours; coverage under 0.5%.
-9. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
+8. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new

@@ -41,7 +41,10 @@ _TYPED: Final = "py.typed"
 # Modules whose classes are typing forms, typed by typeshed, installed with no `py.typed`: read as
 # untyped, their `TypeVar` and `TypeVarTuple` would be constructed, and `_T: TypeVar = TypeVar("_T")`
 # breaks every type named by `_T` (sqlalchemy's `util/typing.py`, the mega run of 2026-10-27).
-_FORMS: Final = frozenset({"typing_extensions", "mypy_extensions", "_typeshed"})
+_FORMS: Final = frozenset({"typing_extensions", "_typeshed"})
+# Read for its classes alone (`u8`, `i64`, mypyc's native integers), its functions' returns not: its
+# typing forms (`TypedDict`, `Arg`, `FlexibleAlias`) aren't classes, so only those name a type.
+_CLASSES_ALONE: Final = frozenset({"mypy_extensions"})
 _UNREAD: Final[Mapping[str, str]] = Empty()  # an untyped package's class's attributes: not offered
 _PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
 _UNDERSCORE: Final = "_"
@@ -107,6 +110,8 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         else:  # installed with no types declared, or not at all
             module = _unseen(name, tuple(search))
             module = None if module is None else as_untyped(module)
+            if module is not None and name.partition(".")[0] in _CLASSES_ALONE:
+                module = replace(module, returned=Returns(), loose=frozenset())
         if module is None:
             continue
         found[name] = module

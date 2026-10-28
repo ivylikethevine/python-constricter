@@ -399,6 +399,25 @@ What constricter does today and what was measured on the way, by scope. What's n
   minutes on 16CPU/60GB, django's whole suite traced) the `infer-trace` step typed 134,844 bindings
   of 292,568 (+979 on rc.8), its new type errors 29 outside sqlalchemy's `typing_extensions` cascade
   (rc.8's 32), 2 of them blamed on `traced`: clean.
+- **Declared types of installed packages with no `py.typed`, as guesses** (`declared`,
+  `installed.as_untyped`): such a package's modules join the index with their functions' and
+  methods' declared returns as `returned` guesses resting on `declared`, followed through its
+  re-exports (`pd.date_range`), as pyright reads one with `useLibraryCodeForTypes`; its classes'
+  attributes, classmethods and overloads aren't offered. pandas/core declares 73% of its functions'
+  returns, wheel 86%, setuptools 54%. On dask (its pandas 3.0.6 untyped; one process on
+  16CPU/60GB), `--fix --unsafe-fixes` 5,788 fixes from 5,700 (+0.36% of its offences). The modules
+  whose classes are typing forms, typed by typeshed (`typing_extensions`, `_typeshed`), are never
+  read so (`installed._FORMS`): on the mega run of 2026-10-27, sqlalchemy's `typing_extensions`
+  4.16.0, installed as source, made `_T: TypeVar = TypeVar("_T")` guesses and 5,516 new type
+  errors. `mypy_extensions` is read for its classes alone (`u8`, `i64`; `_CLASSES_ALONE`), its
+  typing forms being no class: listed on mypy's checkout (`--unsafe-fixes --show-fixes`, one
+  process), 6,337 fixes from 6,314, the 23 `tag: u8` the guard had cost. On the mega runs of
+  2026-10-27 and 10-28 (`mega-10-27-2026-0131`, `mega-10-28-2026-0057`, 16CPU/60GB) the whole sets
+  `declared+returned` (350 guesses, 179 told, 100% held, none of 211 checked blamed),
+  `declared+returned+unpack` (128, 121, 98.3%, none of 121) and `constructor+declared+returned`
+  (57, 44, 100%, none of 47) passed [LIKELY.md](LIKELY.md)'s bars and are in `offences.LIKELY`
+  since. `reads`, which passed as a mechanism (57 guesses, 26 told, 96.2%, none of 19 blamed),
+  passes as no whole set: its 12 sets have 14 guesses at most.
 
 ## Command and output
 

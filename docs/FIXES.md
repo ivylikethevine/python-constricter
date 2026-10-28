@@ -533,9 +533,9 @@ An installed package that declares no types (no `py.typed`, no stubs) is read fo
 annotations, as pyright reads one: its functions' and methods' declared returns type the calls
 into it as guesses (`declared`, with `returned`), through its re-exports (`pd.date_range(...)` is a
 `DatetimeIndex` under `--unsafe-fixes`); its classes' attributes, its classmethods and its
-overloads aren't offered. Not the modules whose classes are typing forms, typed by typeshed
-(`typing_extensions`, `mypy_extensions`): `TypeVar("T")` is never
-a `TypeVar`.
+overloads aren't offered. Not `typing_extensions`, whose classes are typing forms typed by
+typeshed: `TypeVar("T")` is never a `TypeVar`. `mypy_extensions` is read for its classes alone
+(`tag: u8 = read_tag(data)`), its typing forms (`TypedDict`, `Arg`) being none.
 
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
@@ -619,7 +619,7 @@ another file's subclass or outside code may store it too; none where a store isn
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
 function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
 
-LVA014 (opt-in) offers a plain function's or method's return type, ` -> T` before the `:` ending
+LVA014 (opt-in) offers a plain function's or method's return type, `-> T` before the `:` ending
 its header: what its own `return`s give (`returned`, as a call to it is typed), or `None` for one
 that returns nothing; a method's is a guess (a subclass may return another), and a function's is
 where its `return`s' values are only guessed (`return Box()` rests on `constructor` too). Where
@@ -1048,10 +1048,10 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
 | `callable`      | a function or a bound method bound to a name, by what its call gives                      |
 | `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
-| `reads`         | an unannotated parameter: the one class with every member read of it, the module's, another file's, an installed package's or the standard library's (a guess) |
+| `reads`         | an unannotated parameter, by the one class with every member read of it (a guess)         |
 | `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
 | `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
-| `declared`      | an installed package's own annotation, with no `py.typed` to vouch for it (a guess)        |
+| `declared`      | an installed package's own annotation, with no `py.typed` to vouch for it (a guess)       |
 
 The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 
