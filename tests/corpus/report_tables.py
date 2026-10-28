@@ -283,28 +283,38 @@ def _moved(records: Records, tree: Tree, version: str, record: Record, step: str
 
     By name, from both runs' tests (`corpus_suite.skips`), as the run's folder holds them; the
     released tests' from the earlier run's folder they were taken from (`FROM`), where this one
-    doesn't hold them.
+    doesn't hold them (`_released`).
 
     Returns:
       The two counts; blanks where a run wrote no tests, or the folder isn't there.
 
     """
-    store: Store | None = records.store
-    if store is None:
+    store: Store | None
+    if (store := records.store) is None:
         return ["", ""]
     released: Path = store.path(tree.name, version, f"{TESTS}-{RELEASED}", TESTED)
     if not released.is_file() and FROM in record:
-        released = Store(store.root.parent / str(record[FROM])).path(
-            tree.name,
-            version,
-            f"{TESTS}-{RELEASED}",
-            TESTED,
-        )
+        released = _released(Store(store.root.parent / str(record[FROM])), tree.name, version)
     moved: tuple[list[str], list[str]] | None = corpus_suite.skips(
         released,
         store.path(tree.name, version, f"{TESTS}-{step}", TESTED),
     )
     return ["", ""] if moved is None else [len(moved[0]), len(moved[1])]
+
+
+def _released(earlier: Store, corpus: str, version: str) -> "Path":
+    """Find a suite's released tests in an earlier run's folder, under whichever version it ran.
+
+    The released tests run no constricter, so any version's are the same tests: an earlier run of
+    another label keeps them under its own (`super+dev` for a mega run's `mega+dev`).
+
+    Returns:
+      This version's path where it's there, else the first version's that is; this version's if none.
+
+    """
+    path: Path = earlier.path(corpus, version, f"{TESTS}-{RELEASED}", TESTED)
+    found: list[Path] = sorted(path.parent.parent.glob(f"*/{path.name}"))
+    return path if path.is_file() or not found else found[0]
 
 
 def differs(record: Record, ran: Record) -> bool:

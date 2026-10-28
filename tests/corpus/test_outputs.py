@@ -630,12 +630,15 @@ def test_the_tests_table_names_the_skips_that_moved(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize("label", ["rc+dev", "super+dev"])
 def test_the_tests_table_lists_the_unions_run_and_reads_an_implied_parts_skips_from_it(
     tmp_path: Path,
+    label: str,
 ) -> None:
     """A part the union's run stands for has the union's skips; the union's own run is a row of its own.
 
-    The released tests are read from the earlier run's folder they were taken from, beside this one's.
+    The released tests are read from the earlier run's folder they were taken from, beside this one's,
+    under whichever label that run had.
     """
     store: Store
     tree: Tree
@@ -658,7 +661,7 @@ def test_the_tests_table_lists_the_unions_run_and_reads_an_implied_parts_skips_f
     step: str
     tests: _Outcomes
     for (where, step), tests in ran.items():
-        path: Path = where.path(tree.name, "rc+dev", step, pipeline.TESTED)
+        path: Path = where.path(tree.name, label if where is earlier else "rc+dev", step, pipeline.TESTED)
         path.parent.mkdir(parents=True, exist_ok=True)
         _ = path.write_text(
             "".join(f"{json.dumps({'id': test, 'outcome': outcome})}\n" for test, outcome in tests),

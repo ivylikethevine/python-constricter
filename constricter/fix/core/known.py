@@ -158,7 +158,7 @@ class Classes(NamedTuple):
 
 
 @dataclass
-class ImportPlan:
+class ImportPlan:  # pylint: disable=too-many-instance-attributes
     """How a module can name a library type, and the imports that takes (see `fix.core.imports.plan`).
 
     `bound`: each name its imports bind, and what that is (`io`, `io.BytesIO`); `taken`: every name
@@ -180,6 +180,8 @@ class ImportPlan:
     checking: Checking = field(default_factory=Checking)
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
+    # Names it imports from another checked file that re-exports a type's factory there (`Outside`).
+    factories: frozenset[str] = frozenset()
 
     def type_checking(self) -> str | None:
         """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.
@@ -635,6 +637,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     managers: Mapping[str, Passed] = field(default_factory=dict[str, Passed])
     # The decorators it uses that give a function back, by the index (see `index.decorated.vouched`).
     vouched: frozenset[str] = frozenset()
+    # The names it imports that are a type's factory where they're defined (see `across.factories`).
+    factories: frozenset[str] = frozenset()
 
     @override
     def __getstate__(self) -> dict[str, object]:

@@ -7,6 +7,11 @@ What constricter does today and what was measured on the way, by scope. What's n
 
 - **LVA001–LVA004**, with `all-scopes` for module and class bodies (LVA004), and `# type:` comments
   counted automatically in modules importing Python 2 `__future__` features.
+- **A type's factory through a re-export**: `_Ts = TypeVarTuple("_Ts")` is a type, not a variable
+  to annotate, where `TypeVarTuple` comes through a checked module's re-export too (sqlalchemy's
+  `util.typing`, from `typing_extensions`), followed through the index (`across.factories`). On
+  sqlalchemy 2.1.4 with `--all-scopes`, LVA004 30 offences fewer (2,471 from 2,501; 17
+  `TypeVarTuple`, 13 `TypeVar`), the rest the same.
 - **LVA005 and LVA006** (vague past `vague`'s level, deeply nested), with what makes a type
   (`T = TypeVar("T")`, a `NewType`, a functional `NamedTuple`) exempt from LVA001 and LVA004,
   **LVA007** (annotated again the same way, per straight-line block), **LVA011** (a tuple longer
@@ -381,6 +386,20 @@ What constricter does today and what was measured on the way, by scope. What's n
   no fix since (`Scope._takes_narrowed`, `narrowed.checked_to`): on the 0.4.3-rc.4 super run
   (`46bdc27`) no patch types `sub_node_copy`, and sphinx has one type error fewer in every tier
   than rc.3 (certain 4 from 5, basedpyright 8 from 9), its certain fixes 3,228.
+- **Returns the trace records** (`traced`, a guess): the tracer records what each function returned
+  at the line it returned from (`<return>`, `sys.monitoring`'s `PY_RETURN`; a function binding no
+  name too, its lines not followed; not a generator's), and `--infer-from` gives LVA014 a function's
+  return where its own `return`s decide nothing (`traced.hints`, `Hints.returns`): only where the
+  run took every way out of the function (each `return` with a value, and its end where it can fall
+  off it), up to three types' union, not a typing form (`Union` from an `__or__`). A value a
+  function returns was the largest pool of the 0.4.3-rc.1 mega run's 103,514 calls with no fix
+  (`member` 20,975, `untyped` 7,919, `local` 6,324). On pydantic, which annotates its returns, 2
+  returns and 1 binding; on django, 10 of its test labels (4,994 of its 17,578 tests, one process on
+  16CPU/60GB), `--fix --unsafe-fixes --extend-select LVA014` typed 5,912 bindings from 5,445 (+8.6%)
+  and wrote 625 signatures from the trace. On the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91
+  minutes on 16CPU/60GB, django's whole suite traced) the `infer-trace` step typed 134,844 bindings
+  of 292,568 (+979 on rc.8), its new type errors 29 outside sqlalchemy's `typing_extensions` cascade
+  (rc.8's 32), 2 of them blamed on `traced`: clean.
 
 ## Command and output
 
@@ -536,9 +555,9 @@ What constricter does today and what was measured on the way, by scope. What's n
   instructions didn't move side by side (0.04 to 0.15%, 0.00% with jobs across runs at one commit,
   `scratch/timing_noise.py`), so the timing table compares instructions across runs (its
   `beside other steps` column, RUNS.md's intro) and the checks run sized as measured, not held to
-  the end (`sizing.held_last`). Replayed on the super run of 2026-10-26 (`scratch/schedule_sim.py
-  --timing-beside`): 42.0 minutes from 43.5. On the mega runs of 2026-10-26 and 2026-10-27
-  (16CPU/60GB) the 47 timed steps ran beside the suites and ended an hour before the run. The
+  the end (`sizing.held_last`). Replayed on the super run of 2026-10-26
+  (`scratch/schedule_sim.py --timing-beside`): 42.0 minutes from 43.5. On the mega runs of
+  2026-10-26 and 2026-10-27 (16CPU/60GB) the 47 timed steps ran beside the suites and ended an hour before the run. The
   profile on the way (`py-spy`, `scratch/profile_diff.py`, 2026-10-23) took the standard library's
   check from 50.9s to 40.6s and pandas's from 57.5s to 46.9s in one process: `reads.members`
   walked every method each check, a function's body was walked again for each parameter, and
@@ -733,6 +752,56 @@ What constricter does today and what was measured on the way, by scope. What's n
   didn't differ again; strawberry's other differing fixes are its own `cast("Edge[NodeType]", ...)`
   of a class and declarations of instances given classes. The one misjudgment, pdm's
   `mock.sentinel` values, is fixed.
+- **The runner's schedule, held to the solver's shortest**: every corpus's steps wait for the
+  machine alone, the one with the most seconds behind it first, and a running step's hold follows
+  what it uses (`tests/corpus/sizing.py`): a step that can't start holds back none after it, a
+  suite's measured tests hold the CPUs they kept busy with a margin over, an unmeasured part takes
+  its kind's largest measured part, and an unmeasured `infer-union`, its checkers asked in turn, the
+  largest checker's step's memory. Where OR-Tools is installed (the `corpus` and `dev` groups, and
+  CI's corpus setup), the runner plans its steps with CP-SAT before it starts
+  (`tests/corpus/planning.py`: each step held to what the runner will hold for it,
+  `sizing.Plan.wanted`, ports, each step after those it reads) and, of the steps that could start,
+  starts the one planned first; a step no run has measured keeps the rules (the longest chain first,
+  `_PATIENCE`, backfilling), and a stage plans its own steps alone (`planning.ranks`'s `chosen`).
+  `scratch/run_timeline.py` lays a run out from its records, `scratch/schedule_sim.py` replays it,
+  and `scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
+  schedule of them can be. Read against the solver with 16 CPUs and 36 GB: the 0.4.3-rc.1 mega run
+  95.2 minutes against a shortest 85.2 (11.7% over), rc.5 81.3 against 66.0 (23%), rc.6 64.3 against
+  55.6 (16%), rc.7 67.7 against 57.9 (17%), rc.8 69.6 against 58.9 (18%), and the 0.4.3-rc.1
+  mega-fast run 56.2 against 45.6 (23%); the 0.4.3-rc.2 super run, in one sitting, 47.6 against a
+  shortest 47.7, its pandas `infer-union` of 630s the floor; the super run of 2026-10-26 (`b5f720c`,
+  42.1 minutes on 16CPU/60GB, in one sitting) at the shortest the solver finds (43.2 in 60 seconds,
+  42.6 in 300, proved at least 19.7), its waits memory's (3,791 minutes in all, the hinted steps
+  holding 11 to 15 GB each); and the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on
+  16CPU/60GB, with `timing-beside`) 96.0 against 93.5 in 300 seconds (proved at least 56.0), within
+  a tenth. In stages, the barriers cost most, not the order: replayed on 2026-10-24 with 16 CPUs and
+  29 GB, the runner's order replays the 0.4.3-rc.4 super run in 38.5 minutes against its 51.8 in
+  stages, and rc.3 and rc.4 took 47.7 and 51.8 against a shortest 30.5 and 35.7 with no stages. A
+  run's share of its CPU seconds isn't the measure (85% was the target before): memory and the timed
+  tail bound it whatever the order, and the 0.4.0-rc.1 mega run, within a tenth of its floor, used
+  77.5%; the timed tail, a super run's last 2.5 minutes at under one CPU, went with `timing-beside`.
+  Weighed and left: ordering by most CPU seconds with `_PATIENCE` 600s and `_BESIDE` 60s replays
+  three super runs in 87.6 minutes summed against the rules' (300s, 300s) 102, but the rules order
+  only the steps no run has measured; and no library runs subprocess steps in a graph under CPUs and
+  memory as the runner does (Snakemake's scheduler comes nearest, a workflow engine whole; Dask's
+  and Ray's resources are their workers' Python tasks').
+- **Test results as data**: a suite's tests were read from pytest's and unittest's text alone, which
+  misread sphinx's captured log lines as failures and spelled 4 suites' failure ids two ways between
+  runs. Each part pytest runs writes a JUnit report (`--junitxml`, the `xunit1` family), read into
+  `records/<corpus>/<version>/tests-<run>.tests.jsonl`, a line a test with its id (from the class
+  name: pytest's cached rewritten modules keep the `file` of where a checkout was before), outcome,
+  seconds and skip reason; the failed tests are the reports' where every part wrote one, the counts
+  stay the summary's (the reports don't tell an unexpected pass from a pass), and a suite unittest
+  runs (django, mkdocs, twisted) is read as text still. Each fixed run's record names the tests it
+  skipped where the tests as released ran them, and the reverse (`skipped anew`, `skipped no more`;
+  `suite_steps._skips`), and the tests table counts them (`report_tables._tests`): the union's own
+  run is a row of its own (`infer-union`), an implied part shows the skips of the run that stands
+  for it, and the released tests are read from the earlier run's folder they were taken from
+  (`from`) where this one's doesn't hold them. On the 0.4.3-rc.7 and rc.8 mega runs no test's skip
+  moved. The released tests are found in the earlier run's folder under whichever version label it
+  kept them (`report_tables._released`): the mega run of 2026-10-27 took sqlalchemy's from a super
+  run's `super+dev`, and its columns were blank until then; written again from its records, none of
+  sqlalchemy's skips moved.
 
 ## CI, security and releases
 

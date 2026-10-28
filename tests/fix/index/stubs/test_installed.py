@@ -505,7 +505,8 @@ def test_a_typing_form_provider_without_py_typed_is_never_read_as_untyped(
 ) -> None:
     """`_T: TypeVar = TypeVar("_T")` would break every type named by `_T`: no guess, nothing indexed.
 
-    A module-scope binding (`--all-scopes`, as the corpus runs check), reported and left.
+    A module-scope binding (`--all-scopes`, as the corpus runs check) of a factory the project
+    re-exports from `typing_extensions`: a type, not reported (`across.factories`), and left.
     """
     monkeypatch.setattr(sys, "path", [str(_site(tmp_path, _FORMS)), *sys.path])
     project_: Path = tmp_path / "project"
@@ -513,7 +514,7 @@ def test_a_typing_form_provider_without_py_typed_is_never_read_as_untyped(
     _ = (project_ / "forms.py").write_text(textwrap.dedent(_FORMING), encoding="utf-8", newline="\n")
     main: Path = project_ / "main.py"
     _ = main.write_text(textwrap.dedent(_FORMED), encoding="utf-8", newline="\n")
-    assert cli.main(["--fix", "--unsafe-fixes", "--all-scopes", "-q", str(project_)]) == cli.EXIT_FOUND
+    assert cli.main(["--fix", "--unsafe-fixes", "--all-scopes", "-q", str(project_)]) == cli.EXIT_CLEAN
     assert main.read_text(encoding="utf-8") == textwrap.dedent(_FORMED)
     catalog: project.Index = installed.with_installed(
         project.index([project_ / "forms.py", main]),

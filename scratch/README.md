@@ -15,13 +15,17 @@ goes under `local/scratch/`.
 - `typeshed_reach.py FOLDER`: a run's third-party bindings with no fix that call into a package
   typeshed's third-party stubs cover, by stub set and by the census's reason.
 - `signatures_measure.py CORPUS [--modes certain,likely,unsafe,signed] [--select LVA014,LVA015]
-  [--passes N] [--jobs N] [--label NAME]`: a copy of a corpus fixed pass after pass until a pass
+[--passes N] [--jobs N] [--label NAME]`: a copy of a corpus fixed pass after pass until a pass
   fixes nothing, each mode with and without the signature codes, and `signed` (the codes' fixes
   written first, then `--fix`): each pass's fixes split certain, likely and guess, the signatures
   written, and `--coverage` after; each pass's listing kept under `local/scratch/signatures/`.
-- `order_experiment.py [--no-loose] -- ARGS...`: a check (`python -m constricter ARGS`) with the
-  order's method-name edges dropped, for the parallel check's ceiling; compare its `--format=json`
-  with a plain check's. Outside the sandbox for `--jobs`.
+- `stubgen_measure.py CHECKOUT SOURCE PACKAGE...`: each untyped PACKAGE of a suite's checkout
+  stubbed by `pyrefly stubgen` as a `-stubs` package, and the corpus's fixes listed with and without
+  them, by tier, and what only one side has.
+- `order_experiment.py [--no-loose] [--fork] -- ARGS...`: a check (`python -m constricter ARGS`)
+  with the order's method-name edges dropped, for the parallel check's ceiling, timed; compare its
+  `--format=json` with a plain check's. `--fork` starts the workers by forking, which a sandbox
+  allows.
 - `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
   REF's code (HEAD) and by the working tree's, and those only one side has.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
@@ -115,7 +119,7 @@ goes under `local/scratch/`.
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
 - `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
-  [--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
+[--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
   its checkout (a script's directory on the path, the environment given; RightTyper patched past a
   failing suite's exit and its finder's reads of lazy objects), only the signatures it adds taken
   (`righttyper_added.py`), then `--fix` and the check on a plain copy and on that one: the fixes

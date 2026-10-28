@@ -132,6 +132,7 @@ def module_settings(
                 replace(
                     imports.plan(tree),
                     guarded={**seen.checking, **seen.guarded},
+                    factories=seen.factories,
                 ),
                 seen.overloaded,
                 seen.installed_classes,

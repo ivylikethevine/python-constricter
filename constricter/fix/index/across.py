@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from constricter.fix.core.known import Guarded, Hints, Outside, Passed
+from constricter.fix.core.known import Guarded, Hints, Origin, Outside, Passed
 from constricter.fix.index import (
     awaits,
     beyond,
@@ -30,7 +30,9 @@ from constricter.fix.index import (
     tuples,
 )
 from constricter.fix.index.modules import module_at
+from constricter.fix.index.spelling import canonical_origin
 from constricter.fix.index.stubs import stubbed
+from constricter.fix.values.aliased import FACTORIES
 
 if TYPE_CHECKING:
     from constricter.fix.core.signatures import ReadSignature
@@ -105,7 +107,31 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         vouched=decorated.vouched(modules, path),
         takers=taken.calls(modules, path, guarded),
         emptied=beyond.emptied(modules, path),
+        factories=factories(modules, path),
     )
+
+
+def factories(modules: project.Index, path: Path) -> frozenset[str]:
+    """Find the names the file at `path` imports that are a type's factory where they're defined.
+
+    `TypeVarTuple` as sqlalchemy's `util.typing` re-exports it from `typing_extensions`, followed
+    there (`canonical_origin`): what it binds can't be annotated (see `aliased.factory`).
+
+    Returns:
+      Them, as the file binds them; none for a file `modules` doesn't have.
+
+    """
+    target: project.Module | None
+    if (target := module_at(modules, path)) is None:
+        return frozenset()
+    found: set[str] = set()
+    local: str
+    origin: Origin
+    for local, origin in {**target.guarded, **target.names}.items():
+        where: Origin = canonical_origin(modules.modules, origin)
+        if where[1] is not None and f"{where[0]}.{where[1]}" in FACTORIES:
+            found.add(local)
+    return frozenset(found)
 
 
 def _resumable(modules: project.Index, path: Path) -> bool:
