@@ -417,7 +417,10 @@ What constricter does today and what was measured on the way, by scope. What's n
   `declared+returned+unpack` (128, 121, 98.3%, none of 121) and `constructor+declared+returned`
   (57, 44, 100%, none of 47) passed [LIKELY.md](LIKELY.md)'s bars and are in `offences.LIKELY`
   since. `reads`, which passed as a mechanism (57 guesses, 26 told, 96.2%, none of 19 blamed),
-  passes as no whole set: its 12 sets have 14 guesses at most.
+  passes as no whole set: its 12 sets have 14 guesses at most. On the mega run of 2026-10-28 on
+  `6b0ab18` (`mega-10-28-2026-0826`, 69 minutes on 16CPU/60GB), with both: new type errors 428, as
+  on `b6ac32b`, none blamed on the three sets; `--likely` 211,064 bindings typed from 210,500, and
+  mypy's 23 `tag: u8` back in every tier.
 
 ## Command and output
 

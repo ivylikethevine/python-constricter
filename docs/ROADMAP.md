@@ -19,31 +19,31 @@ measure before building.
 
 ### Built, waiting on a run
 
-**Read on the mega run of 2026-10-28** (`mega-10-28-2026-0057`, `b6ac32b`, 68 minutes on
-16CPU/60GB):
+**Read on the mega runs of 2026-10-28** (`mega-10-28-2026-0057` on `b6ac32b`, 68 minutes, and
+`mega-10-28-2026-0826` on `6b0ab18`, 69 minutes, both on 16CPU/60GB):
 
-- New type errors 428 in all, rc.8's 403 (5,927 on 2026-10-27): sqlalchemy's 17, the
-  `typing_extensions` cascade gone. `constructor` passes LIKELY.md's bars again (15 of 25,834
-  checked blamed, 0.06 in each 100).
-- The whole sets `declared+returned`, `declared+returned+unpack` and `constructor+declared+returned`
-  pass the bars a second time, and are in `offences.LIKELY` since ([COMPLETED.md](COMPLETED.md));
-  `declared` and `reads` pass only as mechanisms, every guess with them counted, and no `reads` set
-  has 20 guesses.
+- New type errors 428 on both, the same by step and by corpus (rc.8's 403; 5,927 on 2026-10-27):
+  sqlalchemy's 17, the `typing_extensions` cascade gone. `constructor` passes LIKELY.md's bars (15
+  of 25,834 checked blamed, 0.06 in each 100).
+- On `6b0ab18` `--likely` applies `declared+returned`, `declared+returned+unpack` and
+  `constructor+declared+returned` ([COMPLETED.md](COMPLETED.md)): `fix-likely`'s new type errors
+  20 as before, none blamed on them, and the three pass the bars a third time. `declared` and
+  `reads` pass only as mechanisms, every guess with them counted, and no `reads` set has 20
+  guesses.
+- Bindings typed of 474,291 on `6b0ab18`: `--fix` 161,113, `--likely` 211,064, `--unsafe-fixes`
+  228,999 (161,090, 210,500 and 228,976 on `b6ac32b`; 161,111, 210,548 and 229,024 on 2026-10-27).
+  mypy's 23 `tag: u8` are back in every tier (`mypy_extensions` read for its classes alone), and
+  `--likely` gains 541 more, the `declared` sets. On `b6ac32b` sqlalchemy had 28 fewer, the type
+  variables it now exempts, which took a guess before.
 - `method` as on 2026-10-27: 2 of 1,047 blamed (0.19 in each 100, the bar 0.1), nibabel's and
   pandas's `subarr: Index`.
-- `infer-trace` types 134,785 of 292,568 bindings; its new type errors 36, rc.8's 32.
+- `infer-trace` types 134,815 of 292,568 bindings; its new type errors 36, rc.8's 32.
 - sqlalchemy's tests table filled (no test's skip moved), and its LVA004 offences 2,471 from 2,501.
-- Bindings typed of 474,291: `--fix` 161,090, `--likely` 210,500, `--unsafe-fixes` 228,976 (161,111,
-  210,548 and 229,024 on 2026-10-27). sqlalchemy 28 fewer, the type variables it now exempts, which
-  took a guess before; mypy 23 fewer in every tier, its `tag: u8` fixes, `mypy_extensions` unread
-  for its typing forms. It's read for its classes alone since: 6,337 fixes on mypy from 6,314.
-- sphinx's `test_html5_rubric` failed after `infer-basedpyright` and `infer-pyrefly`, the
-  order-dependent test named under "Eight mechanisms, counted", not a fix's doing.
+- sphinx's `test_html5_rubric` failed after `infer-basedpyright` and `infer-pyrefly` on `b6ac32b`,
+  the order-dependent test named under "Eight mechanisms, counted", and passed on `6b0ab18`.
 
 **What the next mega run reads**: the runner's order against the solver's shortest, for a run with
-no earlier run under its output ("A run with no earlier run, held to the solver's shortest");
-`fix-likely` with the three `declared` sets, their blame and new type errors; mypy's `tag: u8` back
-in every tier, and no new type error from `mypy_extensions`.
+no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
 
 1. **Eight mechanisms, counted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
