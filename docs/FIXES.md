@@ -298,11 +298,21 @@ the value decides it, for a plain `name = value` in a function or module body:
   literal or a display of them, or to what the standard library gives as the module names it
   (`pattern = re.compile("x")`, `sep = os.sep`, `size = len(NAMES)`), and what reads it
   (`self.limit`, `cls.limit`, or `limit` on any value typed as the class or one inheriting it): the
-  value's type. A plain class is defined once in its module, with no decorator, metaclass or other
-  keyword, every base `object`, a `unittest` test case, `Generic[T]`, `abc.ABC` or another plain
-  class, subscripted or not (`Box[int]`; another checked file's too, with the CLI), and no class
-  that isn't plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or
-  outside code may bind it to another type; a variable the module stores as anything else is left
+  value's type. A plain class is defined once in its module, with no keyword but a metaclass, every
+  base `object`, a `unittest` test case, `Generic[T]`, `abc.ABC` or another plain class, subscripted
+  or not (`Box[int]`; another checked file's too, with the CLI), and no class that isn't plain
+  inheriting from it (a model's mixin). Its decorators and metaclass, if any, read no annotations: a
+  checked file's decorator whose every `return` gives back its class (`return cls`, or a factory's
+  nested such decorator), a metaclass under `type` or `abc.ABCMeta`, neither naming
+  `__annotations__`, `get_type_hints`, `dataclass` or the like; or `functools.total_ordering`,
+  `typing.final`, `abc.ABCMeta`. A variable is one type in every class of its line that binds it,
+  as a checker holds an override to: the widest number (`priority = 0` under `0.5`, a `float`), with
+  `None` where one binds it to that (`name: str | None`), a tuple of any length
+  (`tuple[str, ...]`); one whose values fit no one type keeps each class's, but in a class plain only
+  by its marks, none. A variable the join alone types (bound to `None`), or a class plain only by
+  its marks, is left alone where a class above or under it defines the name (a property, a method).
+  A guess (`member`), since a subclass or outside code may bind it to another type; a variable the
+  module stores as anything else is left
   alone (`self.limit = size`; not `self.limit = 5` or `self.limit += 1`, which keep an `int`), and
   so is every other class body, where an annotation can be more than a type (a dataclass's, a
   `NamedTuple`'s or a model's field). A builtin exception or value class is a base a plain class may

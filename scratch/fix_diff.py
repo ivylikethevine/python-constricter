@@ -1,9 +1,11 @@
 """The fixes `--show-fixes --unsafe-fixes` lists on pydantic, by HEAD's code and by the working tree's.
 
   local/.venv/bin/python -m scratch.fix_diff [REF] [--source PACKAGE_DIR] [--jobs N] [--top N]
+      [--option=FLAG ...]
 
 `--source` checks another package's directory instead (xarray's from its sdist, say), copied as
-pydantic is; `--top` prints only that many of each side's lines, after a count of them by type.
+pydantic is; `--top` prints only that many of each side's lines, after a count of them by type;
+`--option` passes a flag to each check (`--option=--all-scopes`, as the corpus runs check).
 
 Copies `constricter/` as of REF (HEAD by default, with the tree's generated tables and `_version.py`)
 and as the tree has it into `local/scratch/fix-diff/`, and the installed pydantic beside them, then
@@ -42,9 +44,20 @@ def _copy(ref: str | None, into: Path) -> None:
     shutil.copy2(ROOT / CODE / "_version.py", into / CODE / "_version.py")
 
 
-def _fixes(code: Path, corpus: Path, name: str, jobs: int) -> list[str]:
+def _fixes(code: Path, corpus: Path, name: str, jobs: int, options: list[str]) -> list[str]:
     done = subprocess.run(
-        [sys.executable, "-P", "-m", CODE, "--show-fixes", "--unsafe-fixes", "--exit-zero", f"--jobs={jobs}", name],
+        [
+            sys.executable,
+            "-P",
+            "-m",
+            CODE,
+            "--show-fixes",
+            "--unsafe-fixes",
+            "--exit-zero",
+            f"--jobs={jobs}",
+            *options,
+            name,
+        ],
         cwd=corpus,
         env={"PYTHONPATH": str(code), "PATH": "/usr/bin:/bin"},
         capture_output=True,
@@ -66,6 +79,7 @@ def main() -> int:
     parser.add_argument("--source", type=Path, default=Path(pydantic.__file__).parent)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--top", type=int, default=None)
+    parser.add_argument("--option", action="append", default=[])
     args = parser.parse_args()
     ref = args.ref
     name = args.source.name
@@ -75,12 +89,15 @@ def main() -> int:
     sides = {}
     for label, source in ((ref, ref), ("tree", None)):
         _copy(source, OUT / label.replace("/", "-"))
-        sides[label] = _fixes(OUT / label.replace("/", "-"), corpus, name, args.jobs)
+        sides[label] = _fixes(OUT / label.replace("/", "-"), corpus, name, args.jobs, args.option)
         (OUT / f"{label.replace('/', '-')}.txt").write_text("\n".join(sides[label]) + "\n", encoding="utf-8")
         print(f"{label}: {len(sides[label])} fixes")
     old, new = (set(each) for each in sides.values())
     for sign, lines in (("-", sorted(old - new)), ("+", sorted(new - old))):
-        print(f"{sign} {len(lines)} lines:", ", ".join(f"{a} {n}" for a, n in Counter(map(_annotation, lines)).most_common(12)))
+        print(
+            f"{sign} {len(lines)} lines:",
+            ", ".join(f"{a} {n}" for a, n in Counter(map(_annotation, lines)).most_common(12)),
+        )
         for line in lines[: args.top]:
             print(f"{sign} {line}")
     return 0

@@ -29,12 +29,17 @@ goes under `local/scratch/`.
   with the order's method-name edges dropped, for the parallel check's ceiling, timed; compare its
   `--format=json` with a plain check's. `--fork` starts the workers by forking, which a sandbox
   allows.
-- `fix_diff.py [REF] [--source PACKAGE_DIR] [--jobs N] [--top N]`: the fixes
+- `fix_diff.py [REF] [--source PACKAGE_DIR] [--jobs N] [--top N] [--option=FLAG ...]`: the fixes
   `--show-fixes --unsafe-fixes` lists on the installed pydantic (or another package's directory) by
-  REF's code (HEAD) and by the working tree's, and those only one side has, counted by type.
-- `fix_errors.py [REF] [--source PACKAGE_DIR] [--mode certain|likely|unsafe]`: basedpyright's errors
-  on the package as it is, fixed by REF's code and fixed by the tree's, and those only the tree's
-  copy has, each with its line. xarray about 2 minutes, one process on 16CPU/60GB.
+  REF's code (HEAD) and by the working tree's, and those only one side has, counted by type;
+  `--option=--all-scopes` checks class and module bodies, as the corpus runs do.
+- `fix_errors.py [REF] [--source PACKAGE_DIR] [--mode certain|likely|unsafe] [--option=FLAG ...]`:
+  basedpyright's errors on the package as it is, fixed by REF's code and fixed by the tree's, and
+  those only the tree's copy has, each with its line. xarray about 2 minutes, one process on
+  16CPU/60GB.
+- `class_plain.py FOLDER NAME=ROOT ...`: what keeps the class of each class-body binding with no
+  fix from being plain (a metaclass, a decorator, a base no checked file defines), followed up its
+  bases through the corpus: for choosing what plainness to widen.
 - `census_compare.py FOLDER NAME ROOT`, with `CORPUS_JOBS=1`: one corpus's census by the working
   tree against a finished run's rows for it, untyped and unfixed counts and the unfixed by reason.
 - `census_mine.py FOLDER [--by shape|unfixed|dotted|source] [--shape TEXT] [--unfixed TEXT]

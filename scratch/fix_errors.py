@@ -1,14 +1,15 @@
 """The type errors basedpyright finds after `--fix` by REF's code and by the working tree's, on one package.
 
     local/.venv/bin/python -m scratch.fix_errors [REF] [--source PACKAGE_DIR] [--mode certain|likely|unsafe]
-        [--jobs N] [--top N]
+        [--jobs N] [--top N] [--option=FLAG ...]
 
 Copies the package (pydantic's installed one by default) three times under `local/scratch/fix-errors/`:
 as it is, fixed by REF's code (HEAD) and fixed by the tree's (as `scratch.fix_diff` copies both), each
 fixed from its parent with `python -P` so the installed packages resolve as a corpus run's do. Then
 `basedpyright --outputjson` on each, in `standard` mode on `local/.venv`'s packages, and prints the
 errors by rule on each side and those only the tree's copy has (by file, rule and message, line left
-out), each with the fix the tree wrote on that line where there is one. One process; xarray about
+out), each with the fix the tree wrote on that line where there is one. `--option` passes a flag to
+each fix (`--option=--all-scopes`, as the corpus runs fix). One process; xarray about
 2 minutes on 16CPU/60GB, sqlalchemy 1.
 """
 
@@ -29,7 +30,7 @@ OUT = ROOT / "local" / "scratch" / "fix-errors"
 _MODES = {"certain": [], "likely": ["--likely"], "unsafe": ["--unsafe-fixes"]}
 
 
-def _fix(code: Path, corpus: Path, name: str, mode: str, jobs: int) -> None:
+def _fix(code: Path, corpus: Path, name: str, mode: str, jobs: int, options: list[str]) -> None:
     done = subprocess.run(
         [
             sys.executable,
@@ -41,6 +42,7 @@ def _fix(code: Path, corpus: Path, name: str, mode: str, jobs: int) -> None:
             "--exit-zero",
             "-q",
             f"--jobs={jobs}",
+            *options,
             name,
         ],
         cwd=corpus,
@@ -88,6 +90,7 @@ def main() -> int:
     parser.add_argument("--mode", choices=sorted(_MODES), default="unsafe")
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--top", type=int, default=40)
+    parser.add_argument("--option", action="append", default=[])
     args = parser.parse_args()
     name = args.source.name
     found = {}
@@ -98,7 +101,7 @@ def main() -> int:
         if ref is not None:
             code = OUT / f"code-{label.replace('/', '-')}"
             _copy(ref or None, code)
-            _fix(code, corpus, name, args.mode, args.jobs)
+            _fix(code, corpus, name, args.mode, args.jobs, args.option)
         found[label] = _errors(corpus, name)
         print(
             f"{label}: {len(found[label])} errors",
@@ -121,7 +124,7 @@ def main() -> int:
         path, rule, message = key
         line = lines[key]
         text = (tree / path).read_text(encoding="utf-8").splitlines()[line - 1].strip()
-        print(f"+ {path}:{line} [{rule}] {message}\n      {text[:160]}")
+        print(f"+ {path}:{line} [{rule}] {message[:200]}\n      {text[:160]}")
     return 0
 
 

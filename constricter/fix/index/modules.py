@@ -44,6 +44,7 @@ from constricter.source.declarations import (
     generic_names,
 )
 from constricter.source.decorators import Held, Pass, is_fixture, passing
+from constricter.source.inert import inert
 from constricter.source.keys import key, optional
 from constricter.source.syntax import child_statements, top_level
 from constricter.source.walked import classes as walked_classes
@@ -135,6 +136,14 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # Its classes' variables bound to a bare name, with that name (`classvars.named`): typed as the
     # Class it names, among `members`, where the index finds one (`plain.settled`).
     named: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Its classes' variables bound to `None` alone (`classvars.nulls`), for `plain.settled`'s join.
+    nulls: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    # Its classes only their decorators and metaclass keep from plain, with them (`classvars.marked`),
+    # and its own decorators and metaclasses that leave a class plain (`inert.inert`).
+    marks: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    inert: frozenset[str] = frozenset()
+    # What each of its classes' bodies defines (`classvars.defined`): a variable it'd override.
+    defined: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     plain: frozenset[str] = frozenset()
     # Its classes' classmethods' and staticmethods' declared returns (see `declarations.class_methods`);
     # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
@@ -494,6 +503,10 @@ def read(path: Path, name: str | None = None) -> Module | None:
         bound=dict(own.order.bound),
         members={} if installed else classvars.members(tree),
         named={} if installed else classvars.named(tree),
+        nulls={} if installed else classvars.nulls(tree),
+        marks={} if installed else classvars.marked(tree),
+        inert=frozenset() if installed else inert(tree),
+        defined={} if installed else classvars.defined(tree),
         sides=own.sides,
         held_sides=own.held_sides,
         partial=own.partial,

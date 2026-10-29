@@ -59,6 +59,7 @@ _STAR: Final = "*"  # what a `from m import *` binds, as the index records it
 FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
 CLASS: Final = "class"
+INERT: Final = "inert"  # a decorator or metaclass that leaves a class plain (see `source.inert`)
 ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPE_VAR: Final = "type variable"
 RETURNED: Final = "returned"  # an unannotated function its `return`s type
@@ -257,6 +258,7 @@ _KINDS: Final[Mapping[str, _Defined]] = {
     OPEN: lambda module: module.open,
     PARTIAL: lambda module: module.partial,
     DECORATOR: lambda module: module.passes,
+    INERT: lambda module: module.inert,
     SIGNATURES: lambda module: module.signatures,
     _TYPE_VAR: lambda module: module.type_vars,
 }

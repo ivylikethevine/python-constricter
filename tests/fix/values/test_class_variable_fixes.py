@@ -143,15 +143,16 @@ def test_a_plain_class_variable_is_typed_by_its_literal_value() -> None:
         "extra": ("float", True),  # under a plain class
         "maxDiff": ("int | None", True),  # under a test case, which declares it so
         "verbose": ("bool", True),  # under both
+        "w": ("int", True),  # under a metaclass that reads no annotations
     }
     # A call (`made`), a copy (`copied`), `None`, a name bound twice (`twice`), an attribute
     # the module stores (`stored`), a chained assignment, an unpacking and a loop; and every variable
     # of a class that isn't plain: decorated (`x`), a model's mixin (`shared`) and the model (`y`),
-    # a metaclass (`z`) and its instance (`w`), a computed base (`v`), an enum's (not reported at
-    # all), and one defined twice (`a`, `b`).
+    # a metaclass (`z`), a computed base (`v`), an enum's (not reported at all), and one defined
+    # twice (`a`, `b`). The metaclass's instance (`w`) is plain: it reads no annotations.
     untyped: set[str] = {"made", "copied", "nothing", "twice", "stored", "first", "second"}
     assert {name for name, fix in fixed.items() if not fix[0]} == untyped | {"low", "high", "step"} | set(
-        "xyzwvab",
+        "xyzvab",
     ) | {"shared"}
 
 
@@ -187,7 +188,7 @@ def test_a_class_constant_passed_to_a_call_keeps_its_type() -> None:
 def test_plain_classes_are_settled_by_their_bases() -> None:
     """Every base plain, or a test case; none inherited by a class that isn't."""
     tree: ast.Module = ast.parse(textwrap.dedent(SOURCE))
-    assert classvars.plain(tree, stdlib.origins(tree)) == {"Plain", "Child", "Tests", "More"}
+    assert classvars.plain(tree, stdlib.origins(tree)) == {"Plain", "Child", "Tests", "More", "Registered"}
     found: dict[str, tuple[str, ...]] = {
         "A": (),
         "B": ("A",),

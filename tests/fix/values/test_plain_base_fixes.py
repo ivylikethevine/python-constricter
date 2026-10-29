@@ -196,6 +196,7 @@ def test_a_listed_base_is_one_a_plain_class_may_have() -> None:
 
 WEB: Final = """
 def registered(cls):
+    fields = cls.__annotations__
     return cls
 
 
@@ -333,7 +334,7 @@ def test_a_generic_or_abstract_class_is_plain() -> None:
 def test_a_base_passed_over_is_one_where_a_checked_file_defines_it(tmp_path: Path) -> None:
     """The standard library, checked: a class under its `abc.ABC` (given a metaclass) is still plain."""
     files: dict[str, str] = {
-        "abc.py": "class ABC(metaclass=type):\n    pass\n",
+        "abc.py": "class ABC(metaclass=make()):\n    pass\n",
         "shapes.py": "from abc import ABC\n\n\nclass Shape(ABC):\n    sides = 0\n",
     }
     paths: list[Path] = []

@@ -318,6 +318,37 @@ to 1,129, streamlink 2,097 to 2,060, pydantic 1,521 to 1,512, networkx 16,046 to
     `--fix --unsafe-fixes` one new: `toml`'s `_load_date`, whose `d` the check takes for a
     `datetime` where one branch binds a `date`, typed so before as a single `return d` would be.
     Coverage under 0.1%.
+13. **A class variable across its line, and classes under inert marks.** The mega run of
+    2026-10-28's census has 22,000 class-body bindings with no fix; by `scratch/class_plain.py`
+    (each binding's class followed up its bases), pygments' 5,481 sit under `LexerMeta` and
+    `RegexLexerMeta`, sqlalchemy's under `_self_inspects`, django's under `deconstructible`: any
+    decorator or metaclass made a class not plain, whatever it does. And a plain class's variable
+    took its own value's type in each class, `priority: int` on a base and `priority: float` on its
+    subclass, which basedpyright reports as an incompatible override (variables are invariant).
+    Now each variable is joined across its line (`classvars.joined`, `plain._joined`): one type,
+    the widest number, `| None` where a class binds it to `None`, `tuple[T, ...]` for tuples of one
+    element type, the groups linked through a class of several bases; values that fit no one type
+    keep each class's own, as at HEAD. A decorator or metaclass reading no annotations leaves a
+    class plain (`source/inert.py`): a checked file's whose `return`s give back its class, or a
+    metaclass under `type` or `abc.ABCMeta`, naming nothing that reads annotations; followed to
+    another checked file through the index (`project.INERT`). A class plain only by its marks has
+    none of its variables typed where a class above or under it defines the name (a property, a
+    method) or the join fails, and a variable bound to `None` none where one defines it
+    (`classvars.unshadowed`). A file's own read no longer joins: with the index, its members alone
+    are the plain classes' (`classvars.variables`), which kept one module's partial join from
+    writing `str | None` beside another file's `str`. All `member` guesses, `--unsafe-fixes` only.
+    Measured one process each on 16CPU/60GB with `--all-scopes`, as the runs check
+    (`scratch/fix_diff.py` and `scratch/fix_errors.py` take `--option` for it now): pygments 985
+    fixes to 5,353, its bindings with no fix 6,695 to 2,313 (`scratch/census_compare.py`), its
+    basedpyright errors 10 new and 6 gone: 5 `list[LiteralString]` (Small, below) and 5 of
+    pygments' own, a class-body helper called with a value its first parameter, `Self` to pyright,
+    refuses once that value is annotated. sqlalchemy 9,847 to 9,691 with no fix, its errors
+    unchanged (2,285). django's errors 3,705 from HEAD's 3,731, 17 new and 43 gone: the 17 are reads
+    of a variable joined to `str | None` (`self.name.lower()` under a base's `name = None`). The
+    standard library's `email` unchanged (212). Bindings with no fix, the run's to the tree's
+    (with items 3 to 12): pygments 6,695 to 2,313, the standard library 63,071 to 62,153, django
+    11,747 to 11,609, sqlalchemy 10,140 to 9,691. Coverage: about 4,600 more bindings fixed by this
+    item, 1.9% of the run's 245,708 with no fix.
 
 ### Small: under 4 hours
 
@@ -386,6 +417,23 @@ to 1,129, streamlink 2,097 to 2,060, pydantic 1,521 to 1,512, networkx 16,046 to
    or the one every value fits as `rebound` takes it) would type them as a checker does, and
    withdraw or change the fixes that rest on the last branch alone. Measure first: how many
    `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
+7. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+   `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
+   `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
+   holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
+   function or a class body alike (5 of pygments' errors with the class variables above). mypy
+   reads `LiteralString` as `str` and takes it. Either write `list[LiteralString]` (a later
+   `append` of a `str` then fails under pyright), or leave a literal receiver's `LiteralString`
+   overloads' container returns unfixed. Measure first: how many certain fixes it is on the mega
+   corpora. About 2 hours.
+8. **An override exclusion for every plain class** (a proposal: it withdraws fixes). A class plain
+   only by its inert marks, or a variable bound to `None`, has no variable typed where a class in
+   its line defines the name (`classvars.unshadowed`); a class plain at HEAD keeps HEAD's fixes, so
+   `_render_label_in_columns_clause: bool` under a subclass's `@memoized_attribute` of the name is
+   still written (sqlalchemy's `reportIncompatibleVariableOverride` 110 after HEAD's
+   `--fix --unsafe-fixes`, 103 before it). Applying the exclusion to every plain class withdraws
+   those.
+   Measure first: the fixes withdrawn and the errors gone on sqlalchemy and django. About an hour.
 
 ### Medium: 4 to 8 hours
 

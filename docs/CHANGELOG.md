@@ -6,6 +6,17 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A test case's private attributes, which the standard-library tables hold since they keep
+  single-underscore members (`_testMethodName`), no longer type a subclass's variable of the name:
+  only `maxDiff`, `longMessage` and `failureException` do, as before.
+- A plain class's variable is one type in every class of its line that binds it, as a checker holds
+  an override to it: the widest number, with `None` where one binds it to that, a tuple of any
+  length (`priority: float`, `name: str | None`, `aliases: tuple[str, ...]`); before, a base's
+  `priority: int` and its subclass's `priority: float` were an incompatible override. And a class
+  under a decorator or metaclass that reads no annotations (a checked file's that gives back its
+  class, a metaclass under `type`; `functools.total_ordering`) is plain: pygments' lexers under
+  `LexerMeta`, sqlalchemy's elements under `_self_inspects` (pygments: 6,695 bindings with no fix to
+  2,313; sqlalchemy 10,140 to 9,691, with the items above).
 - A checked file's overloaded function whose every overload declares one return types its calls
   by it, whatever their arguments (`DataTree.from_dict(d)` a `DataTree`); a standard-library base's
   `_private` members are in the tables (`self._expand_help()` in a `HelpFormatter` subclass, a

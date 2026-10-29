@@ -43,6 +43,7 @@ from constricter.offences import MAX_LENGTH
 from constricter.source.annotations import dotted
 from constricter.source.declarations import classes as annotated
 from constricter.source.flow import members as union
+from constricter.source.inert import inert, judged, marks
 from constricter.source.syntax import import_bindings
 from constricter.source.walked import classes, of_type
 
@@ -105,6 +106,9 @@ _OWN_KINDS: Final = frozenset(
     },
 )
 _NONE: Final = "None"
+_TOWER: Final = ("bool", "int", "float", "complex")  # each fits where any after it is declared
+_NO_CLASSES: Final = frozenset[str]()
+_TUPLE: Final = "tuple"
 _NOT: Final = "!"  # an entry that leaves a base out (see `listed`)
 _DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 # One store of an attribute: its value, and (augmented) its operator.
@@ -141,11 +145,13 @@ _ALLOWED: Final = frozenset({*_TEST_CASES, *BUILTIN_BASES, *PASSED_OVER, *_FUNCT
 _NOT_TESTS: Final = frozenset({*BUILTIN_BASES, *PASSED_OVER})
 _WORD: Final = re.compile(r"[A-Za-z_][\w.]*")
 # What a test case declares of itself, where builtins alone spell it: a subclass's variable of the
-# name has that type, to a type checker, whatever its value's is.
+# name has that type, to a type checker, whatever its value's is. Not its private attributes, which
+# the tables hold too (`_testMethodName`): no subclass sets one as its own variable.
 HELD: Final = {
     name: typed
     for name, typed in stdlib.attributes("unittest.TestCase").items()
-    if all(word == _NONE or hasattr(builtins, word) for word in cast("list[str]", _WORD.findall(typed)))
+    if not name.startswith("_")
+    and all(word == _NONE or hasattr(builtins, word) for word in cast("list[str]", _WORD.findall(typed)))
 }
 
 
@@ -240,17 +246,53 @@ def imported(tree: ast.Module) -> dict[str, str]:
     return {name: origin for name, origin, _ in import_bindings(tree.body)}
 
 
-def plain(tree: ast.Module, origins: Mapping[str, str], entries: Sequence[str] = ()) -> frozenset[str]:
+def plain(
+    tree: ast.Module,
+    origins: Mapping[str, str],
+    entries: Sequence[str] = (),
+    *,
+    marked_too: bool = True,
+) -> frozenset[str]:
     """Find the module's plain classes, as far as the module alone sees (see the module docstring).
 
     `origins`: what each name its imports bind refers to (see `imported`), to know a test case;
-    `entries`: the listed bases (see `listed`).
+    `entries`: the listed bases (see `listed`); `marked_too`: whether a class only inert decorators
+    and a metaclass keep from it is plain (see `marked`).
 
     Returns:
       Their names.
 
     """
-    return settled(bases(tree), lambda base: allowed(_resolved(base, origins), entries))
+    found: dict[str, tuple[str, ...]] = bases(tree)
+    local: frozenset[str] = inert(tree) if marked_too else frozenset()
+    cleared: dict[str, tuple[str, ...]] = {
+        name: tuple(base for base in found[name] if base != SPECIAL)
+        for name, each in (marked(tree) if marked_too else {}).items()
+        if all(judged(mark, local, origins) for mark in each)
+    }
+    return settled({**found, **cleared}, lambda base: allowed(_resolved(base, origins), entries))
+
+
+def marked(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+    """Find the classes the module defines once that only their decorators and metaclass keep from plain.
+
+    Returns:
+      Each one's, as `inert.marks` spells them: a class with a base `bases` can't spell, or a
+      builtin's the module binds itself, left out.
+
+    """
+    found: dict[str, tuple[str, ...]] = bases(tree)
+    taken: frozenset[str] = taken_names(tree)[0]
+    kept: dict[str, tuple[str, ...]] = {}
+    node: ast.ClassDef
+    for node in classes(tree):
+        each: tuple[str, ...] | None
+        if SPECIAL not in found.get(node.name, ()) or (each := marks(node)) is None or not each:
+            continue
+        names: list[str | None] = [_base_name(base) for base in node.bases]
+        if None not in names and not any(name in BUILTIN_BASES and name in taken for name in names):
+            kept[node.name] = each
+    return kept
 
 
 def allowed(base: str, entries: Sequence[str] = ()) -> bool:
@@ -369,18 +411,25 @@ def variables(
       Each class's variables' types, as the module spells the class.
 
     """
+    indexed: Mapping[str, Mapping[str, str]] = {} if outside is None else outside.members
+    if outside is not None and outside.plain is not None:  # its own settled too (see `plain.settled`)
+        return dict(indexed)
     own: frozenset[str] = own_plain(tree, origins, outside, entries)
     typed: dict[str, dict[str, str]] = members(tree) if own else {}
-    # The index's of its own: what the file alone types, and what it types by other files' classes.
-    indexed: Mapping[str, Mapping[str, str]] = {} if outside is None else outside.members
-    return {
-        **indexed,
-        **{
-            name: {**typed.get(name, {}), **indexed.get(name, {})}
-            for name in own
-            if name in typed or name in indexed
-        },
-    }
+    bare: dict[str, frozenset[str]] = nulls(tree) if own else {}
+    if typed or bare:
+        reached: frozenset[str] = own - plain(tree, origins, entries, marked_too=False)
+        single: dict[str, tuple[str, ...]] = bases(tree)
+        kept: dict[str, dict[str, str]]
+        nones: dict[str, frozenset[str]]
+        kept, nones = unshadowed(
+            {name: typed[name] for name in own if name in typed},
+            {name: each for name, each in bare.items() if name in own},
+            (defined(tree), single),
+            reached,
+        )
+        typed = joined(kept, nones, single, annotated(tree), reached)
+    return {**indexed, **{name: typed[name] for name in own if name in typed}}
 
 
 def own_plain(
@@ -447,6 +496,275 @@ def _read_members(tree: ast.Module) -> dict[str, dict[str, str]]:
         for name, each in typed.items()
     }
     return {name: each for name, each in kept.items() if each}
+
+
+def nulls(tree: ast.Module) -> dict[str, frozenset[str]]:
+    """Find the variables of each class the module defines once that are bound to `None` alone.
+
+    Bound once, directly in the body, by a plain `name = None`; never stored in the module
+    (`self.name = ...`), nor one a builtin base has. What `joined` adds `None` to a type by.
+
+    Returns:
+      Each class's such variables; a class with none left out.
+
+    """
+    single: dict[str, tuple[str, ...]]
+    if not (single := bases(tree)):
+        return {}
+    stored: dict[str, list[_Store | None]] = _stores(tree)
+    found: dict[str, frozenset[str]] = {}
+    node: ast.ClassDef
+    for node in (each for each in classes(tree) if each.name in single):
+        counts: Counter[str] = Counter(name for stmt in node.body for name in _bound(stmt))
+        left: frozenset[str] = reserved(node.name, single).union(stored)
+        names: frozenset[str] = frozenset(
+            stmt.targets[0].id
+            for stmt in node.body
+            if isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+            and is_none(stmt.value)
+            and counts[stmt.targets[0].id] == 1
+            and stmt.targets[0].id not in left
+        )
+        if names:
+            found[node.name] = names
+    return found
+
+
+def joined(
+    typed: Mapping[str, Mapping[str, str]],
+    bare: Mapping[str, frozenset[str]],
+    found: Bases,
+    declared: Mapping[str, Mapping[str, str]],
+    reached: frozenset[str] = _NO_CLASSES,
+) -> dict[str, dict[str, str]]:
+    """Type a variable alike in every class that binds it under another that does, as a checker holds them.
+
+    A class variable's type is invariant: an override of `priority: int` can't be `priority: float`,
+    nor one of `name: str | None` a `str`. So each class of `typed` (its variables' types) and `bare`
+    (its variables bound to `None`, see `nulls`), with every class of them above or under it that
+    binds the name too (by `found`, each class's bases), takes the one type their values fit: their
+    type, if they agree; the widest, if they're numbers (`int`, then `float`); a tuple of any length,
+    if they're tuples of one type (`tuple[str, ...]`); with `None`, if one binds it to that. One whose
+    values fit no one type, or under a class `declared` annotates the name in, is left as it is, but
+    in a class of `reached` (see `unshadowed`), untyped.
+
+    Returns:
+      `typed`, each such variable's type joined, those bound to `None` among them.
+
+    """
+    out: dict[str, dict[str, str]] = {name: dict(each) for name, each in typed.items()}
+    binders: dict[str, list[str]] = {}
+    owner: str
+    variable: str
+    for owner in sorted(typed.keys() | bare.keys()):
+        for variable in {*typed.get(owner, {}), *bare.get(owner, ())} if owner in found else ():
+            binders.setdefault(variable, []).append(owner)
+    above: dict[str, list[str]] = {}
+    joins: list[list[str]] = [ancestors(owner, found) for owner, each in found.items() if len(each) > 1]
+    owners: list[str]
+    for variable, owners in binders.items():
+        if len(owners) == 1:
+            continue
+        for owner in owners:
+            if owner not in above:
+                above[owner] = ancestors(owner, found)
+        group: list[str]
+        for group in _groups(owners, above, joins):
+            if len(group) > 1 and not any(
+                variable in declared.get(base, {})
+                for each in group
+                for base in above[each]
+                if base not in group
+            ):
+                _join(out, (variable, group), (typed, bare), reached)
+    return out
+
+
+def _join(
+    out: dict[str, dict[str, str]],
+    line: tuple[str, Sequence[str]],
+    values: tuple[Mapping[str, Mapping[str, str]], Mapping[str, frozenset[str]]],
+    reached: frozenset[str],
+) -> None:
+    """Type one variable alike in a group of classes binding it (see `joined`), in `out`.
+
+    `line`: the variable, and the group; `values`: as `joined` takes `typed` and `bare`.
+    """
+    variable: str
+    group: Sequence[str]
+    variable, group = line
+    atoms: set[str] = {values[0][each][variable] for each in group if variable in values[0].get(each, {})}
+    one: str | None = _one(atoms, none=any(variable in values[1].get(each, ()) for each in group))
+    each: str
+    for each in group if one is not None else ():
+        out.setdefault(each, {})[variable] = cast("str", one)
+    for each in reached.intersection(group) if one is None else ():
+        _ = out.get(each, {}).pop(variable, None)
+
+
+def _groups(
+    owners: Sequence[str],
+    above: Mapping[str, Sequence[str]],
+    joins: Sequence[Sequence[str]] = (),
+) -> list[list[str]]:
+    """Split the classes binding a name into those joined by one being above another.
+
+    `above`: every class each one inherits from; `joins`: every class above each class of several
+    bases, whose binding of the name a checker holds alike there.
+
+    Returns:
+      Each group, sorted.
+
+    """
+    group: dict[str, str] = {owner: owner for owner in owners}  # each class's group, by a class in it
+    grouped: dict[str, list[str]] = {owner: [owner] for owner in owners}
+
+    def merge(one: str, other: str) -> None:
+        kept: str = group[one]
+        gone: str = group[other]
+        if kept != gone:
+            moved: str
+            for moved in grouped.pop(gone):
+                group[moved] = kept
+                grouped[kept].append(moved)
+
+    owner: str
+    for owner in owners:
+        base: str
+        for base in above[owner]:
+            if base in group:
+                merge(owner, base)
+    lines: Sequence[str]
+    for lines in joins:
+        met: list[str] = [base for base in lines if base in group]
+        for base in met[1:]:
+            merge(met[0], base)
+    return [sorted(each) for each in grouped.values()]
+
+
+def promoted(annotation: str, held: frozenset[str]) -> bool:
+    """Check whether a value's type fits a variable `joined` widened to another type.
+
+    Returns:
+      Whether `annotation` is one of the numeric tower's, under one of `held`'s; or a tuple, one of
+      `held` the tuple of any length of its element type.
+
+    """
+    return (
+        annotation in _TOWER
+        and any(each in _TOWER and _TOWER.index(each) > _TOWER.index(annotation) for each in held)
+    ) or any(each.endswith(", ...]") and _tupled({annotation, each}) == each for each in held)
+
+
+def _tupled(atoms: set[str]) -> str | None:
+    """Write the one tuple type tuples of types `atoms` fit: of any length, of their one element type.
+
+    Returns:
+      It (`tuple[str, ...]`), or `None` if one isn't a tuple, or their elements differ.
+
+    """
+    elements: set[str] = set()
+    atom: str
+    for atom in atoms:  # annotations `--fix` wrote: each parses
+        node: ast.expr = ast.parse(atom, mode="eval").body
+        if not (
+            isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == _TUPLE
+        ):
+            return None
+        parts: list[ast.expr] = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+        if parts[1:] and isinstance(parts[-1], ast.Constant) and parts[-1].value is Ellipsis:
+            parts = parts[:-1]
+        elements.update(
+            ast.unparse(part) for part in parts if not (isinstance(part, ast.Tuple) and not part.elts)
+        )
+    return f"tuple[{next(iter(elements))}, ...]" if len(elements) == 1 else None
+
+
+def defined(tree: ast.Module) -> dict[str, frozenset[str]]:
+    """Name the methods, properties and nested classes the body of each class the module defines once defines.
+
+    Returns:
+      Them, by class; a class with none left out.
+
+    """
+    single: dict[str, tuple[str, ...]] = bases(tree)
+    found: dict[str, frozenset[str]] = {
+        node.name: frozenset(stmt.name for stmt in node.body if isinstance(stmt, _DEFINITIONS))
+        for node in classes(tree)
+        if node.name in single
+    }
+    return {name: each for name, each in found.items() if each}
+
+
+def unshadowed(
+    typed: Mapping[str, Mapping[str, str]],
+    bare: Mapping[str, frozenset[str]],
+    seen: tuple[Mapping[str, frozenset[str]], Bases],
+    reached: frozenset[str],
+) -> tuple[dict[str, dict[str, str]], dict[str, frozenset[str]]]:
+    """Leave out a newly typed class variable that a class above or under it defines.
+
+    A method, a property or a nested class of the name, which an annotation of the variable would make
+    an incompatible override. A variable of a class of `reached` (plain only by its decorators' and
+    metaclass's being inert, see `marked`), or one bound to `None` (`bare`, which only `joined`
+    types) in any class. `typed` and `bare`: as `joined` takes them; `seen`: what each class's body
+    defines (see `defined`), and each class's bases.
+
+    Returns:
+      `typed` and `bare`, without them.
+
+    """
+    bound: Mapping[str, frozenset[str]]
+    found: Bases
+    bound, found = seen
+    kept: dict[str, dict[str, str]] = {name: dict(each) for name, each in typed.items()}
+    nones: dict[str, frozenset[str]] = dict(bare)
+    if not reached and not bare:
+        return kept, nones
+    under: dict[str, set[str]] = {name: set() for name in found}
+    name: str
+    for name in found:
+        base: str
+        for base in ancestors(name, found):
+            under[base].add(name)
+    dropped: dict[str, set[str]] = {}
+    for name in sorted((reached & typed.keys()) | bare.keys()):
+        line: list[str] = [*ancestors(name, found), *under.get(name, ())]
+        other: set[str]
+        if other := {variable for each in line for variable in bound.get(each, frozenset())}:
+            dropped[name] = other
+    for name in sorted(dropped):
+        if name in reached:
+            kept[name] = {
+                variable: annotation
+                for variable, annotation in kept.get(name, {}).items()
+                if variable not in dropped[name]
+            }
+        if name in nones:
+            nones[name] -= dropped[name]
+    return kept, nones
+
+
+def _one(atoms: set[str], *, none: bool) -> str | None:
+    """Write the one type values of types `atoms` fit, with `None` if `none`.
+
+    Returns:
+      It, or `None` where there's none: no type, or types that aren't one or the numeric tower's.
+
+    """
+    one: str
+    each: str | None
+    if len(atoms) == 1:
+        one = next(iter(atoms))
+    elif atoms and atoms <= set(_TOWER):
+        one = max(atoms, key=_TOWER.index)
+    elif (each := _tupled(atoms)) is not None:
+        one = each
+    else:
+        return None
+    return one if not none or _NONE in (union(one) or ()) else f"{one} | None"
 
 
 def named(tree: ast.Module) -> dict[str, dict[str, str]]:
