@@ -5,16 +5,11 @@
 # Pins written inline, one row each:
 #   name|file-glob|sed-BRE-with-one-\(capture\)|check|tag-prefix
 #
-# actionlint, gitleaks, lychee  the release URL each workflow hands
-#                               ./.github/actions/tool; its sha256 moves with it
-# uv                            setup-uv's `version:` input, in the setup action
-#                               and in the published action.yml - the action's
-#                               SHA does not cover the binary it downloads
+# uv  setup-uv's `version:` input, in the setup action and in the published
+#     action.yml - the action's SHA does not cover the binary it downloads.
+# Every other CI tool is a tools.txt row, which the section above reads.
 # shellcheck disable=SC2034 # read by check_tool_versions.sh
-CI_WORKFLOW_ROSTER='actionlint|.github/workflows/*.yml|/rhysd/actionlint/releases/download/v\([0-9][0-9.]*\)/|github:rhysd/actionlint|
-gitleaks|.github/workflows/*.yml|/gitleaks/gitleaks/releases/download/v\([0-9][0-9.]*\)/|github:gitleaks/gitleaks|
-lychee|.github/workflows/*.yml|/lycheeverse/lychee/releases/download/lychee-v\([0-9][0-9.]*\)/|github:lycheeverse/lychee|lychee-v
-uv (setup action)|.github/actions/setup/action.yml| version: "\([0-9][0-9.]*\)"|github:astral-sh/uv|
+CI_WORKFLOW_ROSTER='uv (setup action)|.github/actions/setup/action.yml| version: "\([0-9][0-9.]*\)"|github:astral-sh/uv|
 uv (action.yml)|action.yml| version: "\([0-9][0-9.]*\)"|github:astral-sh/uv|'
 
 # No image is pinned here.

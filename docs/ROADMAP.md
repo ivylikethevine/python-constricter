@@ -42,6 +42,19 @@ measure before building.
 - sphinx's `test_html5_rubric` failed after `infer-basedpyright` and `infer-pyrefly` on `b6ac32b`,
   the order-dependent test named under "Eight mechanisms, counted", and passed on `6b0ab18`.
 
+**The mega run of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, the items below built, 89
+minutes on 16CPU/60GB), its headline only; each item's own read is still to do:
+
+- Bindings typed of 474,291: `--fix` 164,031, `--likely` 217,167, `--unsafe-fixes` 241,743
+  (161,113, 211,064 and 228,999 on `6b0ab18`); `infer-trace` 146,425 of 292,568 (134,815).
+- New type errors 562 from 428: mcp +60 and pandas +42; by step, `fix-certain` 7 from 3,
+  `fix-likely` 38 from 20 (`constructor` 50 from 28 over the fix steps), `fix-unsafe` 47 from 27,
+  each `infer-*` step about 22 more.
+- Two problems: the standard library's `fix-certain` leaves 2 for a second pass, and nibabel's tests
+  differ after `fix-likely` (1 new failure).
+- basedpyright's servers aborted four times in dask's `infer-union` (the hinted servers' item under
+  Small).
+
 **What the next mega run reads**: the runner's order against the solver's shortest, for a run with
 no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
 
@@ -363,26 +376,21 @@ to 1,129, streamlink 2,097 to 2,060, pydantic 1,521 to 1,512, networkx 16,046 to
    `typing` entry where the stub re-exports it, and read the rest from the stub as the tables are
    generated. Measure first: the census's calls into `typing_extensions` with no fix. About 2 hours;
    coverage unknown until measured, likely under 0.1%.
-2. **CI's tools and security workflows, the shared way.** The sync has brought the shared
-   `setup-tool` and `setup-tools` actions, their roster `.github/actions/setup-tool/tools.txt`
-   (actionlint, zizmor, lychee, gitleaks and osv-scanner, each with its URL template and sha256),
-   `codeql.yml` and `link-check.yml`; `link-check.yml` and `security.yml`'s zizmor step install
-   through `setup-tool` already. What's left is this repository's side: `security.yml` still runs
-   CodeQL and the weekly link check in jobs of its own (`codeql`, `links`), beside the shared
-   workflows that run the same, and four steps still download a binary through `actions/tool` with
-   the URL and sha256 written in the step (`ci.yml`'s offline lychee; `security.yml`'s actionlint,
-   gitleaks and lychee), each a row of `check_tool_versions.local.sh`'s roster. How: replace each
-   `actions/tool` step with `setup-tool` or `setup-tools` and delete `actions/tool`; delete the
-   `codeql` and `links` jobs from `security.yml`, which keeps zizmor, actionlint, the workflow
-   conventions, pip-audit, dependency review and gitleaks; add
-   `osv-scanner scan source --recursive .` to the Dependency audit job, through `setup-tool` and
-   with `api.osv.dev:443` allowed, so it scans every lockfile as Scorecard's Vulnerabilities check
-   does, and to `tests/ci_local.py`; drop the three rows from the local roster, keeping uv's; and
-   re-read each job's `allowed-endpoints` from an audit run, since the download hosts move. The
-   ruleset needs nothing: CodeQL is a code-scanning tool there, not a named check. Done when every
-   workflow has one green run on a pull request, including a weekly `link-check.yml` by hand,
-   `tool-versions.yml` reports `tools.txt`'s tools and uv, and the Dependency audit runs
-   osv-scanner. About 3 hours; coverage unchanged.
+2. **CI's tools and security workflows, the shared way.** Built: every CI tool installs from
+   `.github/actions/setup-tool/tools.txt` (`setup-tools` for the Workflow audit's zizmor and
+   actionlint, `setup-tool` for gitleaks, lychee and osv-scanner) and `actions/tool` is gone with
+   `check_tool_versions.local.sh`'s three rows for it; `security.yml`'s own CodeQL and weekly
+   link-check jobs are gone, `codeql.yml` and `link-check.yml` run both (CodeQL's default query
+   suite, where the old job ran `security-extended`); the Dependency audit runs
+   `osv-scanner scan source --recursive .` after pip-audit, which `tests/ci_local.py` runs too when
+   osv-scanner is on `PATH`, and skips a `tools.txt` tool's step without the tool. osv-scanner's
+   first local pass found virtualenv 21.14.12 (GHSA-cx6f-vjhg-g3cc, fixed in 21.14.13), which
+   pip-audit had passed, so `uv.lock` moves to 21.14.13; it also reports `.github/osv-scanner.toml`'s
+   braces entry as no longer needed, a shared file's change. Left: a green run of every workflow on
+   a pull request, each job's `allowed-endpoints` re-read from its audit (the Dependency audit's,
+   Secrets' and the Docs job's were written from the Workflow audit's set, plus `api.osv.dev:443`),
+   and `link-check.yml` and `tool-versions.yml` dispatched by hand once. About an hour; coverage
+   unchanged.
 3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs
    ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
@@ -434,6 +442,24 @@ to 1,129, streamlink 2,097 to 2,060, pydantic 1,521 to 1,512, networkx 16,046 to
    `--fix --unsafe-fixes`, 103 before it). Applying the exclusion to every plain class withdraws
    those.
    Measure first: the fixes withdrawn and the errors gone on sqlalchemy and django. About an hour.
+9. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+   basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
+   share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
+   as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
+   inside dask's `infer-union`, given 2.47 GB (a heap cap of about 2.1 GiB) where the step held
+   4.5 GB; dask's `infer-basedpyright` held 7.6 GB that run. The first mega run of 2026-10-28 had
+   three, its dask `infer-union` given 2.39 GB; the second gave it 5.5 GB and had none. The cause:
+   a share comes from the per-byte estimate of one server (`Plan._hinted`: 600 MB and 130 bytes
+   for each byte of source, 1.3 GiB for dask's 5.9 MB), which holds for sqlalchemy (1.2 GB for 8
+   MB) and undershoots dask's by about three times. Proposed, in order: a measured step's servers
+   given at least what the step held on its last run (`Before.memory`, beside the estimate in
+   `Wanted.hinted`), which keeps dask's at 4.5 GB or more; and basedpyright's heap floor raised from
+   the bare 600 MB to one server's estimate for the files it checks (`Checker.share`), which stops
+   aborts on corpora the estimate fits but whose share is split among several servers. A restarted
+   server asks its files one at a time, so the step takes longer as well. Unconfirmed: that each
+   abort is the heap cap (the servers' standard error isn't kept); a run with the first change
+   showing no dump on dask confirms it. Measure first: the dumps and dask's `infer-union` seconds
+   on a mega run with it. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 

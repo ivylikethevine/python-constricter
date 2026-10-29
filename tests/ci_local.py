@@ -12,11 +12,12 @@ security.yml's Dependency audit (`dependencies`), Workflow audit (`workflows`) a
 finding 10.00/10), and every failing step's output is printed in full at the end; the command
 exits 1 if any failed. A passing step's warnings (the `::warning` commands it prints for the
 runner: a module past 800 lines) are listed after. What only makes sense on a runner is adapted:
-`npm ci` runs only when `.github/node_modules` is missing, a tool the runner fetches by URL
-(lychee, actionlint, gitleaks) is the one on `PATH` (the step is skipped without it), a step's
-`${{ ... }}` environment takes the shell's variable of the same name (`GH_TOKEN`; without one
-zizmor runs `--offline`), and the Test job's `COVERAGE` is `--cov`. The Dependency audit's steps
-pass a file on, so they run as one command.
+`npm ci` runs only when `.github/node_modules` is missing, a tool CI installs from
+`.github/actions/setup-tool/tools.txt` (zizmor, actionlint, gitleaks, lychee, osv-scanner) is the
+one on `PATH` (the step is skipped without it), a step's `${{ ... }}` environment takes the shell's
+variable of the same name (`GH_TOKEN`; without one zizmor runs `--offline`), and the Test job's
+`COVERAGE` is `--cov`. The Dependency audit's steps pass a file on, so they run as one command, less
+any step whose tool is missing.
 
 `interpreters` runs the tests on each Python in the Test job's matrix (PyPy and free-threaded builds
 included) but the one `local/.venv` has: each in its own `local/.venv-<python>`, with the dependency
@@ -53,8 +54,8 @@ _PYPY: Final = "pypy"  # `sys.implementation.name`, the prefix of its matrix nam
 _RUN: Final = "run"  # a step's shell command
 _EXPRESSION: Final = "${{"  # the start of a GitHub Actions expression
 _NPM_CI: Final = "npm ci --prefix .github"
-# A tool the runner fetches by URL (`./.github/actions/tool`), run from its temporary directory.
-_RUNNER_TOOL: Final = re.compile(r'"\$RUNNER_TEMP/bin/([^"/]+)"')
+# The tools CI installs from tools.txt (`./.github/actions/setup-tool`): the first column of each row.
+_TOOLS_TXT: Final = _ROOT / ".github" / "actions" / "setup-tool" / "tools.txt"
 _ZIZMOR: Final = "zizmor "
 # zizmor without a token: its online audits can't run, and it refuses an empty one
 _OFFLINE: Final = "--offline"
@@ -119,7 +120,10 @@ def steps(jobs: Sequence[str]) -> list[Step]:
                 for name, value in cast("dict[str, _Yaml]", step.get("env", {})).items()
             }
             if job in _CHAINED:
-                commands.append(str(step[_RUN]).strip())
+                # a step this machine can't run (its tool is missing) leaves the chain, not the job
+                adapted: str | None
+                if (adapted := _adapted(str(step[_RUN]).strip())) is not None:
+                    commands.append(adapted)
                 chained_env.update(env)
             else:
                 found.append(Step(job, str(step[_RUN]).strip(), env))
@@ -228,15 +232,28 @@ def _adapted(command: str) -> str | None:
     """
     if command == _NPM_CI:
         return None if (_ROOT / ".github" / "node_modules").is_dir() else command
-    tool: re.Match[str] | None
-    if (tool := _RUNNER_TOOL.search(command)) is not None:
-        found: str | None = shutil.which(tool.group(1))
-        return None if found is None else command.replace(tool.group(0), found)
+    tool: str = command.split(maxsplit=1)[0]
+    if tool in _pinned_tools() and shutil.which(tool) is None:
+        return None
     if command.startswith(_ZIZMOR) and not os.environ.get(_API_ENV):
         return command.replace(_ZIZMOR, f"{_ZIZMOR}{_OFFLINE} ", 1)
     if command.startswith(_PYTEST):
         return command.replace(_PYTEST, _PYTEST + _PARALLEL, 1)
     return command
+
+
+def _pinned_tools() -> frozenset[str]:
+    """Name the tools CI installs from tools.txt, which run here only when they're on `PATH`.
+
+    Returns:
+      Their names.
+
+    """
+    return frozenset(
+        line.split("|", 1)[0]
+        for line in _TOOLS_TXT.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    )
 
 
 def _run(step: Step) -> Outcome:

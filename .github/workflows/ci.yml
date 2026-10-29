@@ -144,7 +144,9 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            api.github.com:443
             release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
             registry.npmjs.org:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -156,13 +158,12 @@ jobs:
       - run: npm ci --prefix .github
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
-      - uses: ./.github/actions/tool
+      # the tools.txt pin, the same binary link-check.yml's weekly external sweep runs
+      - uses: ./.github/actions/setup-tool
         with:
-          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
-          sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-          binary: lychee-x86_64-unknown-linux-gnu/lychee
-      # Relative links and #fragments only; the weekly Security run checks external links.
-      - run: git ls-files -z '*.md' | xargs -0 "$RUNNER_TEMP/bin/lychee" --offline --include-fragments --no-progress
+          tool: lychee
+      # Relative links and #fragments only; link-check.yml checks external links.
+      - run: git ls-files -z '*.md' | xargs -0 lychee --offline --include-fragments --no-progress
 
   action:
     name: Action

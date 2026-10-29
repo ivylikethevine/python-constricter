@@ -49,12 +49,12 @@ it extends.
 
 `local/.venv/bin/python tests/ci_local.py` runs them all at once, as CI does: it reads the Lint,
 Docs and Test jobs' steps from `.github/workflows/ci.yml` and the Dependency audit (`dependencies`:
-`pip-audit` over `uv.lock`'s export), Workflow audit (`workflows`: zizmor, actionlint,
-`lint_workflows.sh`) and Secrets (`secrets`: gitleaks over the history) jobs' from
-`.github/workflows/security.yml` (so it can't fall behind either), fails a step by its exit status
-alone (pylint still rates a run with one finding 10.00/10), and prints each failing step's output in
-full. A tool CI fetches by URL (lychee, actionlint, gitleaks) is the one on `PATH`, its step skipped
-without one; zizmor, which CI installs from `tools.txt`, is the one on `PATH` too, and runs
+`pip-audit` over `uv.lock`'s export, osv-scanner over every lockfile), Workflow audit (`workflows`:
+zizmor, actionlint, `lint_workflows.sh`) and Secrets (`secrets`: gitleaks over the history) jobs'
+from `.github/workflows/security.yml` (so it can't fall behind either), fails a step by its exit
+status alone (pylint still rates a run with one finding 10.00/10), and prints each failing step's
+output in full. A tool CI installs from `.github/actions/setup-tool/tools.txt` (zizmor, actionlint,
+gitleaks, lychee, osv-scanner) is the one on `PATH`, its step skipped without one; zizmor runs
 `--offline` without a `GH_TOKEN`. It also runs the tests on each other
 Python in the Test job's matrix (PyPy and free-threaded builds included), each in its own
 `local/.venv-<python>` that uv creates, so what only one interpreter breaks fails before CI. Name
