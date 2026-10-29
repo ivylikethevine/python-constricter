@@ -107,12 +107,13 @@ def facts(
     selfish: Mapping[str, frozenset[str]],
     generics: frozenset[str],
     managers: Mapping[str, Passed],
-    type_vars: frozenset[str],
+    type_vars: tuple[frozenset[str], frozenset[str]],
 ) -> Facts:
     """Read a module's `Facts`.
 
     `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
-    `managers`: its `entered.managers`, and those it imports; `type_vars`: its type variables.
+    `managers`: its `entered.managers`, and those it imports; `type_vars`: its type variables, and
+    those of them and of those it imports with a default (see `generic_classes`).
 
     Returns:
       Them.
@@ -120,15 +121,15 @@ def facts(
     """
     return Facts(
         selfish=selfish,
-        generics=generic_classes(tree) | generics,
+        generics=generic_classes(tree, type_vars[1]) | generics,
         passed=passed(tree),
         checking=checking(tree),
         tests=tests(tree),
         narrowed=regions(tree),
         inner=_inner_starts(tree),
         managers=managers,
-        type_vars=type_vars,
-        bound=_bound_vars(tree, type_vars),
+        type_vars=type_vars[0],
+        bound=_bound_vars(tree, type_vars[0]),
         rebound=rebound_names(tree),
         lazy=[(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
         nested=nested_classes(tree),

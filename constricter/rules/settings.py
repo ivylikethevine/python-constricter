@@ -39,6 +39,7 @@ from constricter.source.declarations import (
     awaited_returns,
     casts,
     class_attributes,
+    defaulted_type_vars,
     defined_type_vars,
     descriptors,
     factories,
@@ -90,7 +91,7 @@ def module_settings(
     free: frozenset[str] = seen.type_vars
     selfish: dict[str, frozenset[str]] = self_returns(tree)
     # The generic classes it names, as it spells them: other checked files', then its own.
-    generic: dict[str, GenericClass] = {**seen.generic, **generic_members(tree)}
+    generic: dict[str, GenericClass] = {**seen.generic, **generic_members(tree, free)}
     return Settings(
         checks._replace(type_comments=checks.type_comments or python2_compatible(tree)),
         lines,
@@ -168,7 +169,7 @@ def module_settings(
                 **seen.managers,
                 **{name: (yielded, frozenset[str]()) for name, yielded in entered.managers(tree).items()},
             },
-            defined_type_vars(tree) | free,
+            (defined_type_vars(tree) | free, defaulted_type_vars(tree) | seen.defaulted),
         )._replace(
             untyped=seen.untyped,
             attributed=frozenset(

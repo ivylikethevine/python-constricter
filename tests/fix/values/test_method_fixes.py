@@ -18,13 +18,31 @@ from constricter import Offence, check_source
         ("items: set[str]", "items.pop()", "str"),
         ("items: set[str]", "items.copy()", "set[str]"),
         ("pairs: dict[str, int]", "pairs.pop('k')", "int"),
-        ("pairs: dict[str, int]", "pairs.pop('k', None)", None),  # the default can be any type
+        ("pairs: dict[str, int]", "pairs.pop('k', None)", "int | None"),  # a literal default's type joins
+        ("pairs: dict[str, int]", "pairs.pop('k', -1)", "int"),
+        ("pairs: dict[str, int]", "pairs.pop('k', fallback)", None),  # a default of any other kind
         ("pairs: dict[str, int]", "pairs.pop(key='k')", None),  # a keyword decides nothing
         ("pairs: dict[str, int]", "pairs.setdefault('k', 1)", "int"),
         ("pairs: dict[str, int]", "pairs.get('k')", "int | None"),
         ("pairs: dict[str, int]", "pairs.get('k', 0)", "int"),  # a default of the values' type
         ("pairs: dict[str, int]", "pairs.get('k', None)", "int | None"),
-        ("pairs: dict[str, int]", "pairs.get('k', 'x')", None),  # another type's
+        (
+            "pairs: dict[str, int]",
+            "pairs.get('k', 'x')",
+            "int | str",
+        ),  # another type's, as a checker's overload
+        ("pairs: dict[str, float]", "pairs.get('k', 0)", "float"),  # an `int` is a `float`'s
+        ("pairs: dict[str, list[int]]", "pairs.get('k', [])", "list[int]"),  # an empty display of its kind
+        ("pairs: dict[str, list[int]]", "pairs.get('k', list())", "list[int]"),
+        ("pairs: dict[str, Sequence[int]]", "pairs.get('k', ())", "Sequence[int]"),
+        ("pairs: dict[str, dict[str, int] | None]", "pairs.get('k', {})", "dict[str, int] | None"),
+        ("pairs: dict[str, Optional[set[str]]]", "pairs.pop('k', set())", "Optional[set[str]]"),
+        ("pairs: dict[str, Union[str, tuple[str]]]", "pairs.get('k', ())", "Union[str, tuple[str]]"),
+        ("pairs: dict[str, list[int]]", "pairs.get('k', {})", None),  # another kind's: its elements unknown
+        ("pairs: dict[str, list[int]]", "pairs.get('k', [1])", "list[int]"),  # the display's own type
+        ("pairs: dict[str, 'Node']", "pairs.get('k', 0)", "Node | int"),
+        ("pairs: dict[str, 'no way']", "pairs.get('k', 0)", None),
+        ("pairs: dict[str, int]", "pairs.get('k', ...)", None),
         ("pairs: dict[str, int]", "pairs.get('k', default=0)", None),
         ("pairs: dict[str, 'no way']", "pairs.get('k')", None),  # `'no way' | None` fails where evaluated
         ("pairs: dict[str, 'no way']", "pairs.get('k', None)", None),
@@ -36,7 +54,7 @@ from constricter import Offence, check_source
 )
 def test_fixes_infer_a_typed_containers_method_call(param: str, call: str, fix: str | None) -> None:
     """A `list`/`set`/`dict` method whose return is the receiver's own element type offers it, as certain."""
-    source: str = f"def f({param}) -> None:\n  x = {call}\n"
+    source: str = f"from typing import Optional, Sequence, Union\ndef f({param}) -> None:\n  x = {call}\n"
     offence: Offence
     [offence] = check_source(source)
     assert (offence.name, offence.fix) == ("x", fix)
@@ -138,3 +156,46 @@ def test_a_method_call_on_a_guessed_class_is_guessed_too() -> None:
         ("a", "Box", True),
         ("b", "str", True),
     ]
+
+
+_AGREED_OVERLOADS: str = """
+from typing import Self, overload
+
+
+class Tree:
+    @overload
+    @classmethod
+    def from_dict(cls, d: dict[str, int]) -> Self: ...
+    @overload
+    @classmethod
+    def from_dict(cls, d: list[int]) -> Self: ...
+    @classmethod
+    def from_dict(cls, d) -> Self:
+        return cls()
+
+    @overload
+    def size(self, x: int) -> int: ...
+    @overload
+    def size(self, x: str) -> int: ...
+    def size(self, x) -> str:
+        return ""
+
+    @overload
+    def get(self, x: int) -> int: ...
+    @overload
+    def get(self, x: str) -> str: ...
+    def get(self, x):
+        return x
+
+
+def f(t: Tree, anything) -> None:
+    made = Tree.from_dict(anything)
+    counted = t.size(anything)
+    got = t.get(anything)
+"""
+
+
+def test_a_functions_overloads_declaring_one_return_type_its_calls_whatever_their_arguments() -> None:
+    """Every overload of `from_dict` returns `Self`: its call is the class. Not where any return differs."""
+    fixes: dict[str, str | None] = {o.name: o.fix for o in check_source(textwrap.dedent(_AGREED_OVERLOADS))}
+    assert fixes == {"made": "Tree", "counted": None, "got": None}

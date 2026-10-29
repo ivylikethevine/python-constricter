@@ -1,14 +1,20 @@
 """`--fix` on the members of a checked file's own generic classes, bound by the receiver's arguments."""
 
+import ast
 import sys
 import textwrap
 from pathlib import Path
+from typing import Final
 
 import pytest
 
 from constricter import Checks, check_source
 from constricter.cli import command as cli
+from constricter.fix.index import project
+from constricter.source.declarations import defaulted_type_vars, generic_classes
 
+_CLASS: Final = "C"
+_GENERIC: Final = "Generic"
 _SOURCE: str = """
 from typing import Generic, TypeVar
 
@@ -140,8 +146,8 @@ def test_a_type_parameter_list_names_the_parameters() -> None:
     assert _found(source) == {"got": ("int", False), "result": (None, False)}
 
 
-def test_a_generic_classes_parameters_are_unknown_past_a_listed_argument_no_type_variable() -> None:
-    """`Generic[T, S]`, `S` not a type variable the module defines: its members aren't bound."""
+def test_a_generic_classes_listed_parameters_are_its_whichever_module_defines_them() -> None:
+    """`Generic[T, S]`, `S` another module's: a `Generic[...]` takes nothing but type variables."""
     source: str = """
     from typing import Generic, TypeVar
 
@@ -155,7 +161,7 @@ def test_a_generic_classes_parameters_are_unknown_past_a_listed_argument_no_type
     def f(pair: Pair[int, str]) -> None:
         first = pair.first()
     """
-    assert _found(source) == {"first": (None, False)}
+    assert _found(source) == {"first": ("int", False)}
 
 
 def test_a_member_is_looked_for_eight_generic_bases_up_at_most() -> None:
@@ -237,3 +243,186 @@ def test_another_files_generic_class_is_bound_by_the_receivers_arguments(tmp_pat
         _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
     _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
     assert (tmp_path / "user.py").read_text(encoding="utf-8") == textwrap.dedent(_USER_FIXED)
+
+
+def test_a_class_whose_subscripted_base_passes_no_type_variable_is_plain() -> None:
+    """`class Data(Mapping[Hashable, "Box"])` binds every parameter: written bare, its members read."""
+    source: str = """
+    from collections.abc import Hashable, Mapping
+
+    class Box: ...
+
+    class Data(Mapping[Hashable, "Box"]):
+        def total(self) -> int: ...
+
+    def f() -> None:
+        data = Data()
+        total = data.total()
+    """
+    assert _found(source) == {"data": ("Data", True), "total": ("int", True)}  # on a guessed receiver
+
+
+@pytest.mark.parametrize(
+    ("source", "generic"),
+    [
+        (
+            "from collections.abc import Hashable as H, Mapping as M\nclass C(M[H, 'B']): ...\nclass B: ...",
+            False,
+        ),
+        ("from typing import Literal\nclass C(Base[Literal['|O'], Literal['x']]): ...", False),
+        ("import typing as t\nclass C(Base[t.IO[t.Any]]): ...", False),
+        ("class C(Base['not an expression (']): ...", False),
+        ("from other import Item\nclass C(list[Item]): ...\nitem = Item()", False),
+        ("from other import Item\nclass C(list[Item]): ...\nisinstance(x, (int, Item))", False),
+        ("from other import Item\nclass C(list[Item]): ...\nItem.__name__", True),
+        ("from other import Item\nclass C(list[Item]): ...", True),
+        ("from typing import T\nclass C(list[T]): ...\nT.method()", True),
+        ("import typing as t\ndef f():\n    T = t.TypeVar('T')\n    class C(t.Generic[T]): ...", True),
+        ("from typing import TypeVar\nT: TypeVar = TypeVar('T')\nclass C(list[T]): ...", True),
+        ("from other import T\nK = T\nclass C(list[K]): ...", True),
+        ("from _typeshed import SupportsRead\nclass C(list[SupportsRead]): ...", True),
+        ("import os\nclass C(list[os._T]): ...", True),
+    ],
+)
+def test_a_subscripted_base_is_generic_where_it_may_pass_a_type_variable(
+    source: str,
+    *,
+    generic: bool,
+) -> None:
+    """No type variable: a builtin, a definition, a public standard-library name, a name used as a class."""
+    assert (generic_classes(ast.parse(source)) == {"C"}) is generic
+
+
+@pytest.mark.parametrize(
+    ("source", "bare"),
+    [
+        (
+            "from typing import Generic, TypeVar\nT = TypeVar('T', default=int)\nclass C(Generic[T]): ...",
+            True,
+        ),
+        ("from typing import Generic, TypeVar\nT = TypeVar('T')\nclass C(Generic[T]): ...", False),
+        ("from typing import Generic\nfrom other import T\nclass C(Generic[T]): ...", False),  # unknown here
+        ("class C(Base['C']): ...\nclass Base: ...", True),  # no type variable: not generic at all
+    ],
+)
+def test_a_generic_class_whose_every_parameter_has_a_default_is_written_bare(
+    source: str,
+    *,
+    bare: bool,
+) -> None:
+    """A type checker reads it with the defaults: `C`, not `C[int]`."""
+    tree: ast.Module = ast.parse(source)
+    assert (_CLASS not in generic_classes(tree, defaulted_type_vars(tree))) is bare
+    assert _CLASS in generic_classes(tree) or _GENERIC not in source
+
+
+@pytest.mark.skipif(sys.version_info < (3, 13), reason="type parameter defaults are Python 3.13's")
+def test_a_type_parameter_lists_defaults_are_read() -> None:
+    """`class C[T = int]`: every one with a default, or not."""
+    tree: ast.Module = ast.parse("class C[T = int]: ...\nclass D[T = int, S]: ...")
+    assert generic_classes(tree, frozenset()) == {"D"}
+
+
+_DEFAULTED_TYPES: str = """
+from typing import Generic, TypeVar
+
+K = TypeVar("K", default=str)
+"""
+_DEFAULTED_CLASSES: str = """
+from typing import Generic
+
+from pkg.types import K
+import pkg.types as t
+
+class Keyed(Generic[K]):
+    def size(self) -> int: ...
+
+class Spelled(Generic[t.K]): ...
+
+def make() -> Keyed:
+    return Keyed()
+"""
+_DEFAULTED_USER: str = """
+from pkg.classes import Keyed, make
+
+def run() -> None:
+    made = make()
+    size = made.size()
+"""
+
+
+def test_another_files_type_variable_with_a_default_leaves_its_class_written_bare(tmp_path: Path) -> None:
+    """`K = TypeVar("K", default=str)` imported from another file, by name or through its module."""
+    (tmp_path / "pkg").mkdir()
+    sources: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/types.py": _DEFAULTED_TYPES,
+        "pkg/classes.py": _DEFAULTED_CLASSES,
+        "user.py": _DEFAULTED_USER,
+    }
+    name: str
+    source: str
+    for name, source in sources.items():
+        _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.classes"].generics == frozenset()
+    assert project.defaulted(catalog, tmp_path / "pkg" / "classes.py") == {"K", "t.K"}
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    written: str = (
+        textwrap.dedent(_DEFAULTED_USER)
+        .replace("    made = ", "    made: Keyed = ")
+        .replace("    size = ", "    size: int = ")
+    )
+    assert (tmp_path / "user.py").read_text(encoding="utf-8") == written
+
+
+_BOUND_BASES: str = """
+from typing import Generic, TypeVar
+
+from pkg.types import Buffer
+
+T = TypeVar("T")
+
+class Base(Generic[T]):
+    def get(self) -> T: ...
+
+class Codec(Base[Buffer]):
+    def size(self) -> int: ...
+
+class Unseen(Base[Missing]): ...  # a name nothing binds: it may be a type variable
+
+def make() -> Codec:
+    return Codec()
+
+def own() -> None:
+    made = make()
+"""
+_MADE_BARE: Final = "    made: Codec = make()"
+_BOUND_USER: str = """
+from pkg.codecs import make
+
+def run() -> None:
+    made = make()
+"""
+
+
+def test_a_class_whose_bases_name_another_modules_class_is_written_bare(tmp_path: Path) -> None:
+    """`class Codec(Base[Buffer])`, `Buffer` another file's class: it binds its parameter, in either file."""
+    (tmp_path / "pkg").mkdir()
+    sources: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/types.py": "class Buffer: ...\n",
+        "pkg/codecs.py": _BOUND_BASES,
+        "user.py": _BOUND_USER,
+    }
+    name: str
+    source: str
+    for name, source in sources.items():
+        _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.codecs"].generics == {"Base", "Unseen"}
+    assert project.defaulted(catalog, tmp_path / "pkg" / "codecs.py") == {"Buffer"}
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    # An import of `Codec` added for it, in the file that doesn't define it.
+    assert _MADE_BARE in (tmp_path / "user.py").read_text(encoding="utf-8")
+    assert _MADE_BARE in (tmp_path / "pkg" / "codecs.py").read_text(encoding="utf-8")

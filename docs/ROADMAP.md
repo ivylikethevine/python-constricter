@@ -45,6 +45,13 @@ measure before building.
 **What the next mega run reads**: the runner's order against the solver's shortest, for a run with
 no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
 
+**The census by the tree with the items below from the subscripted bases on, a corpus at a time**
+(`scratch/census_compare.py`, one process on 16CPU/60GB, against the mega run of 2026-10-28's rows;
+`local/.venv`'s packages, not each corpus's own environment): bindings with no fix, xarray 14,326 to
+11,247 (−21.5%), sqlalchemy 10,140 to 9,847, dask 18,356 to 18,256, pdm 1,243 to 1,131, zarr 1,218
+to 1,129, streamlink 2,097 to 2,060, pydantic 1,521 to 1,512, networkx 16,046 to 16,051 (31 lost are
+`matplotlib`'s, which `local/.venv` doesn't install and the run's environment did).
+
 1. **Eight mechanisms, counted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
      against `bytes` alone, with no argument's type known, takes its `str` signature's return
@@ -168,10 +175,156 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between.
+3. **A class under a base that binds its parameters.** Any subscripted base made a checked file's
+   class generic, so `class Dataset(Mapping[Hashable, "DataArray"])` was never written bare (xarray's
+   1,244 `Dataset()` calls `declined`, 5,727 such calls on the 47 corpora) and none of its members was
+   read. A subscripted base is generic now only where its subscript may pass a type variable
+   (`concrete.binds_all`, [FIXES.md](FIXES.md)): 1,533 of the corpora's 2,594 classes under one
+   (2,594 counted with `class C[T]` left out). Measured with `scratch/fix_diff.py` and
+   `scratch/fix_errors.py`, one process on 16CPU/60GB: pydantic 1,131 fixes, unchanged; xarray 6,520
+   to 9,067 (+2,550, 3 changed tier), basedpyright's errors after `--fix --unsafe-fixes` 2,303 from
+   2,301: `rolling_obj.mean.__doc__` a `str | None` its test reads with `in`, and
+   `xarray/structure/merge.py:840`'s `datasets: list[DatasetView]` written with no import, reached
+   through `DataTree.dataset` (`DataTree` was generic before), which **The members of a class
+   imported for type checking alone** below mends: the import is written now under
+   `if TYPE_CHECKING:`. Left:
+   the classes whose subscripts name another module's names the module never uses as a class (313
+   of the corpora's), settled through the index as `installed._generics` settles an installed
+   module's: built since (`modules.concrete_in`, with `settled`), a class whose every such name is a
+   class or a type alias where it's defined, or a type variable with a default, is written bare,
+   in the files importing it and its own (`project.defaulted`); its members aren't read, as its
+   module reads it before the index does. With it (and every item below, as measured there):
+   sqlalchemy 2,287 to 2,335 fixes, zarr 1,198 (from 1,109 at HEAD), streamlink +36 at HEAD;
+   basedpyright's errors after `--fix --unsafe-fixes`: sqlalchemy 2,287 from 2,288, zarr unchanged,
+   streamlink 239 from 238 (`tvip: str`, a `rebound` guess at HEAD too, its later value now seen as
+   `... | None`). Done when the
+   mega run's census and new type errors cover it. Coverage: xarray's fixes reach 18% of its bindings
+   with no fix; at least 1% on the corpora. Timed once with the items below (one process on
+   16CPU/60GB, not tuned): xarray's check 20.0s from 17.7s, with every class it now reads;
+   sqlalchemy's 8.8s from 8.4s.
+4. **A `dict`'s `get` and `pop` given a default.** `d.get(k, [])` on a `dict[str, list[int]]` had
+   no fix, nor `d.pop(k, None)`: a literal or empty-display default now types the call as a
+   checker picks typeshed's overload (`returns._defaulted`, [FIXES.md](FIXES.md)). The census's
+   `member` calls of `get` or `pop` with such a default: 199 on the 47 corpora (sqlalchemy 29,
+   sphinx 19, pdm 16), not all on a known `dict`. pdm (`scratch/fix_diff.py`, one process on
+   16CPU/60GB): 2 of its 7 new fixes, basedpyright's errors after `--fix --unsafe-fixes` unchanged
+   (144). Done when the mega run's census covers it. Coverage under 0.1%.
+5. **Names a chain of star imports re-exports.** `nx.complement(G)`, `from networkx import Graph`
+   and `nx.Graph().nodes()` were typed only where the name was imported by name on the way: a
+   package taking it by `from .algorithms import *`, which takes it from `.operators` the same way,
+   was followed for spelling a type (`canonical_origin`) but one star deep, and not at all where a
+   call's return or a class's members are looked up (`project.definition`, `spelling.spellings`,
+   `crossed.spelled_classes`). Followed now, `HOPS` deep (`project.starred_origin`,
+   `starred_names`), and a class the file then writes two ways (`nx.Graph`,
+   `nx.classes.graph.Graph`) is one class where `reads` asks which class a parameter is
+   (`reads._merge_spellings`), not two that each have the members. The census's `imported` calls
+   inside their own package: networkx 4,158, dask 3,336. Measured with `scratch/fix_diff.py`, one
+   process on 16CPU/60GB, with the subscripted bases and the `dict` defaults: networkx 6,257 to 6,263 fixes (its functions' returns
+   seldom decide one type: what `returned` gives is little), dask 5,119 to 5,152 (+33),
+   basedpyright's new errors on dask 8 (`scratch/fix_errors.py`), all from one `--likely` guess,
+   `layers: Mapping[str, Layer]` (`HighLevelGraph.layers`' own annotation, read now that
+   `HighLevelGraph` is a plain class), whose elements dask reads subclasses' attributes of. Not
+   followed: a module's `__all__`, which a star import keeps to. networkx's errors after
+   `--fix --unsafe-fixes` with every item here: 2,750, unchanged. Done when the mega run's census
+   covers it. Coverage under 0.1% as measured; more where a star-exported function's `return`s
+   decide its type.
+6. **A docstring's named return** (`documented`, a guess). The roadmap's "numpydoc Returns
+   sections", built for builtin scalars alone: a numpydoc `Returns` section of one entry, a
+   Google-style `Returns:` or a Sphinx `:rtype:` naming `int`, `float`, `bool`, `str`, `bytes` or
+   `complex`, or one `or None`, types a plain unannotated function's calls where its `return`s
+   decide nothing and none gives a value the type doesn't take (`fix/values/documented.py`). A
+   method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
+   out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
+   32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
+   vouches gives its function back. nibabel (`scratch/fix_diff.py`, one process on 16CPU/60GB):
+   2,427 to 2,448 fixes, 14 of them `documented`; networkx 1. Not read: a docstring naming a
+   class (`NetworkX graph`, 391 of networkx's), a container (`dict`, `list of int`), several
+   entries. basedpyright's errors after `--fix --unsafe-fixes` on nibabel, with every item here: 33
+   new and 24 gone, five of the new from `documented` guesses naming `int` or `float` where numpy's
+   own scalars come back (`_fread3`, `mask_volume`): `np.int64` is no `int` to a checker, which
+   the witness tells of too. `offences.py` is one of the tables' inputs: `test_tables_current` waits on
+   `python -m stdlib_tables --if-stale`. Done when the mega run's witness reads its guesses against
+   [LIKELY.md](LIKELY.md)'s bars. Coverage under 0.1%.
+7. **A text's operator with a value of no known type** (`operand`, a guess). `"pre-" + x`,
+   `x + ".pyc"`, `" " * n` and `b"\x00" * n` had no fix: typed now as the text, as a checker takes
+   them (`inference._with_text`), a guess, and one only where the value's type rests on it
+   (`guesses._rests_on_operands`: typed again with those operators unknown, a call taking one as an
+   argument stays as it was, certain or a `text` guess). The census's unfixed binops with a `str`
+   or `bytes` literal on one side: 577 on the 47 corpora (`x + "lit"` 334, `"lit" + x` 153). pip
+   (`scratch/fix_diff.py`, one process on 16CPU/60GB): 2,471 to 2,501 fixes, 7 changed (two
+   certain ones naming `operand` in their kinds too, through an argument; three guesses changing
+   tier through a copy of one); basedpyright's errors after `--fix --unsafe-fixes` 2,436 from
+   2,435, the new one `pat: re.Pattern[str]` where the module binds `str` itself
+   (`from .compat import str`, requests' Python 2 shim): a standard-library type naming a builtin
+   the module rebinds is still written (left to do). pip's other 95 `reportInvalidTypeForm` errors
+   are as before: 93 names its type comments use that basedpyright reads as variables
+   (`RawConfigParser`, bound under `if MYPY_CHECK_RUNNING:` to `six.moves`' class, which it can't
+   resolve). Done when the witness reads its guesses. Coverage about 0.2%.
+8. **The members of a class imported for type checking alone.** A file importing a class only under
+   `if TYPE_CHECKING:` took none of its members: `info.size()` on an `info: Info` parameter had no
+   fix where `Info` came that way, though the same import at run time typed it. The file's own
+   type-checking imports are taken now as its run-time ones are (`crossed.imported`). Measured with
+   `scratch/fix_diff.py`, one process on 16CPU/60GB, with the items above it here: pydantic 1,131 to 1,141;
+   xarray 9,067 to 9,122 with it. Done when the mega run's census and new type errors cover it.
+   Coverage under 0.1% on the corpora measured; more in typed code that imports this way.
+9. **A generic class whose every parameter has a default.** sqlalchemy's `FromClause`,
+   `Generic[_KeyColCC_co]` with `_KeyColCC_co = TypeVar(..., default=...)` in another module, was
+   never written bare, as no checked file's generic class was (the standard library's with defaults
+   was): a type checker reads it bare with its defaults. Taking type-checking imports had exposed it, taking 11 certain
+   fixes sqlalchemy's files had written bare through a type-checking import. Each module now
+   records its type variables with a default and what each generic class's bases name that may be
+   one, and the index drops from its `generics` the classes whose every such name resolves to one
+   (`modules.settled`, `defaulted_in`); a file's own classes take the names it imports
+   (`project.defaulted`). sqlalchemy (`scratch/fix_diff.py`, one process on 16CPU/60GB, with
+   the items above it here): 2,091 to 2,263 fixes, one guess lost; basedpyright's errors after
+   `--fix --unsafe-fixes` 2,287 from 2,288 (`scratch/fix_errors.py`), none new. A class whose
+   `Generic[...]` or `Protocol[...]` lists another module's type variable had no parameters
+   (`declarations._params` took the module's own alone), so none of its members was read, bare or
+   given its arguments: such a listing's arguments are its parameters now, whichever module
+   defines them (nothing else runs there), and a member naming another type variable the file
+   imports is left out (`generic_members`' `imported`). 77 of sqlalchemy's generic classes and 28
+   of xarray's list one. With it: sqlalchemy 2,287 fixes, errors 2,287 as above; xarray 9,122 to
+   9,317, basedpyright's errors 2,305 from 2,301 (6 new, 2 gone): `res_add: str` for xarray's
+   `.str` accessor's `+` (an `operand` guess), `unit: int` where `_total_microseconds`' docstring
+   says `int` for a `/` (a stale `documented` guess), two `np.dtype` constructor guesses read as
+   possibly unbound, an argument of `lexsort` and the `__doc__` read the subscripted bases brought. Done when the mega
+   run's census and new type errors cover it. Coverage: sqlalchemy's fixes reach 1.9% more of its
+   bindings with no fix, xarray's 1.4% more than the subscripted bases alone.
+10. **A standard-library base's single-underscore members.** The tables held a class's public
+    members alone, so `self._expand_help(action)` in an `argparse.HelpFormatter` subclass, which
+    typeshed declares `-> str`, had no fix: they hold its `_private` ones too now (not a dunder
+    other than `__enter__`, `__aenter__` and `__getitem__`, nor a mangled `__x`;
+    `stdlib_tables/reading._read`). 129 more methods in `methods.json`. Measured in a scratch
+    mirror whose tables were generated so (`/measure-corpus`), one process on 16CPU/60GB: pdm
+    1,451 to 1,457, pip 2,503 to 2,506, the standard library 45,790 to 45,805, pydantic unchanged,
+    none lost. The repository's tables wait on `python -m stdlib_tables --if-stale`. Coverage under
+    0.1%.
+11. **Overloads that agree on their return.** A checked file's overloaded function was matched by
+    its arguments' types alone, so `DataTree.from_dict(groups)`, each overload a classmethod
+    returning `Self`, had no fix where `groups` had no known type (276 such calls on xarray). The
+    overloads all declaring one return, and the implementation that one or none, it's read as a
+    declared return (`usable.agreed`); a method HEAD typed by its arguments is typed by it now,
+    its kinds `method` for `call`. xarray (`scratch/census_compare.py`, one process on 16CPU/60GB):
+    bindings with no fix 11,257 from 11,529 with the items above; basedpyright's errors after
+    `--fix --unsafe-fixes` 2,304 (5 new, 2 gone, none from it); sqlalchemy's 2,287, unchanged.
+    Coverage: xarray's fixes reach 1.9% more of its bindings with no fix.
+12. **`return`s of one type and of `None`.** `return item` in a loop then `return None` left the
+    call untyped: the check records `None` as of no known type, as it's no binding's fix, so the
+    two `return`s looked like one known and one unknown. Each recorded `return` is matched to the
+    function's own `return` statements in source order, `return None` and a bare `return` typed
+    `None`, and one type and `None` give `T | None`, a guess as a single `X | None` return is
+    (`returned._returned_types`, `_or_none`). django's bindings with no fix (`scratch/census_compare.py`,
+    one process on 16CPU/60GB) 11,709 from 11,712; pip's basedpyright errors after
+    `--fix --unsafe-fixes` one new: `toml`'s `_load_date`, whose `d` the check takes for a
+    `datetime` where one branch binds a `date`, typed so before as a single `return d` would be.
+    Coverage under 0.1%.
 
 ### Small: under 4 hours
 
-1. **`typing_extensions` in the standard-library tables.** The tables (generated from typeshed by
+1. **`typing_extensions` in the standard-library tables.** Measured on the mega run of 2026-10-28's
+   census: 37 calls with no fix into `typing_extensions` on the 47 corpora (`get_origin` 13,
+   `get_args` 8), whose returns are vague anyway; not worth the generator's change for now. The
+   tables (generated from typeshed by
    `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so a call through it
    (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class) gets no fix
    anywhere, and a module read as untyped was never meant to stand in (the mega run of 2026-10-27).
@@ -207,6 +360,32 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with no earlier run takes
    within a tenth of one of the same steps sized by its own records (`scratch/schedule_solve.py`).
    About 3 hours beside the runs; coverage unchanged.
+
+4. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
+   declared `def query_one(self, selector: str, kind: type[T]) -> T`, has no fix: a checked file's
+   function whose return names a type variable is never read (`own_overloads`: "no overload of a
+   checked file's binds a type variable"), where a checker binds `T` to the class passed. Certain
+   where the return is the type variable alone, a parameter is `type[T]` alone, and the argument
+   names a class (the module's, another checked file's, a builtin or the standard library's):
+   the argument's own text. 98 such definitions on the mega corpora's sources (textual 18, cattrs
+   14, zarr 10, litestar 9). About 3 hours; coverage under 0.1%.
+
+5. **No type naming a builtin the module binds itself** (a proposal: it withdraws fixes). A
+   standard-library type is written with the builtins it names whatever the module binds:
+   `pat: re.Pattern[str]` where `from .compat import str` (requests' Python 2 shim), which
+   basedpyright reads as a variable ("Variable not allowed in type expression"). Tried: refuse a
+   fix whose type names a builtin the module binds at its top level (`ImportPlan.defined`, in
+   `doubts.corrected`). pip (`scratch/fix_diff.py`, `scratch/fix_errors.py`, one process on
+   16CPU/60GB): 21 fixes withdrawn, basedpyright's errors 20 fewer, none new. Not kept: it narrows
+   what `--fix` offers, so it waits on a decision. About an hour; coverage down by those fixes.
+
+6. **A copy of a name each branch binds to another type** (a finding: changing it narrows
+   fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
+   (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
+   `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
+   or the one every value fits as `rebound` takes it) would type them as a checker does, and
+   withdraw or change the fixes that rest on the last branch alone. Measure first: how many
+   `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
 
 ### Medium: 4 to 8 hours
 

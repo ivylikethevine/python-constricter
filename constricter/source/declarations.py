@@ -11,11 +11,13 @@ from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.source.annotations import is_vague, node_name, words
+from constricter.source.annotations import node_name, words
+from constricter.source.concrete import binds_all, unbound_names
 from constricter.source.decorators import Held, passing, spelled
 from constricter.source.keys import key, keys
 from constricter.source.quoted import written
-from constricter.source.syntax import child_statements, declared_return, top_level
+from constricter.source.syntax import child_statements, top_level
+from constricter.source.usable import OVERLOADS, agreed, usable_return
 
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
 # Each module's classes and type variables, for as long as its tree lives: every class table
@@ -41,6 +43,8 @@ _UNDECORATED: Final[frozenset[str]] = frozenset()  # no decorators: a plain meth
 _GENERIC_BASES: Final = frozenset({"Generic", "Protocol"})  # a base that lists a class's type parameters
 _TYPE_VAR: Final = "TypeVar"  # the node class of a plain type parameter (`ast.TypeVar`, Python 3.12+)
 _GET: Final = "__get__"  # a descriptor's: what an instance's attribute of it gives
+_DEFAULT: Final = "default"  # a type variable's default, as `TypeVar` takes it
+_NO_NAMES: Final[frozenset[str]] = frozenset()
 
 
 class GenericClass(NamedTuple):
@@ -192,7 +196,7 @@ def classes(tree: ast.Module) -> dict[str, dict[str, str]]:
         if (called := _called_keys(node)) is not None:
             keyed.add(node.name)
             found[node.name] = called
-        elif not _generic(node) and any(
+        elif not _generic(node, tree) and any(
             node_name(base) == _TYPED_DICT or (isinstance(base, ast.Name) and base.id in keyed)
             for base in node.bases
         ):
@@ -253,7 +257,7 @@ def class_attributes(tree: ast.Module) -> dict[str, dict[str, str]]:
     annotation: ast.expr
     value: ast.expr | None
     for node in _class_nodes(tree):
-        if not _generic(node):
+        if not _generic(node, tree):
             attrs: dict[str, str] = {}
             for stmt in node.body:
                 match stmt:
@@ -485,7 +489,7 @@ def _class_returns(
     found: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in _class_nodes(tree):
-        if not _generic(node):
+        if not _generic(node, tree):
             found[node.name] = {
                 name: node.name if _is_self(annotation) else annotation
                 for name, annotation in (_partial_returns if partly else _declared_returns)(
@@ -522,14 +526,90 @@ def self_returns(tree: ast.Module) -> dict[str, frozenset[str]]:
     }
 
 
-def generic_classes(tree: ast.Module) -> frozenset[str]:
+def generic_classes(tree: ast.Module, defaulted: frozenset[str] | None = None) -> frozenset[str]:
     """Find the generic classes the module defines (see `_generic`).
+
+    `defaulted`: the type variables with a default it names (`TypeVar("T", default=int)`): a class
+    whose every parameter is one of them is left out, as a type checker reads it bare with those
+    (see `generic_names`); `None`, every generic class.
 
     Returns:
       Their names: written bare, as `--fix` would write `self`'s type, each is missing its arguments.
 
     """
-    return frozenset(node.name for node in _class_nodes(tree) if _generic(node))
+    return frozenset(
+        node.name
+        for node in _class_nodes(tree)
+        if _generic(node, tree) and (defaulted is None or not _all_defaulted(node, tree, defaulted))
+    )
+
+
+def generic_names(tree: ast.Module) -> dict[str, frozenset[str]]:
+    """Name what each generic class's subscripted bases name that may be a type variable (`Generic[T]`'s `T`).
+
+    Not a `class C[T]`'s, whose parameters say whether they have a default themselves.
+
+    Returns:
+      Each such class's name, and those names, as written.
+
+    """
+    type_vars: frozenset[str] = defined_type_vars(tree)
+    return {
+        node.name: _unbound(node, tree, type_vars)
+        for node in _class_nodes(tree)
+        if not getattr(node, "type_params", ()) and _generic(node, tree)
+    }
+
+
+def _unbound(node: ast.ClassDef, tree: ast.Module, type_vars: frozenset[str]) -> frozenset[str]:
+    """Name what a class's subscripted bases name that may be a type variable (see `concrete.unbound_names`).
+
+    Returns:
+      Them.
+
+    """
+    subscripted: list[ast.expr] = [base.slice for base in node.bases if isinstance(base, ast.Subscript)]
+    return frozenset[str]().union(*(unbound_names(each, tree, type_vars) for each in subscripted))
+
+
+def _all_defaulted(node: ast.ClassDef, tree: ast.Module, defaulted: frozenset[str]) -> bool:
+    """Check whether every type parameter a generic class may have has a default.
+
+    `class C[T = int]`'s own, or else each name its subscripted bases name that may be a type
+    variable, of `defaulted`.
+
+    Returns:
+      Whether it has.
+
+    """
+    params: list[ast.AST]
+    if params := list(cast("list[ast.AST]", getattr(node, "type_params", []))):
+        return all(getattr(param, "default_value", None) is not None for param in params)
+    names: frozenset[str] = _unbound(node, tree, defined_type_vars(tree))
+    return bool(names) and names <= defaulted
+
+
+def defaulted_type_vars(tree: ast.Module) -> frozenset[str]:
+    """Find the module-level names bound to a type variable with a default (`TypeVar("T", default=int)`).
+
+    Returns:
+      Those names.
+
+    """
+    names: set[str] = set()
+    stmt: ast.stmt
+    name: str
+    func: ast.expr
+    keywords: list[ast.keyword]
+    for stmt in top_level(tree.body):  # under an `if TYPE_CHECKING:` too
+        match stmt:
+            case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func, keywords=keywords)) if (
+                node_name(func) in _TYPE_VARS and any(keyword.arg == _DEFAULT for keyword in keywords)
+            ):
+                names.add(name)
+            case _:
+                pass
+    return frozenset(names)
 
 
 def descriptors(tree: ast.Module) -> dict[str, str | None]:
@@ -556,27 +636,31 @@ def descriptors(tree: ast.Module) -> dict[str, str | None]:
     return found
 
 
-def _generic(node: ast.ClassDef) -> bool:
-    """Check whether a class is generic: `class C[T]`, or any subscripted base like `Generic[T]`.
+def _generic(node: ast.ClassDef, tree: ast.Module) -> bool:
+    """Check whether a class is generic: `class C[T]`, or a subscripted base that may pass a type variable.
+
+    A base whose subscript names only what can't be one binds every parameter it inherits
+    (`class Dataset(Mapping[Hashable, "DataArray"])`): see `concrete.binds_all`.
 
     Returns:
       Whether it is: its members' types then depend on how it's parameterised.
 
     """
     return bool(cast("object", getattr(node, "type_params", ()))) or any(  # Python 3.12+'s `class C[T]`
-        isinstance(base, ast.Subscript) for base in node.bases
+        isinstance(base, ast.Subscript) and not binds_all(base.slice, tree, defined_type_vars(tree))
+        for base in node.bases
     )
 
 
-def generic_members(tree: ast.Module) -> dict[str, GenericClass]:
+def generic_members(tree: ast.Module, imported: frozenset[str] = _NO_NAMES) -> dict[str, GenericClass]:
     """Read each generic class the module defines once: its type parameters and members' types.
 
-    Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base, or else
-    the type variables its subscripted bases name, in the order they first do (`class C(Base[K, V])`);
-    one listing a type variable it doesn't define as one, none. Its members are typed as
+    Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base lists
+    (whichever module defines them), or else the type variables it defines that its subscripted
+    bases name, in the order they first do (`class C(Base[K, V])`). Its members are typed as
     `classes` and `method_returns` type a plain class's, but for its own parameters: a member whose
-    type names any other type variable is left out (`def get(self, d: D) -> T | D`), as is one that
-    mentions `Self` other than bare.
+    type names any other type variable, the module's or one of `imported` (those it imports), is
+    left out (`def get(self, d: D) -> T | D`), as is one that mentions `Self` other than bare.
 
     Returns:
       Each class's name, and what it declares.
@@ -588,10 +672,10 @@ def generic_members(tree: ast.Module) -> dict[str, GenericClass]:
     found: dict[str, GenericClass] = {}
     vouched: frozenset[str] = _passing(tree)
     for node in _class_nodes(tree):
-        params: tuple[str, ...] = _params(node, type_vars) if _generic(node) else ()
+        params: tuple[str, ...] = _params(node, type_vars) if _generic(node, tree) else ()
         if not params or counts[node.name] > 1:
             continue
-        others: frozenset[str] = type_vars - frozenset(params)
+        others: frozenset[str] = (type_vars | imported) - frozenset(params)
         methods: dict[str, str] = _declared_returns(node.body, others, vouched=vouched)
         attributes: dict[str, str] = {
             **_declared_returns(node.body, others, decorators=_PROPERTIES, vouched=vouched),
@@ -652,8 +736,9 @@ def _params(node: ast.ClassDef, type_vars: frozenset[str]) -> tuple[str, ...]:
     """Name a generic class's type parameters, in order (see `generic_members`).
 
     Returns:
-      Them; none where one isn't a type variable the module defines, or is a `ParamSpec` or a
-      `TypeVarTuple`.
+      Them: a `Generic[...]`'s or `Protocol[...]`'s arguments, or else the type variables the module
+      defines that its subscripted bases name; none where one is a `ParamSpec` or a
+      `TypeVarTuple` (`*Ts`), or a listed argument isn't a name.
 
     """
     listed: list[ast.AST]
@@ -661,22 +746,24 @@ def _params(node: ast.ClassDef, type_vars: frozenset[str]) -> tuple[str, ...]:
         plain: bool = all(type(each).__name__ == _TYPE_VAR for each in listed)
         return tuple(cast("str", getattr(each, "name", "")) for each in listed) if plain else ()
     subscripted: list[ast.Subscript] = [base for base in node.bases if isinstance(base, ast.Subscript)]
-    listing: list[ast.Subscript] = [base for base in subscripted if node_name(base.value) in _GENERIC_BASES]
-    names: list[str] = []
-    base: ast.Subscript
-    for base in listing or subscripted:
-        part: ast.AST
-        for part in ast.walk(base.slice):
-            if isinstance(part, ast.Name) and part.id in type_vars and part.id not in names:
-                names.append(part.id)
-    if listing:
+    listing: list[ast.Subscript]
+    # Each a type variable, whichever module defines it: Python takes nothing else there.
+    if listing := [base for base in subscripted if node_name(base.value) in _GENERIC_BASES]:
         args: list[ast.expr] = [
             arg
             for each in listing
             for arg in (each.slice.elts if isinstance(each.slice, ast.Tuple) else [each.slice])
         ]
-        if not all(isinstance(arg, ast.Name) and arg.id in type_vars for arg in args):
+        if not all(isinstance(arg, ast.Name) for arg in args):
             return ()
+        return tuple(dict.fromkeys(cast("ast.Name", arg).id for arg in args))
+    names: list[str] = []
+    base: ast.Subscript
+    for base in subscripted:
+        part: ast.AST
+        for part in ast.walk(base.slice):
+            if isinstance(part, ast.Name) and part.id in type_vars and part.id not in names:
+                names.append(part.id)
     return tuple(names)
 
 
@@ -807,28 +894,24 @@ def _every_return(
       part.
 
     """
-    counts: Counter[str] = Counter()
-    found: dict[str, tuple[str, bool]] = {}
+    defined: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
     stmt: ast.stmt
-    name: str
     for stmt in body:
-        match stmt:
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) if not _accessor(stmt):
-                counts[name] += 1
-                declared: tuple[str, bool] | None = _usable_return(stmt)
-                if (
-                    declared is not None
-                    and isinstance(stmt, ast.AsyncFunctionDef) == awaited
-                    and _plain(stmt, decorators, vouched)
-                ):
-                    found[name] = declared
-            case _:
-                pass
-    return {
-        name: read
-        for name, read in found.items()
-        if counts[name] == 1 and not type_vars & set(words(read[0]))
-    }
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef) and not _accessor(stmt):
+            defined.setdefault(stmt.name, []).append(stmt)
+    found: dict[str, tuple[str, bool]] = {}
+    name: str
+    defs: list[ast.FunctionDef | ast.AsyncFunctionDef]
+    for name, defs in defined.items():
+        declared: tuple[str, bool] | None = usable_return(defs[0]) if len(defs) == 1 else agreed(defs)
+        if (
+            declared is not None
+            and isinstance(defs[-1], ast.AsyncFunctionDef) == awaited
+            and _plain(defs[-1], decorators, vouched)
+            and all(_plain(each, decorators, vouched, ignored=OVERLOADS) for each in defs[:-1])
+        ):
+            found[name] = declared
+    return {name: read for name, read in found.items() if not type_vars & set(words(read[0]))}
 
 
 def _accessor(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -848,39 +931,23 @@ def _plain(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     decorators: frozenset[str],
     vouched: frozenset[str] | None,
+    *,
+    ignored: frozenset[str] = _NO_NAMES,
 ) -> bool:
     """Check that `func` is decorated as asked, for its declared return to type its calls.
+
+    `ignored`: decorators passed over (an overload's `@overload`).
 
     Returns:
       Whether it is: decorated by exactly one of `decorators` (if any), and otherwise only as
       `vouched` spells (`None`: by anything spelled).
 
     """
-    others: list[ast.expr] = [d for d in func.decorator_list if node_name(d) not in decorators]
+    listed: list[ast.expr] = [d for d in func.decorator_list if node_name(d) not in ignored]
+    others: list[ast.expr] = [d for d in listed if node_name(d) not in decorators]
     spellings: list[str | None] = [spelled(decorator) for decorator in others]
     return (
-        len(func.decorator_list) - len(others) == bool(decorators)
+        len(listed) - len(others) == bool(decorators)
         and None not in spellings
         and (vouched is None or vouched.issuperset(spellings))
     )
-
-
-# By the function alone: each class's body is read for its methods, its properties, its
-# classmethods and those held back, and a function's declared return is the same to them all.
-@lru_cache(maxsize=4096)
-def _usable_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, bool] | None:
-    """Read the return type `func` declares, if its calls always have it.
-
-    Returns:
-      Its annotation as source text, and whether it has a vague part (`tuple[Row, dict[str, Any]]`,
-      `Any`); `None` for a generic function, no return, or `None`.
-
-    """
-    declared: ast.expr | None = declared_return(func)
-    if (
-        cast("object", getattr(func, "type_params", ()))  # Python 3.12+'s `def f[T]()`
-        or declared is None
-        or (isinstance(declared, ast.Constant) and declared.value is None)
-    ):
-        return None
-    return written(declared), is_vague(declared)

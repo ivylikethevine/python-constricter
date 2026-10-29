@@ -71,6 +71,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         classes=crossed.guarded_classes(modules, path, imported, guarded),
         hints=hints,
         type_vars=project.type_vars(modules, path),
+        defaulted=project.defaulted(modules, path),
         returned=awaits.returned(
             modules,
             path,

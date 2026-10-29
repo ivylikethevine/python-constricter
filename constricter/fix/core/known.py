@@ -579,6 +579,7 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     classes: Classes | None = None
     hints: tuple[Hints, ...] = ()  # each checker's, in the order they were named
     type_vars: frozenset[str] = frozenset()
+    defaulted: frozenset[str] = frozenset()  # those of them with a default (see `project.defaulted`)
     returned: Returns = field(default_factory=Returns)
     guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     generics: frozenset[str] = frozenset()  # other checked files' generic classes, as it spells them

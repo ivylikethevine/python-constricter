@@ -13,7 +13,16 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Returns
 from constricter.fix.index.modules import Index, Memo, Module, classes_under, exported, module_at
-from constricter.fix.index.project import BUILTINS, CLASS, HOPS, NO_TYPE, PARTIAL, Imported, definition
+from constricter.fix.index.project import (
+    BUILTINS,
+    CLASS,
+    HOPS,
+    NO_TYPE,
+    PARTIAL,
+    Imported,
+    definition,
+    starred_names,
+)
 from constricter.fix.index.spelling import (
     calls,
     generic_portable,
@@ -62,7 +71,15 @@ def imported(
     checking: dict[str, Origin] = {
         name: found.origin for name, found in guarded.items() if name not in target.names
     }
+    # What it imports for type checking alone, `if TYPE_CHECKING:`: a parameter annotated with one is one.
+    own: dict[str, Origin] = {
+        name: origin
+        for name, origin in target.guarded.items()
+        if name not in target.names and name not in checking and origin[0] != target.name
+    }
     _take(catalog, target, (checking, attributes), taken, guarded)
+    if own:
+        _take(catalog, target, (own, attributes), taken, guarded)
     _take(catalog, target, (target.names, attributes), taken, guarded)
     found: tuple[dict[str, str], Returns, dict[str, str]] = (
         calls(catalog, path, guarded),
@@ -343,7 +360,9 @@ def _spelled_classes(
                 *classes_under(catalog, local, origin[0], CLASS),
                 *(
                     (f"{local}.{name}", where)
-                    for name, where in (() if package is None else exported(package).items())
+                    for name, where in (
+                        () if package is None else _reexported(catalog.modules, package).items()
+                    )
                     if (named[1] is None or name in named[1])
                     and where[1] is not None
                     and where[0] != origin[0]
@@ -356,6 +375,16 @@ def _spelled_classes(
             defined: tuple[Module, str] | None
             if (defined := definition(catalog.modules, where, CLASS)) is not None:
                 yield key, defined
+
+
+def _reexported(modules: Mapping[str, Module], module: Module) -> Mapping[str, Origin]:
+    """Name what a module imports from others, by name or everything (see `exported`, `starred_names`).
+
+    Returns:
+      Each, by its name there.
+
+    """
+    return {**starred_names(modules, module), **exported(module)} if module.stars else exported(module)
 
 
 def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -> Iterator[str]:
@@ -371,6 +400,6 @@ def _reexported_generics(modules: Mapping[str, Module], local: str, name: str) -
     module: Module | None = modules.get(name)
     reexported: str
     origin: Origin
-    for reexported, origin in () if module is None else exported(module).items():
+    for reexported, origin in () if module is None else _reexported(modules, module).items():
         if origin[1] is not None and origin[0] != name and is_generic(modules, origin):
             yield f"{local}.{reexported}"

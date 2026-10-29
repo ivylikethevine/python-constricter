@@ -162,6 +162,7 @@ def members(
     names: frozenset[str]
     for key, names in named.items():
         found[key] = Members(found[key].names | names if key in found else names, frozenset())
+    _merge_spellings(found, same)
     defined: dict[str, list[ast.ClassDef]] = {}
     stmt: ast.stmt
     for stmt in tree.body:
@@ -205,6 +206,20 @@ def _by_name(attributes: Iterable[ast.Attribute], *, stored: bool) -> dict[str, 
         each.sort()
         spans[name] = ([start for start, _ in each], [attr for _, attr in each])
     return spans
+
+
+def _merge_spellings(found: dict[str, Members], same: Iterable[frozenset[str]]) -> None:
+    """Keep a class `found` has by several spellings (`nx.Graph`, `nx.classes.graph.Graph`) by its shortest.
+
+    One class, so its members are read as one: `typed` would take its spellings for two classes.
+    """
+    group: frozenset[str]
+    for group in same:
+        present: list[str] = sorted(group & found.keys(), key=lambda name: (len(name), name))
+        extra: str
+        for extra in present[1:]:
+            merged: Members = found.pop(extra)
+            found[present[0]] = Members(found[present[0]].names | merged.names, found[present[0]].ancestors)
 
 
 def _imported(imported: Classes, same: Iterable[frozenset[str]]) -> dict[str, Members]:

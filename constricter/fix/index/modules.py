@@ -36,10 +36,12 @@ from constricter.source.annotations import dotted, is_composite, node_name
 from constricter.source.declarations import (
     GenericClass,
     awaited_returns,
+    defaulted_type_vars,
     defined_type_vars,
     descriptors,
     generic_classes,
     generic_members,
+    generic_names,
 )
 from constricter.source.decorators import Held, Pass, is_fixture, passing
 from constricter.source.keys import key, optional
@@ -49,6 +51,7 @@ from constricter.source.walked import of_type
 
 PACKAGE: Final = "__init__"
 _DOT: Final = "."
+_HOPS: Final = 5  # how many re-exports a type variable's default is followed through (`project.HOPS`)
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
@@ -91,6 +94,10 @@ class Module:  # pylint: disable=too-many-instance-attributes
     attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
     returned: Returns = field(default_factory=Returns)  # what they return, once it's checked
     generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    # What each one's subscripted bases name that may be a type variable, and its own type variables
+    # with a default: a class whose every such name is one, where it's defined, is written bare.
+    generic_names: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    defaulted: frozenset[str] = frozenset()
     # Its descriptors, each with what its `__get__` gives an instance (see `declarations.descriptors`).
     descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     # Its generic classes' type parameters and members' types (see `declarations.generic_members`).
@@ -316,7 +323,76 @@ def indexed(found: Iterable[Module | None]) -> Index:
             if module.name == CONFTEST and module.folder:
                 conftests[module.folder] = module
     repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
+    modules = {name: settled(modules, each) for name, each in modules.items()}
+    conftests = {folder: settled(modules, each) for folder, each in conftests.items()}
     return Index(modules, sorted(modules), repeated, conftests, Memo())
+
+
+def settled(modules: Mapping[str, Module], module: Module) -> Module:
+    """Drop the generic classes whose every type parameter has a default, or that have none at all.
+
+    `class FromClause(Generic[_KeyColCC_co])`, with `_KeyColCC_co = TypeVar(..., default=...)`
+    imported from another module: a type checker reads it bare with that default. And
+    `class Codec(BaseCodec[NDBuffer, Buffer])`, the names another module's classes: it binds every
+    parameter it inherits (see `concrete_in`).
+
+    Returns:
+      The module, its `generics` corrected.
+
+    """
+    bare: frozenset[str] = frozenset(
+        name
+        for name, names in module.generic_names.items()
+        if name in module.generics
+        and all(defaulted_in(modules, module, each) or concrete_in(modules, module, each) for each in names)
+    )
+    return replace(module, generics=module.generics - bare) if bare else module
+
+
+def concrete_in(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+    """Check whether `name` is a class or a type alias where it's defined: in `module`, or one it imports.
+
+    Followed as `defaulted_in` follows a type variable; a name its own module binds any other way
+    (a variable, which may be a type variable) or one out of the index's sight isn't.
+
+    Returns:
+      Whether it is.
+
+    """
+    root: str
+    rest: str
+    root, _, rest = name.partition(".")
+    if not rest and module.names.get(root) == (module.name, root):
+        return root not in module.type_vars and (root in module.classes or root in module.aliases)
+    origin: Origin | None = module.names.get(root) or module.guarded.get(root)
+    if origin is None or origin[0] == module.name or not hops:
+        return False
+    attribute: str = rest if origin[1] is None else _DOT.join(part for part in (origin[1], rest) if part)
+    onward: Module | None = modules.get(origin[0])
+    return onward is not None and bool(attribute) and concrete_in(modules, onward, attribute, hops - 1)
+
+
+def defaulted_in(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+    """Check whether `name` is a type variable with a default in `module`: its own, or one it imports.
+
+    Followed through re-exports, and through a module it imports whole (`t.T`).
+
+    Returns:
+      Whether it is (unknown: no).
+
+    """
+    root: str
+    rest: str
+    root, _, rest = name.partition(".")
+    if not rest and name in module.defaulted:
+        return True
+    origin: Origin | None = module.names.get(root) or module.guarded.get(root)
+    if origin is None or origin[0] == module.name or not hops:
+        return False
+    # `import pkg.types as t` then `t.T`: `T` there; `from pkg.types import T`: `pkg.types`'s `T`.
+    attribute: str = rest if origin[1] is None else _DOT.join(part for part in (origin[1], rest) if part)
+    onward: Module | None = modules.get(origin[0])
+    return onward is not None and bool(attribute) and defaulted_in(modules, onward, attribute, hops - 1)
 
 
 def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
@@ -338,7 +414,10 @@ def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
         before: Module | None
         if (before := conftests[again.folder] if local else modules.get(again.name)) is None:
             continue
-        module: Module = replace(again, returned=before.returned, parameters=before.parameters)
+        module: Module = settled(
+            modules,
+            replace(again, returned=before.returned, parameters=before.parameters),
+        )
         if local:
             conftests[module.folder] = module
         if modules.get(module.name) is before if local else module.name not in catalog.repeated:
@@ -374,6 +453,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     named: str = name or module_name(path)
     is_package: bool = path.stem == PACKAGE
     aliases: dict[str, bool] = _aliases(tree)
+    defaulted: frozenset[str] = defaulted_type_vars(tree)
     type_vars: frozenset[str] = defined_type_vars(tree)
     names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
     names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
@@ -389,7 +469,9 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
         called=_called(tree, names),
-        generics=generic_classes(tree),
+        generics=generic_classes(tree, defaulted),
+        generic_names={name: names for name, names in generic_names(tree).items() if names},
+        defaulted=defaulted,
         descriptors=descriptors(tree),
         generic_members={} if installed else generic_members(tree),
         loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),

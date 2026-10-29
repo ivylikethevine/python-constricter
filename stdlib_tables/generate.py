@@ -17,7 +17,8 @@ comes out the same for all twelve:
 - `any_str`: functions returning their arguments' `str` or `bytes` (an `AnyStr`, or overloads);
 - `classes`: non-generic classes, and functions returning one, by the class's public path: the
   shortest (`unittest.TestLoader`, not `unittest.loader.TestLoader`), then its own module's;
-- `methods` and `attributes`: what each such class's public methods (and `__enter__`, for `with`)
+- `methods` and `attributes`: what each such class's public methods (and its `_private` ones, a
+  subclass's to call, and `__enter__`, for `with`)
   return, and its attributes and properties hold, inherited ones included (in their method
   resolution order), by that path; a generic class's `__enter__` too, where it returns `Self`;
 - `aliases`: the class's other public paths;
