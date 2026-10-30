@@ -25,6 +25,7 @@ from constricter.fix.core.imports import checking, inner_imports, nested_classes
 from constricter.fix.core.known import ImportPlan, Inference, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.fix.values.shapes import COMPREHENSIONS, Comprehension, is_none
+from constricter.offences import CONSTRUCTOR
 from constricter.source.annotations import node_name, roots
 from constricter.source.declarations import generic_classes
 from constricter.source.flow import members
@@ -74,6 +75,9 @@ class Facts(NamedTuple):
 
     selfish: Mapping[str, frozenset[str]] = MappingProxyType({})
     generics: frozenset[str] = frozenset()
+    # Those generic classes it names that a type checker reads bare with their defaults, its own and
+    # others' (see `binds_defaults`).
+    defaulted_generics: frozenset[str] = frozenset()
     passed: frozenset[str] = frozenset()
     # What it imports under a top-level `if` on a flag (`TYPE_CHECKING`), unbound when it runs.
     checking: frozenset[str] = frozenset()
@@ -105,23 +109,26 @@ class Facts(NamedTuple):
 def facts(
     tree: ast.Module,
     selfish: Mapping[str, frozenset[str]],
-    generics: frozenset[str],
+    generics: tuple[frozenset[str], frozenset[str]],
     managers: Mapping[str, Passed],
     type_vars: tuple[frozenset[str], frozenset[str]],
 ) -> Facts:
     """Read a module's `Facts`.
 
-    `selfish`: its `self_returns`; `generics`: the generic classes it names that others define;
-    `managers`: its `entered.managers`, and those it imports; `type_vars`: its type variables, and
-    those of them and of those it imports with a default (see `generic_classes`).
+    `selfish`: its `self_returns`; `generics`: the generic classes it names that others define, and
+    those others' it writes bare with their defaults; `managers`: its `entered.managers`, and those
+    it imports; `type_vars`: its type variables, and those of them and of those it imports with a
+    default (see `generic_classes`).
 
     Returns:
       Them.
 
     """
+    own: frozenset[str] = generic_classes(tree, type_vars[1])
     return Facts(
         selfish=selfish,
-        generics=generic_classes(tree, type_vars[1]) | generics,
+        generics=own | generics[0],
+        defaulted_generics=(generic_classes(tree) - own) | generics[1],
         passed=passed(tree),
         checking=checking(tree),
         tests=tests(tree),
@@ -546,6 +553,48 @@ def corrected(
             else found._replace(annotation=written.format(spelled), reason=f"{found.reason}: `Self`")
         )
     return None if bare(found.annotation, generics) else found
+
+
+def binds_defaults(
+    value: ast.expr,
+    found: Inference,
+    function: FunctionDef | None,
+    bound: tuple[frozenset[str], frozenset[str]],
+    defaulted: frozenset[str],
+) -> bool:
+    """Check whether a constructor guess writes bare a class read with its defaults where its call binds them.
+
+    `Context(request_context=ctx, server=self)` in a method of `Server(Generic[T])`, `ctx` a
+    `RequestContext[T]`: a type checker binds `Context`'s parameters to `T` there, which the bare
+    class, read with its defaults (`Context[dict[str, Any]]`), refuses. `bound`: the type variables
+    the method's class binds, and the module's own and those it imports; `defaulted`: the classes
+    read bare with their defaults (see `Facts.defaulted_generics`).
+
+    Returns:
+      Whether the call passes `self` or `cls` of a class binding type variables, or a parameter
+      annotated with a type variable.
+
+    """
+    if CONSTRUCTOR not in found.kinds or found.annotation not in defaulted or function is None:
+        return False
+    if not isinstance(value, ast.Call):
+        return False
+    params: list[ast.arg] = [
+        *function.args.posonlyargs,
+        *function.args.args,
+        *function.args.kwonlyargs,
+        *(arg for arg in (function.args.vararg, function.args.kwarg) if arg is not None),
+    ]
+    typed: set[str] = {
+        param.arg
+        for param in params
+        if param.annotation is not None
+        and any(isinstance(node, ast.Name) and node.id in bound[1] for node in walk(param.annotation))
+    }
+    if bound[0] and params[:1] and params[0].annotation is None:
+        typed.add(params[0].arg)  # `self` or `cls`, of a class binding type variables
+    passed: list[ast.expr] = [*value.args, *(keyword.value for keyword in value.keywords)]
+    return any(isinstance(each, ast.Name) and each.id in typed for each in passed)
 
 
 def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:

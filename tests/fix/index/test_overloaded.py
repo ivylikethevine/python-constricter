@@ -378,3 +378,35 @@ def test_an_overload_is_matched_through_what_checked_files_declare(tmp_path: Pat
     assert all(line in fixed for line in CALLED), fixed
     fixed = shapes.read_text(encoding="utf-8")
     assert all(line in fixed for line in OWN_METHODS), fixed
+
+
+VIEWED: Final = """
+from typing import overload
+
+
+class Array: ...
+
+
+class Scalar:
+    @overload
+    def view(self, type: type[Array] = ...) -> "Scalar": ...
+    @overload
+    def view(self, dtype: str, type: type[Array] = ...) -> int: ...
+    def view(self, *args, **kwargs):
+        return self
+
+
+def use(scalar: Scalar) -> None:
+    viewed = scalar.view("i8")
+    same = scalar.view()
+"""
+
+
+def test_a_parameter_declared_alike_at_another_place_tells_the_overloads_apart(tmp_path: Path) -> None:
+    """As numpy's `view`: `type` first in one overload, second in the other; `view("i8")` is the other's."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    viewed: Path = _write(tmp_path, "pkg/scalars.py", VIEWED)
+    _ = cli.main(["--fix", "-q", str(tmp_path)])
+    fixed: str = viewed.read_text(encoding="utf-8")
+    assert "    viewed: int = scalar.view(" in fixed, fixed
+    assert "    same: Scalar = scalar.view()" in fixed, fixed

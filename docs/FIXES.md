@@ -274,7 +274,8 @@ the value decides it, for a plain `name = value` in a function or module body:
   guess (`documented`): a numpydoc `Returns` section of one entry, a Google-style `Returns:` whose
   first line names a type or a Sphinx `:rtype:`, naming `int`, `float`, `bool`, `str`, `bytes` or
   `complex` (or `integer`, `boolean`, `string`), or one of them `or None`; only where every
-  `return` gives a value, of no known type or one the type takes. A generator function counts by
+  `return` gives a value, of no known type or one the type takes, and no number in a module
+  importing numpy, whose scalars (`np.int64`) a checker takes for none. A generator function counts by
   its `yield`s instead: each a statement of its own
   (nothing is sent in), all of one type `T`, and no `return` of a value, give a
   `Generator[T, None, None]`, imported from `collections.abc` if it has to be; `yield from` gives
@@ -584,7 +585,9 @@ a generic class without its arguments.
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
 `np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
-read from its annotation through the package's aliases, type variables and protocols; a
+read from its annotation through the package's aliases, type variables and protocols (one every
+overload declares alike, at the same place, takes anything; `view(self, type: type[ndarray] = ...)`
+first and `type` second in the next is read, so `view("i8")` matches the next); a
 standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the
 argument binds a `type[T]` parameter's `T`, as does an alias of one (`np.int32`). A builtin
 container argument is taken by its elements where the parameter says what they must be
@@ -795,7 +798,9 @@ than the fix says, the fix is changed, made a guess, or not offered:
   written bare though its members aren't read. One whose every parameter has a default where its type variable is
   defined (`Generic[_KeyColCC_co]`, `_KeyColCC_co = TypeVar(..., default=...)` in another checked
   file; `class C[T = int]`) is written bare too, as a type checker reads it with them, its members
-  read as a generic class's on a bare receiver;
+  read as a generic class's on a bare receiver; but not constructed where its call passes `self` of
+  a class binding type variables, or a parameter annotated with one (`Context(ctx, server=self)` in
+  a method of `Server(Generic[T])`), which binds its parameters to them;
 - a declared return that names a type variable, the module's own, one it imports from another
   checked file (`from ._typing import T`, under `if TYPE_CHECKING:` too) or `typing.AnyStr`, depends
   on the arguments: its calls aren't typed;

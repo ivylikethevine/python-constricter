@@ -14,7 +14,7 @@ its type variable to it.
 import ast
 import builtins
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Final, cast
+from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import Origin
 from constricter.fix.core.signatures import (
@@ -81,6 +81,8 @@ _LITERAL: Final = "Literal"
 _ANNOTATED: Final = "Annotated"
 _UNIONS: Final = frozenset({"Union", "Optional"})  # `_OPTIONAL` too
 _TYPE_VARIABLE: Final = "t"  # `Accepts`' key for an unbounded type variable
+_POSITIONAL: Final = frozenset({"p", "e"})  # the kinds of parameter a positional argument fills
+_Written: TypeAlias = tuple[str, str, bool, str | None]  # a parameter as a signature writes it
 _SELF: Final = "Self"
 _ANY: Final = "typing.Any"  # a pattern's anything
 _RENAMED: Final = "_alias"  # an alias's type parameter, renamed apart (see `Expansion`)
@@ -95,18 +97,21 @@ def read_all(
 ) -> tuple[ReadSignature, ...]:
     """Read a function's (or method's) signatures, `params` its class's type parameters.
 
-    A parameter every signature declares the same way takes whatever a call passes it, unless it
-    names a type variable (the module's, the class's in `variables`, or the signature's own).
+    A parameter every signature declares the same way, at the same place among the positional ones,
+    takes whatever a call passes it, unless it names a type variable (the module's, the class's in
+    `variables`, or the signature's own): numpy's `view(self, type: type[ndarray] = ...)` is no
+    match for `view("i8")`, where another declares `type` second.
 
     Returns:
       Them.
 
     """
     declared: Declarations | None = module.declared  # none: a checked file's (see `read_signatures`)
-    shared: set[tuple[str, str, bool, str | None]] = set(written[0].params)
+    placed: set[tuple[_Written, int | None]] = _placed(written[0])
     signature: Signature
     for signature in written[1:]:
-        shared &= set(signature.params)
+        placed &= _placed(signature)
+    shared: set[_Written] = {param for param, _ in placed}
     named: frozenset[str] = frozenset(
         {
             *(() if declared is None else declared.variables),
@@ -145,6 +150,17 @@ def _names_any(annotation: str | None, names: frozenset[str]) -> bool:
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and _names_any(node.value, names):
             return True  # a forward reference
     return False
+
+
+def _placed(signature: Signature) -> set[tuple[_Written, int | None]]:
+    """Pair each of a signature's parameters with its place among the positional ones (`None`: keyword only).
+
+    Returns:
+      Them.
+
+    """
+    positional: list[_Written] = [param for param in signature.params if param[1] in _POSITIONAL]
+    return {(param, positional.index(param) if param in positional else None) for param in signature.params}
 
 
 class Reader(Resolver):

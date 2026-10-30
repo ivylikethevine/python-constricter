@@ -4,8 +4,9 @@ A numpydoc `Returns` section of one entry (`int`, `n : int`), a Google-style `Re
 line names the type (`bool: Whether ...`) or a Sphinx `:rtype:` field, naming `int`, `float`,
 `bool`, `str`, `bytes` or `complex` (or `integer`, `boolean`, `string`), or one of them `or None`.
 Only where every `return` the function has gives a value of no known type or one the named type
-takes (`int` for a `float`), and no `int` or `bool` where one is a true division (`a / b`): a
-docstring may be stale, so its type is a guess (`documented`).
+takes (`int` for a `float`), no `int` or `bool` where one is a true division (`a / b`), and no
+number in a module importing numpy, whose scalars no checker takes for one: a docstring may be
+stale, so its type is a guess (`documented`).
 """
 
 import ast
@@ -39,6 +40,8 @@ _TAKES: Final = {
 }
 _NONE: Final = "None"
 _INTEGERS: Final = frozenset({"int", "bool"})  # what a true division (`/`) never gives
+_NUMBERS: Final = frozenset({"int", "float", "complex", "bool"})  # what a docstring names numpy's scalars
+_NUMPY: Final = "numpy"
 _OR_NONE: Final = re.compile(r"(?P<type>\w+)\s+or\s+none|none\s+or\s+(?P<other>\w+)")
 _NUMPYDOC: Final = re.compile(
     r"^(?P<indent>[ \t]*)Returns[ \t]*\n[ \t]*-{3,}[ \t]*\n(?P<body>(?:.*\n?)*)",
@@ -49,22 +52,47 @@ _SPHINX: Final = re.compile(r"^[ \t]*:rtype:[ \t]*(?P<type>[^\n]+?)[ \t]*$", re.
 _ENTRY: Final = re.compile(r"(?:\w+[ \t]*:[ \t]*)?(?P<type>[^\n:]+?)[ \t]*")
 
 
-def documented(func: FunctionDef, returned: Iterable[str | None]) -> str | None:
+def documented(func: FunctionDef, returned: Iterable[str | None], *, numpy: bool = False) -> str | None:
     """Type a function by its docstring's named return, where its `return`s allow it.
 
-    `returned`: each `return`'s type, `None` where it isn't known.
+    `returned`: each `return`'s type, `None` where it isn't known; `numpy`: its module imports numpy
+    (see `imports_numpy`), so a number it names may be numpy's (`np.int64`).
 
     Returns:
       The type (`int`, `str | None`), or `None`: no docstring, no return named, one that isn't a
-      builtin scalar, or a `return` of a value it doesn't take.
+      builtin scalar, a number where `numpy`, or a `return` of a value it doesn't take.
 
     """
     docstring: str | None = ast.get_docstring(func)
     named: str | None = None if docstring is None else _named(docstring)
-    if named is None or (_INTEGERS & set(named.split(" | ")) and _divides(func)):
+    parts: set[str] = set() if named is None else set(named.split(" | "))
+    if named is None or (_INTEGERS & parts and _divides(func)) or (numpy and _NUMBERS & parts):
         return None
     allowed: frozenset[str] = frozenset[str]().union(*(_TAKES[part] for part in named.split(" | ")))
     return named if all(each is None or each in allowed for each in returned) else None
+
+
+def imports_numpy(module: ast.Module) -> bool:
+    """Check whether a module imports numpy or a submodule, at its top level or in a top-level `if` or `try`.
+
+    Returns:
+      Whether it does.
+
+    """
+    statements: list[ast.stmt] = [*module.body]
+    statement: ast.stmt
+    for statement in module.body:
+        if isinstance(statement, ast.If | ast.Try):
+            statements.extend((*statement.body, *statement.orelse))
+    return any(
+        (isinstance(each, ast.Import) and any(alias.name.partition(".")[0] == _NUMPY for alias in each.names))
+        or (
+            isinstance(each, ast.ImportFrom)
+            and not each.level
+            and (each.module or "").partition(".")[0] == _NUMPY
+        )
+        for each in statements
+    )
 
 
 def _divides(func: FunctionDef) -> bool:

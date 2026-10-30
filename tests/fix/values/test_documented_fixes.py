@@ -173,6 +173,45 @@ def test_a_true_division_is_no_documented_integer(named: str, expected: str | No
     assert documented(func, [None]) == expected
 
 
+_NUMPY: str = '''
+{imports}
+
+
+def f(raw):
+    """D.
+
+    Returns
+    -------
+    {named}
+    """
+    return raw.read()
+
+
+def use(raw) -> None:
+    n = f(raw)
+'''
+
+
+@pytest.mark.parametrize(
+    ("imports", "named", "expected"),
+    [
+        ("import numpy as np", "int", None),
+        ("from numpy import linalg", "float or None", None),
+        ("try:\n    import numpy.ma\nexcept ImportError:\n    pass", "bool", None),
+        ("import numpy as np", "str", "str"),
+        ("import numbers", "int", "int"),
+    ],
+)
+def test_a_module_importing_numpy_has_no_documented_number(
+    imports: str,
+    named: str,
+    expected: str | None,
+) -> None:
+    """A numpy scalar (`np.int64`) is no `int` to a checker, and its docstrings may mean one."""
+    offences: list[Offence] = check_source(_NUMPY.format(imports=imports, named=named), checks=Checks())
+    assert {o.name: o.fix for o in offences}["n"] == expected
+
+
 def test_a_function_without_a_docstring_is_not_documented() -> None:
     """Nothing to read."""
     func: ast.stmt = ast.parse("def f():\n    return x\n").body[0]

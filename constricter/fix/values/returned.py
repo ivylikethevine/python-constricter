@@ -24,7 +24,7 @@ from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered
 from constricter.fix.values.bodies import is_generator, plain, terminates
 from constricter.fix.values.documented import KIND as DOCUMENTED
-from constricter.fix.values.documented import documented
+from constricter.fix.values.documented import documented, imports_numpy
 from constricter.fix.values.inference import RETURNED
 from constricter.fix.values.shapes import is_none
 from constricter.fix.values.stored import (
@@ -467,7 +467,7 @@ def _documented(
     if not _ends_by_returning(module, func):
         return None
     types: list[str | None] = [None if typed is None else typed.annotation for typed, _ in returns]
-    found: str | None = documented(func, types)
+    found: str | None = documented(func, types, numpy=imports_numpy(module))
     return None if found is None else (found, frozenset({DOCUMENTED}))
 
 

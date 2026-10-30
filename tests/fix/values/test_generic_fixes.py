@@ -376,6 +376,62 @@ def test_another_files_type_variable_with_a_default_leaves_its_class_written_bar
     assert (tmp_path / "user.py").read_text(encoding="utf-8") == written
 
 
+_DEFAULTED_CONTEXT: str = """
+from typing import Generic, TypeVar
+
+L = TypeVar("L", default=dict)
+
+class Context(Generic[L]):
+    def __init__(self, request, server=None) -> None: ...
+"""
+_DEFAULTED_SERVER: str = """
+from typing import Generic, TypeVar
+
+from pkg.context import Context
+
+T = TypeVar("T")
+O = TypeVar("O", default=int)
+
+class Own(Generic[O]):
+    def __init__(self, value) -> None: ...
+
+class Request(Generic[T]): ...
+
+class Server(Generic[T]):
+    def handle(self, request: Request[T], raw) -> None:
+        bound = Context(raw, server=self)
+        passed = Context(request)
+        own = Own(self)
+        plain = Context(raw)
+
+def run(raw) -> None:
+    made = Context(raw)
+"""
+
+
+def test_a_class_read_with_its_defaults_is_no_guess_where_its_call_binds_them(tmp_path: Path) -> None:
+    """`Context(raw, server=self)` in a generic class's method is a `Context[T]`, not `Context[dict]`."""
+    (tmp_path / "pkg").mkdir()
+    sources: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/context.py": _DEFAULTED_CONTEXT,
+        "pkg/server.py": _DEFAULTED_SERVER,
+    }
+    name: str
+    source: str
+    for name, source in sources.items():
+        _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.context"].defaulted_generics == {"Context"}
+    _ = cli.main(["--fix", "--likely", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    written: str = (
+        textwrap.dedent(_DEFAULTED_SERVER)
+        .replace("        plain = ", "        plain: Context = ")
+        .replace("    made = ", "    made: Context = ")
+    )
+    assert (tmp_path / "pkg" / "server.py").read_text(encoding="utf-8") == written
+
+
 _BOUND_BASES: str = """
 from typing import Generic, TypeVar
 

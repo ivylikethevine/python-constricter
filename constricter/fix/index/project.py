@@ -86,6 +86,8 @@ class Imported(NamedTuple):
     generic: Mapping[str, GenericClass] = Empty()
     # Its descriptors, each with what an instance's attribute of it gives (see `Module.descriptors`).
     descriptors: Mapping[str, str | None] = Empty()
+    # Its generic classes read bare with their defaults (see `Module.defaulted_generics`).
+    defaulted_generics: frozenset[str] = frozenset()
 
 
 def definition(

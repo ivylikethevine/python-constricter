@@ -80,6 +80,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         ),
         guarded=guarded,
         generics=imported.generics | own.generics,
+        defaulted_generics=imported.defaulted_generics,
         generic=dict(imported.generic),
         descriptors=dict(imported.descriptors),
         callees=callers.callees(modules, path),

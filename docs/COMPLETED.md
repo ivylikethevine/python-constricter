@@ -421,6 +421,35 @@ What constricter does today and what was measured on the way, by scope. What's n
   `6b0ab18` (`mega-10-28-2026-0826`, 69 minutes on 16CPU/60GB), with both: new type errors 428, as
   on `b6ac32b`, none blamed on the three sets; `--likely` 211,064 bindings typed from 210,500, and
   mypy's 23 `tag: u8` back in every tier.
+- **A class under a base that binds its parameters**: a subscripted base makes a checked file's
+  class generic only where its subscript may pass a type variable (`concrete.binds_all`,
+  [FIXES.md](FIXES.md)); one naming another module's names is settled through the index, bare where
+  each is a class, a type alias or a type variable with a default (`modules.concrete_in`,
+  `project.defaulted`). xarray's 1,244 `Dataset()` calls were `declined` before. On the mega run of
+  2026-10-29 (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes on 16CPU/60GB) xarray's bindings with
+  no fix 11,247 from 14,326 and sqlalchemy's 9,662 from 10,140, as measured alone.
+- **A `dict`'s `get` and `pop` given a default**: `d.get(k, [])` on a `dict[str, list[int]]` is a
+  `list[int]` and `d.pop(k, None)` a `V | None`, as a checker picks typeshed's overload
+  (`returns._defaulted`); 199 such calls on the 47 corpora. No new type error on the mega run of
+  2026-10-29.
+- **Names a chain of star imports re-exports**, followed `HOPS` deep for a call's return and a
+  class's members (`project.starred_origin`, `starred_names`), a class spelt two ways one class
+  where `reads` asks (`reads._merge_spellings`); a module's `__all__` isn't read. On the mega run of
+  2026-10-29 networkx's bindings with no fix 16,022 from 16,046, dask's 18,248 from 18,356.
+- **A text's operator with a value of no known type** (`operand`, a guess): `"pre-" + x`,
+  `x + ".pyc"` and `" " * n` take the text's type (`inference._with_text`), a guess only where the
+  value's type rests on it (`guesses._rests_on_operands`). On the mega run of 2026-10-29: 324
+  guesses, 193 told, 100% held, none of 163 read blamed, and its set `literal+operand` 127 with 64
+  told: it passes [LIKELY.md](LIKELY.md)'s bars.
+- **A standard-library base's single-underscore members**: the tables hold a class's `_private`
+  methods too, not a dunder but `__enter__`, `__aenter__` and `__getitem__`, nor a mangled `__x`
+  (`stdlib_tables/reading._read`), so `self._expand_help(action)` in a `HelpFormatter` subclass is a
+  `str`: 129 more methods in `methods.json`. Measured alone (one process on 16CPU/60GB): pdm +6
+  fixes, pip +3, the standard library +15, none lost.
+- **Overloads that agree on their return**: a checked file's overloads all declaring one return,
+  and the implementation that one or none, are read as its declared return (`usable.agreed`), so
+  `DataTree.from_dict(groups)` is typed with `groups` of no known type (276 such calls on xarray).
+  None of the mega run of 2026-10-29's new type errors is from it.
 
 ## Command and output
 

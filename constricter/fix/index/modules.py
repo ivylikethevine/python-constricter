@@ -99,6 +99,9 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # with a default: a class whose every such name is one, where it's defined, is written bare.
     generic_names: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     defaulted: frozenset[str] = frozenset()
+    # Its generic classes a type checker reads bare with a parameter's default: written bare, but not
+    # where a call binds that parameter (see `doubts.binds_defaults`).
+    defaulted_generics: frozenset[str] = frozenset()
     # Its descriptors, each with what its `__get__` gives an instance (see `declarations.descriptors`).
     descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     # Its generic classes' type parameters and members' types (see `declarations.generic_members`).
@@ -346,7 +349,7 @@ def settled(modules: Mapping[str, Module], module: Module) -> Module:
     parameter it inherits (see `concrete_in`).
 
     Returns:
-      The module, its `generics` corrected.
+      The module, its `generics` corrected, and those with a default among its `defaulted_generics`.
 
     """
     bare: frozenset[str] = frozenset(
@@ -355,7 +358,20 @@ def settled(modules: Mapping[str, Module], module: Module) -> Module:
         if name in module.generics
         and all(defaulted_in(modules, module, each) or concrete_in(modules, module, each) for each in names)
     )
-    return replace(module, generics=module.generics - bare) if bare else module
+    defaulted: frozenset[str] = frozenset(
+        name
+        for name in bare
+        if any(defaulted_in(modules, module, each) for each in module.generic_names[name])
+    )
+    return (
+        replace(
+            module,
+            generics=module.generics - bare,
+            defaulted_generics=module.defaulted_generics | defaulted,
+        )
+        if bare
+        else module
+    )
 
 
 def concrete_in(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
@@ -479,6 +495,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         decorated=held_back(tree.body),
         called=_called(tree, names),
         generics=generic_classes(tree, defaulted),
+        defaulted_generics=generic_classes(tree) - generic_classes(tree, defaulted),
         generic_names={name: names for name, names in generic_names(tree).items() if names},
         defaulted=defaulted,
         descriptors=descriptors(tree),

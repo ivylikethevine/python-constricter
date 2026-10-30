@@ -135,6 +135,9 @@ goes under `local/scratch/`.
 - `stage_compare.py BEFORE AFTER [--stage tests] [--top N]`: one stage's steps in two runs, from
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
+- `type_errors_diff.py OLD NEW [--corpus NAME] [--rows]`: two runs' new type errors from their
+  `type-errors.csv`, by corpus, step and mechanism, line left out; `--rows` lists those only the new
+  run has.
 - `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
 [--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
   its checkout (a script's directory on the path, the environment given; RightTyper patched past a

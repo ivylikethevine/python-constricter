@@ -164,7 +164,7 @@ def module_settings(
         facts(
             tree,
             selfish,
-            stdlib.generics(origins) | seen.generics,
+            (stdlib.generics(origins) | seen.generics, seen.defaulted_generics),
             {
                 **seen.managers,
                 **{name: (yielded, frozenset[str]()) for name, yielded in entered.managers(tree).items()},

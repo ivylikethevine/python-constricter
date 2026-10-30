@@ -102,6 +102,7 @@ def imported(
         Partial(found[2], {name: each for name, each in taken.partial.items() if each}),
         taken.generic,
         taken.descriptors,
+        frozenset(taken.defaulted_generics),
     )
 
 
@@ -183,6 +184,7 @@ class _Taken(NamedTuple):
     generics: set[str]
     generic: dict[str, GenericClass]
     descriptors: dict[str, str | None]
+    defaulted_generics: set[str]
 
 
 def _taking(attributes: dict[str, dict[str, str]], methods: dict[str, dict[str, str]]) -> _Taken:
@@ -192,7 +194,7 @@ def _taking(attributes: dict[str, dict[str, str]], methods: dict[str, dict[str, 
       It, nothing else taken yet.
 
     """
-    return _Taken(attributes, methods, {}, {}, set(), {}, {})
+    return _Taken(attributes, methods, {}, {}, set(), {}, {}, set())
 
 
 def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded: dict[str, Guarded]) -> None:
@@ -202,6 +204,8 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
     for key, defined in spelled_classes(catalog, target, named, taken.generics):
         if defined[1] in defined[0].generics:
             taken.generics.add(key)
+        if defined[1] in defined[0].defaulted_generics:
+            taken.defaulted_generics.add(key)
         if defined[1] in defined[0].generic_members:
             klass: GenericClass = defined[0].generic_members[defined[1]]
             taken.generic[key] = generic_portable(catalog.modules, (target, defined), key, klass, guarded)

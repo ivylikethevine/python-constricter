@@ -16,6 +16,7 @@ from constricter.fix.values.doubts import (
     Owner,
     as_declared,
     bare,
+    binds_defaults,
     corrected,
     doubts,
     is_constant,
@@ -317,6 +318,8 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
+        if fix is not None and binds_defaults(value, fix, function, self._bound(), facts.defaulted_generics):
+            fix = None
         # An alias of a union is narrowed as the union it names.
         named: Inference | None = (
             None
@@ -457,6 +460,18 @@ class Scope:
             if spelled is None
             else Inference(spelled, f"{fix.reason}, a constant passed to a call", fix.kinds | {FINAL_KIND})
         )
+
+    def _bound(self) -> tuple[frozenset[str], frozenset[str]]:
+        """Name the type variables this scope's class binds, if it's a method, and the module's.
+
+        Returns:
+          Those its class's bases name (none outside a method), and every type variable the module has.
+
+        """
+        function: FunctionDef | None = self.kind.function
+        owner: str | None = None if function is None else self.settings.owners.get(id(function))
+        facts: Facts = self.settings.facts
+        return (frozenset() if owner is None else facts.bound.get(owner, frozenset())), facts.type_vars
 
     def _owner(self) -> Owner | None:
         """Find the class this scope is a method of, if its instance (or class) is a `Self` in it.
