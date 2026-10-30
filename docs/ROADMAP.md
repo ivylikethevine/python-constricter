@@ -53,8 +53,14 @@ minutes, all on 16CPU/60GB), against `mega-10-28-2026-0826` and each other by
 - basedpyright's servers aborted four times in dask's `infer-union` on `f7d53b2`, none on
   `e793bc6` (Small).
 
-**What the next mega run reads**: the runner's order against the solver's shortest, for a run with
-no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
+**Read on `mega-10-30-2026-0857`** (`a8de20a`, 70 minutes, 16CPU/60GB), against the 22:41 run by
+`scratch/type_errors_diff.py` and `scratch/run_fixes_diff.py`: new type errors 461 from 462, none
+gained (nibabel's `file_map`, below under the run-time types item). `type[T]` and a `@classmethod`'s
+receiver hold, each below. New failures: sphinx's `test_html5_rubric` in 4 steps of 8 with its fixes
+the same as the 22:41 run's, and nibabel's randomised `test_mult` and `test_euler_mat_2`, none blamed
+on a fix; sqlalchemy's 4 `test_compare` and joblib's 1 are gone. Every corpus has records, so the run
+leaves the planning of an unmeasured step ("A run with no earlier run, held to the solver's shortest")
+ungated.
 
 1. **Eight mechanisms, counted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
@@ -213,7 +219,13 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    (`query("#x")` a `Widget`). Not yet: a type variable another module defines (textual's
    `QueryType`), and a method on a receiver typed as a subclass (`self.query_one` in a `Widget`'s
    subclass). 98 such definitions on the mega corpora's sources (textual 18, cattrs 14, zarr 10,
-   litestar 9). Done when a mega run has the fixes and no new error from them.
+   litestar 9). Done when a mega run has the fixes and no new error from them: on
+   `mega-10-30-2026-0857` it has them (`--unsafe-fixes` 2 more on each of mkdocs, tox and werkzeug),
+   with no error. Left: `_class_typed` also takes a concrete class (xarray's `def get_backend(engine:
+   str | type[BackendEntrypoint]) -> BackendEntrypoint`), so a call with a guessed argument loses its
+   declared return: 6 certain fixes in `backends/api.py` are `--likely` since (reproduced by
+   `scratch/fix_diff.py d160aa8`). Reading only a name the module binds as a type variable restores
+   them.
 5. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs
    ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
@@ -458,9 +470,9 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    3,206 such fixes: `fk` and `index` as above, pint's 2, and nibabel's 2; `loc` and altair's are
    gone. Built on 2026-10-30: a `@classmethod`'s first parameter is its class by any name
    (`traced._receivers`), so nibabel's `file_map = klass.filespec_to_file_map(filename)`, declared
-   to return a `Mapping`, has no traced `dict[str, FileHolder]`: 15 of the run's traced fixes
-   withdrawn, every one nibabel's and rooted at a class method's `klass` (counted from the run's
-   listings against the sources). Read by position, a plain method's first
+   to return a `Mapping`, has no traced `dict[str, FileHolder]`: `mega-10-30-2026-0857`
+   has 17 traced fixes fewer on nibabel, each in a `@classmethod` whose first parameter is `klass`, and
+   that error gone, none new. Read by position, a plain method's first
    parameter would withdraw 9 of pygments' too, but a lexer's `analyse_text(text)` is made static by
    its metaclass, so `text` is a value like any other's. What's left, each a proposal, since it
    withdraws fixes:
