@@ -844,7 +844,8 @@ What constricter does today and what was measured on the way, by scope. What's n
   CI's corpus setup), the runner plans its steps with CP-SAT before it starts
   (`tests/corpus/planning.py`: each step held to what the runner will hold for it,
   `sizing.Plan.wanted`, ports, each step after those it reads) and, of the steps that could start,
-  starts the one planned first; a step no run has measured keeps the rules (the longest chain first,
+  starts the one planned first; a step no run measured on its corpus is planned for what its like
+  corpora took (`planning.like`), one no corpus ran keeps the rules (the longest chain first,
   `_PATIENCE`, backfilling), and a stage plans its own steps alone (`planning.ranks`'s `chosen`).
   `scratch/run_timeline.py` lays a run out from its records, `scratch/schedule_sim.py` replays it,
   and `scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
@@ -899,6 +900,19 @@ What constricter does today and what was measured on the way, by scope. What's n
   where pyarrow isn't installed, 5 fewer (`pa.Scalar` generic there too); types-PyYAML nothing on
   dask or xarray; networkx nothing under any set, pandas-stubs or scipy-stubs, its scipy calls
   inside functions and their returns arrays `vague` refuses.
+- **`typing_extensions` in the standard-library tables, measured and set aside**: the tables
+  (generated from typeshed by `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so
+  a call through it (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class)
+  gets no fix, and a module read as untyped was never meant to stand in (the mega run of
+  2026-10-27). The mega run of 2026-10-28's census has 37 calls with no fix into it on the 47
+  corpora (`get_origin` 13, `get_args` 8), whose returns are vague anyway: not worth the
+  generator's change. If wanted: alias each name typeshed's stub re-exports to its `typing` entry,
+  and read the rest from the stub as the tables are generated.
+- **Stubs generated for compiled code, set aside**: `stubgen --inspect-mode`, pybind11-stubgen,
+  nanobind's and Cython's `embedsignature` signatures, mypy-protobuf and `__text_signature__` give
+  a compiled module's signatures, but few returns, and each needs the module imported. Next to no
+  reach in the corpora: lxml 8 calls, grpc 3, greenlet 3. Worth weighing again once a corpus calls
+  compiled code more.
 - **A new error blamed on the fix it names**: `corpus_suite._blamed` takes, of the fixes in an
   error's line, one whose annotation holds a type the message quotes before the nearest one before
   it: optuna's `params: dict[str, int | float]` error is the `copy+filled` guess's, not `name: str`'s

@@ -1030,8 +1030,8 @@ fix only where the function tests the name, as a checker's union is.
 
 Only a local no annotation types gets one: a name an assignment or a `for` loop binds to a value
 taken from a parameter no checker types (`row = rows[0].load()`, `made = make(n)`,
-`for row in rows:`): an unannotated one (not `self` or `cls`, which the class types) with no default
-but `None`, that its function doesn't bind again, test by a call (`isinstance(rows, list)`) or
+`for row in rows:`): an unannotated one (not `self`, `cls` or a `@classmethod`'s first parameter by
+any name, which the class types) with no default but `None`, that its function doesn't bind again, test by a call (`isinstance(rows, list)`) or
 match. Or from an attribute of `self` that a class with no base stores nothing else in
 (`conn = self.conn`, where every store is a plain `self.conn = conn` of such a parameter and the
 class's body doesn't bind it: a checker types the attribute by what's stored). Anything else a type

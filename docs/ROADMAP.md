@@ -38,12 +38,14 @@ minutes, all on 16CPU/60GB), against `mega-10-28-2026-0826` and each other by
   every overload read as taking anything; both mended on `e793bc6` (`doubts.binds_defaults`,
   `signatures._placed`). On `d160aa8` sqlalchemy's `_InternalEntityType` errors are gone (3 to 0)
   and nibabel's `documented` ones (5 to 0). Left: sqlalchemy's 12 `Enum` errors (below), optuna's 6
-  (a copy of a name each branch binds, Small) and pint's 3 (`Quantity` depending on itself, as
-  under the run-time types item, Large).
+  (one fix's, in six steps: a copy of a name each branch binds, Small) and pint's 3 (`Quantity`
+  depending on itself, as under the run-time types item, Large).
 - Against [LIKELY.md](LIKELY.md)'s bars on `d160aa8`: `text` (241 guesses, 135 told, 99.3% held,
   none blamed) and `operand` (324, 192, 100%, none; its set `literal+operand` 127 with 64 told)
   pass; `constructor` 15 of 26,457 read blamed (0.06 in each 100), `method`'s set alone 2 of
-  1,083 (0.18, the bar 0.1), as on 2026-10-27; `reads` 68 guesses, 37 told, 94.6% held, short of
+  1,083 (0.18, the bar 0.1), as on 2026-10-27, when they were nibabel's `magic_number: bytes` and
+  pandas's `subarr: Index` in a method returning `Self` (`core/indexes/datetimes.py`): to read
+  before `method` is counted out; `reads` 68 guesses, 37 told, 94.6% held, short of
   the held bar; `named` 2.
 - One problem on each of `e793bc6` and `d160aa8`: the standard library's second pass, `trace.py`'s
   `encoding` (Small), 1 line left. nibabel's randomised quaternion tests, `f7d53b2`'s other problem,
@@ -107,14 +109,12 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
      stored `None` and else only a known `T`. 5,999 of the 47 corpora's bindings with no fix read a
      `self.x`, 1,660 of them in annotated functions; the stores themselves are offences of their
      own, outside the 252,637.
-
    - **Narrowed reads** (`tested`, certain): a name or attribute read where a test around it narrows
      its union is what the test leaves (`if self.conn is None: return`, then `conn = self.conn` a
      `Connection`; `isinstance`, truth tests, `not`, `and`, `or`), not past a store between the test
      and the read (`narrowed.narrowed_to`). Of the 13,972 bindings with no fix that copy a name or
      an attribute in a function, 424 follow a test of what they copy: `is None` (159), `isinstance`
      (148) or its truth (117), about 0.2%; held to the packages' checkers bringing no new error.
-
    - **The project's own generic classes** (`method` and `attribute`, certain; no kind of its own):
      a member of a checked file's generic class, its type parameters bound by the receiver's
      arguments (`rows.first()` on a `Result[Row]` a `Row | None`; `class C[T]`, `Generic[...]`, a
@@ -155,12 +155,12 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    failed after `fix-likely`, both times, with a patch all but the earlier run's, which passed: it
    shares `markup-rubric`'s source directory with the man, LaTeX and texinfo tests on a pytest-xdist
    worker, and finds their pickled environment when one ran first there, so the directive's warning
-   it asserts never comes (the suite's own order, a `differs` entry's to name). Left: whether an
-   annotation naming a type variable, and a constructor guess of a name its installed module binds
-   in branches, are no fix (each withdraws fixes). `named` and `reads` stay for now, though too few
-   to read against the bars: on the 0.4.3-rc.5 mega run (`9892f71`) 49 and 45 fixes over every fix
-   step, as on rc.1, rc.7 and rc.8. They need more data before they're kept or dropped: more guesses
-   a test tells of, from more corpora or a wider reach. Done when those are decided and a mega run
+   it asserts never comes (the suite's own order, a `differs` entry's to name). The two blamed
+   fixes' causes are Small proposals of their own (an attribute typed with its method's type
+   variable; a constructor guess of a class bound in branches). `named` and `reads` stay for now,
+   though too few to read against the bars: on the 0.4.3-rc.5 mega run (`9892f71`) 49 and 45
+   fixes over every fix step, as on rc.1, rc.7 and rc.8. They need more data before they're kept
+   or dropped: more guesses a test tells of, from more corpora or a wider reach. Done when those are decided and a mega run
    covers the changes since. On the mega run of 2026-10-29 (`f7d53b2`): `reads` 68 guesses, 37
    told, 94.6% held, none of 30 read blamed; `named` 2. About 1 hour; coverage up to 6%, likely far
    less.
@@ -202,19 +202,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
    8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them. Done
    when a mega run reads it against the bars on 20 told. Coverage under 0.1%.
-4. **A checker's short name for a class the module defines another of.** basedpyright's
-   hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in sqlalchemy's `sqltypes.py`,
-   which defines `class Enum(..., TypeEngine[...])`, it names that class: 8 new type errors over
-   the `infer-*` steps on the mega run of 2026-10-29, since the subscripted bases made the class
-   plain (it was a generic written bare before, refused). Built: a hint whose edit writes a name
-   the file binds, where a module it imports whole has a class of that name too, is no fix
-   (`offers._ambiguous`). Done when a mega run's `infer-*` steps have no such error. Coverage
-   unchanged. Not yet on `d160aa8`: 12 errors over the `infer-*` steps, as on `e793bc6`
-   (`_members: MappingProxyType[str, Enum]`, `objects: list[Enum]`). `_ambiguous` judges a hint's
-   edits alone, and `hinted.hinted` takes the checker's shown type first, whatever the edits say.
-   Proposed: judge the shown type the same way (a name the file binds, of a class a module it
-   imports whole has too) before it is spelled. It withdraws the fixes of every such hint.
-5. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
+4. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
    declared `def query_one(self, selector: str, kind: type[T]) -> T`, had no fix: a checked file's
    function whose return names a type variable was never read, overloaded or not. Built: an
    undecorated function or method returning a name alone that a parameter's `type[...]` takes is
@@ -226,6 +214,37 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `QueryType`), and a method on a receiver typed as a subclass (`self.query_one` in a `Widget`'s
    subclass). 98 such definitions on the mega corpora's sources (textual 18, cattrs 14, zarr 10,
    litestar 9). Done when a mega run has the fixes and no new error from them.
+5. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+   tenth of the solver's shortest for a super and a mega run sized by earlier runs
+   ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
+   none measured, keep the rules (the longest chain first, `_PATIENCE`, backfilling) rather than
+   the solver's plan; and a run in stages, each stage planning its own steps alone since
+   (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with a corpus new to its
+   output takes within a tenth of the shortest schedule of its own records
+   (`scratch/schedule_solve.py`). About 3 hours beside the runs; coverage unchanged. Every run
+   file writes under `corpus-runs/`,
+   whose committed reports keep each step's use, so a run meets none of its steps measured only
+   under a new `output`; a new corpus or step is unmeasured within a measured run. Replayed on
+   2026-10-30 (`scratch/schedule_sim.py --timing-beside --unmeasured`, 16 CPUs and 36 GB, each
+   step's true seconds and use), the runner's rules with nothing measured, the waiting steps taken
+   as they came, against its order on measured seconds (the longest chain first): the mega runs of
+   2026-10-29 at 22:41, 19:20 and 11:39 in 75.3, 68.6 and 89.1 minutes against 65.0, 56.5 and 73.7
+   (16% to 21% over), and 67.3, 57.7 and 75.2 with nothing kept waiting (`_PATIENCE` off): with no
+   step's seconds known, a step kept waiting holds back every other, none ending soon enough to go
+   beside it. The replay holds each step to what it used; the runner sizes an unmeasured one by
+   its kind's defaults and then by what it's seen to use (`Plan.fitted`). Built on 2026-10-30: a
+   step no run measured on its corpus is planned for the median seconds of the corpora that ran it
+   in its corpus's set by size and time (`corpora.toml`'s `fast-small` to `slow-large`), or else of
+   every one that did (`planning.like`); one no corpus ran keeps the rules, as does a run under a
+   new `output`. Replayed with each of six large corpora new to the output (`--new CORPUS`, the
+   order the longest chain first, the new corpus's steps after every ranked one or by its group's
+   seconds), on the same three runs: 1,187 minutes over the 18 replays against 1,213 unranked,
+   pandas on the 22:41 run 67.5 against 72.5, the standard library and mypy on the 11:39 run 73.4
+   and 74.0 against 78.7 and 79.6, the most lost 0.8 (the standard library on the 19:20 run). Left:
+   a run with a corpus new to its output, read against `scratch/schedule_solve.py` on its own
+   records, which every corpus of `corpora.toml` having records under `corpus-runs/` leaves to the
+   next corpus added (or a run under another `output` holding the others' records); and a run in
+   stages, hours apart.
 
 ### Small: under 4 hours
 
@@ -244,7 +263,20 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    job's were written from the Workflow audit's set, plus `api.osv.dev:443`), and `link-check.yml`
    and `tool-versions.yml` dispatched by hand once. About an hour; coverage unchanged.
 
-2. **No type naming a builtin the module binds itself** (a proposal: it withdraws fixes). A
+2. **A checker's short name for a class the module defines another of** (a proposal: it withdraws
+   fixes). basedpyright's hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in
+   sqlalchemy's `sqltypes.py`, which defines `class Enum(..., TypeEngine[...])`, it names that
+   class, since the subscripted bases made the class plain (it was a generic written bare before,
+   refused): 8 new type errors over the `infer-*` steps on `f7d53b2`, 12 on `e793bc6` and
+   `d160aa8` (`_members: MappingProxyType[str, Enum]`, `objects: list[Enum]`). Built, and not
+   enough: a hint whose edit writes a name the file binds, where a module it imports whole has a
+   class of that name too, is no fix (`offers._ambiguous`); but `_ambiguous` judges a hint's edits
+   alone, and `hinted.hinted` takes the checker's shown type first, whatever the edits say.
+   Proposed: judge the shown type the same way (a name the file binds, of a class a module it
+   imports whole has too) before it is spelled. It withdraws the fixes of every such hint, so it
+   waits on a decision. Done when a mega run's `infer-*` steps have no such error. About an hour;
+   coverage down by those fixes.
+3. **No type naming a builtin the module binds itself** (a proposal: it withdraws fixes). A
    standard-library type is written with the builtins it names whatever the module binds:
    `pat: re.Pattern[str]` where `from .compat import str` (requests' Python 2 shim), which
    basedpyright reads as a variable ("Variable not allowed in type expression"). Tried: refuse a
@@ -252,7 +284,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `doubts.corrected`). pip (`scratch/fix_diff.py`, `scratch/fix_errors.py`, one process on
    16CPU/60GB): 21 fixes withdrawn, basedpyright's errors 20 fewer, none new. Not kept: it narrows
    what `--fix` offers, so it waits on a decision. About an hour; coverage down by those fixes.
-3. **An override exclusion for every plain class** (a proposal: it withdraws fixes). A class plain
+4. **An override exclusion for every plain class** (a proposal: it withdraws fixes). A class plain
    only by its inert marks, or a variable bound to `None`, has no variable typed where a class in
    its line defines the name (`classvars.unshadowed`); a class plain at HEAD keeps HEAD's fixes, so
    `_render_label_in_columns_clause: bool` under a subclass's `@memoized_attribute` of the name is
@@ -260,7 +292,20 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `--fix --unsafe-fixes`, 103 before it). Applying the exclusion to every plain class withdraws
    those.
    Measure first: the fixes withdrawn and the errors gone on sqlalchemy and django. About an hour.
-4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+5. **An attribute typed with its method's type variable** (a proposal: it withdraws fixes). LVA013
+   writes an attribute's type where a method first stores it, and a type variable that method's
+   signature declares is unbound for the attribute, which the class holds: pydantic's
+   `self.from_type: TypeForm[_FromTypeT]`, blamed for an error on the traced LVA013 run of
+   2026-10-23. Proposed: an attribute's type naming a type variable its class doesn't bind is no
+   fix. Measure first: the LVA013 fixes it withdraws on the mega corpora
+   (`tests/corpus/runs/mega-lva013.toml`). About an hour.
+6. **A constructor guess of a class bound in branches** (a proposal: it withdraws fixes).
+   watchdog's `Observer` is bound in its platform branches, which a checker reads as a variable, so
+   werkzeug's `self.observer: Observer` (LVA013's) is an error, blamed on the traced LVA013 run of
+   2026-10-23; a local's constructor guess writes it too (`likely`). Proposed: a constructor guess
+   of a name its installed module binds in branches is no fix. Measure first: the guesses it
+   withdraws on the mega corpora, and the errors gone. About an hour.
+7. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -280,16 +325,16 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    sized the same way. Measure first: the dumps and dask's `infer-union` seconds on a mega run with
    it. About 2 hours; coverage unchanged.
 
-5. **A copy of a name each branch binds to another type** (a finding: changing it narrows
+8. **A copy of a name each branch binds to another type** (a finding: changing it narrows
    fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
    (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
    `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
    or the one every value fits as `rebound` takes it) would type them as a checker does, and
-   withdraw or change the fixes that rest on the last branch alone. The mega run of 2026-10-29 has
-   one such error: optuna's `params: dict[str, int | float]`, filled from `param`, a `str` in its
-   other branch. Measure first: how many
-   `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
-6. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+   withdraw or change the fixes that rest on the last branch alone. The mega runs of 2026-10-29
+   have one such fix, an error in each of six steps: optuna's `params: dict[str, int | float]`,
+   filled from `param`, a `str` in its other branch. Measure first: how many `copy` guesses rest
+   on such a read, and what the witness says of them. About 2 hours.
+9. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
    `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
    holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
@@ -298,35 +343,16 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
    receiver's `LiteralString` overloads' container returns unfixed. Measure first: how many certain
    fixes it is on the mega corpora. About 2 hours.
-7. **A `with` target's members in the pass that types it** (a finding). The standard library's
-   `trace.py` (`f: TextIO` written before `with tokenize.open(filename) as f:`) has
-   `encoding = f.encoding` typed only by a second pass: on the standard-library corpus `TextIO` is
-   the checked `typing.py`'s class, read once `f` is annotated. The one second-pass line on the
-   mega runs of 2026-10-29. The type comes from the tables (`entered`, `__enter__`), so the file
-   spells no `TextIO` until the fix imports it, and `crossed._take` reads only the members of
-   classes it spells; a round checks a file again only for late kinds (`rounds._unsettled`).
-   Proposed: check a file again where a fix imports a class from a checked module whose members
-   the file reads of the fixed name. Checking again every file whose fix imports a checked
-   module's class would add a round to most corpora's files. About 2 hours; coverage under 0.1%.
-8. **`typing_extensions` in the standard-library tables.** Measured on the mega run of 2026-10-28's
-   census: 37 calls with no fix into `typing_extensions` on the 47 corpora (`get_origin` 13,
-   `get_args` 8), whose returns are vague anyway; not worth the generator's change for now. The
-   tables (generated from typeshed by
-   `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so a call through it
-   (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class) gets no fix
-   anywhere, and a module read as untyped was never meant to stand in (the mega run of 2026-10-27).
-   typeshed's `typing_extensions` stub re-exports or redefines `typing`'s names: alias each to its
-   `typing` entry where the stub re-exports it, and read the rest from the stub as the tables are
-   generated. Measure first: the census's calls into `typing_extensions` with no fix. About 2 hours;
-   coverage unknown until measured, likely under 0.1%.
-9. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
-   tenth of the solver's shortest for a super and a mega run sized by earlier runs
-   ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
-   none measured, keep the rules (the longest chain first, `_PATIENCE`, backfilling) rather than
-   the solver's plan; and a run in stages, each stage planning its own steps alone since
-   (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with no earlier run takes
-   within a tenth of one of the same steps sized by its own records (`scratch/schedule_solve.py`).
-   About 3 hours beside the runs; coverage unchanged.
+10. **A `with` target's members in the pass that types it** (a finding). The standard library's
+    `trace.py` (`f: TextIO` written before `with tokenize.open(filename) as f:`) has
+    `encoding = f.encoding` typed only by a second pass: on the standard-library corpus `TextIO` is
+    the checked `typing.py`'s class, read once `f` is annotated. The one second-pass line on the
+    mega runs of 2026-10-29. The type comes from the tables (`entered`, `__enter__`), so the file
+    spells no `TextIO` until the fix imports it, and `crossed._take` reads only the members of
+    classes it spells; a round checks a file again only for late kinds (`rounds._unsettled`).
+    Proposed: check a file again where a fix imports a class from a checked module whose members
+    the file reads of the fixed name. Checking again every file whose fix imports a checked
+    module's class would add a round to most corpora's files. About 2 hours; coverage under 0.1%.
 
 ### Medium: 4 to 8 hours
 
@@ -427,7 +453,33 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    (`quantity: Quantity` in `numpy_func.py`, "Class definition for "Quantity" depends on itself")
    and one of altair's, blamed on a certain `call` fix (`normalized_engine: str`, `mimebundle.py`)
    that brings none without the trace. Done when those aren't offered and none like them is left on
-   the mega corpora's suites. About 10 hours; coverage down by the traced fixes withdrawn.
+   the mega corpora's suites. About 10 hours; coverage down by the traced fixes withdrawn. On the
+   mega run of 2026-10-29 at 22:41 (`d160aa8`) 6 of the 462 new type errors are a traced fix's, of
+   3,206 such fixes: `fk` and `index` as above, pint's 2, and nibabel's 2; `loc` and altair's are
+   gone. Built on 2026-10-30: a `@classmethod`'s first parameter is its class by any name
+   (`traced._receivers`), so nibabel's `file_map = klass.filespec_to_file_map(filename)`, declared
+   to return a `Mapping`, has no traced `dict[str, FileHolder]`: 15 of the run's traced fixes
+   withdrawn, every one nibabel's and rooted at a class method's `klass` (counted from the run's
+   listings against the sources). Read by position, a plain method's first
+   parameter would withdraw 9 of pygments' too, but a lexer's `analyse_text(text)` is made static by
+   its metaclass, so `text` is a value like any other's. What's left, each a proposal, since it
+   withdraws fixes:
+   - **A union the function's tests exhaust**: nibabel's `value: ast.Constant | ast.UnaryOp`
+     (`ascconv._get_value`), which tests `isinstance` against each member and raises past them, so
+     its last test is always true to mypy (`redundant-expr`). Refuse a traced union where the
+     function tests the name against every member: of 36 traced unions without `None`, this one
+     brought an error.
+   - **A class whose definition imports the fixed module**: pint's `quantity: Quantity`, imported
+     for type checking into `numpy_func.py`, which `Quantity`'s own definition depends on through
+     the numpy facet. Refuse an import added for a class whose module imports the fixed one; needs
+     the index's import graph, and such cycles are common and mostly harmless.
+   - **A declared type the run contradicts**: sqlalchemy's `fk: ForeignKey`, right by the run, but
+     passed to `skip_fn`, declared `Callable[[ForeignKeyConstraint], bool]` where the docstring says
+     each `ForeignKey` is passed. Refusing it means checking a fix against the parameter it's passed
+     to, as LVA009 checks a value against its annotation.
+   - `index: Index`, then `index.table`, a `Table | None` that `_verify_index_table` raises on,
+     passed where a `FromClause` is declared: typing the local exposes what a body checked against
+     `Any` let by, which no rule here avoids, as for a written return (the signatures item).
 2. **Signatures from the project's own inference.** `returned` decides a function's return where its
    `return`s agree, `callers` an unannotated parameter every call passes one type and `fixture` a
    test's, but each types only the locals bound to them: no edit writes `-> T` on the def or `: T`
@@ -472,7 +524,12 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    as certain. Left: under `--unsafe-fixes` 138 of the parameter fixes come only on a second pass (a
    guess written on a caller's argument is a known type for `callers` on the next pass: the second
    row's pass 2 to 4, 150 fixes), which a recheck after writing guesses would bring in
-   (`rounds._unsettled` does it with `--likely` alone); and LVA015's reach is the seeds', 1 of
+   (`rounds._unsettled` does it with `--likely` alone). Read again on 2026-10-30 from that
+   measurement's own listings (`--show-fixes`, each pass's, the tree of 2026-10-26): of
+   the 135 LVA015 fixes its second `--unsafe-fixes` pass made, 128 are `named`, a name the first
+   pass's own parameter fixes brought to `AGREED` annotations, and 7 `callers`. A recheck would
+   have `named` count its own guesses as the project's annotations, so it isn't built, and 7
+   `callers` fixes are too few to build one for. And LVA015's reach is the seeds', 1 of
    `--unsafe-fixes`' 5,408 binding fixes on django resting on one before the codes. The roadmap's 10
    hours spent; coverage: `--fix` +12.5% on django after a signatures pass, the `--unsafe-fixes` row
    under 1%. On the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the
@@ -498,9 +555,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    sqlalchemy's from `typing_extensions` read as an untyped package ([COMPLETED.md](COMPLETED.md)),
    411 elsewhere (rc.8's 403). The witness there: `constructor` fails the bars only through the
    cascade (183 of its 199 blamed errors sqlalchemy's); `method` 2 blamed of 1,047 (0.19 in each
-   100, the bar 0.1): nibabel's `magic_number: bytes` as on rc.8, and
-   pandas's `subarr: Index` in a method returning `Self` (`core/indexes/datetimes.py`), new since
-   rc.8, to read before `method` is counted out (2 of 1,083 on the mega run of 2026-10-29).
+   100, the bar 0.1), nibabel's as on rc.8 and pandas's new since (read under the built items).
 
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
@@ -533,12 +588,7 @@ What to measure before building, smallest first.
    (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
    constricter command of the run (2026-10-21). Done when the census is read at both. About an
    hour beside the run; coverage unchanged.
-2. **Stubs generated for compiled code.** `stubgen --inspect-mode`, pybind11-stubgen, nanobind's
-   and Cython's `embedsignature` signatures, mypy-protobuf, and `__text_signature__` give a
-   compiled module's signatures, but few returns, and each needs the module imported. Next to no
-   reach in the corpora: lxml 8 calls, grpc 3, greenlet 3. Done when a corpus that calls compiled
-   code more is added, or measured as not worth it. About 2 hours to measure; coverage under 0.1%.
-3. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
+2. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
    basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
    the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
    the mechanisms table counts the agreeing sets. Built: where a later checker's usable hint gives
@@ -555,7 +605,7 @@ What to measure before building, smallest first.
    fixes held 90.2% by name (99.5% by the witness: a subclass or a protocol differs by name). Left:
    the witness judging the union's fixes too, and a type check after it, then the sets held to the
    bars. About 3 hours beside a run; coverage unchanged (`--likely` gains what passes).
-4. **pyrefly's `stubgen` for untyped packages.** For an installed package with no types, pyrefly
+3. **pyrefly's `stubgen` for untyped packages.** For an installed package with no types, pyrefly
    writes stubs from what it infers (experimental; `Incomplete` where it can't tell): the calls
    declared types would reach plus the returns no source declares (tlz, botocore, kombu), perhaps
    600 direct calls. Read as guesses, as an installed package's stubs are, held to the witness. Done
@@ -572,12 +622,12 @@ What to measure before building, smallest first.
    declared types: built, they'd need a kind of their own, a guess. Against pandas-stubs on
    2026-10-28 ([COMPLETED.md](COMPLETED.md)), the generated stubs gained fewer certain fixes and
    lost fewer guesses. Left: whether to build it. About 3 hours spent; coverage under 1%.
-5. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
+4. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
    make at run time (a model's fields, a manager's querysets), but only inside a mypy run. About 0
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-6. **typeshed's third-party stubs, not installed.** basedpyright ships them
+5. **typeshed's third-party stubs, not installed.** basedpyright ships them
    (`typeshed-fallback/stubs`, 201 sets): 18 of the top 100 PyPI packages are typed only there
    (pyyaml, python-dateutil, six, protobuf, grpcio, jsonschema, tqdm, pytz, regex, ...). Certain
    where the installed version matches `METADATA.toml`'s, a guess where not. Its reach is users'
@@ -586,7 +636,7 @@ What to measure before building, smallest first.
    pywin32 35, PyYAML 13, python-dateutil 7), some of them where the stubs are installed already.
    Done when decided: built for users' code, or left at under 0.1% on the corpora. About 4 hours to
    build.
-7. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above). A
+6. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above). A
    docstring's `Returns` section names what a function with no return annotation returns (docstub
    and docs2stubs read them): networkx has 2,301 such functions, 868 with a Returns section and 485
    naming one plain type; pandas 1,787 (360, 108), dask 3,912 (181, 56), xarray 1,088 (60, 38). Many
@@ -594,7 +644,7 @@ What to measure before building, smallest first.
    none: under 1,000 usable. A guess, a docstring's name resolved where the module would resolve it,
    held to the witness. Done when measured on networkx and pandas. About 4 hours; coverage under
    0.5%.
-8. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
+7. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new

@@ -6,13 +6,16 @@ one step at a time, and a step waits for those whose records it reads (`suite_st
 CP-SAT schedules that, each step's seconds as the last runs measured them (`sizing.before`), and
 the CPUs and memory the runner will hold for it (`sizing.Plan.wanted`), so the plan is one it can
 keep; each step's planned start is its rank, and of the steps that could start, the
-one ranked first does (`sizing.Slots.take`). A step no run has measured has no rank: the runner's
-rules order it (`sizing`). Where OR-Tools isn't installed, nothing is planned.
+one ranked first does (`sizing.Slots.take`). A step no run has measured on its corpus (a corpus or
+a step new to the run's output) is planned for the median seconds of the corpora that ran it in its
+corpus's set by size and time (`_SETS`), or else of all that ran it; one none ran has no rank: the
+runner's rules order it (`sizing`). Where OR-Tools isn't installed, nothing is planned.
 """
 
 import importlib
 import importlib.util
 import math
+import statistics
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 _SECONDS: Final = 20.0  # the most the solver takes before the run starts
 _WORKERS: Final = 2  # its threads: the run's steps are what the machine is for
 _TENTHS: Final = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers
+# `corpora.toml`'s sets of the corpora by their size and their time, each corpus in one.
+_SETS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")
 
 
 class _Step:  # pylint: disable=too-few-public-methods
@@ -74,15 +79,17 @@ def _measured(
     plan: sizing.Plan,
     chosen: Callable[[str], bool],
 ) -> list[_Step]:
-    """List the `chosen` steps of the run on `entries` an earlier run measured, each with those it waits for.
+    """List the `chosen` steps of the run on `entries` to plan, each with those it waits for.
 
-    Each as `plan` sizes it: the CPUs and the memory the runner will hold for it, not what it used.
+    Each as `plan` sizes it: the CPUs and the memory the runner will hold for it, not what it used;
+    one no run measured on its corpus, for what its like corpora took (`like`).
 
     Returns:
       Them.
 
     """
     found: list[_Step] = []
+    known: catalog.Catalog = catalog.load()
     entry: catalog.Entry
     for entry in entries:
         job: Job = Job(run, Store(Path()), Tree(entry.name, entry.version, Path(), suite=entry.suite), DEV)
@@ -93,9 +100,21 @@ def _measured(
         for name in names:
             if (name == pipeline.TESTS_RELEASED and not run.steps.tests_released) or not chosen(name):
                 continue  # an earlier run's, most likely, or another stage's: not run
-            if (directory(entry.name), name) in plan.before:
+            seconds: float | None = (
+                None
+                if (directory(entry.name), name) in plan.before
+                else like(plan.before, entry.name, name, known)
+            )
+            if (directory(entry.name), name) in plan.before or seconds is not None:
                 wanted: sizing.Wanted = plan.wanted(job.tree, name, heavy=entry.heavy)
-                found.append(_Step(entry.name, name, wanted, needs.get(name, frozenset())))
+                found.append(
+                    _Step(
+                        entry.name,
+                        name,
+                        wanted._replace(seconds=seconds or wanted.seconds),
+                        needs.get(name, frozenset()),
+                    ),
+                )
     return found
 
 
@@ -168,3 +187,24 @@ def _modelled(
         _ = model.add_no_overlap(each)
     model.minimize(end)
     return starts
+
+
+def like(
+    before: Mapping[tuple[str, str], sizing.Before],
+    corpus: str,
+    step: str,
+    known: catalog.Catalog,
+) -> float | None:
+    """Estimate a step's seconds on a corpus no run measured it on, from the corpora that ran it.
+
+    Those in the corpus's set by size and time (`_SETS`, of `known`'s sets), or else every one.
+
+    Returns:
+      Their median seconds; `None` where none ran it.
+
+    """
+    sets: dict[str, str] = {directory(name): each for each in _SETS for name in known.sets.get(each, [])}
+    ran: dict[str, float] = {folder: each.seconds for (folder, name), each in before.items() if name == step}
+    group: str | None = sets.get(directory(corpus))
+    alike: list[float] = [seconds for folder, seconds in ran.items() if group and sets.get(folder) == group]
+    return statistics.median(alike or list(ran.values())) if ran else None
