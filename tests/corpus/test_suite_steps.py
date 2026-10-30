@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Final, TypeAlias, cast
@@ -604,3 +605,46 @@ def test_tests_python_c_runs_are_traced_on_their_workers(
     workers: str = f"--parallel={corpus_suite.workers(suite)}"
     assert ran == [[str(tmp_path / ".venv" / "bin" / "python"), "-Wall", *tracer, "-c", code, workers]]
     assert not corpus_suite.traceable(_SUITE._replace(tests=("python", "runtests.py")))  # nor a script
+
+
+_FILLED: Final = """def f(items, flag):
+    params = {}
+    for name, value in items:
+        if flag:
+            param = str(value)
+        else:
+            param = value + 1
+        params[name] = param
+    return params
+"""
+_FILLED_FIXED: Final = _FILLED.replace(
+    "    params = {}\n",
+    "    params: dict[str, int | float] = {}\n    name: str\n",
+)
+
+
+def test_a_new_error_is_blamed_on_the_fix_whose_type_it_quotes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`params[name] = param`: the error quotes `params`' value type, not `name: str`'s, declared after it."""
+
+    def head(_args: Sequence[str], _cwd: Path) -> str:
+        return _FILLED  # the file as `HEAD` has it
+
+    monkeypatch.setattr(corpus_suite, "_output", head)
+    _ = (tmp_path / "m.py").write_text(_FILLED_FIXED, encoding="utf-8")
+    message: str = (
+        'Incompatible types in assignment (expression has type "int | str", target has type "int | float")'
+    )
+    fixes: list[corpus_suite.Fix] = [
+        corpus_suite.Fix("m.py", 2, "params", "dict[str, int | float]", "copy+filled", unsafe=True),
+        corpus_suite.Fix("m.py", 3, "name", "str", "assigned+loop", unsafe=False, likely=True),
+    ]
+    compared: corpus_suite.Compared = corpus_suite.blamed(
+        tmp_path,
+        [corpus_suite.Complaint("m.py", 9, message)],
+        [],
+        ({"m.py": fixes}, ""),
+    )
+    assert [each.fix for each in compared.new] == [fixes[0]]

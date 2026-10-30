@@ -4,7 +4,8 @@ A numpydoc `Returns` section of one entry (`int`, `n : int`), a Google-style `Re
 line names the type (`bool: Whether ...`) or a Sphinx `:rtype:` field, naming `int`, `float`,
 `bool`, `str`, `bytes` or `complex` (or `integer`, `boolean`, `string`), or one of them `or None`.
 Only where every `return` the function has gives a value of no known type or one the named type
-takes (`int` for a `float`), no `int` or `bool` where one is a true division (`a / b`), and no
+takes (`int` for a `float`), none without `or None` where one gives `None`, no `int` or `bool`
+where one is a true division (`a / b`), and no
 number in a module importing numpy, whose scalars no checker takes for one: a docstring may be
 stale, so its type is a guess (`documented`).
 """
@@ -14,6 +15,7 @@ import re
 from collections.abc import Iterable
 from typing import Final
 
+from constricter.fix.values.shapes import is_none
 from constricter.source.syntax import FunctionDef, own_returns
 
 KIND: Final = "documented"  # the guessing mechanism (`FIX_KINDS`)
@@ -68,6 +70,8 @@ def documented(func: FunctionDef, returned: Iterable[str | None], *, numpy: bool
     parts: set[str] = set() if named is None else set(named.split(" | "))
     if named is None or (_INTEGERS & parts and _divides(func)) or (numpy and _NUMBERS & parts):
         return None
+    if _NONE not in parts and _gives_none(func):
+        return None
     allowed: frozenset[str] = frozenset[str]().union(*(_TAKES[part] for part in named.split(" | ")))
     return named if all(each is None or each in allowed for each in returned) else None
 
@@ -93,6 +97,18 @@ def imports_numpy(module: ast.Module) -> bool:
         )
         for each in statements
     )
+
+
+def _gives_none(func: FunctionDef) -> bool:
+    """Check whether a `return` of the function's gives `None`: `return None`, or a bare `return`.
+
+    A recorded `return`'s type is unknown for `None` (no binding's fix is one), so it's read here.
+
+    Returns:
+      Whether one does.
+
+    """
+    return any(each.value is None or is_none(each.value) for each in own_returns(func.body))
 
 
 def _divides(func: FunctionDef) -> bool:

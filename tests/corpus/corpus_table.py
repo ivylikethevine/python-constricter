@@ -257,6 +257,16 @@ def compiles(path: Path) -> bool:
     return True
 
 
+def added(diff: str) -> int:
+    """Count the lines a `--diff` adds: its `+` lines, not each file's `+++` header.
+
+    Returns:
+      Them.
+
+    """
+    return sum(line.startswith("+") and not line.startswith("+++ ") for line in diff.splitlines())
+
+
 def fixed_count(output: str) -> int | None:
     """Read how many offences a `--fix` run fixed, from its summary: its output's last line.
 
@@ -368,7 +378,7 @@ def fixed_copy(
     if (fixed := fixed_count(run(["--fix", *fixing]))) is None:
         return Fixed(None, 0, 0, None)
     broken: int = sum(not compiles(path) for path in valid)
-    return Fixed(fixed, broken, run(["--diff", *fixing]).count("\n+") if second else 0, typed_in(root))
+    return Fixed(fixed, broken, added(run(["--diff", *fixing])) if second else 0, typed_in(root))
 
 
 class _Fixing(NamedTuple):

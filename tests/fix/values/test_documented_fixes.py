@@ -217,3 +217,26 @@ def test_a_function_without_a_docstring_is_not_documented() -> None:
     func: ast.stmt = ast.parse("def f():\n    return x\n").body[0]
     assert isinstance(func, ast.FunctionDef)
     assert documented(func, [None]) is None
+
+
+_GIVES_NONE: str = '''
+def f(items):
+    """D.
+
+    Returns
+    -------
+    {named}
+    """
+    for item in items:
+        if item:
+            return item * 2
+    return None
+'''
+
+
+@pytest.mark.parametrize(("named", "expected"), [("int", None), ("int or None", "int | None")])
+def test_a_return_of_none_refuses_a_documented_type_without_it(named: str, expected: str | None) -> None:
+    """As nibabel's `find_private_section`: `element_start : int`, then `return None` where none is found."""
+    func: ast.stmt = ast.parse(_GIVES_NONE.format(named=named)).body[0]
+    assert isinstance(func, ast.FunctionDef)
+    assert documented(func, [None, None]) == expected

@@ -13,7 +13,7 @@ time. Not while a run uses the same checkouts: its tree is taken back to its tag
 import sys
 from pathlib import Path
 
-from tests.corpus import catalog, launch, trees
+from tests.corpus import catalog, corpus_table, launch, trees
 from tests.corpus.run_config import DEV
 
 OUT = Path(__file__).resolve().parents[1] / "local" / "scratch" / "hinted-second-pass"
@@ -30,8 +30,11 @@ def main() -> int:
         label = f"{name}-{checker}"
         (OUT / f"{label}.fixes.txt").write_text(first.output, encoding="utf-8")
         (OUT / f"{label}.diff").write_text(second.output, encoding="utf-8")
-        left = second.output.count("\n+")
-        print(f"{label}: {len(valid)} files, second pass {left} ({first.seconds:.0f}s, {second.seconds:.0f}s)", flush=True)
+        left = corpus_table.added(second.output)
+        print(
+            f"{label}: {len(valid)} files, second pass {left} ({first.seconds:.0f}s, {second.seconds:.0f}s)",
+            flush=True,
+        )
     return 0
 
 

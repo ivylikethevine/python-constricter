@@ -484,7 +484,7 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
         record |= {
             "fixed": fixed,
             "broken": sum(not corpus_table.compiles(path) for path in valid),
-            "left": left.result().output.count("\n+"),
+            "left": corpus_table.added(left.result().output),
             "typed": typed.result(),
         }
         _ = job.store.path(job.tree.name, job.recorded, step, ".patch").write_text(

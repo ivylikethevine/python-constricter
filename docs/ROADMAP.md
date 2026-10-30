@@ -98,6 +98,25 @@ measure before building.
   last below have their census, but the run checks no types for pip, django or pygments, so their
   errors are as measured alone.
 
+**Read on the mega run of 2026-10-29 at 19:20** (`mega-10-29-2026-1920` on `e793bc6`, the
+defaulted generics' constructor guesses, `view`'s overloads, `documented` without numpy's numbers
+and nibabel's `differs` entry; 65 minutes on 16CPU/60GB), against `mega-10-29-2026-1139`:
+
+- New type errors 470 from 562: mcp −60 and strawberry-graphql −18, `constructor`'s 85 from 151
+  (as on 2026-10-28), and pandas −14, its `view` certain fixes gone (`fix-certain` 5 from 7). Every
+  other corpus the same.
+- Bindings typed of 474,291: `--fix` 164,029, `--likely` 217,155, `--unsafe-fixes` 241,715 (2, 12
+  and 28 fewer); `infer-trace` 146,394 of 292,568 (31 fewer).
+- `documented` 14 guesses from 27, 8 told, 87.5% held, 1 of 12 read blamed: nibabel's
+  `offset: int` again, from `nicom/utils.py`'s `find_private_section`, which imports no numpy and
+  ends `return None`, a `return` the check records as of no known type. A `return None` or a bare
+  `return` refuses a type without `None` since (`documented._gives_none`).
+- One problem: the standard library's second pass, `trace.py`'s `encoding` (item 13 under Small);
+  nibabel's quaternion tests no longer one.
+
+**What the next mega run reads**: the runner's order against the solver's shortest, for a run with
+no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
+
 1. **Eight mechanisms, counted.** Built since the 0.4.0-rc.3 mega run, each with its tests:
    - **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
      against `bytes` alone, with no argument's type known, takes its `str` signature's return
@@ -374,7 +393,9 @@ measure before building.
    (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
    `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
    or the one every value fits as `rebound` takes it) would type them as a checker does, and
-   withdraw or change the fixes that rest on the last branch alone. Measure first: how many
+   withdraw or change the fixes that rest on the last branch alone. The mega run of 2026-10-29 has
+   one such error: optuna's `params: dict[str, int | float]`, filled from `param`, a `str` in its
+   other branch. Measure first: how many
    `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
 7. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
@@ -415,29 +436,41 @@ measure before building.
     hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in sqlalchemy's `sqltypes.py`,
     which defines `class Enum(..., TypeEngine[...])`, it names that class: 8 new type errors over
     the `infer-*` steps on the mega run of 2026-10-29, since the subscripted bases made the class
-    plain (it was a generic written bare before, refused). A hint naming a class the module itself
-    binds to another, where the checker's origin isn't known, is no fix (it withdraws fixes). About
-    2 hours; coverage unchanged.
+    plain (it was a generic written bare before, refused). Built: a hint whose edit writes a name
+    the file binds, where a module it imports whole has a class of that name too, is no fix
+    (`offers._ambiguous`). Done when a mega run's `infer-*` steps have no such error. Coverage
+    unchanged.
 11. **A generic alias whose type variable is quoted** (a finding). sqlalchemy's
     `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` names `_T` only inside its
     forward references, so it isn't read as generic and `_InternalEntityType[Any]` is written bare
-    through the type-checking import (2 new errors on 2026-10-29). Read a quoted member's names as
-    the alias's own. About 1 hour; coverage unchanged.
+    through the type-checking import (2 new errors on 2026-10-29). Built: a forward reference's
+    names are the alias's own (`modules._alias_names_any`), which a hint's edit is judged by. Left:
+    the two errors came from guesses copying sqlalchemy's own bare `entity_zero: _InternalEntityType`
+    (`context.py`) into another file; a copied annotation naming a generic alias bare is no fix
+    there, as a generic class's isn't, once the index's generic aliases reach `Facts.generics`
+    through `crossed.spelled_classes`. About 2 hours; coverage unchanged.
 12. **A dict filled in two branches, one of no known type** (a finding). optuna's
     `params: dict[str, int | float]` (`copy+filled`): `params[name] = param`, `param` bound in an
     `isinstance` branch to `to_external_repr(...)` (a `str` too) and in the other to a number; 1 new
     error per fix step on 2026-10-29, blamed on `name: str` in the same line (`corpus_suite._blamed`
-    takes the nearest fix before it of a name the line has). Both: no `filled` type where a value
-    stored has a binding of no known type, and a blame preferring the fix whose annotation the
-    message quotes. About 2 hours; coverage unchanged.
+    takes the nearest fix before it of a name the line has). Built: a blame prefers the fix whose
+    annotation holds a type the message quotes. The `filled` type is item 6's: `param` read as its
+    last branch's number. Coverage unchanged.
 13. **A `with` target's members in the pass that types it** (a finding). The standard library's
     `trace.py` (`f: TextIO` written before `with tokenize.open(filename) as f:`) has
     `encoding = f.encoding` typed only by a second pass: on the standard-library corpus `TextIO` is
     the checked `typing.py`'s class, read once `f` is annotated. The one second-pass line on the
-    mega run of 2026-10-29. About 2 hours; coverage under 0.1%.
+    mega runs of 2026-10-29. The type comes from the tables (`entered`, `__enter__`), so the file
+    spells no `TextIO` until the fix imports it, and `crossed._take` reads only the members of
+    classes it spells; a round checks a file again only for late kinds (`rounds._unsettled`).
+    Proposed: check a file again where a fix imports a class from a checked module whose members
+    the file reads of the fixed name. Checking again every file whose fix imports a checked
+    module's class would add a round to most corpora's files. About 2 hours; coverage under 0.1%.
 14. **A second pass's count without the diff's headers** (a finding). `left` counts `\n+` in the
     `--diff` output, a `+++` header line included (`pipeline.py`, `corpus_table.fixed_copy`), so one line
-    left is reported as 2, and a file's header as a line. About 30 minutes.
+    left is reported as 2, and a file's header as a line. Built: `corpus_table.added` counts the
+    added lines alone, in the runner and both second-pass scripts. Done when a mega run's `left`
+    counts lines.
 
 ### Medium: 4 to 8 hours
 

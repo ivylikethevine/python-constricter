@@ -152,6 +152,7 @@ _ERROR: Final = re.compile(
 _OTHER_LINE: Final = re.compile(r"\bline \d+")  # a message's reference to another line, which a fix moves
 _QUOTED: Final = re.compile(r"""["'`]([A-Za-z_]\w*)["'`]""")
 _NAME: Final = re.compile(r"[A-Za-z_]\w*")
+_TYPES: Final = re.compile(r'"([^"]+)"')  # the types a checker's message quotes (`has type "int | float"`)
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
@@ -921,8 +922,10 @@ def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
     """Return the fix a new error is about, if one can be told.
 
     The fix on its (original) line, preferring one whose name its message quotes; else the nearest
-    fix before it in its scope of a name its line or its message has; else the module's last fix of
-    such a name (a global it reads).
+    fix before it in its scope of a name its line or its message has, one whose annotation holds a
+    type the message quotes first (`params: dict[str, int | float]` for `target has type "int |
+    float"`, over the `name: str` before it on the line `params[name] = param`); else the module's
+    last fix of such a name (a global it reads).
 
     Returns:
       The fix, or None.
@@ -942,7 +945,12 @@ def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
     candidates: list[Fix] = [
         fix for fix in named if fix.line < origin and file.scopes[fix.line] == scope
     ] or [fix for fix in named if not file.scopes[fix.line]]
-    return max(candidates, key=lambda fix: fix.line) if candidates else None
+    quoted: list[str] = _TYPES.findall(complaint.message)
+    return (
+        max(candidates, key=lambda fix: (any(each in fix.annotation for each in quoted), fix.line))
+        if candidates
+        else None
+    )
 
 
 class Blamed(NamedTuple):

@@ -31,7 +31,7 @@ from constricter.fix.values.returned import held_back, unannotated
 from constricter.fix.values.stored import untouched
 from constricter.fix.values.tables import Tables, module_tables
 from constricter.overrides import override
-from constricter.source import parsed
+from constricter.source import parsed, quoted
 from constricter.source.annotations import dotted, is_composite, node_name
 from constricter.source.declarations import (
     GenericClass,
@@ -712,7 +712,7 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
 
     Returns:
       Each one's name, and whether it takes type arguments: its value names one of the module's type
-      variables, or it has type parameters of its own.
+      variables, in a forward reference too, or it has type parameters of its own.
 
     """
     type_vars: frozenset[str] = defined_type_vars(tree)
@@ -728,9 +728,9 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
                 annotation=annotation,
                 value=ast.expr() as value,
             ) if node_name(annotation) == _TYPE_ALIAS:
-                found[name] = _names_any(value, type_vars)
+                found[name] = _alias_names_any(value, type_vars)
             case ast.Assign(targets=[ast.Name(id=name)], value=value) if is_composite(value):
-                found[name] = _names_any(value, type_vars)
+                found[name] = _alias_names_any(value, type_vars)
             case _ if type(stmt).__name__ == _TYPE_ALIAS:
                 named: ast.Name = cast("ast.Name", getattr(stmt, "name", None))
                 found[named.id] = bool(cast("object", getattr(stmt, "type_params", ())))
@@ -777,6 +777,24 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
 
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
     return any(node_name(node) in names for node in ast.walk(value))
+
+
+def _alias_names_any(value: ast.expr, names: frozenset[str]) -> bool:
+    """Check whether a type alias's value names any of `names`, in a forward reference too (`"Mapper[_T]"`).
+
+    Returns:
+      Whether it does.
+
+    """
+    node: ast.AST
+    for node in ast.walk(value):
+        if node_name(node) in names:
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            inner: ast.expr = quoted.parsed(node)
+            if inner is not node and _alias_names_any(inner, names):
+                return True
+    return False
 
 
 def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:

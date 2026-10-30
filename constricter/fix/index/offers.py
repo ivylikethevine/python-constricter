@@ -11,7 +11,7 @@ import ast
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.empty import Empty
 from constricter.fix.core.known import Guarded, Hints, Offered, Origin
@@ -20,8 +20,15 @@ from constricter.fix.index.modules import PACKAGE, module_at
 from constricter.fix.index.origins import absolute
 from constricter.fix.index.stubs.atoms import private_name
 from constricter.fix.libraries import stdlib
+from constricter.fix.values.called import ENUM_FACTORIES, TYPING_FACTORIES
 
 _Defined: TypeAlias = tuple[str, str]  # where the index defines a class: its module, and its name there
+# The standard library's classes the tables leave out, as they make classes rather than instances.
+_UNTABLED: Final = {
+    "enum": frozenset(ENUM_FACTORIES),
+    "typing": frozenset(TYPING_FACTORIES),
+    "typing_extensions": frozenset(TYPING_FACTORIES),
+}
 
 
 class Own(NamedTuple):
@@ -58,6 +65,9 @@ def own(catalog: project.Index, path: Path) -> Own:
 def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tuple[Hints, ...]:
     """Drop the edits of the file at `path`'s hints that import what isn't a class, or a generic one bare.
 
+    And those writing a name the file binds that a module it imports whole has a class of too (see
+    `_ambiguous`).
+
     Returns:
       The hints, without them: such a hint is judged by what it shows alone.
 
@@ -78,6 +88,7 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
                     where: offered
                     for where, offered in found.offered.items()
                     if _sound(catalog, module, offered, found.types.get(where, ""))
+                    and not _ambiguous(catalog, target, offered)
                 },
             ),
             guarded,
@@ -213,6 +224,49 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
         if generic is None or bare or _private(catalog, origin[0]):
             return False
     return True
+
+
+def _ambiguous(catalog: project.Index, target: project.Module | None, offered: Offered) -> bool:
+    """Check whether a hint's edit writes a name the file binds and a module it imports whole has a class of.
+
+    basedpyright shows `enum.Enum` as `Enum`, and its edit writes it so, where the file defines an
+    `Enum` of its own (sqlalchemy's `sqltypes.py`, importing `enum`): which the checker meant can't
+    be told. A name the edit imports itself is the edit's.
+
+    Returns:
+      Whether one is.
+
+    """
+    if target is None:
+        return False
+    try:
+        tree: ast.Expression = ast.parse(offered.text, mode="eval")
+    except SyntaxError:
+        return False
+    imported: set[str] = set()
+    statement: str
+    for statement in offered.imports:
+        try:
+            nodes: list[ast.stmt] = ast.parse(statement).body
+        except SyntaxError:
+            continue
+        imported.update(
+            (alias.asname or alias.name).partition(".")[0]
+            for node in nodes
+            if isinstance(node, ast.Import | ast.ImportFrom)
+            for alias in node.names
+        )
+    wholes: list[str] = [origin[0] for origin in target.names.values() if origin[1] is None]
+    written: set[str] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - imported
+    return any(
+        name in target.names
+        and any(
+            (whole, name) != target.names[name]
+            and (_class(catalog, (whole, name)) is not None or name in _UNTABLED.get(whole, ()))
+            for whole in wholes
+        )
+        for name in written
+    )
 
 
 def _private(catalog: project.Index, name: str) -> bool:

@@ -274,8 +274,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   guess (`documented`): a numpydoc `Returns` section of one entry, a Google-style `Returns:` whose
   first line names a type or a Sphinx `:rtype:`, naming `int`, `float`, `bool`, `str`, `bytes` or
   `complex` (or `integer`, `boolean`, `string`), or one of them `or None`; only where every
-  `return` gives a value, of no known type or one the type takes, and no number in a module
-  importing numpy, whose scalars (`np.int64`) a checker takes for none. A generator function counts by
+  `return` gives a value, of no known type or one the type takes, none without `or None` where one
+  is `return None`, and no number in a module importing numpy, whose scalars (`np.int64`) a checker
+  takes for none. A generator function counts by
   its `yield`s instead: each a statement of its own
   (nothing is sent in), all of one type `T`, and no `return` of a value, give a
   `Generator[T, None, None]`, imported from `collections.abc` if it has to be; `yield from` gives
@@ -890,7 +891,11 @@ reads them: the class is written through an import the module runs if it has one
 after `import shapes`), else imported under `if TYPE_CHECKING:` as another checked file's type is, a
 module body's annotation quoted. Never by an import that runs: the checker's Python may have a class
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
-later one importing it from elsewhere is dropped. Where what a hint shows names something the file
+later one importing it from elsewhere is dropped. A hint whose edit writes a name the file binds,
+where a module it imports whole has a class of that name too, is dropped: basedpyright shows
+`enum.Enum` as `Enum`, and its edit writes it so in a file defining an `Enum` of its own. A type
+alias naming a type variable in a forward reference alone (`Union["Mapper[_T]", "AliasedInsp[_T]"]`)
+takes arguments, as a generic class does. Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
 `import things`), unless it writes a generic under another name than the hint shows: ty's edit for a
 generic alias (`NDArray[float64]`) is the class it stands for with the alias's arguments

@@ -203,3 +203,26 @@ def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path
     assert own.generics == {"itemgetter", "Box", "Boxes"}
     assert offers.own(catalog, tmp_path / "missing.py") == offers.Own()
     assert offers.own(catalog, tmp_path / "notebook.ipynb") == offers.Own()
+
+
+@pytest.mark.parametrize(
+    ("source", "kept"),
+    [
+        ("import enum\n\n\nclass Enum:\n    pass\n\n\nx = 1\n", False),  # `enum.Enum`, or its own?
+        ("class Enum:\n    pass\n\n\nx = 1\n", True),  # its own alone
+        ("import enum\n\n\nx = 1\n", True),  # nothing of its own of that name
+    ],
+)
+def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_edit(
+    tmp_path: Path,
+    source: str,
+    *,
+    kept: bool,
+) -> None:
+    """As basedpyright writes `enum.Enum`: `Enum`, where the file may define an `Enum` of its own."""
+    path: Path = tmp_path / "kinds.py"
+    _ = path.write_text(source, encoding="utf-8")
+    offered: Offered = Offered("MappingProxyType[str, Enum]", ("from types import MappingProxyType",))
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    found: Hints = offers.vetted(project.index([path]), path, hints)[0]
+    assert found.offered == ({_AT: offered} if kept else {})
