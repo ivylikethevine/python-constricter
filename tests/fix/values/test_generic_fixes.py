@@ -482,3 +482,58 @@ def test_a_class_whose_bases_name_another_modules_class_is_written_bare(tmp_path
     # An import of `Codec` added for it, in the file that doesn't define it.
     assert _MADE_BARE in (tmp_path / "user.py").read_text(encoding="utf-8")
     assert _MADE_BARE in (tmp_path / "pkg" / "codecs.py").read_text(encoding="utf-8")
+
+
+_ALIASED_TYPES: str = """
+from typing import Generic, TypeVar, Union
+
+_T = TypeVar("_T")
+
+
+class Mapper(Generic[_T]): ...
+
+
+class Inspected(Generic[_T]): ...
+
+
+Entity = Union["Mapper[_T]", "Inspected[_T]"]
+"""
+_ALIASED_CONTEXT: str = """
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pkg.types import Entity
+
+
+class Holder:
+    entity_zero: "Entity"
+    count: int
+"""
+_ALIASED_USE: str = """
+from pkg.context import Holder
+
+
+def run(holder: Holder) -> None:
+    zero = holder.entity_zero
+    count = holder.count
+"""
+
+
+def test_a_generic_alias_another_file_declares_bare_is_no_fix(tmp_path: Path) -> None:
+    """As sqlalchemy's `entity_zero: _InternalEntityType`: copied bare, its quoted `_T` is unbound."""
+    (tmp_path / "pkg").mkdir()
+    sources: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/types.py": _ALIASED_TYPES,
+        "pkg/context.py": _ALIASED_CONTEXT,
+        "pkg/use.py": _ALIASED_USE,
+    }
+    name: str
+    source: str
+    for name, source in sources.items():
+        _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert "Entity" in catalog.modules["pkg.types"].generics
+    _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    written: str = textwrap.dedent(_ALIASED_USE).replace("    count = ", "    count: int = ")
+    assert (tmp_path / "pkg" / "use.py").read_text(encoding="utf-8") == written

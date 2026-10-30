@@ -893,9 +893,9 @@ module body's annotation quoted. Never by an import that runs: the checker's Pyt
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
 later one importing it from elsewhere is dropped. A hint whose edit writes a name the file binds,
 where a module it imports whole has a class of that name too, is dropped: basedpyright shows
-`enum.Enum` as `Enum`, and its edit writes it so in a file defining an `Enum` of its own. A type
-alias naming a type variable in a forward reference alone (`Union["Mapper[_T]", "AliasedInsp[_T]"]`)
-takes arguments, as a generic class does. Where what a hint shows names something the file
+`enum.Enum` as `Enum`, and its edit writes it so in a file defining an `Enum` of its own. A type alias naming a type variable, in a forward reference alone too
+(`Union["Mapper[_T]", "AliasedInsp[_T]"]`), takes arguments as a generic class does: neither a
+hint's edit nor a fix writes it bare (a fix copying another file's bare annotation of it included). Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
 `import things`), unless it writes a generic under another name than the hint shows: ty's edit for a
 generic alias (`NDArray[float64]`) is the class it stands for with the alias's arguments

@@ -94,7 +94,8 @@ class Module:  # pylint: disable=too-many-instance-attributes
     method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
     attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
     returned: Returns = field(default_factory=Returns)  # what they return, once it's checked
-    generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    # Its generic classes, and type aliases taking arguments: what a type mustn't write bare.
+    generics: frozenset[str] = frozenset()
     # What each one's subscripted bases name that may be a type variable, and its own type variables
     # with a default: a class whose every such name is one, where it's defined, is written bare.
     generic_names: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
@@ -494,7 +495,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
         called=_called(tree, names),
-        generics=generic_classes(tree, defaulted),
+        generics=generic_classes(tree, defaulted)
+        | {alias for alias, generic in aliases.items() if generic and alias not in rebound},
         defaulted_generics=generic_classes(tree) - generic_classes(tree, defaulted),
         generic_names={name: names for name, names in generic_names(tree).items() if names},
         defaulted=defaulted,

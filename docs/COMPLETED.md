@@ -450,6 +450,35 @@ What constricter does today and what was measured on the way, by scope. What's n
   and the implementation that one or none, are read as its declared return (`usable.agreed`), so
   `DataTree.from_dict(groups)` is typed with `groups` of no known type (276 such calls on xarray).
   None of the mega run of 2026-10-29's new type errors is from it.
+- **The members of a class imported for type checking alone**: a file's own `if TYPE_CHECKING:`
+  imports are taken as its run-time ones are (`crossed.imported`), so `info.size()` on an
+  `info: Info` imported that way is typed. pydantic 1,131 fixes to 1,141 and xarray 9,067 to 9,122,
+  measured alone (one process on 16CPU/60GB); the mega runs of 2026-10-29 covered its census.
+  Through it guesses copy sqlalchemy's own bare `_InternalEntityType`, a generic alias, into other
+  files ([ROADMAP.md](ROADMAP.md), Small).
+- **A generic class whose every parameter has a default**, written bare as a type checker reads it
+  with them: each module records its type variables with a default and what its generic classes'
+  bases name, and the index drops from `generics` those whose every such name resolves to one
+  (`modules.settled`, `defaulted_in`), installed modules' too; a `Generic[...]` or `Protocol[...]`
+  listing another module's type variable gives the class its parameters (`declarations._params`).
+  sqlalchemy 2,091 fixes to 2,263, measured alone. No `constructor` guess writes one bare where its
+  call passes `self` of a class binding type variables, or a parameter annotated with one
+  (`doubts.binds_defaults`, `Module.defaulted_generics`): mcp's 60 and strawberry-graphql's 18 new
+  type errors on the mega run of 2026-10-29 at 11:39 (`f7d53b2`) were those, none at 19:20
+  (`e793bc6`).
+- **`return`s of one type and of `None`** give `T | None`, a guess, as a type checker infers the
+  return: each recorded `return` matched to the function's own in source order, `return None` and a
+  bare `return` typed `None` (`returned._returned_types`, `_or_none`). django's bindings with no fix
+  11,709 from 11,712, measured alone; the mega runs check no types for django or pip.
+- **A class variable across its line, and classes under inert marks**: a plain class's variable is
+  joined across its line (`classvars.joined`, `plain._joined`: the widest number, `| None`,
+  `tuple[T, ...]`), values fitting no one type keeping each class's own; a decorator or metaclass
+  reading no annotations leaves a class plain (`source/inert.py`, `project.INERT`), none of its
+  variables typed where a class in its line defines the name or the join fails
+  (`classvars.unshadowed`). All `member` guesses, `--unsafe-fixes` only. On the mega runs of
+  2026-10-29, bindings with no fix: pygments 2,313 from 6,695, the standard library 62,138 from
+  63,071, django 11,609 from 11,747. Its type errors as measured alone (pygments 10 new and 6 gone,
+  django 17 new and 43 gone, one process on 16CPU/60GB): the runs check no types for either.
 
 ## Command and output
 

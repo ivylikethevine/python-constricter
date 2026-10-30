@@ -19,100 +19,32 @@ measure before building.
 
 ### Built, waiting on a run
 
-**Read on the mega runs of 2026-10-28** (`mega-10-28-2026-0057` on `b6ac32b`, 68 minutes, and
-`mega-10-28-2026-0826` on `6b0ab18`, 69 minutes, both on 16CPU/60GB):
+**Read on the mega runs of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes, and
+`mega-10-29-2026-1920` on `e793bc6`, 65 minutes, both on 16CPU/60GB), against
+`mega-10-28-2026-0826` by `scratch/type_errors_diff.py` and `scratch/guess_report.py --from`:
 
-- New type errors 428 on both, the same by step and by corpus (rc.8's 403; 5,927 on 2026-10-27):
-  sqlalchemy's 17, the `typing_extensions` cascade gone. `constructor` passes LIKELY.md's bars (15
-  of 25,834 checked blamed, 0.06 in each 100).
-- On `6b0ab18` `--likely` applies `declared+returned`, `declared+returned+unpack` and
-  `constructor+declared+returned` ([COMPLETED.md](COMPLETED.md)): `fix-likely`'s new type errors
-  20 as before, none blamed on them, and the three pass the bars a third time. `declared` and
-  `reads` pass only as mechanisms, every guess with them counted, and no `reads` set has 20
-  guesses.
-- Bindings typed of 474,291 on `6b0ab18`: `--fix` 161,113, `--likely` 211,064, `--unsafe-fixes`
-  228,999 (161,090, 210,500 and 228,976 on `b6ac32b`; 161,111, 210,548 and 229,024 on 2026-10-27).
-  mypy's 23 `tag: u8` are back in every tier (`mypy_extensions` read for its classes alone), and
-  `--likely` gains 541 more, the `declared` sets. On `b6ac32b` sqlalchemy had 28 fewer, the type
-  variables it now exempts, which took a guess before.
-- `method` as on 2026-10-27: 2 of 1,047 blamed (0.19 in each 100, the bar 0.1), nibabel's and
-  pandas's `subarr: Index`.
-- `infer-trace` types 134,815 of 292,568 bindings; its new type errors 36, rc.8's 32.
-- sqlalchemy's tests table filled (no test's skip moved), and its LVA004 offences 2,471 from 2,501.
-- sphinx's `test_html5_rubric` failed after `infer-basedpyright` and `infer-pyrefly` on `b6ac32b`,
-  the order-dependent test named under "Eight mechanisms, counted", and passed on `6b0ab18`.
-
-**Read on the mega run of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, the items below built,
-89 minutes on 16CPU/60GB), against `mega-10-28-2026-0826` by `scratch/type_errors_diff.py` and
-`scratch/guess_report.py --from`:
-
-- Bindings typed of 474,291: `--fix` 164,031, `--likely` 217,167, `--unsafe-fixes` 241,743
-  (161,113, 211,064 and 228,999 on `6b0ab18`); `infer-trace` 146,425 of 292,568 (134,815).
-- Bindings with no fix 232,959 from 245,708: pygments 2,313 from 6,695, xarray 11,247 from 14,326,
-  the standard library 62,138 from 63,071, sqlalchemy 9,662 from 10,140, django 11,609 from 11,747,
-  networkx 16,022, dask 18,248, zarr 1,129, pydantic 1,508: each item's own measure, or within 30.
-- New type errors 562 from 428, an error counted in each step it's in:
-  - mcp +60 and strawberry-graphql +19: a generic class read with its defaults, written bare by a
-    `constructor` guess whose call passes the enclosing class's type variable. mcp's
-    `context = Context(request_context=ctx, ...)` in a method of `MCPServer(Generic[LifespanResultT])`
-    reads as `Context[dict[str, Any], Any]`; strawberry's `Operation(self, ...)` in its generic
-    handler as `Operation[None, None]`. They are all of `constructor`'s 66 more; it stays under the
-    bars (22 of 26,468 read blamed, 0.08 in each 100). No guess since where the call passes `self`
-    of a class binding type variables, or a parameter annotated with one (`doubts.binds_defaults`,
-    the classes in `Module.defaulted_generics`).
-  - pandas +42, four of them certain fixes in each step, from `d61ea5d`'s `settled` over installed
-    modules: numpy's `datetime64` and `timedelta64` are plain classes to the index now, and
-    `x.view("i8")` took `generic.view`'s first overload, `-> Self` (`y: np.timedelta64`, the witness
-    seeing `int64` all 277 times; a two-function probe through `scratch/fix_diff.py` gives no fix at
-    `06fbcf1`). Its `type: type[ndarray] = ...`, declared alike in every overload, was taken to
-    accept anything, though it's the first positional parameter there and the second in the
-    others: a parameter is shared now only at the same place (`signatures._placed`), and the probe
-    gives no fix. With them `mask = self.isna()` as `np.ndarray | ExtensionArraySupportsAnyAll`
-    (`string_.py`), not traced.
-  - sqlalchemy +10, both under Small: basedpyright's hint `MappingProxyType[str, Enum]` for
-    `enum.Enum`, written in `sqltypes.py` whose own `Enum` the subscripted bases made plain (8), and
-    `_InternalEntityType[Any]` written bare through a type-checking import (2).
-  - nibabel +5, one `documented+returned` guess (`offset: int`, an `if` mypy then finds always
-    false); optuna +4, blamed on `name: str` (`assigned+loop`) but the `copy+filled` guess
-    `params: dict[str, int | float]`'s: `params[name] = param` takes a `str` in one branch (Small);
-    pint +3, `Quantity` depending on itself. sphinx −6, litestar −2.
-- Against [LIKELY.md](LIKELY.md)'s bars: `text` (241 guesses, 135 told, 99.3% held, none blamed)
-  and `operand` (324, 193, 100%, none; its set `literal+operand` 127 and 64 told) pass.
-  `documented` misses all three (27, 16 told, 62.5% held, 1 of 25 blamed): the five that differed
-  of the told were numpy's `int32` and `int64` for `int`, in pandas and nibabel, as is the blamed
-  `offset: int`, so a module importing numpy has no `documented` number since
-  (`documented.imports_numpy`). `reads` misses the held bar (68, 37 told, 94.6%), and `named` has 2.
-  `assigned+loop` is clean once its one blame goes to `params`.
-- The two problems: the standard library's `fix-certain` left `trace.py`'s
-  `encoding = f.encoding` for a second pass (counted 2: `left` counts the diff's `+++` header as a
-  `+` line, in `pipeline.py` and `corpus_table.py`), 0 on the three runs before
-  (`scratch/second_pass.py "standard library" --certain`, one process): the first pass writes
-  `f: TextIO` before `with tokenize.open(filename) as f:`, but `TextIO.encoding` is read from the
-  checked `typing.py` only once `f` is annotated (Small). nibabel's is its quaternion tests, drawn
-  from an unseeded `np.random.default_rng()` at import: a different case failed after
-  `fix-certain`, `fix-likely` and `infer-union`, a `differs` entry since.
-- basedpyright's servers aborted four times in dask's `infer-union` (the hinted servers' item under
-  Small).
-- Done by it, in [COMPLETED.md](COMPLETED.md): the subscripted bases, a `dict`'s defaults, star
-  imports' chains, `operand`, the single-underscore members and overloads that agree. The two items
-  last below have their census, but the run checks no types for pip, django or pygments, so their
-  errors are as measured alone.
-
-**Read on the mega run of 2026-10-29 at 19:20** (`mega-10-29-2026-1920` on `e793bc6`, the
-defaulted generics' constructor guesses, `view`'s overloads, `documented` without numpy's numbers
-and nibabel's `differs` entry; 65 minutes on 16CPU/60GB), against `mega-10-29-2026-1139`:
-
-- New type errors 470 from 562: mcp −60 and strawberry-graphql −18, `constructor`'s 85 from 151
-  (as on 2026-10-28), and pandas −14, its `view` certain fixes gone (`fix-certain` 5 from 7). Every
-  other corpus the same.
-- Bindings typed of 474,291: `--fix` 164,029, `--likely` 217,155, `--unsafe-fixes` 241,715 (2, 12
-  and 28 fewer); `infer-trace` 146,394 of 292,568 (31 fewer).
-- `documented` 14 guesses from 27, 8 told, 87.5% held, 1 of 12 read blamed: nibabel's
-  `offset: int` again, from `nicom/utils.py`'s `find_private_section`, which imports no numpy and
-  ends `return None`, a `return` the check records as of no known type. A `return None` or a bare
-  `return` refuses a type without `None` since (`documented._gives_none`).
-- One problem: the standard library's second pass, `trace.py`'s `encoding` (item 13 under Small);
-  nibabel's quaternion tests no longer one.
+- Bindings typed of 474,291 on `e793bc6`: `--fix` 164,029, `--likely` 217,155, `--unsafe-fixes`
+  241,715 (161,113, 211,064 and 228,999 on 2026-10-28's `6b0ab18`); `infer-trace` 146,394 of
+  292,568 (134,815). Bindings with no fix 232,959 from 245,708 on `f7d53b2`: pygments 2,313 from
+  6,695, xarray 11,247 from 14,326, the standard library 62,138 from 63,071, sqlalchemy 9,662 from
+  10,140, django 11,609 from 11,747, each item's own measure or within 30.
+- New type errors 470 on `e793bc6`, 562 on `f7d53b2`, 428 on `6b0ab18`. Of `f7d53b2`'s 134 more,
+  mcp's 60 and strawberry-graphql's 19 were a defaulted generic written bare by a `constructor`
+  guess whose call passes the enclosing class's type variable, and pandas's 4 certain fixes in each
+  step numpy's `view` taking its first overload, a parameter declared alike in every overload read
+  as taking anything; both mended on `e793bc6` (`doubts.binds_defaults`, `signatures._placed`).
+  Left: sqlalchemy's 10 (a checker's short name, built below; a quoted generic alias, Small),
+  nibabel's 5 (`documented`, below), optuna's 4 (a copy of a name each branch binds, Small) and
+  pint's 3 (`Quantity` depending on itself, as under the run-time types item, Large).
+- Against [LIKELY.md](LIKELY.md)'s bars on `e793bc6`: `text` (241 guesses, 134 told, 99.3% held,
+  none blamed) and `operand` (324, 193, 100%, none; its set `literal+operand` 127 with 64 told on
+  `f7d53b2`) pass; `constructor` 15 of 26,457 read blamed (0.06 in each 100). On `f7d53b2`:
+  `method`'s set alone 2 of 1,083 (0.18, the bar 0.1), as on 2026-10-27; `reads` 68 guesses, 37
+  told, 94.6% held, short of the held bar; `named` 2.
+- One problem on `e793bc6`: the standard library's second pass, `trace.py`'s `encoding` (Small).
+  nibabel's randomised quaternion tests, `f7d53b2`'s other problem, are a `differs` entry since.
+- basedpyright's servers aborted four times in dask's `infer-union` on `f7d53b2`, none on
+  `e793bc6` (Small).
 
 **What the next mega run reads**: the runner's order against the solver's shortest, for a run with
 no earlier run under its output ("A run with no earlier run, held to the solver's shortest").
@@ -224,7 +156,9 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    to read against the bars: on the 0.4.3-rc.5 mega run (`9892f71`) 49 and 45 fixes over every fix
    step, as on rc.1, rc.7 and rc.8. They need more data before they're kept or dropped: more guesses
    a test tells of, from more corpora or a wider reach. Done when those are decided and a mega run
-   covers the changes since. About 1 hour; coverage up to 6%, likely far less.
+   covers the changes since. On the mega run of 2026-10-29 (`f7d53b2`): `reads` 68 guesses, 37
+   told, 94.6% held, none of 30 read blamed; `named` 2. About 1 hour; coverage up to 6%, likely far
+   less.
 
 2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
@@ -255,131 +189,60 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    new and 24 gone, five of the new from `documented` guesses naming `int` or `float` where numpy's
    own scalars come back (`_fread3`, `mask_volume`): `np.int64` is no `int` to a checker, which
    the witness tells of too. `offences.py` is one of the tables' inputs: `test_tables_current` waits on
-   `python -m stdlib_tables --if-stale`. The mega run of 2026-10-29 read it short of every bar,
-   its misses numpy's scalars: a module importing numpy has no `documented` number since
-   (`documented.imports_numpy`). Done when a mega run reads that against the bars. Coverage under
-   0.1%.
-4. **The members of a class imported for type checking alone.** A file importing a class only under
-   `if TYPE_CHECKING:` took none of its members: `info.size()` on an `info: Info` parameter had no
-   fix where `Info` came that way, though the same import at run time typed it. The file's own
-   type-checking imports are taken now as its run-time ones are (`crossed.imported`). Measured with
-   `scratch/fix_diff.py`, one process on 16CPU/60GB, with the items above it here: pydantic 1,131 to 1,141;
-   xarray 9,067 to 9,122 with it. Done when the mega run's census and new type errors cover it.
-   Coverage under 0.1% on the corpora measured; more in typed code that imports this way.
-5. **A generic class whose every parameter has a default.** sqlalchemy's `FromClause`,
-   `Generic[_KeyColCC_co]` with `_KeyColCC_co = TypeVar(..., default=...)` in another module, was
-   never written bare, as no checked file's generic class was (the standard library's with defaults
-   was): a type checker reads it bare with its defaults. Taking type-checking imports had exposed it, taking 11 certain
-   fixes sqlalchemy's files had written bare through a type-checking import. Each module now
-   records its type variables with a default and what each generic class's bases name that may be
-   one, and the index drops from its `generics` the classes whose every such name resolves to one
-   (`modules.settled`, `defaulted_in`); a file's own classes take the names it imports
-   (`project.defaulted`). sqlalchemy (`scratch/fix_diff.py`, one process on 16CPU/60GB, with
-   the items above it here): 2,091 to 2,263 fixes, one guess lost; basedpyright's errors after
-   `--fix --unsafe-fixes` 2,287 from 2,288 (`scratch/fix_errors.py`), none new. A class whose
-   `Generic[...]` or `Protocol[...]` lists another module's type variable had no parameters
-   (`declarations._params` took the module's own alone), so none of its members was read, bare or
-   given its arguments: such a listing's arguments are its parameters now, whichever module
-   defines them (nothing else runs there), and a member naming another type variable the file
-   imports is left out (`generic_members`' `imported`). 77 of sqlalchemy's generic classes and 28
-   of xarray's list one. With it: sqlalchemy 2,287 fixes, errors 2,287 as above; xarray 9,122 to
-   9,317, basedpyright's errors 2,305 from 2,301 (6 new, 2 gone): `res_add: str` for xarray's
-   `.str` accessor's `+` (an `operand` guess), `unit: int` where `_total_microseconds`' docstring
-   says `int` for a `/` (a stale `documented` guess), two `np.dtype` constructor guesses read as
-   possibly unbound, an argument of `lexsort` and the `__doc__` read the subscripted bases brought. Done when the mega
-   run's census and new type errors cover it. Coverage: sqlalchemy's fixes reach 1.9% more of its
-   bindings with no fix, xarray's 1.4% more than the subscripted bases alone. The mega run of
-   2026-10-29 covered the census; its two faults (a bare constructor guess binding the class's
-   parameters, numpy's `view` overload) are mended since, waiting on the next mega run.
-6. **`return`s of one type and of `None`.** `return item` in a loop then `return None` left the
-   call untyped: the check records `None` as of no known type, as it's no binding's fix, so the
-   two `return`s looked like one known and one unknown. Each recorded `return` is matched to the
-   function's own `return` statements in source order, `return None` and a bare `return` typed
-   `None`, and one type and `None` give `T | None`, a guess as a single `X | None` return is
-   (`returned._returned_types`, `_or_none`). django's bindings with no fix (`scratch/census_compare.py`,
-   one process on 16CPU/60GB) 11,709 from 11,712; pip's basedpyright errors after
-   `--fix --unsafe-fixes` one new: `toml`'s `_load_date`, whose `d` the check takes for a
-   `datetime` where one branch binds a `date`, typed so before as a single `return d` would be.
-   Coverage under 0.1%.
-7. **A class variable across its line, and classes under inert marks.** The mega run of
-   2026-10-28's census has 22,000 class-body bindings with no fix; by `scratch/class_plain.py`
-   (each binding's class followed up its bases), pygments' 5,481 sit under `LexerMeta` and
-   `RegexLexerMeta`, sqlalchemy's under `_self_inspects`, django's under `deconstructible`: any
-   decorator or metaclass made a class not plain, whatever it does. And a plain class's variable
-   took its own value's type in each class, `priority: int` on a base and `priority: float` on its
-   subclass, which basedpyright reports as an incompatible override (variables are invariant).
-   Now each variable is joined across its line (`classvars.joined`, `plain._joined`): one type,
-   the widest number, `| None` where a class binds it to `None`, `tuple[T, ...]` for tuples of one
-   element type, the groups linked through a class of several bases; values that fit no one type
-   keep each class's own, as at HEAD. A decorator or metaclass reading no annotations leaves a
-   class plain (`source/inert.py`): a checked file's whose `return`s give back its class, or a
-   metaclass under `type` or `abc.ABCMeta`, naming nothing that reads annotations; followed to
-   another checked file through the index (`project.INERT`). A class plain only by its marks has
-   none of its variables typed where a class above or under it defines the name (a property, a
-   method) or the join fails, and a variable bound to `None` none where one defines it
-   (`classvars.unshadowed`). A file's own read no longer joins: with the index, its members alone
-   are the plain classes' (`classvars.variables`), which kept one module's partial join from
-   writing `str | None` beside another file's `str`. All `member` guesses, `--unsafe-fixes` only.
-   Measured one process each on 16CPU/60GB with `--all-scopes`, as the runs check
-   (`scratch/fix_diff.py` and `scratch/fix_errors.py` take `--option` for it now): pygments 985
-   fixes to 5,353, its bindings with no fix 6,695 to 2,313 (`scratch/census_compare.py`), its
-   basedpyright errors 10 new and 6 gone: 5 `list[LiteralString]` (Small, below) and 5 of
-   pygments' own, a class-body helper called with a value its first parameter, `Self` to pyright,
-   refuses once that value is annotated. sqlalchemy 9,847 to 9,691 with no fix, its errors
-   unchanged (2,285). django's errors 3,705 from HEAD's 3,731, 17 new and 43 gone: the 17 are reads
-   of a variable joined to `str | None` (`self.name.lower()` under a base's `name = None`). The
-   standard library's `email` unchanged (212). Bindings with no fix, the run's to the tree's
-   (with items 3 to 12): pygments 6,695 to 2,313, the standard library 63,071 to 62,153, django
-   11,747 to 11,609, sqlalchemy 10,140 to 9,691. Coverage: about 4,600 more bindings fixed by this
-   item, 1.9% of the run's 245,708 with no fix.
+   `python -m stdlib_tables --if-stale`. On the mega run of 2026-10-29 (`f7d53b2`) it missed every
+   bar (27 guesses, 16 told, 62.5% held, 1 of 25 read blamed), its misses numpy's `int32` and
+   `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
+   On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
+   function ending `return None`, which the check records as of no known type; a `return None` or a
+   bare `return` refuses a type without `None` since (`documented._gives_none`). Done when a mega
+   run reads it against the bars. Coverage under 0.1%.
+4. **A checker's short name for a class the module defines another of.** basedpyright's
+   hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in sqlalchemy's `sqltypes.py`,
+   which defines `class Enum(..., TypeEngine[...])`, it names that class: 8 new type errors over
+   the `infer-*` steps on the mega run of 2026-10-29, since the subscripted bases made the class
+   plain (it was a generic written bare before, refused). Built: a hint whose edit writes a name
+   the file binds, where a module it imports whole has a class of that name too, is no fix
+   (`offers._ambiguous`). Done when a mega run's `infer-*` steps have no such error. Coverage
+   unchanged.
+5. **A dict filled in two branches, one of no known type.** optuna's
+   `params: dict[str, int | float]` (`copy+filled`): `params[name] = param`, `param` bound in an
+   `isinstance` branch to `to_external_repr(...)` (a `str` too) and in the other to a number; 1 new
+   error per fix step on 2026-10-29, blamed on `name: str` in the same line (`corpus_suite._blamed`
+   takes the nearest fix before it of a name the line has). Built: a blame prefers the fix whose
+   annotation holds a type the message quotes. The `filled` type is the copy item's under Small:
+   `param` read as its last branch's number. Coverage unchanged.
+6. **A second pass's count without the diff's headers.** `left` counts `\n+` in the `--diff`
+   output, a `+++` header line included (`pipeline.py`, `corpus_table.fixed_copy`), so one line left
+   is reported as 2, and a file's header as a line. Built: `corpus_table.added` counts the added
+   lines alone, in the runner and both second-pass scripts. Done when a mega run's `left` counts
+   lines.
+7. **A generic alias whose type variable is quoted.** sqlalchemy's
+   `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` names `_T` only inside its
+   forward references, so it wasn't read as generic: guesses copied sqlalchemy's own bare
+   `entity_zero: _InternalEntityType` (`context.py`) into other files through the type-checking
+   import (2 new errors on the mega run of 2026-10-29). Built: a forward reference's names are the
+   alias's own (`modules._alias_names_any`), and a module's generic aliases are among its
+   `generics` (`Module.generics`), so neither a hint's edit nor a fix writes one bare. Done when a
+   mega run has no `_InternalEntityType` error. Coverage unchanged.
 
 ### Small: under 4 hours
 
-1. **`typing_extensions` in the standard-library tables.** Measured on the mega run of 2026-10-28's
-   census: 37 calls with no fix into `typing_extensions` on the 47 corpora (`get_origin` 13,
-   `get_args` 8), whose returns are vague anyway; not worth the generator's change for now. The
-   tables (generated from typeshed by
-   `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so a call through it
-   (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class) gets no fix
-   anywhere, and a module read as untyped was never meant to stand in (the mega run of 2026-10-27).
-   typeshed's `typing_extensions` stub re-exports or redefines `typing`'s names: alias each to its
-   `typing` entry where the stub re-exports it, and read the rest from the stub as the tables are
-   generated. Measure first: the census's calls into `typing_extensions` with no fix. About 2 hours;
-   coverage unknown until measured, likely under 0.1%.
-2. **CI's tools and security workflows, the shared way.** Built: every CI tool installs from
+1. **CI's tools and security workflows, the shared way.** Built: every CI tool installs from
    `.github/actions/setup-tool/tools.txt` (`setup-tools` for the Workflow audit's zizmor and
    actionlint, `setup-tool` for gitleaks, lychee and osv-scanner) and `actions/tool` is gone with
    `check_tool_versions.local.sh`'s three rows for it; `security.yml`'s own CodeQL and weekly
-   link-check jobs are gone, `codeql.yml` and `link-check.yml` run both (CodeQL's default query
-   suite, where the old job ran `security-extended`); the Dependency audit runs
+   link-check jobs are gone, `codeql.yml` and `link-check.yml` run both (the shared `codeql.yml`
+   with `security-extended`, as the old job ran); the Dependency audit runs
    `osv-scanner scan source --recursive .` after pip-audit, which `tests/ci_local.py` runs too when
    osv-scanner is on `PATH`, and skips a `tools.txt` tool's step without the tool. osv-scanner's
    first local pass found virtualenv 21.14.12 (GHSA-cx6f-vjhg-g3cc, fixed in 21.14.13), which
-   pip-audit had passed, so `uv.lock` moves to 21.14.13; it also reports `.github/osv-scanner.toml`'s
-   braces entry as no longer needed, a shared file's change. Left: a green run of every workflow on
-   a pull request, each job's `allowed-endpoints` re-read from its audit (the Dependency audit's,
-   Secrets' and the Docs job's were written from the Workflow audit's set, plus `api.osv.dev:443`),
-   and `link-check.yml` and `tool-versions.yml` dispatched by hand once. About an hour; coverage
-   unchanged.
-3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
-   tenth of the solver's shortest for a super and a mega run sized by earlier runs
-   ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
-   none measured, keep the rules (the longest chain first, `_PATIENCE`, backfilling) rather than the
-   solver's plan; and a run in stages, each stage planning its own steps alone since
-   (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with no earlier run takes
-   within a tenth of one of the same steps sized by its own records (`scratch/schedule_solve.py`).
-   About 3 hours beside the runs; coverage unchanged.
+   pip-audit had passed, so `uv.lock` moves to 21.14.13; the shared `osv-scanner.toml` drops its
+   braces entry, withdrawn upstream. Left: a green run of every workflow on a pull request, each
+   job's `allowed-endpoints` re-read from its audit (the Dependency audit's, Secrets' and the Docs
+   job's were written from the Workflow audit's set, plus `api.osv.dev:443`), and `link-check.yml`
+   and `tool-versions.yml` dispatched by hand once. About an hour; coverage unchanged.
 
-4. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
-   declared `def query_one(self, selector: str, kind: type[T]) -> T`, has no fix: a checked file's
-   function whose return names a type variable is never read (`own_overloads`: "no overload of a
-   checked file's binds a type variable"), where a checker binds `T` to the class passed. Certain
-   where the return is the type variable alone, a parameter is `type[T]` alone, and the argument
-   names a class (the module's, another checked file's, a builtin or the standard library's):
-   the argument's own text. 98 such definitions on the mega corpora's sources (textual 18, cattrs
-   14, zarr 10, litestar 9). About 3 hours; coverage under 0.1%.
-
-5. **No type naming a builtin the module binds itself** (a proposal: it withdraws fixes). A
+2. **No type naming a builtin the module binds itself** (a proposal: it withdraws fixes). A
    standard-library type is written with the builtins it names whatever the module binds:
    `pat: re.Pattern[str]` where `from .compat import str` (requests' Python 2 shim), which
    basedpyright reads as a variable ("Variable not allowed in type expression"). Tried: refuse a
@@ -387,26 +250,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `doubts.corrected`). pip (`scratch/fix_diff.py`, `scratch/fix_errors.py`, one process on
    16CPU/60GB): 21 fixes withdrawn, basedpyright's errors 20 fewer, none new. Not kept: it narrows
    what `--fix` offers, so it waits on a decision. About an hour; coverage down by those fixes.
-
-6. **A copy of a name each branch binds to another type** (a finding: changing it narrows
-   fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
-   (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
-   `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
-   or the one every value fits as `rebound` takes it) would type them as a checker does, and
-   withdraw or change the fixes that rest on the last branch alone. The mega run of 2026-10-29 has
-   one such error: optuna's `params: dict[str, int | float]`, filled from `param`, a `str` in its
-   other branch. Measure first: how many
-   `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
-7. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
-   `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
-   `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
-   holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
-   function or a class body alike (5 of pygments' errors with the class variables above). mypy
-   reads `LiteralString` as `str` and takes it. Either write `list[LiteralString]` (a later
-   `append` of a `str` then fails under pyright), or leave a literal receiver's `LiteralString`
-   overloads' container returns unfixed. Measure first: how many certain fixes it is on the mega
-   corpora. About 2 hours.
-8. **An override exclusion for every plain class** (a proposal: it withdraws fixes). A class plain
+3. **An override exclusion for every plain class** (a proposal: it withdraws fixes). A class plain
    only by its inert marks, or a variable bound to `None`, has no variable typed where a class in
    its line defines the name (`classvars.unshadowed`); a class plain at HEAD keeps HEAD's fixes, so
    `_render_label_in_columns_clause: bool` under a subclass's `@memoized_attribute` of the name is
@@ -414,7 +258,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `--fix --unsafe-fixes`, 103 before it). Applying the exclusion to every plain class withdraws
    those.
    Measure first: the fixes withdrawn and the errors gone on sqlalchemy and django. About an hour.
-9. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -430,47 +274,65 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    aborts on corpora the estimate fits but whose share is split among several servers. A restarted
    server asks its files one at a time, so the step takes longer as well. Unconfirmed: that each
    abort is the heap cap (the servers' standard error isn't kept); a run with the first change
-   showing no dump on dask confirms it. Measure first: the dumps and dask's `infer-union` seconds
-   on a mega run with it. About 2 hours; coverage unchanged.
-10. **A checker's short name for a class the module defines another of** (a finding). basedpyright's
-    hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in sqlalchemy's `sqltypes.py`,
-    which defines `class Enum(..., TypeEngine[...])`, it names that class: 8 new type errors over
-    the `infer-*` steps on the mega run of 2026-10-29, since the subscripted bases made the class
-    plain (it was a generic written bare before, refused). Built: a hint whose edit writes a name
-    the file binds, where a module it imports whole has a class of that name too, is no fix
-    (`offers._ambiguous`). Done when a mega run's `infer-*` steps have no such error. Coverage
-    unchanged.
-11. **A generic alias whose type variable is quoted** (a finding). sqlalchemy's
-    `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` names `_T` only inside its
-    forward references, so it isn't read as generic and `_InternalEntityType[Any]` is written bare
-    through the type-checking import (2 new errors on 2026-10-29). Built: a forward reference's
-    names are the alias's own (`modules._alias_names_any`), which a hint's edit is judged by. Left:
-    the two errors came from guesses copying sqlalchemy's own bare `entity_zero: _InternalEntityType`
-    (`context.py`) into another file; a copied annotation naming a generic alias bare is no fix
-    there, as a generic class's isn't, once the index's generic aliases reach `Facts.generics`
-    through `crossed.spelled_classes`. About 2 hours; coverage unchanged.
-12. **A dict filled in two branches, one of no known type** (a finding). optuna's
-    `params: dict[str, int | float]` (`copy+filled`): `params[name] = param`, `param` bound in an
-    `isinstance` branch to `to_external_repr(...)` (a `str` too) and in the other to a number; 1 new
-    error per fix step on 2026-10-29, blamed on `name: str` in the same line (`corpus_suite._blamed`
-    takes the nearest fix before it of a name the line has). Built: a blame prefers the fix whose
-    annotation holds a type the message quotes. The `filled` type is item 6's: `param` read as its
-    last branch's number. Coverage unchanged.
-13. **A `with` target's members in the pass that types it** (a finding). The standard library's
-    `trace.py` (`f: TextIO` written before `with tokenize.open(filename) as f:`) has
-    `encoding = f.encoding` typed only by a second pass: on the standard-library corpus `TextIO` is
-    the checked `typing.py`'s class, read once `f` is annotated. The one second-pass line on the
-    mega runs of 2026-10-29. The type comes from the tables (`entered`, `__enter__`), so the file
-    spells no `TextIO` until the fix imports it, and `crossed._take` reads only the members of
-    classes it spells; a round checks a file again only for late kinds (`rounds._unsettled`).
-    Proposed: check a file again where a fix imports a class from a checked module whose members
-    the file reads of the fixed name. Checking again every file whose fix imports a checked
-    module's class would add a round to most corpora's files. About 2 hours; coverage under 0.1%.
-14. **A second pass's count without the diff's headers** (a finding). `left` counts `\n+` in the
-    `--diff` output, a `+++` header line included (`pipeline.py`, `corpus_table.fixed_copy`), so one line
-    left is reported as 2, and a file's header as a line. Built: `corpus_table.added` counts the
-    added lines alone, in the runner and both second-pass scripts. Done when a mega run's `left`
-    counts lines.
+   showing no dump on dask confirms it. The mega run of 2026-10-29 at 19:20 (`e793bc6`) had none,
+   sized the same way. Measure first: the dumps and dask's `infer-union` seconds on a mega run with
+   it. About 2 hours; coverage unchanged.
+
+5. **A copy of a name each branch binds to another type** (a finding: changing it narrows
+   fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
+   (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
+   `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
+   or the one every value fits as `rebound` takes it) would type them as a checker does, and
+   withdraw or change the fixes that rest on the last branch alone. The mega run of 2026-10-29 has
+   one such error: optuna's `params: dict[str, int | float]`, filled from `param`, a `str` in its
+   other branch. Measure first: how many
+   `copy` guesses rest on such a read, and what the witness says of them. About 2 hours.
+6. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+   `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
+   `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
+   holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
+   function or a class body alike (5 of pygments' errors with the class variables,
+   [COMPLETED.md](COMPLETED.md)). mypy reads `LiteralString` as `str` and takes it. Either write
+   `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
+   receiver's `LiteralString` overloads' container returns unfixed. Measure first: how many certain
+   fixes it is on the mega corpora. About 2 hours.
+7. **A `with` target's members in the pass that types it** (a finding). The standard library's
+   `trace.py` (`f: TextIO` written before `with tokenize.open(filename) as f:`) has
+   `encoding = f.encoding` typed only by a second pass: on the standard-library corpus `TextIO` is
+   the checked `typing.py`'s class, read once `f` is annotated. The one second-pass line on the
+   mega runs of 2026-10-29. The type comes from the tables (`entered`, `__enter__`), so the file
+   spells no `TextIO` until the fix imports it, and `crossed._take` reads only the members of
+   classes it spells; a round checks a file again only for late kinds (`rounds._unsettled`).
+   Proposed: check a file again where a fix imports a class from a checked module whose members
+   the file reads of the fixed name. Checking again every file whose fix imports a checked
+   module's class would add a round to most corpora's files. About 2 hours; coverage under 0.1%.
+8. **`typing_extensions` in the standard-library tables.** Measured on the mega run of 2026-10-28's
+   census: 37 calls with no fix into `typing_extensions` on the 47 corpora (`get_origin` 13,
+   `get_args` 8), whose returns are vague anyway; not worth the generator's change for now. The
+   tables (generated from typeshed by
+   `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so a call through it
+   (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class) gets no fix
+   anywhere, and a module read as untyped was never meant to stand in (the mega run of 2026-10-27).
+   typeshed's `typing_extensions` stub re-exports or redefines `typing`'s names: alias each to its
+   `typing` entry where the stub re-exports it, and read the rest from the stub as the tables are
+   generated. Measure first: the census's calls into `typing_extensions` with no fix. About 2 hours;
+   coverage unknown until measured, likely under 0.1%.
+9. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+   tenth of the solver's shortest for a super and a mega run sized by earlier runs
+   ([COMPLETED.md](COMPLETED.md)). Left: a run with no earlier run under its output, whose steps,
+   none measured, keep the rules (the longest chain first, `_PATIENCE`, backfilling) rather than
+   the solver's plan; and a run in stages, each stage planning its own steps alone since
+   (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with no earlier run takes
+   within a tenth of one of the same steps sized by its own records (`scratch/schedule_solve.py`).
+   About 3 hours beside the runs; coverage unchanged.
+10. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
+    declared `def query_one(self, selector: str, kind: type[T]) -> T`, has no fix: a checked file's
+    function whose return names a type variable is never read (`own_overloads`: "no overload of a
+    checked file's binds a type variable"), where a checker binds `T` to the class passed. Certain
+    where the return is the type variable alone, a parameter is `type[T]` alone, and the argument
+    names a class (the module's, another checked file's, a builtin or the standard library's):
+    the argument's own text. 98 such definitions on the mega corpora's sources (textual 18, cattrs
+    14, zarr 10, litestar 9). About 3 hours; coverage under 0.1%.
 
 ### Medium: 4 to 8 hours
 
@@ -644,7 +506,7 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    cascade (183 of its 199 blamed errors sqlalchemy's); `method` 2 blamed of 1,047 (0.19 in each
    100, the bar 0.1): nibabel's `magic_number: bytes` as on rc.8, and
    pandas's `subarr: Index` in a method returning `Self` (`core/indexes/datetimes.py`), new since
-   rc.8, to read before `method` is counted out.
+   rc.8, to read before `method` is counted out (2 of 1,083 on the mega run of 2026-10-29).
 
 3. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
@@ -730,13 +592,14 @@ What to measure before building, smallest first.
    pywin32 35, PyYAML 13, python-dateutil 7), some of them where the stubs are installed already.
    Done when decided: built for users' code, or left at under 0.1% on the corpora. About 4 hours to
    build.
-7. **numpydoc Returns sections.** A docstring's `Returns` section names what a function with no
-   return annotation returns (docstub and docs2stubs read them): networkx has 2,301 such
-   functions, 868 with a Returns section and 485 naming one plain type; pandas 1,787 (360, 108),
-   dask 3,912 (181, 56), xarray 1,088 (60, 38). Many names are vague (`dictionary`, `graph`), and
-   `nx.path_graph`, the most called (460 calls), has none: under 1,000 usable. A guess, a
-   docstring's name resolved where the module would resolve it, held to the witness. Done when
-   measured on networkx and pandas. About 4 hours; coverage under 0.5%.
+7. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above). A
+   docstring's `Returns` section names what a function with no return annotation returns (docstub
+   and docs2stubs read them): networkx has 2,301 such functions, 868 with a Returns section and 485
+   naming one plain type; pandas 1,787 (360, 108), dask 3,912 (181, 56), xarray 1,088 (60, 38). Many
+   names are vague (`dictionary`, `graph`), and `nx.path_graph`, the most called (460 calls), has
+   none: under 1,000 usable. A guess, a docstring's name resolved where the module would resolve it,
+   held to the witness. Done when measured on networkx and pandas. About 4 hours; coverage under
+   0.5%.
 8. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
