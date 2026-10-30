@@ -581,7 +581,11 @@ defined with `@overload` are matched on a receiver typed as the class (`frame.ge
 function called through its module however that's imported (`shapes.concat(...)` after
 `from pkg import shapes`). Each return is written as another checked file's type is: none of the
 function's calls is typed if one of its overloads declares no return, or returns a type variable or
-a generic class without its arguments.
+a generic class without its arguments; but for a type variable alone that a parameter binds to a
+class (`kind: type[T]`), the module's own, which a call passing a class names: `query_one("#x", Static)`
+is a `Static`, overloaded or not (an undecorated function or method with that one signature),
+`query_one("#x", int)` an `int`, and nothing for a generic class without its arguments or a builtin
+outside the variable's bound.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an

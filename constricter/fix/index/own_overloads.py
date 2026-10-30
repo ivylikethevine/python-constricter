@@ -1,4 +1,4 @@
-"""A checked file's functions defined with `@overload`, for the calls their arguments decide.
+"""A checked file's functions defined with `@overload`, or returning the class passed (`type[T]`), for calls.
 
 Their signatures are read as an installed package's are (see `constricter.fix.index.stubs.stubbed`), but
 for what each returns: a type the calling file writes as it would any other checked file's.
@@ -7,7 +7,7 @@ for what each returns: a type the calling file writes as it would any other chec
 import ast
 
 from constricter.fix.core.known import SPELLED, Guarded
-from constricter.fix.core.signatures import ReadSignature
+from constricter.fix.core.signatures import CLASS_BINDS, ReadSignature
 from constricter.fix.index import spelling
 from constricter.fix.index.modules import Index, Module
 from constricter.fix.index.stubs.declared import Signature
@@ -32,11 +32,12 @@ def spelled(
 ) -> tuple[ReadSignature, ...]:
     """Write a checked file's overloads' returns as `target` can (see `spelling.spelled_in`).
 
-    Each is the type itself then (`SPELLED`), not a template: no overload of a checked file's binds
-    a type variable.
+    Each is the type itself then (`SPELLED`), not a template, but for a type variable alone that a
+    parameter binds to the class a call passes (`kind: type[T]) -> T`): a template, the class as the
+    call writes it.
 
     Returns:
-      The signatures; none if a return isn't declared, or `target` can't write it (a type
+      The signatures; none if a return isn't declared, or `target` can't write it (any other type
       variable, a generic class without its arguments, a name it binds otherwise).
 
     """
@@ -45,6 +46,9 @@ def spelled(
     signature: Signature
     each: ReadSignature
     for signature, each in zip(defined[0].overloads[defined[1]], read, strict=True):
+        if _class_bound(each):
+            found.append(each)
+            continue
         text: str | None = (
             None
             if signature.returns is None
@@ -61,6 +65,18 @@ def spelled(
     if guarded is not None:
         guarded.update(names)
     return tuple(found)
+
+
+def _class_bound(read: ReadSignature) -> bool:
+    """Check whether a signature returns a type variable alone that a parameter's `type[...]` binds.
+
+    Returns:
+      Whether it does.
+
+    """
+    return read.returns is not None and any(
+        accepts is not None and accepts.get(CLASS_BINDS) == read.returns for *_, accepts in read.params
+    )
 
 
 def _unquoted(returns: str) -> str:

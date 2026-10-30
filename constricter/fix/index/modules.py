@@ -164,7 +164,8 @@ class Module:  # pylint: disable=too-many-instance-attributes
     unions: Mapping[str, str] = field(default_factory=dict[str, str])
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
     fixtures: Mapping[str, bool] = field(default_factory=dict[str, bool])
-    # A checked file's functions defined with `@overload`, each with its overloads' signatures.
+    # A checked file's functions defined with `@overload`, each with its overloads' signatures, or
+    # returning the class a `type[T]` parameter takes, with its one (see `declared.overloads`).
     overloads: Mapping[str, tuple[Signature, ...]] = field(default_factory=dict[str, tuple[Signature, ...]])
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
     # Its top-level names bound by assignment to a value: not a type alias, nor a type variable.

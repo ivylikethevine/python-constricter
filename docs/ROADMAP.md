@@ -19,30 +19,35 @@ measure before building.
 
 ### Built, waiting on a run
 
-**Read on the mega runs of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes, and
-`mega-10-29-2026-1920` on `e793bc6`, 65 minutes, both on 16CPU/60GB), against
-`mega-10-28-2026-0826` by `scratch/type_errors_diff.py` and `scratch/guess_report.py --from`:
+**Read on the mega runs of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes,
+`mega-10-29-2026-1920` on `e793bc6`, 65 minutes, and `mega-10-29-2026-2241` on `d160aa8`, 76
+minutes, all on 16CPU/60GB), against `mega-10-28-2026-0826` and each other by
+`scratch/type_errors_diff.py` and `scratch/guess_report.py --from`:
 
-- Bindings typed of 474,291 on `e793bc6`: `--fix` 164,029, `--likely` 217,155, `--unsafe-fixes`
-  241,715 (161,113, 211,064 and 228,999 on 2026-10-28's `6b0ab18`); `infer-trace` 146,394 of
+- Bindings typed of 474,291 on `d160aa8`: `--fix` 164,036, `--likely` 217,161, `--unsafe-fixes`
+  241,719 (161,113, 211,064 and 228,999 on 2026-10-28's `6b0ab18`); `infer-trace` 146,385 of
   292,568 (134,815). Bindings with no fix 232,959 from 245,708 on `f7d53b2`: pygments 2,313 from
   6,695, xarray 11,247 from 14,326, the standard library 62,138 from 63,071, sqlalchemy 9,662 from
-  10,140, django 11,609 from 11,747, each item's own measure or within 30.
-- New type errors 470 on `e793bc6`, 562 on `f7d53b2`, 428 on `6b0ab18`. Of `f7d53b2`'s 134 more,
-  mcp's 60 and strawberry-graphql's 19 were a defaulted generic written bare by a `constructor`
-  guess whose call passes the enclosing class's type variable, and pandas's 4 certain fixes in each
-  step numpy's `view` taking its first overload, a parameter declared alike in every overload read
-  as taking anything; both mended on `e793bc6` (`doubts.binds_defaults`, `signatures._placed`).
-  Left: sqlalchemy's 10 (a checker's short name, built below; a quoted generic alias, Small),
-  nibabel's 5 (`documented`, below), optuna's 4 (a copy of a name each branch binds, Small) and
-  pint's 3 (`Quantity` depending on itself, as under the run-time types item, Large).
-- Against [LIKELY.md](LIKELY.md)'s bars on `e793bc6`: `text` (241 guesses, 134 told, 99.3% held,
-  none blamed) and `operand` (324, 193, 100%, none; its set `literal+operand` 127 with 64 told on
-  `f7d53b2`) pass; `constructor` 15 of 26,457 read blamed (0.06 in each 100). On `f7d53b2`:
-  `method`'s set alone 2 of 1,083 (0.18, the bar 0.1), as on 2026-10-27; `reads` 68 guesses, 37
-  told, 94.6% held, short of the held bar; `named` 2.
-- One problem on `e793bc6`: the standard library's second pass, `trace.py`'s `encoding` (Small).
-  nibabel's randomised quaternion tests, `f7d53b2`'s other problem, are a `differs` entry since.
+  10,140, django 11,609 from 11,747, each item's own measure or within 30. The standard library's
+  hinted steps move between runs with nothing changed in them: `infer-pyrefly` 60,720 on `f7d53b2`
+  and `d160aa8`, 60,876 on `e793bc6`.
+- New type errors 462 on `d160aa8`, 470 on `e793bc6`, 562 on `f7d53b2`, 428 on `6b0ab18`. Of
+  `f7d53b2`'s 134 more, mcp's 60 and strawberry-graphql's 19 were a defaulted generic written bare
+  by a `constructor` guess whose call passes the enclosing class's type variable, and pandas's 4
+  certain fixes in each step numpy's `view` taking its first overload, a parameter declared alike in
+  every overload read as taking anything; both mended on `e793bc6` (`doubts.binds_defaults`,
+  `signatures._placed`). On `d160aa8` sqlalchemy's `_InternalEntityType` errors are gone (3 to 0)
+  and nibabel's `documented` ones (5 to 0). Left: sqlalchemy's 12 `Enum` errors (below), optuna's 6
+  (a copy of a name each branch binds, Small) and pint's 3 (`Quantity` depending on itself, as
+  under the run-time types item, Large).
+- Against [LIKELY.md](LIKELY.md)'s bars on `d160aa8`: `text` (241 guesses, 135 told, 99.3% held,
+  none blamed) and `operand` (324, 192, 100%, none; its set `literal+operand` 127 with 64 told)
+  pass; `constructor` 15 of 26,457 read blamed (0.06 in each 100), `method`'s set alone 2 of
+  1,083 (0.18, the bar 0.1), as on 2026-10-27; `reads` 68 guesses, 37 told, 94.6% held, short of
+  the held bar; `named` 2.
+- One problem on each of `e793bc6` and `d160aa8`: the standard library's second pass, `trace.py`'s
+  `encoding` (Small), 1 line left. nibabel's randomised quaternion tests, `f7d53b2`'s other problem,
+  are a `differs` entry since.
 - basedpyright's servers aborted four times in dask's `infer-union` on `f7d53b2`, none on
   `e793bc6` (Small).
 
@@ -194,8 +199,9 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
    On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
    function ending `return None`, which the check records as of no known type; a `return None` or a
-   bare `return` refuses a type without `None` since (`documented._gives_none`). Done when a mega
-   run reads it against the bars. Coverage under 0.1%.
+   bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
+   8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them. Done
+   when a mega run reads it against the bars on 20 told. Coverage under 0.1%.
 4. **A checker's short name for a class the module defines another of.** basedpyright's
    hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in sqlalchemy's `sqltypes.py`,
    which defines `class Enum(..., TypeEngine[...])`, it names that class: 8 new type errors over
@@ -203,27 +209,23 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    plain (it was a generic written bare before, refused). Built: a hint whose edit writes a name
    the file binds, where a module it imports whole has a class of that name too, is no fix
    (`offers._ambiguous`). Done when a mega run's `infer-*` steps have no such error. Coverage
-   unchanged.
-5. **A dict filled in two branches, one of no known type.** optuna's
-   `params: dict[str, int | float]` (`copy+filled`): `params[name] = param`, `param` bound in an
-   `isinstance` branch to `to_external_repr(...)` (a `str` too) and in the other to a number; 1 new
-   error per fix step on 2026-10-29, blamed on `name: str` in the same line (`corpus_suite._blamed`
-   takes the nearest fix before it of a name the line has). Built: a blame prefers the fix whose
-   annotation holds a type the message quotes. The `filled` type is the copy item's under Small:
-   `param` read as its last branch's number. Coverage unchanged.
-6. **A second pass's count without the diff's headers.** `left` counts `\n+` in the `--diff`
-   output, a `+++` header line included (`pipeline.py`, `corpus_table.fixed_copy`), so one line left
-   is reported as 2, and a file's header as a line. Built: `corpus_table.added` counts the added
-   lines alone, in the runner and both second-pass scripts. Done when a mega run's `left` counts
-   lines.
-7. **A generic alias whose type variable is quoted.** sqlalchemy's
-   `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` names `_T` only inside its
-   forward references, so it wasn't read as generic: guesses copied sqlalchemy's own bare
-   `entity_zero: _InternalEntityType` (`context.py`) into other files through the type-checking
-   import (2 new errors on the mega run of 2026-10-29). Built: a forward reference's names are the
-   alias's own (`modules._alias_names_any`), and a module's generic aliases are among its
-   `generics` (`Module.generics`), so neither a hint's edit nor a fix writes one bare. Done when a
-   mega run has no `_InternalEntityType` error. Coverage unchanged.
+   unchanged. Not yet on `d160aa8`: 12 errors over the `infer-*` steps, as on `e793bc6`
+   (`_members: MappingProxyType[str, Enum]`, `objects: list[Enum]`). `_ambiguous` judges a hint's
+   edits alone, and `hinted.hinted` takes the checker's shown type first, whatever the edits say.
+   Proposed: judge the shown type the same way (a name the file binds, of a class a module it
+   imports whole has too) before it is spelled. It withdraws the fixes of every such hint.
+5. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
+   declared `def query_one(self, selector: str, kind: type[T]) -> T`, had no fix: a checked file's
+   function whose return names a type variable was never read, overloaded or not. Built: an
+   undecorated function or method returning a name alone that a parameter's `type[...]` takes is
+   read as its one signature (`declared._class_typed`), and a return that is a type variable a
+   parameter binds to a class stays a template (`own_overloads._class_bound`), so the matcher writes
+   the class as the call does, as for an installed package's: `query_one("#x", Static)` is a
+   `Static` (certain), and an overload set with such a member, refused whole before, is matched
+   (`query("#x")` a `Widget`). Not yet: a type variable another module defines (textual's
+   `QueryType`), and a method on a receiver typed as a subclass (`self.query_one` in a `Widget`'s
+   subclass). 98 such definitions on the mega corpora's sources (textual 18, cattrs 14, zarr 10,
+   litestar 9). Done when a mega run has the fixes and no new error from them.
 
 ### Small: under 4 hours
 
@@ -325,14 +327,6 @@ no earlier run under its output ("A run with no earlier run, held to the solver'
    (`planning.ranks`'s `chosen`), not yet run that way. Done when a run with no earlier run takes
    within a tenth of one of the same steps sized by its own records (`scratch/schedule_solve.py`).
    About 3 hours beside the runs; coverage unchanged.
-10. **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
-    declared `def query_one(self, selector: str, kind: type[T]) -> T`, has no fix: a checked file's
-    function whose return names a type variable is never read (`own_overloads`: "no overload of a
-    checked file's binds a type variable"), where a checker binds `T` to the class passed. Certain
-    where the return is the type variable alone, a parameter is `type[T]` alone, and the argument
-    names a class (the module's, another checked file's, a builtin or the standard library's):
-    the argument's own text. 98 such definitions on the mega corpora's sources (textual 18, cattrs
-    14, zarr 10, litestar 9). About 3 hours; coverage under 0.1%.
 
 ### Medium: 4 to 8 hours
 

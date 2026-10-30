@@ -479,6 +479,11 @@ What constricter does today and what was measured on the way, by scope. What's n
   2026-10-29, bindings with no fix: pygments 2,313 from 6,695, the standard library 62,138 from
   63,071, django 11,609 from 11,747. Its type errors as measured alone (pygments 10 new and 6 gone,
   django 17 new and 43 gone, one process on 16CPU/60GB): the runs check no types for either.
+- **A generic alias whose type variable is quoted**: sqlalchemy's
+  `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` is generic by the names in its
+  forward references (`modules._alias_names_any`), and a module's generic aliases are among its
+  `generics`, so neither a hint's edit nor a fix writes one bare: the mega run of 2026-10-29 at
+  22:41 (`d160aa8`) has no `_InternalEntityType` error, from 3.
 
 ## Command and output
 
@@ -894,6 +899,12 @@ What constricter does today and what was measured on the way, by scope. What's n
   where pyarrow isn't installed, 5 fewer (`pa.Scalar` generic there too); types-PyYAML nothing on
   dask or xarray; networkx nothing under any set, pandas-stubs or scipy-stubs, its scipy calls
   inside functions and their returns arrays `vague` refuses.
+- **A new error blamed on the fix it names**: `corpus_suite._blamed` takes, of the fixes in an
+  error's line, one whose annotation holds a type the message quotes before the nearest one before
+  it: optuna's `params: dict[str, int | float]` error is the `copy+filled` guess's, not `name: str`'s
+  in the same line. A second pass's `left` counts its added lines alone (`corpus_table.added`), no
+  `+++` header among them: the standard library's one line left 1, from 2. Both on the mega run of
+  2026-10-29 at 22:41 (`d160aa8`).
 
 ## CI, security and releases
 
