@@ -125,7 +125,7 @@ def _overloads(body: Sequence[ast.stmt]) -> dict[str, tuple[Signature, ...]]:
     overloaded: set[str] = set()
     typed: dict[str, Signature | None] = {}  # the others, by their last definition
     stmt: ast.stmt
-    for stmt in body:
+    for stmt in _checker_sees(body):
         if isinstance(stmt, ast.FunctionDef):
             _signature(stmt, signatures, overloaded, frozenset())
             if stmt.name not in overloaded:
@@ -135,6 +135,20 @@ def _overloads(body: Sequence[ast.stmt]) -> dict[str, tuple[Signature, ...]]:
     }
     found.update((name, tuple(signatures[name])) for name in overloaded)
     return dict(sorted(found.items()))
+
+
+def _checker_sees(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
+    """Walk a body's statements, those under an `if TYPE_CHECKING:` too (textual's `query_one`).
+
+    Yields:
+      Each.
+
+    """
+    stmt: ast.stmt
+    for stmt in body:
+        yield stmt
+        if isinstance(stmt, ast.If) and node_name(stmt.test) == _TYPE_CHECKING:
+            yield from _checker_sees(stmt.body)
 
 
 def _class_typed(node: ast.FunctionDef) -> bool:

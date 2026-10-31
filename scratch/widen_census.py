@@ -6,7 +6,7 @@ For each corpus (default: sqlalchemy and pydantic), three fixed copies under `lo
 (`corpus_table.copied`): `calls`, the two kinds of call alone and no guesses; `all`, every kind with
 `--unsafe-fixes`; and `nocalls`, every kind but the calls' with `--unsafe-fixes`. For each: the
 bindings each widen kind marks, the total and its share of the corpus's bindings, the share typed or
-widened after, and what a second pass still changes (`widen_pass`'s count). For `all`, basedpyright's
+widened after, and what a second pass still changes, its imports left out. For `all`, basedpyright's
 errors on the copy before and after, by rule, with those gone and those new. Outside a sandbox;
 `CORPUS_JOBS` sets the workers (every CPU, unset). About 10 minutes for both.
 """
@@ -36,9 +36,19 @@ BOUND = re.compile(r"^\+(?!\+\+ )(?!\s*(?:from |import |if TYPE_CHECKING))", re.
 
 def _errors(project: Path, package: str) -> collections.Counter[str]:
     """basedpyright's errors under `project` (its `package`), counted by rule."""
-    config = {"venvPath": str(ROOT / "local"), "venv": ".venv", "typeCheckingMode": "standard", "include": [package]}
+    config = {
+        "venvPath": str(ROOT / "local"),
+        "venv": ".venv",
+        "typeCheckingMode": "standard",
+        "include": [package],
+    }
     (project / "pyrightconfig.json").write_text(json.dumps(config), encoding="utf-8")
-    done = subprocess.run([str(BASEDPYRIGHT), "--project", str(project), "--outputjson"], capture_output=True, text=True, check=False)
+    done = subprocess.run(
+        [str(BASEDPYRIGHT), "--project", str(project), "--outputjson"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     found = json.loads(done.stdout)["generalDiagnostics"]
     return collections.Counter(d.get("rule") or "-" for d in found if d["severity"] == "error")
 
@@ -72,8 +82,11 @@ def main() -> None:
             )
             if before is not None:
                 after = _errors(root.parent, root.name)
-                print(f"  basedpyright: {sum(before.values())} errors before, {sum(after.values())} after; "
-                      f"gone {dict(before - after)}; new {dict(after - before)}", flush=True)
+                print(
+                    f"  basedpyright: {sum(before.values())} errors before, {sum(after.values())} after; "
+                    f"gone {dict(before - after)}; new {dict(after - before)}",
+                    flush=True,
+                )
 
 
 if __name__ == "__main__":

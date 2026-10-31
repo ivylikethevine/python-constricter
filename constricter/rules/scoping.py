@@ -9,6 +9,7 @@ from typing import Final, cast
 
 from constricter.fix.core import imports
 from constricter.fix.core.known import (
+    OWN_SELF,
     Passed,
 )
 from constricter.fix.values import ordered, returned
@@ -205,6 +206,7 @@ def function_scope(
     owner: str | None = settings.owners.get(id(func))
     if owner is not None and (_SELF not in params or [arg.arg for arg in named[:1]] == [_SELF]):
         _ = scope.inferred.types.setdefault(_SELF, owner)
+        _ = scope.inferred.types.setdefault(OWN_SELF, owner)
     # A classmethod's first parameter is its class (`type[C]`), whatever it's called.
     if owner is not None and named and [node_name(d) for d in func.decorator_list] == [_CLASSMETHOD]:
         _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")

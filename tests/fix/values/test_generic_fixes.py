@@ -113,6 +113,62 @@ def test_a_generic_classes_members_are_bound_by_the_receivers_arguments() -> Non
     }
 
 
+_OWN_METHODS: str = """
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+D = TypeVar("D")
+
+class Base(Generic[T]):
+    stored: T
+
+    def first(self) -> T | None:
+        return None
+
+    def count(self) -> int:
+        return 0
+
+    def copied(self) -> "Self":
+        return self
+
+    def get(self, default: D) -> T | D:
+        return default
+
+    def m(self, other: "Base[T]") -> None:
+        own_first = self.first()
+        own_stored = self.stored
+        own_count = self.count()
+        own_copied = self.copied()
+        own_got = self.get(1)
+        other_first = other.first()
+        also = self
+        also_first = also.first()
+
+class Sub(Base[T]):
+    def n(self) -> None:
+        base_first = self.first()
+
+def f(self: Base) -> None:
+    outside = self.first()
+"""
+
+
+def test_a_generic_classes_own_method_reads_its_members_with_its_parameters() -> None:
+    """`self.first()` is a `T | None`, which the method binds; bare otherwise, and `Self` left as it was."""
+    assert _found(_OWN_METHODS) == {
+        "own_first": ("T | None", True),  # `self`'s method: a subclass may return another
+        "own_stored": ("T", False),
+        "own_count": ("int", False),
+        "own_copied": (None, False),
+        "own_got": (None, False),
+        "other_first": ("T | None", False),
+        "also": (None, False),
+        "also_first": (None, False),
+        "base_first": ("T | None", True),
+        "outside": (None, False),  # a function's parameter of that name: no class binds its `T`
+    }
+
+
 def test_a_generic_method_returning_self_gives_the_receiver() -> None:
     """`Self`, bare, is the receiver's own type, its arguments too."""
     source: str = """

@@ -38,9 +38,12 @@ def spelled(
 
     Returns:
       The signatures; none if a return isn't declared, or `target` can't write it (any other type
-      variable, a generic class without its arguments, a name it binds otherwise).
+      variable, a generic class without its arguments, a name it binds otherwise), or for a function
+      with one that binds no class (`kind: type[Base]) -> Base`), whose declared return stands.
 
     """
+    if len(read) == 1 and not _class_bound(read[0]):
+        return ()
     found: list[ReadSignature] = []
     names: dict[str, Guarded] = dict(guarded or {})
     signature: Signature

@@ -26,7 +26,7 @@ it again: every other file whose view of it changed is checked again too (`f = d
 ## The measure
 
 Every guess `--fix --unsafe-fixes` makes on 42 packages' own sources (pandas, SQLAlchemy, pydantic,
-Django and 38 of the [mega corpora](RUNS.md#mega-corpora)'s), constricter 0.3.6+dev: 45,922 guesses
+Django and 38 of the [mega corpora](runs/mega-corpora.md)'s), constricter 0.3.6+dev: 45,922 guesses
 beside 61,029 certain fixes. Two things are held against each:
 
 - **Its package's own type checker**, run after `--fix --unsafe-fixes` as the corpora runs do: each
@@ -35,7 +35,7 @@ beside 61,029 certain fixes. Two things are held against each:
   annotation, evaluated where the statement is: an instance of the class it names, or of one of a
   union's (a subscripted class is held to the class alone, not its arguments). A fix a test could
   tell of held where every such value was one, and differed where one wasn't. The corpora runs do
-  this for every suite whose tests they can trace, and RUNS.md gives each package's fixes by tier
+  this for every suite whose tests they can trace, and `docs/runs/` gives each package's fixes by tier
   with those told, held and differing.
 
 A set of mechanisms is likely where all three hold:
@@ -182,7 +182,7 @@ traced type (`--infer-from`) weren't measured: neither is likely.
 
 A super and a mega corpora run (`tests/corpus/runs/super.toml`, `mega.toml`) list, for each suite,
 every fix of its `fix-unsafe` step with its tier, the type errors traced to it, and what its traced
-tests saw of its binding (the run folder's `guesses.jsonl`); RUNS.md's sections give each package's
+tests saw of its binding (the run folder's `guesses.jsonl`); `docs/runs/`'s files give each package's
 fixes by tier with those told and those that held. `scratch/guess_report.py --from FOLDER` prints
 these tables, and with `--likely` the sets that pass, as `LIKELY` is written. A set joins or leaves
 `LIKELY` by that listing alone.

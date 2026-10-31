@@ -26,6 +26,7 @@ from constricter.fix.values.members import (
     class_variable,
     keyed,
     member,
+    own_instance,
     present,
     returned_method,
     subscripted,
@@ -203,7 +204,13 @@ def _member_of(
             )
         case ast.Call():
             infer: shapes.Infer = inferring(known, declared)
-            found: Inference | None = member(receiver, attr, value, known)
+            found: Inference | None = member(receiver, attr, value, known) or own_instance(
+                value,
+                receiver,
+                attr,
+                known,
+                declared,
+            )
             method: stdlib.Method | None
             if found is None and (method := library_method(receiver, attr, known)) is not None:
                 found = overloads.chosen(
@@ -213,9 +220,9 @@ def _member_of(
                     infer,
                     stdlib.for_receiver(method, receiver),
                 )
-                base: str = _base(receiver, attr, known)
+                definer: str = _base(receiver, attr, known)
                 # The base itself is its `Self`: the receiver's own class, which the base isn't.
-                found = None if found is not None and receiver != base == found.annotation else found
+                found = None if found is not None and receiver != definer == found.annotation else found
             if found is None:
                 found = shapes.defaulted(receiver, value, infer, known) or opened_path(receiver, value, known)
             defined: tuple[str, str] | None = (
@@ -233,7 +240,11 @@ def _member_of(
                 )
             )
         case _:
-            return member(receiver, attr, None, known) or _unannotated(receiver, attr, known)
+            return (
+                member(receiver, attr, None, known)
+                or own_instance(value, receiver, attr, known, declared)
+                or _unannotated(receiver, attr, known)
+            )
 
 
 def _base(receiver: str, attr: str, known: Known) -> str:

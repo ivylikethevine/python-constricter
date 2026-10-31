@@ -1,6 +1,8 @@
 # Documentation
 
 Reference beyond [the README](../README.md). Each fact has one home; every other page links to it.
+What `--fix` does today is Fixes'; a measurement is Completed's or a corpus run's; the Changelog says
+what a release changed, in a release's words, and links for the numbers.
 
 ## Using constricter
 
@@ -17,7 +19,7 @@ Reference beyond [the README](../README.md). Each fact has one home; every other
 
 | Doc                                      | Covers                                                        |
 | ---------------------------------------- | ------------------------------------------------------------- |
-| [Corpus runs](RUNS.md)                   | What each version found and fixed on the corpus, per version. |
+| [Corpus runs](RUNS.md)                   | What each version found and fixed on the corpus, a file each. |
 | [Type sources](research/type-sources.md) | Research into where a type could come from.                   |
 
 ## Changing it

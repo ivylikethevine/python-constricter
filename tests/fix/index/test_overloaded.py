@@ -367,7 +367,13 @@ def test_an_overload_is_matched_through_what_checked_files_declare(tmp_path: Pat
     calling: Path = _write(tmp_path, "pkg/calling.py", CALLING)
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     found: set[str] = set(own_methods.overloaded(catalog, calling, {}))
-    assert found == {"Frame.get", "shapes.Frame.get", "pkg.shapes.Frame.get"}
+    assert found == {
+        "Frame.get",
+        "shapes.Frame.get",
+        "pkg.shapes.Frame.get",
+        "shapes.Sub.get",  # its base's
+        "pkg.shapes.Sub.get",
+    }
     assert set(own_methods.overloaded(catalog._replace(memo=None), calling, {})) == found  # an index by hand
     assert not own_methods.overloaded(catalog, tmp_path / "missing.py", {})
     assert catalog.modules["pkg.keys"].reads("Key")
@@ -520,3 +526,185 @@ def test_a_class_passed_for_a_type_variable_types_the_call(tmp_path: Path) -> No
     fixed: str = use.read_text(encoding="utf-8")
     assert all(line in fixed for line in KINDED_FIXED), fixed
     assert KINDED_IMPORTED in fixed.split("def use", 1)[0], fixed  # imported for `by_text`
+
+
+_CONCRETE_KIND: Final = """
+class Base:
+    pass
+
+
+def get_backend(engine: str | type[Base]) -> Base:
+    return Base()
+
+
+class Holder:
+    def backend(self, engine: str | type[Base]) -> Base:
+        return Base()
+"""
+_CONCRETE_USE: Final = """
+from pkg.kinds import Holder, get_backend
+
+
+def use(holder: Holder, engine):
+    guessed = str(engine)
+    backend = get_backend(guessed)
+    held = holder.backend(guessed)
+"""
+
+
+def test_a_type_of_a_concrete_class_leaves_the_declared_return(tmp_path: Path) -> None:
+    """`engine: str | type[Base]) -> Base` binds nothing: certain whatever its argument, as without `type`."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/kinds.py", _CONCRETE_KIND)
+    use: Path = _write(tmp_path, "pkg/use.py", _CONCRETE_USE)
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    fixed: str = use.read_text(encoding="utf-8")
+    assert "    backend: Base = get_backend(" in fixed, fixed
+    assert "    held: Base = holder.backend(" in fixed, fixed
+
+
+_VARIABLES: Final = """
+from typing import TypeVar
+
+Kind = TypeVar("Kind")
+Guarded = TypeVar("Guarded")
+Other = TypeVar("Other")
+"""
+_IMPORTED_VARIABLE: Final = """
+from typing import TYPE_CHECKING, overload
+
+from pkg.variables import Kind, Other
+
+if TYPE_CHECKING:
+    from pkg.variables import Guarded
+
+
+class Widget:
+    pass
+
+
+def one(kind: type[Kind]) -> Kind:
+    return kind()
+
+
+def guarded(kind: "type[Guarded]") -> "Guarded":
+    return kind()
+
+
+def wrong(kind: type[Kind]) -> Other:
+    return kind()
+
+
+@overload
+def query(selector: str) -> Widget: ...
+@overload
+def query(selector: type[Kind]) -> Kind: ...
+def query(selector):
+    return Widget()
+
+
+@overload
+def flagged(selector: str, flag=...) -> Widget: ...
+@overload
+def flagged(selector: type[Kind], flag=...) -> Kind: ...
+def flagged(selector, flag=None):
+    return Widget()
+"""
+_IMPORTED_USE: Final = """
+from pkg.widgets import Widget, flagged, guarded, one, query, wrong
+
+
+class Static(Widget):
+    pass
+
+
+def use() -> None:
+    single = one(Static)
+    deferred = guarded(Static)
+    other = wrong(Static)
+    by_class = query(Static)
+    by_text = query("#x")
+    unannotated = flagged(Static)
+"""
+
+
+def test_a_type_variable_another_module_defines_binds_the_class_passed(tmp_path: Path) -> None:
+    """As the module's own does; followed under `TYPE_CHECKING` too; one no parameter binds types nothing."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/variables.py", _VARIABLES)
+    _ = _write(tmp_path, "pkg/widgets.py", _IMPORTED_VARIABLE)
+    use: Path = _write(tmp_path, "pkg/use.py", _IMPORTED_USE)
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    fixed: str = use.read_text(encoding="utf-8")
+    assert "    single: Static = one(" in fixed, fixed
+    assert "    other = wrong(" in fixed, fixed
+    assert "    by_class: Static = query(" in fixed, fixed
+    assert "    by_text: Widget = query(" in fixed, fixed
+    assert "    unannotated: Static = flagged(" in fixed, fixed
+
+
+_INHERITED_KIND: Final = """
+from typing import TYPE_CHECKING, TypeVar, overload
+
+T = TypeVar("T")
+
+
+class Node:
+    def query_one(self, selector: str, kind: type[T]) -> T:
+        return kind()
+
+    if TYPE_CHECKING:
+        @overload
+        def checked(self, selector: str) -> int: ...
+        @overload
+        def checked(self, selector: type[T]) -> T: ...
+
+    def checked(self, selector):
+        return selector
+
+
+class Mid(Node):
+    pass
+
+
+class Replaced(Node):
+    def query_one(self, selector, kind):
+        return kind
+
+
+class Unfollowed(UNKNOWN, Node):
+    pass
+"""
+_INHERITED_USE: Final = """
+from pkg.nodes import Mid, Node, Replaced, Unfollowed
+
+
+class Leaf(Mid):
+    def own(self) -> None:
+        mine = self.query_one("#x", int)
+
+
+def use(mid: Mid, replaced: Replaced, unfollowed: Unfollowed, leaf: Leaf) -> None:
+    inherited = mid.query_one("#x", int)
+    hidden = replaced.query_one("#x", int)
+    past = unfollowed.query_one("#x", int)
+    deeper = leaf.query_one("#x", str)
+    by_class = mid.checked(str)
+    by_text = leaf.checked("#x")
+"""
+
+
+def test_a_subclass_takes_its_base_s_method_bound_by_the_class_passed(tmp_path: Path) -> None:
+    """Through the checked files' bases, but past no class that binds the name or base it can't follow."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/nodes.py", _INHERITED_KIND)
+    use: Path = _write(tmp_path, "pkg/use.py", _INHERITED_USE)
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    fixed: str = use.read_text(encoding="utf-8")
+    assert "        mine: int = self.query_one(" in fixed, fixed
+    assert "    inherited: int = mid.query_one(" in fixed, fixed
+    assert "    hidden = replaced.query_one(" in fixed, fixed
+    assert "    past = unfollowed.query_one(" in fixed, fixed
+    assert "    deeper: str = leaf.query_one(" in fixed, fixed
+    assert "    by_class: str = mid.checked(" in fixed, fixed  # under `if TYPE_CHECKING:`
+    assert "    by_text: int = leaf.checked(" in fixed, fixed

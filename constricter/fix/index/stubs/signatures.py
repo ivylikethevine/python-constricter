@@ -120,7 +120,12 @@ def read_all(
             *(param for each in written for param, _ in each.type_params),
         },
     )
-    shared = {param for param in shared if not _names_any(param[3], named)}
+    shared = {
+        param
+        for param in shared
+        if not _names_any(param[3], named)
+        and (module.installed or not reader.names_variable(param[3], module))
+    }
     return tuple(reader.signature(module, signature, shared, params) for signature in written)
 
 
@@ -170,6 +175,23 @@ class Reader(Resolver):
         """Read in `modules`."""
         super().__init__(modules)
         self.matching: bool = False  # writing a pattern to match a receiver against (see `pattern`)
+
+    def names_variable(self, annotation: str | None, module: Module) -> bool:
+        """Check whether an annotation a checked file writes names a type variable, one it imports too.
+
+        Returns:
+          Whether it does.
+
+        """
+        if annotation is None:
+            return False
+        scope: Scope = Scope(module, {}, module.name)
+        node: ast.AST
+        for node in ast.walk(parse_text(annotation)):
+            resolved: Resolved | None = self.resolve(node, scope) if isinstance(node, ast.Name) else None
+            if isinstance(resolved, Atom) and resolved.kind == VAR:
+                return True
+        return False
 
     def signature(
         self,
@@ -302,7 +324,7 @@ class Reader(Resolver):
         ):
             found[_TYPE_VARIABLE] = atoms[0].name
         variable: str | None
-        if (variable := class_binds(atoms, scope.owner)) is not None:
+        if (variable := class_binds(atoms, scope.owner if scope.module.installed else None)) is not None:
             found[CLASS_BINDS] = variable
             if class_bounded(atoms):
                 found[CLASS_BOUNDED] = True
@@ -642,7 +664,8 @@ class Reader(Resolver):
         elif resolved.kind == ARG:
             return self._template(*argument_of(resolved), hops + 1)
         elif resolved.kind == VAR:
-            written = resolved.name if owned(resolved, scope.owner) else _ANY if self.matching else None
+            mine: bool = owned(resolved, scope.owner) or not scope.module.installed
+            written = resolved.name if mine else _ANY if self.matching else None
         else:
             written = self._class_path(resolved)
         if written is None or not args:
