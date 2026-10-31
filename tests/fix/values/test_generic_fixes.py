@@ -15,6 +15,7 @@ from constricter.source.declarations import defaulted_type_vars, generic_classes
 
 _CLASS: Final = "C"
 _GENERIC: Final = "Generic"
+_ENTITY: Final = "Entity"
 _SOURCE: str = """
 from typing import Generic, TypeVar
 
@@ -432,6 +433,30 @@ def test_a_class_read_with_its_defaults_is_no_guess_where_its_call_binds_them(tm
     assert (tmp_path / "pkg" / "server.py").read_text(encoding="utf-8") == written
 
 
+_DEFAULTED_EITHER: str = """
+from pkg.context import Context
+
+def run(raw, flag) -> None:
+    either = Context(raw) if flag else Context(raw, None)
+"""
+
+
+def test_a_conditional_of_a_class_read_with_its_defaults_is_no_fix(tmp_path: Path) -> None:
+    """Not itself a call, so no call of it binds the class's parameters, and `--likely` writes nothing."""
+    (tmp_path / "pkg").mkdir()
+    sources: dict[str, str] = {
+        "pkg/__init__.py": "",
+        "pkg/context.py": _DEFAULTED_CONTEXT,
+        "pkg/either.py": _DEFAULTED_EITHER,
+    }
+    name: str
+    source: str
+    for name, source in sources.items():
+        _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
+    _ = cli.main(["--fix", "--likely", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    assert (tmp_path / "pkg" / "either.py").read_text(encoding="utf-8") == textwrap.dedent(_DEFAULTED_EITHER)
+
+
 _BOUND_BASES: str = """
 from typing import Generic, TypeVar
 
@@ -533,7 +558,7 @@ def test_a_generic_alias_another_file_declares_bare_is_no_fix(tmp_path: Path) ->
     for name, source in sources.items():
         _ = (tmp_path / name).write_text(textwrap.dedent(source), encoding="utf-8")
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
-    assert "Entity" in catalog.modules["pkg.types"].generics
+    assert _ENTITY in catalog.modules["pkg.types"].generics
     _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
     written: str = textwrap.dedent(_ALIASED_USE).replace("    count = ", "    count: int = ")
     assert (tmp_path / "pkg" / "use.py").read_text(encoding="utf-8") == written

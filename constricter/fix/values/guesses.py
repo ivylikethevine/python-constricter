@@ -42,7 +42,8 @@ from constricter.source.annotations import dotted
 from constricter.source.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
-_Field: TypeAlias = ast.AST | list[ast.AST | str] | str | int | None  # a node's field, but a constant's value
+# a node's field, but a constant's value; a list holds `None` for a `**` key or a required keyword's default
+_Field: TypeAlias = ast.AST | list[ast.AST | str | None] | str | int | None
 # What types a value without its guessed names only as a guess of its own.
 _GUESSED_ALONE: Final = frozenset({TEXT, OPERAND})
 _UNKNOWN: Final = "_constricter_unknown"  # a name no scope binds: a value of no known type

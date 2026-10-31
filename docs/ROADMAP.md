@@ -222,7 +222,7 @@ ungated.
    litestar 9). Done when a mega run has the fixes and no new error from them: on
    `mega-10-30-2026-0857` it has them (`--unsafe-fixes` 2 more on each of mkdocs, tox and werkzeug),
    with no error. Left: `_class_typed` also takes a concrete class (xarray's `def get_backend(engine:
-   str | type[BackendEntrypoint]) -> BackendEntrypoint`), so a call with a guessed argument loses its
+str | type[BackendEntrypoint]) -> BackendEntrypoint`), so a call with a guessed argument loses its
    declared return: 6 certain fixes in `backends/api.py` are `--likely` since (reproduced by
    `scratch/fix_diff.py d160aa8`). Reading only a name the module binds as a type variable restores
    them.

@@ -730,7 +730,7 @@ def unshadowed(
         for base in ancestors(name, found):
             under[base].add(name)
     dropped: dict[str, set[str]] = {}
-    for name in sorted((reached & typed.keys()) | bare.keys()):
+    for name in sorted(reached.intersection(typed).union(bare)):
         line: list[str] = [*ancestors(name, found), *under.get(name, ())]
         other: set[str]
         if other := {variable for each in line for variable in bound.get(each, frozenset())}:

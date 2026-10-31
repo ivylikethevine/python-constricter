@@ -401,6 +401,8 @@ def use(scalar: Scalar) -> None:
     same = scalar.view()
 """
 
+VIEWED_FIXED: Final = ("    viewed: int = scalar.view(", "    same: Scalar = scalar.view()")
+
 
 def test_a_parameter_declared_alike_at_another_place_tells_the_overloads_apart(tmp_path: Path) -> None:
     """As numpy's `view`: `type` first in one overload, second in the other; `view("i8")` is the other's."""
@@ -408,8 +410,7 @@ def test_a_parameter_declared_alike_at_another_place_tells_the_overloads_apart(t
     viewed: Path = _write(tmp_path, "pkg/scalars.py", VIEWED)
     _ = cli.main(["--fix", "-q", str(tmp_path)])
     fixed: str = viewed.read_text(encoding="utf-8")
-    assert "    viewed: int = scalar.view(" in fixed, fixed
-    assert "    same: Scalar = scalar.view()" in fixed, fixed
+    assert all(line in fixed for line in VIEWED_FIXED), fixed
 
 
 KINDED: Final = """
@@ -484,6 +485,7 @@ def use(node: Node, kind) -> None:
     decorated = cached(Static)
     redefined = again(Static)
 """
+KINDED_IMPORTED: Final = "Widget"
 KINDED_FIXED: Final = (
     "    mine: Static = query_one(",
     "    builtin: int = query_one(",
@@ -517,4 +519,4 @@ def test_a_class_passed_for_a_type_variable_types_the_call(tmp_path: Path) -> No
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = use.read_text(encoding="utf-8")
     assert all(line in fixed for line in KINDED_FIXED), fixed
-    assert "Widget" in fixed.split("def use", 1)[0], fixed  # imported for `by_text`
+    assert KINDED_IMPORTED in fixed.split("def use", 1)[0], fixed  # imported for `by_text`

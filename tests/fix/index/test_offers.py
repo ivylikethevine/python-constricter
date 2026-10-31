@@ -226,3 +226,15 @@ def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_edit(
     hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
     found: Hints = offers.vetted(project.index([path]), path, hints)[0]
     assert found.offered == ({_AT: offered} if kept else {})
+
+
+@pytest.mark.parametrize("text", ["Decimal", "Decimal["])
+def test_an_edit_nothing_can_call_ambiguous_is_kept(tmp_path: Path, text: str) -> None:
+    """A file the index doesn't have binds no name; a text that doesn't parse writes none."""
+    path: Path = tmp_path / "kinds.py"
+    _ = path.write_text("x = 1\n", encoding="utf-8")
+    offered: Offered = Offered(text, ("from decimal import Decimal",))
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: text}, {_AT: offered}),)
+    catalog: project.Index
+    for catalog in (project.index([]), project.index([path])):
+        assert offers.vetted(catalog, path, hints)[0].offered == {_AT: offered}

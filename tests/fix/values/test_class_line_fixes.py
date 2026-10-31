@@ -77,6 +77,13 @@ def test_a_variable_takes_the_type_every_class_in_its_line_binds_it_to() -> None
     }
 
 
+def test_a_base_that_doesnt_bind_the_name_is_passed_over() -> None:
+    """`Mid` and `Sub` bind `rate`, `Base` above them doesn't: those two are joined, `Base` isn't typed."""
+    found: dict[str, tuple[str, ...]] = {"Base": (), "Mid": ("Base",), "Sub": ("Mid",)}
+    typed: dict[str, dict[str, str]] = {"Mid": {"rate": "int"}, "Sub": {"rate": "float"}}
+    assert classvars.joined(typed, {}, found, {}) == {"Mid": {"rate": "float"}, "Sub": {"rate": "float"}}
+
+
 def test_the_join_spans_the_checked_files_and_a_class_of_several_bases(tmp_path: Path) -> None:
     """A base in one file, its overrides in another; two bases a class takes both of are joined there."""
     catalog: project.Index = _index(

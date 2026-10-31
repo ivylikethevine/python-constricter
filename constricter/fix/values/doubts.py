@@ -593,8 +593,8 @@ def binds_defaults(
     }
     if bound[0] and params[:1] and params[0].annotation is None:
         typed.add(params[0].arg)  # `self` or `cls`, of a class binding type variables
-    passed: list[ast.expr] = [*value.args, *(keyword.value for keyword in value.keywords)]
-    return any(isinstance(each, ast.Name) and each.id in typed for each in passed)
+    given: list[ast.expr] = [*value.args, *(keyword.value for keyword in value.keywords)]
+    return any(isinstance(each, ast.Name) and each.id in typed for each in given)
 
 
 def _selfish(value: ast.expr, found: Inference, owner: Owner) -> str | None:

@@ -243,21 +243,17 @@ def _ambiguous(catalog: project.Index, target: project.Module | None, offered: O
         tree: ast.Expression = ast.parse(offered.text, mode="eval")
     except SyntaxError:
         return False
-    imported: set[str] = set()
+    added: set[str] = set()
     statement: str
-    for statement in offered.imports:
-        try:
-            nodes: list[ast.stmt] = ast.parse(statement).body
-        except SyntaxError:
-            continue
-        imported.update(
+    for statement in offered.imports:  # each parses: `vetted` asks `_sound` first
+        added.update(
             (alias.asname or alias.name).partition(".")[0]
-            for node in nodes
+            for node in ast.parse(statement).body
             if isinstance(node, ast.Import | ast.ImportFrom)
             for alias in node.names
         )
     wholes: list[str] = [origin[0] for origin in target.names.values() if origin[1] is None]
-    written: set[str] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - imported
+    written: set[str] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - added
     return any(
         name in target.names
         and any(

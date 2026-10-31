@@ -215,7 +215,7 @@ def _merge_spellings(found: dict[str, Members], same: Iterable[frozenset[str]]) 
     """
     group: frozenset[str]
     for group in same:
-        present: list[str] = sorted(group & found.keys(), key=lambda name: (len(name), name))
+        present: list[str] = sorted(group.intersection(found), key=lambda name: (len(name), name))
         extra: str
         for extra in present[1:]:
             merged: Members = found.pop(extra)
