@@ -10,12 +10,13 @@ from constricter.fix.core.imports import guarded_imports, imports_of, through, u
 from constricter.fix.core.known import Hints, ImportPlan, Inference, Typed
 from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import chains
-from constricter.fix.values import aliased, callables, fills, hinted
+from constricter.fix.values import aliased, callables, classvars, fills, hinted
 from constricter.fix.values.doubts import (
     Facts,
     Owner,
     as_declared,
     bare,
+    binds_defaults,
     corrected,
     doubts,
     is_constant,
@@ -283,11 +284,16 @@ class Scope:
         # The variable's type is its value's, or what a base holds it to (`maxDiff`, an `int | None`).
         held: frozenset[str] = frozenset() if typed is None else self.inferred.members(typed)
         if fix is None and _NONE in held and isinstance(value, ast.Constant) and value.value is None:
-            fix = Inference(_NONE, "what a class above it declares it", frozenset())
+            fix = Inference(_NONE, "what its class's line holds it to", frozenset())
         # A checked file's class, by name: the index typed it so (`plain.settled`).
         if fix is None and typed is not None and isinstance(value, ast.Name) and typed == f"type[{value.id}]":
             fix = Inference(typed, f"the class `{value.id}` it names", frozenset())
-        if fix is None or typed is None or fix.annotation not in held:
+        # A value under the type `classvars.joined` widens it to (`priority = 0`, a `float`).
+        if (
+            fix is None
+            or typed is None
+            or not (fix.annotation in held or classvars.promoted(fix.annotation, held))
+        ):
             return None, False, frozenset()
         return fix._replace(annotation=typed, kinds=fix.kinds | {MEMBER}), True, frozenset({MEMBER})
 
@@ -312,6 +318,8 @@ class Scope:
         fix: Inference | None
         if (fix := inference(value, self.settings.known, self.inferred.types)) is not None:
             fix = corrected(value, fix, self._owner(), facts.generics, self.settings.known.names.plan)
+        if fix is not None and binds_defaults(value, fix, function, self._bound(), facts.defaulted_generics):
+            fix = None
         # An alias of a union is narrowed as the union it names.
         named: Inference | None = (
             None
@@ -452,6 +460,18 @@ class Scope:
             if spelled is None
             else Inference(spelled, f"{fix.reason}, a constant passed to a call", fix.kinds | {FINAL_KIND})
         )
+
+    def _bound(self) -> tuple[frozenset[str], frozenset[str]]:
+        """Name the type variables this scope's class binds, if it's a method, and the module's.
+
+        Returns:
+          Those its class's bases name (none outside a method), and every type variable the module has.
+
+        """
+        function: FunctionDef | None = self.kind.function
+        owner: str | None = None if function is None else self.settings.owners.get(id(function))
+        facts: Facts = self.settings.facts
+        return (frozenset() if owner is None else facts.bound.get(owner, frozenset())), facts.type_vars
 
     def _owner(self) -> Owner | None:
         """Find the class this scope is a method of, if its instance (or class) is a `Self` in it.

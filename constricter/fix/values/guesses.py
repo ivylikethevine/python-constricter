@@ -1,8 +1,9 @@
 """Which of `--fix`'s inferences are guesses (`--unsafe-fixes`), and what each rests on."""
 
 import ast
-from collections.abc import Iterator, Mapping
-from typing import Final, cast
+import copy
+from collections.abc import Iterator, Mapping, Sequence
+from typing import Final, TypeAlias, cast
 
 from constricter.fix.core.known import PARAM, Inference, Known, stood
 from constricter.fix.libraries import stdlib, walks
@@ -12,12 +13,14 @@ from constricter.fix.libraries.overloads import TEXT
 from constricter.fix.values import called, decided, displays, shapes
 from constricter.fix.values.inference import (
     CONTAINER_BUILDERS,
+    OPERAND,
     RETURNED,
     inference,
     inferred,
     inferring,
     joined,
     library_method,
+    operand_typed,
     scalar,
     texted,
 )
@@ -39,6 +42,11 @@ from constricter.source.annotations import dotted
 from constricter.source.walked import children
 
 # Builtins whose call is certain (when the module doesn't rebind the name): see `_is_guess`.
+# a node's field, but a constant's value; a list holds `None` for a `**` key or a required keyword's default
+_Field: TypeAlias = ast.AST | list[ast.AST | str | None] | str | int | None
+# What types a value without its guessed names only as a guess of its own.
+_GUESSED_ALONE: Final = frozenset({TEXT, OPERAND})
+_UNKNOWN: Final = "_constricter_unknown"  # a name no scope binds: a value of no known type
 _CERTAIN_BUILTINS: Final = frozenset(
     BUILTIN_RETURNS.keys() | CONTAINER_BUILDERS.keys() | ITERATORS | {"type", "getattr"},
 )
@@ -148,6 +156,7 @@ def guessing(
     unsafe: bool = False
     named: bool = True  # only names are guesses, so far
     found: set[str] = set()
+    operands: list[ast.AST] = []  # a text's operators with a value of no known type (see `operand_typed`)
     node: ast.AST
     for node in walked:
         if joined(node, known, declared):
@@ -156,6 +165,8 @@ def guessing(
         if texted(node, known, inside):  # with the comprehensions' targets typed
             unsafe, named = True, False
             found.add(TEXT)
+        if operand_typed(node, known, inside):
+            operands.append(node)
         if _is_guess(node, known, guesses, inside):
             unsafe = True
             named = named and isinstance(node, ast.Name)
@@ -164,16 +175,78 @@ def guessing(
             elif isinstance(node, ast.Attribute):
                 found.update(_assigned_origins(node, known, inside) or ())
         found.update(origins.get(_read(node), ()))
+    if operands and _rests_on_operands(value, operands, known, declared):
+        unsafe, named = True, False
+        found.add(OPERAND)
     if not unsafe or (named and not _rests(value, known, guesses, declared)):
         return False, frozenset()
     return True, frozenset(found)
+
+
+def _rests_on_operands(
+    value: ast.expr,
+    operands: Sequence[ast.AST],
+    known: Known,
+    declared: Mapping[str, str],
+) -> bool:
+    """Check whether `value`'s type rests on the text operators in it typed by their text alone.
+
+    `os.path.join(root + "/x")` is a `str` whatever its argument is: that argument's guess doesn't
+    make it one.
+
+    Returns:
+      Whether it has another type with those operators of no known type, none, or one a guess
+      gives.
+
+    """
+    alone: Inference | None = inference(_unknown_at(value, operands), known, declared)
+    return (
+        alone is None
+        or bool(alone.kinds & _GUESSED_ALONE)
+        or alone.annotation != inferred(value, known, declared)
+    )
+
+
+def _unknown_at(value: ast.expr, nodes: Sequence[ast.AST]) -> ast.expr:
+    """Copy `value`, `nodes` in it each a name no scope binds; `value` itself is left as it is.
+
+    Returns:
+      The copy.
+
+    """
+    return cast("ast.expr", _replaced(value, frozenset(id(node) for node in nodes)))
+
+
+def _replaced(node: ast.AST, nodes: frozenset[int]) -> ast.AST:
+    """Copy `node` as `_unknown_at` does: each node under it copied shallow, each of `nodes` a name.
+
+    Returns:
+      The copy.
+
+    """
+    if id(node) in nodes:
+        return ast.copy_location(ast.Name(_UNKNOWN, ast.Load()), node)
+    copied: ast.AST = copy.copy(node)
+    field: str
+    for field in node._fields:
+        child: _Field = cast("_Field", getattr(node, field, None))
+        if isinstance(child, ast.AST):
+            setattr(copied, field, _replaced(child, nodes))
+        elif isinstance(child, list):
+            setattr(
+                copied,
+                field,
+                [_replaced(each, nodes) if isinstance(each, ast.AST) else each for each in child],
+            )
+    return copied
 
 
 def _rests(value: ast.expr, known: Known, guesses: frozenset[str], declared: Mapping[str, str]) -> bool:
     """Check whether `value`'s type rests on the guessed names in it.
 
     `os.path.join(root, "x")` is a `str` by its literal, whatever `root` is: a guessed `root` doesn't
-    make it a guess; `os.path.join(root, name)` is a `str` without it only as the text overload's.
+    make it a guess; `os.path.join(root, name)` is a `str` without it only as the text overload's,
+    and `b"--" + boundary` a `bytes` only as its text operand's (`operand`).
 
     Returns:
       Whether it has another type, none, or only a text overload's guess, with those names' types
@@ -182,7 +255,11 @@ def _rests(value: ast.expr, known: Known, guesses: frozenset[str], declared: Map
     """
     sure: dict[str, str] = {name: text for name, text in declared.items() if name not in guesses}
     alone: Inference | None = inference(value, known, sure)
-    return alone is None or TEXT in alone.kinds or alone.annotation != inferred(value, known, declared)
+    return (
+        alone is None
+        or bool(alone.kinds & _GUESSED_ALONE)
+        or alone.annotation != inferred(value, known, declared)
+    )
 
 
 def _receiving(receiver: ast.expr, method: str, known: Known, declared: Mapping[str, str]) -> str | None:

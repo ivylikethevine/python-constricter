@@ -28,6 +28,7 @@ _PROPERTIES: Final = frozenset({"property", "cached_property"})
 _BOUND: Final = "bound"
 _STAR: Final = "*"
 _SELF: Final = "Self"  # a method returning its instance's own type
+_TYPE_OF: Final = frozenset({"type", "Type"})  # a class as a value: `type[T]`, `typing.Type[T]`
 
 
 class Signature(NamedTuple):
@@ -98,8 +99,9 @@ class Declarations(NamedTuple):
 def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:
     """Read a checked module's top-level functions defined with `@overload`, as `declarations` reads a stub's.
 
-    And its top-level classes' methods, each as `Class.method`, less its `self`: of a class
-    defined once.
+    And those returning the class a `type[...]` parameter takes (see `_class_typed`), as their one
+    signature; and its top-level classes' methods alike, each as `Class.method`, less its `self`: of
+    a class defined once.
 
     Returns:
       Each one's overloads' signatures, as written.
@@ -121,11 +123,46 @@ def overloads(tree: ast.Module) -> dict[str, tuple[Signature, ...]]:
 def _overloads(body: Sequence[ast.stmt]) -> dict[str, tuple[Signature, ...]]:
     signatures: dict[str, list[Signature]] = {}
     overloaded: set[str] = set()
+    typed: dict[str, Signature | None] = {}  # the others, by their last definition
     stmt: ast.stmt
     for stmt in body:
         if isinstance(stmt, ast.FunctionDef):
             _signature(stmt, signatures, overloaded, frozenset())
-    return {name: tuple(signatures[name]) for name in sorted(overloaded)}
+            if stmt.name not in overloaded:
+                typed[stmt.name] = _read(stmt) if _class_typed(stmt) else None
+    found: dict[str, tuple[Signature, ...]] = {
+        name: (signature,) for name, signature in typed.items() if signature is not None
+    }
+    found.update((name, tuple(signatures[name])) for name in overloaded)
+    return dict(sorted(found.items()))
+
+
+def _class_typed(node: ast.FunctionDef) -> bool:
+    """Check whether an undecorated function returns a name alone a parameter takes the class of.
+
+    `def query_one(self, selector: str, kind: type[T]) -> T`: a call binds `T` to the class it passes.
+
+    Returns:
+      Whether it does.
+
+    """
+    if node.decorator_list or not isinstance(node.returns, ast.Name):
+        return False
+    name: str = node.returns.id
+    args: ast.arguments = node.args
+    annotations: list[ast.expr] = [
+        arg.annotation
+        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+        if arg.annotation is not None
+    ]
+    return any(
+        isinstance(each, ast.Subscript)
+        and node_name(each.value) in _TYPE_OF
+        and isinstance(each.slice, ast.Name)
+        and each.slice.id == name
+        for annotation in annotations
+        for each in ast.walk(annotation)
+    )
 
 
 def kinds(tree: ast.Module, aliases: Collection[str]) -> Declarations | None:

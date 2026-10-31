@@ -29,8 +29,22 @@ goes under `local/scratch/`.
   with the order's method-name edges dropped, for the parallel check's ceiling, timed; compare its
   `--format=json` with a plain check's. `--fork` starts the workers by forking, which a sandbox
   allows.
-- `fix_diff.py [REF]`: the fixes `--show-fixes --unsafe-fixes` lists on the installed pydantic by
-  REF's code (HEAD) and by the working tree's, and those only one side has.
+- `fix_diff.py [REF] [--source PACKAGE_DIR] [--jobs N] [--top N] [--option=FLAG ...]`: the fixes
+  `--show-fixes --unsafe-fixes` lists on the installed pydantic (or another package's directory) by
+  REF's code (HEAD) and by the working tree's, and those only one side has, counted by type;
+  `--option=--all-scopes` checks class and module bodies, as the corpus runs do.
+- `fix_errors.py [REF] [--source PACKAGE_DIR] [--mode certain|likely|unsafe] [--option=FLAG ...]`:
+  basedpyright's errors on the package as it is, fixed by REF's code and fixed by the tree's, and
+  those only the tree's copy has, each with its line. xarray about 2 minutes, one process on
+  16CPU/60GB.
+- `class_plain.py FOLDER NAME=ROOT ...`: what keeps the class of each class-body binding with no
+  fix from being plain (a metaclass, a decorator, a base no checked file defines), followed up its
+  bases through the corpus: for choosing what plainness to widen.
+- `census_compare.py FOLDER NAME ROOT`, with `CORPUS_JOBS=1`: one corpus's census by the working
+  tree against a finished run's rows for it, untyped and unfixed counts and the unfixed by reason.
+- `census_mine.py FOLDER [--by shape|unfixed|dotted|source] [--shape TEXT] [--unfixed TEXT]
+[--corpus NAME ...]`: a finished run's census rows with no fix, filtered and counted, with samples:
+  for choosing what to build without checking a corpus again.
 - `widen_pass.py`: what a second pass still fixes on each corpus after every `fix-widen` kind.
 - `second_pass.py [CORPUS ...] [--likely | --certain]`: what a second pass still fixes on each
   corpus after `--fix --unsafe-fixes` (or `--likely`, or neither), as CI's `ci-fix` run counts it,
@@ -121,6 +135,9 @@ goes under `local/scratch/`.
 - `stage_compare.py BEFORE AFTER [--stage tests] [--top N]`: one stage's steps in two runs, from
   their records: its wall time, step seconds, CPU seconds and waits, each corpus's seconds in both,
   and the steps whose seconds or waits changed most.
+- `type_errors_diff.py OLD NEW [--corpus NAME] [--rows]`: two runs' new type errors from their
+  `type-errors.csv`, by corpus, step and mechanism, line left out; `--rows` lists those only the new
+  run has.
 - `righttyper_measure.py CHECKOUT --source PKG (--module pytest | --script PATH) [--args "..."]
 [--env KEY=VALUE ...] [--check "basedpyright PKG"]`: RightTyper over a suite's tests on a copy of
   its checkout (a script's directory on the path, the environment given; RightTyper patched past a

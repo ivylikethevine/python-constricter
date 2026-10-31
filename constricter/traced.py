@@ -40,6 +40,7 @@ _STDLIB: Final = sys.stdlib_module_names
 _FORMS: Final = frozenset({"typing", "typing_extensions"})  # whose "classes" are special forms
 _SELF: Final = "self"
 _TYPED: Final = frozenset({_SELF, "cls"})  # the parameters a class types, unannotated
+_CLASS_METHOD: Final = "classmethod"  # whose first parameter is its class, by whatever name
 _Function: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
 # Each binding's spellings, by its name, by its line.
 _Bindings: TypeAlias = Mapping[int, Mapping[str, tuple[str, ...]]]
@@ -144,6 +145,7 @@ def hints(found: Trace, source: bytes) -> Hints | None:
     offered: dict[tuple[int, int], Offered] = {}
     returns: dict[tuple[int, int], Offered] = {}
     stored: dict[int, frozenset[str]] = {} if tree is None else _undeclared(tree)
+    receivers: dict[int, str] = {} if tree is None else _receivers(tree)
     node: ast.AST
     for node in ast.walk(tree) if tree is not None else ():
         if not isinstance(node, _Function):
@@ -152,7 +154,7 @@ def hints(found: Trace, source: bytes) -> Hints | None:
         if (returned := _returned(node, bindings, found.modules, digest)) is not None:
             returns[node.lineno, node.col_offset] = returned
         targets: list[ast.Name]
-        for targets in _untyped(node, stored.get(id(node), frozenset())).values():
+        for targets in _untyped(node, stored.get(id(node), frozenset()), receivers.get(id(node))).values():
             # A binding the run never reached may hold anything.
             seen: list[tuple[str, ...]] = [
                 bindings.get(target.lineno, {}).get(target.id, ()) for target in targets
@@ -299,6 +301,27 @@ def _undeclared(tree: ast.Module) -> dict[int, frozenset[str]]:
     return found
 
 
+def _receivers(tree: ast.Module) -> dict[int, str]:
+    """Name each class method's first parameter, its class, which a checker types by any name.
+
+    A `@classmethod`'s (`def from_file(klass, name)`); a plain method's first parameter goes by
+    `self` alone, since a metaclass may make one static (pygments' `analyse_text(text)`).
+
+    Returns:
+      Each one's, by its method's identity.
+
+    """
+    return {
+        id(method): [*method.args.posonlyargs, *method.args.args][0].arg
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+        for method in node.body
+        if isinstance(method, _Function)
+        and any(isinstance(each, ast.Name) and each.id == _CLASS_METHOD for each in method.decorator_list)
+        and (method.args.posonlyargs or method.args.args)
+    }
+
+
 def _params(function: _Function) -> list[ast.arg]:
     """List a function's parameters, in order.
 
@@ -314,10 +337,11 @@ def _params(function: _Function) -> list[ast.arg]:
     ]
 
 
-def _unannotated(function: _Function) -> set[str | None]:
+def _unannotated(function: _Function, receiver: str | None = None) -> set[str | None]:
     """Name the parameters of a function no type checker has a type for.
 
-    The unannotated ones (not `self` or `cls`, which its class types) it gives no default but
+    The unannotated ones (not `self` or `cls`, nor a class method's `receiver` by another name, which
+    its class types) it gives no default but
     `None` (a checker types one by its default), doesn't bind again, and doesn't test by a call
     (`isinstance(rows, list)`, a `TypeGuard`'s) or match, which narrows one.
 
@@ -350,14 +374,16 @@ def _unannotated(function: _Function) -> set[str | None]:
                 for passed in (*call.args, *(keyword.value for keyword in call.keywords))
                 if isinstance(passed, ast.Name)
             )
-    return {arg.arg for arg in _params(function) if arg.annotation is None and arg.arg not in _TYPED | typed}
+    typed.update(_TYPED if receiver is None else {*_TYPED, receiver})
+    return {arg.arg for arg in _params(function) if arg.annotation is None and arg.arg not in typed}
 
 
-def _untyped(function: _Function, stored: frozenset[str]) -> dict[str, list[ast.Name]]:
+def _untyped(function: _Function, stored: frozenset[str], receiver: str | None) -> dict[str, list[ast.Name]]:
     """Find the locals `function` binds only to values no annotation types.
 
     Each by a plain assignment or as a `for` loop's target, to a value rooted at a parameter it
-    leaves unannotated (`rows[0].load()`, `make(n)`; not `self` or `cls`, which its class types),
+    leaves unannotated (`rows[0].load()`, `make(n)`; not `self` or `cls`, nor a class method's
+    `receiver`, which its class types),
     or at one of the attributes of `self` its class has `stored` so (`self.rows[0]`): a type checker
     has no type for it either, so none to set against what the run saw. Not one rooted at such a
     local, which a checker types by its new annotation.
@@ -367,7 +393,7 @@ def _untyped(function: _Function, stored: frozenset[str]) -> dict[str, list[ast.
 
     """
     others: set[str] = {arg.arg for arg in _params(function)}
-    rooted: set[str | None] = _unannotated(function)
+    rooted: set[str | None] = _unannotated(function, receiver)
     stores: list[ast.Name] = []
     node: ast.AST
     for node in _own(function):

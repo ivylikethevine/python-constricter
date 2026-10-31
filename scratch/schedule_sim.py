@@ -12,6 +12,11 @@ each order replays in. `--sweep` searches the runner's settings, its order, `_PA
 `_BESIDE`, for the ones that end soonest over every run given together.
 
     python3 scratch/schedule_sim.py FOLDER... [--cpus 16] [--memory 36] [--given] [--sweep] [--timing-beside]
+        [--unmeasured] [--new CORPUS]...
+
+`--unmeasured` adds the runner's order with nothing measured, the steps taken as they came; `--new
+CORPUS` replays the run with that corpus new to its output, its steps unranked (after every ranked
+one, as the runner takes them), and planned for its group's seconds (`tests.corpus.planning.like`).
 
 `--timing-beside` replays the timed steps as steps like any other (the run file's `timing-beside`),
 not one after another alone at the end.
@@ -20,12 +25,13 @@ not one after another alone at the end.
 import argparse
 import heapq
 import itertools
+import statistics
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from tests.corpus import archive
+from tests.corpus import archive, catalog
 
 _ROOT = Path(__file__).resolve().parents[1]
 _TIMED = {"timing", "profile"}  # emptied by `--timing-beside`
@@ -33,6 +39,7 @@ _SUITE = {"tests", "traced"}  # and a part of the tests: each binds the suite's 
 _MARGIN = 1.25
 _PATIENCE = 300.0  # the runner's: a step waits so long before what's free is kept for it
 _BESIDE = 300.0  # and a step whose last run took so long at most starts beside it
+_QUEUED = "as queued, nothing measured"  # the order `--unmeasured` adds
 
 
 @dataclass
@@ -117,14 +124,19 @@ def ports() -> dict[str, str]:
     return {name.replace(" ", "-"): entry["port"] for name, entry in entries.items() if "port" in entry}
 
 
-def chain(steps: list[Step]) -> dict[int, float]:
-    """Each step's seconds with the longest line of its corpus's steps waiting for it."""
+def chain(steps: list[Step], seconds: dict[int, float] | None = None) -> dict[int, float]:
+    """Each step's seconds with the longest line of its corpus's steps waiting for it.
+
+    `seconds`: a step's seconds as the order takes them, where not its own.
+    """
     memo: dict[int, float] = {}
+    took = seconds or {}
 
     def length(step: Step) -> float:
         if id(step) not in memo:
             later = [other for other in steps if other.corpus == step.corpus and step.name in other.after]
-            memo[id(step)] = step.seconds + max((length(other) for other in later), default=0.0)
+            own = took.get(id(step), step.seconds)
+            memo[id(step)] = own + max((length(other) for other in later), default=0.0)
         return memo[id(step)]
 
     for step in steps:
@@ -198,11 +210,45 @@ def simulate(
     return now + sum(step.seconds for step in steps if step.name in _TIMED)
 
 
-def orders(steps: list[Step]) -> dict[str, Callable[[Step], float]]:
-    """The orders a waiting step may be taken in, each a key the least of which goes first."""
+def arrival(folder: Path, steps: list[Step]) -> dict[int, float]:
+    """Each step's place as the runner queues it with nothing measured: its corpus's in the run, then its start.
+
+    The runner starts every corpus's steps side by side in the run's order of its corpora, and with
+    no step's seconds known takes the waiting ones as they came (`sizing.Slots`): a step's place is its
+    corpus's in the run file's `include`, then its start within its corpus.
+    """
+    with (folder / "run.toml").open("rb") as file:
+        include = tomllib.load(file).get("corpora", {}).get("include", [])
+    names = [name.replace(" ", "-") for name in catalog.load().names(list(include))]
+    place = {name: index for index, name in enumerate(names)}
+    return {id(step): place.get(step.corpus, len(names)) * 1e9 + step.started for step in steps}
+
+
+def estimated(steps: list[Step], corpus: str) -> dict[int, float]:
+    """Each of a corpus's steps' seconds as the runner plans them for a corpus new to its output.
+
+    The median of the same step's on the corpora of its group, or else on every other corpus
+    (`tests.corpus.planning.like`); 0 where none ran it.
+    """
+    found: dict[int, float] = {}
+    for step in steps:
+        if step.corpus != corpus:
+            continue
+        ran = [other for other in steps if other.name == step.name and other.corpus != corpus]
+        alike = [other.seconds for other in ran if step.group and other.group == step.group]
+        found[id(step)] = statistics.median(alike or [other.seconds for other in ran]) if ran else 0.0
+    return found
+
+
+def orders(steps: list[Step], queued: dict[int, float] | None = None) -> dict[str, Callable[[Step], float]]:
+    """The orders a waiting step may be taken in, each a key the least of which goes first.
+
+    `queued`: each step's `arrival`, for the order of a run with nothing measured.
+    """
     longest = chain(steps)
     rank = {"slow-large": 0, "slow-small": 1, "fast-large": 2, "fast-small": 3, "": 4}
-    return {
+    found: dict[str, Callable[[Step], float]] = {_QUEUED: lambda step: queued[id(step)]} if queued else {}
+    return found | {
         "longest chain": lambda step: -longest[id(step)],
         "longest step": lambda step: -step.seconds,
         "most memory": lambda step: -step.memory,
@@ -241,7 +287,15 @@ def main() -> None:
     parser.add_argument("--memory", type=float, default=36.0, help="gigabytes the steps share")
     parser.add_argument("--given", action="store_true", help="steps hold what the runner gave them")
     parser.add_argument("--sweep", action="store_true", help="search the runner's settings")
-    parser.add_argument("--timing-beside", action="store_true", help="the timed steps as any other, not alone at the end")
+    parser.add_argument(
+        "--timing-beside", action="store_true", help="the timed steps as any other, not alone at the end"
+    )
+    parser.add_argument(
+        "--unmeasured", action="store_true", help="also the runner's order with nothing measured"
+    )
+    parser.add_argument(
+        "--new", action="append", default=[], help="a corpus new to the output: its steps unranked, and estimated"
+    )
     args = parser.parse_args()
     if args.timing_beside:
         _TIMED.clear()
@@ -257,10 +311,22 @@ def main() -> None:
         print(f"  {'recorded':<44} {recorded / 60:6.1f} min, {used:.0%} of its CPU seconds")
         for limit, seconds in bounds(steps, args.cpus, args.memory).items():
             print(f"  {'at least, by ' + limit:<44} {seconds / 60:6.1f} min")
-        for name, key in orders(steps).items():
-            for patience, beside, how in ((_PATIENCE, _BESIDE, "the runner's"), (None, 0.0, "backfilled")):
+        queued = arrival(folder, steps) if args.unmeasured else None
+        for name, key in orders(steps, queued).items():
+            # With nothing measured no step's seconds are known, so none starts beside one kept waiting.
+            beside = 0.0 if name == _QUEUED else _BESIDE
+            for patience, beside, how in ((_PATIENCE, beside, "the runner's"), (None, 0.0, "backfilled")):
                 minutes = simulate(steps, args.cpus, args.memory, key, patience=patience, beside=beside) / 60
                 print(f"  {name + ', ' + how:<44} {minutes:6.1f} min")
+        longest = chain(steps)
+        for corpus in args.new:
+            guessed = chain(steps, estimated(steps, corpus))
+            for how, key in (
+                ("unranked", lambda step, corpus=corpus: 1e12 + step.started if step.corpus == corpus else -longest[id(step)]),
+                ("by its group", lambda step, guessed=guessed: -guessed[id(step)]),
+            ):
+                minutes = simulate(steps, args.cpus, args.memory, key, patience=_PATIENCE, beside=_BESIDE) / 60
+                print(f"  {corpus + ' new, ' + how:<44} {minutes:6.1f} min")
     if args.sweep:
         print(f"best over {len(runs)} run(s), minutes summed:")
         found = sweep(runs, args.cpus, args.memory)

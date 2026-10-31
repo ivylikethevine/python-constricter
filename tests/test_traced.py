@@ -150,6 +150,16 @@ class Holder:
         loose = self.given
         return loose
 
+    @classmethod
+    def build(klass, given):
+        built = klass.make(given)
+        passed = given.held
+        return built
+
+    def plain(text):
+        ended = text.end
+        return ended
+
 
 class Based(Holder):
     def __init__(self, given):
@@ -175,6 +185,7 @@ _HELD: Final = {
             *("both", "also", "again", "half", "varied", "counted", "left", "right", "handle"),
             *("taken", "through", "member", "numbered", "bodied", "lettered", "summed", "unpacked"),
             *("gone", "annotated", "called", "absent", "indexed", "theirs", "loose", "based", "outside"),
+            *("built", "passed", "ended"),
         ),
         _ONE,
     ),
@@ -306,6 +317,10 @@ def test_a_local_has_what_its_bindings_held() -> None:
         "through": ("int", ()),
         "member": ("int", ()),
         "theirs": ("int", ()),  # from a parameter, as ever
+        # A class method's class, by any name, is its class's (`built` isn't typed); a method's first
+        # parameter by another name than `self` may be any value: a metaclass may make it static.
+        "passed": ("int", ()),
+        "ended": ("int", ()),
         # Not from a parameter a checker types: by its default, a test of it, or what it's bound to again.
         "innermost": ("int", ()),
         "okay": ("int", ()),

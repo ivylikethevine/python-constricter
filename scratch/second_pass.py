@@ -34,7 +34,10 @@ def main() -> int:
         diff = corpus_table._run(python, ["--diff", *args, str(root)])
         (OUT / f"{corpus.name.replace(' ', '-')}.diff").write_text(diff, encoding="utf-8")
         fixed = corpus_table.fixed_count(first)
-        print(f"{corpus.name}: fixed {fixed}, broken {broken}, second pass {diff.count(chr(10) + '+')}", flush=True)
+        print(
+            f"{corpus.name}: fixed {fixed}, broken {broken}, second pass {corpus_table.added(diff)}",
+            flush=True,
+        )
     return 0
 
 

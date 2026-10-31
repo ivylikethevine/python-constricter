@@ -104,3 +104,17 @@ def test_each_configuration_is_read_in_a_worker_where_it_can_be() -> None:
     assert pooled == [["pool", *config, "stubs"] for config in configs]
     assert serial == [[[*config, "stubs"] for config in configs]] * 3
     assert json.loads(started) == [4, len(configs)]
+
+
+_MEMBERS: Final = """
+import json
+import stdlib_tables.reading as reading
+print(json.dumps([reading._read(name) for name in NAMES]))
+"""
+
+
+def test_a_class_member_a_subclass_may_call_is_read() -> None:
+    """A public one, or one a single underscore starts (`self._expand_help()`); no other dunder."""
+    names: list[str] = ["expand", "_expand_help", "__enter__", "__getitem__", "__init__", "__mangled"]
+    printed: str = _run(_MEMBERS.replace("NAMES", repr(names)))
+    assert json.loads(printed) == [True, True, True, True, False, False]

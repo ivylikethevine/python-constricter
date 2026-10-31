@@ -52,6 +52,7 @@ _AENTER: Final = "__aenter__"
 _BUILTINS: Final = "builtins"
 _TUPLE: Final = "tuple"
 _NEW: Final = "__new__"
+_DUNDER: Final = "__"  # a dunder's, or a mangled name's, start
 _ENTER: Final = "__enter__"
 _GET_ITEM: Final = "__getitem__"
 # The methods binary operators call on their left operand, read with a class's methods whose
@@ -630,16 +631,18 @@ class Reading:
 
 
 def _read(name: str) -> bool:
-    """Check whether a class's member is one the tables read: a public one, or one a statement calls.
+    """Check whether a class's member is one the tables read: one a subclass may call, or a statement does.
 
-    `with` gives what `__enter__` returns (`async with`, what `__aenter__` does, awaited), and a
-    subscript what `__getitem__` does: the private methods a fix reads.
+    A public one, or one a single underscore keeps to the class and its subclasses (`self._expand_help()`
+    in an `argparse.HelpFormatter`'s); not a dunder, nor a name the class mangles (`__x`). `with`
+    gives what `__enter__` returns (`async with`, what `__aenter__` does, awaited), and a subscript
+    what `__getitem__` does: the dunders a fix reads.
 
     Returns:
       Whether it is.
 
     """
-    return name in {_ENTER, _AENTER, _GET_ITEM} or not private(name)
+    return name in {_ENTER, _AENTER, _GET_ITEM} or not private(name) or not name.startswith(_DUNDER)
 
 
 def readable(node: ast.FunctionDef | ast.AsyncFunctionDef, *, awaited: bool = False) -> bool:

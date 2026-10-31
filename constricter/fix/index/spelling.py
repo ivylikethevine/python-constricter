@@ -38,6 +38,8 @@ from constricter.fix.index.project import (
     definition,
     is_type_var,
     kind_of,
+    starred_names,
+    starred_origin,
 )
 from constricter.fix.index.strings import quoted
 from constricter.fix.index.stubs.atoms import private_name
@@ -146,8 +148,15 @@ def spellings(catalog: Index, target: Module, kind: str) -> Iterator[tuple[str, 
             function: str
             for key, sub, function in written_under(target, local):  # of all it has, those the file calls
                 other: Module | None = catalog.modules.get(origin[0] + sub)
-                # A function the package re-exports (`pd.date_range`): declared, or typed by its `return`s.
-                followed: bool = kind in _FOLLOWED and other is not None and takes(other, function)
+                # A function the package re-exports (`pd.date_range`, `nx.complement` by a `*` import):
+                # declared, or typed by its `return`s.
+                followed: bool = (
+                    kind in _FOLLOWED
+                    and other is not None
+                    and (
+                        takes(other, function) or starred_origin(catalog.modules, other, function) is not None
+                    )
+                )
                 if other is not None and (followed or function in kind_of(other, kind)):
                     yield key, (other.name, function)
 
@@ -168,7 +177,9 @@ def _named_under(catalog: Index, local: str, package: str, kind: str) -> Iterato
     found: list[tuple[str, Origin]] | None
     if (found := None if catalog.memo is None else catalog.memo.under.get(key)) is None:
         top: Module | None = catalog.modules.get(package)
-        named: Iterable[tuple[str, Origin]] = () if top is None else exported(top).items()
+        named: Iterable[tuple[str, Origin]] = (
+            () if top is None else {**starred_names(catalog.modules, top), **exported(top)}.items()
+        )
         found = []
         name: str
         origin: Origin
@@ -448,26 +459,11 @@ def _followed(modules: Mapping[str, Module], origin: Origin, hops: int) -> Origi
     if module is None or origin[1] is None or not hops:
         return origin
     onward: Origin | None = (
-        module.names.get(origin[1]) or module.guarded.get(origin[1]) or _starred(modules, module, origin[1])
+        module.names.get(origin[1])
+        or module.guarded.get(origin[1])
+        or starred_origin(modules, module, origin[1])
     )
     return _followed(modules, onward, hops - 1) if onward and onward[0] != module.name else origin
-
-
-def _starred(modules: Mapping[str, Module], module: Module, name: str) -> Origin | None:
-    """Find which module `module` takes `name` from by importing everything from it (`from .main import *`).
-
-    The last that binds it, as the imports run; a name with a leading underscore no such import takes.
-
-    Returns:
-      The name there, or `None`.
-
-    """
-    star: str
-    for star in reversed(module.stars):
-        other: Module | None = modules.get(star)
-        if other is not None and not name.startswith("_") and name in exported(other):
-            return star, name
-    return None
 
 
 def _named(

@@ -9,16 +9,18 @@ re-exports, to what that base inherits from and what it declares.
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from constricter.fix.index.modules import Index, Module, module_at
-from constricter.fix.index.project import CLASS, definition
+from constricter.fix.index.project import CLASS, INERT, definition
 from constricter.fix.values import classvars
+from constricter.source import inert
 
 if TYPE_CHECKING:
     from constricter.fix.core.known import Origin
 
 _DOT: Final = "."
+_Members: TypeAlias = dict[str, Mapping[str, str]]  # a module's classes' variables' types, by class
 # The bases no class's binding of a name can hide: one a class above another binds is in sight.
 _ROOTS: Final = frozenset({classvars.OBJECT, *classvars.BUILTIN_BASES, *classvars.PASSED_OVER})
 
@@ -43,6 +45,47 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
     }
     if not found:
         return catalog
+    # A class only its decorators and metaclass kept from plain, each of them inert where it's defined.
+    cleared: frozenset[str] = frozenset(
+        f"{module.name}.{name}"
+        for module in catalog.modules.values()
+        for name, marks in module.marks.items()
+        if f"{module.name}.{name}" in found and all(_inert(catalog.modules, module, mark) for mark in marks)
+    )
+    marked: frozenset[str] = _plain(found, entries)
+    found = {
+        key: tuple(base for base in bases if base != classvars.SPECIAL) if key in cleared else bases
+        for key, bases in found.items()
+    }
+    plain: frozenset[str] = _plain(found, entries) if cleared else marked
+    declared: dict[str, Mapping[str, str]] = {
+        f"{module.name}.{name}": module.classes.get(name, {})
+        for module in catalog.modules.values()
+        for name in module.bases
+    }
+    held: Index = catalog._replace(
+        modules={
+            name: replace(
+                module,
+                plain=frozenset(
+                    each
+                    for each in module.bases
+                    if f"{name}.{each}" in plain and _unheld(f"{name}.{each}", module, found, declared)
+                ),
+            )
+            for name, module in catalog.modules.items()
+        },
+    )
+    return _joined(_named(held, found), found, (declared, plain - marked))
+
+
+def _plain(found: Mapping[str, tuple[str, ...]], entries: Sequence[str]) -> frozenset[str]:
+    """Settle which classes are plain by their resolved bases (see `classvars.settled`).
+
+    Returns:
+      Their keys.
+
+    """
     unlisted: dict[str, tuple[str, ...]] = {
         name: tuple(
             base
@@ -51,28 +94,7 @@ def settled(catalog: Index, entries: Sequence[str] = ()) -> Index:
         )
         for name, bases in found.items()
     }
-    plain: frozenset[str] = classvars.settled(unlisted, classvars.allowed)
-    declared: dict[str, Mapping[str, str]] = {
-        f"{module.name}.{name}": module.classes.get(name, {})
-        for module in catalog.modules.values()
-        for name in module.bases
-    }
-    return _named(
-        catalog._replace(
-            modules={
-                name: replace(
-                    module,
-                    plain=frozenset(
-                        each
-                        for each in module.bases
-                        if f"{name}.{each}" in plain and _unheld(f"{name}.{each}", module, found, declared)
-                    ),
-                )
-                for name, module in catalog.modules.items()
-            },
-        ),
-        found,
-    )
+    return classvars.settled(unlisted, classvars.allowed)
 
 
 def _named(catalog: Index, found: Mapping[str, tuple[str, ...]]) -> Index:
@@ -117,6 +139,94 @@ def _named(catalog: Index, found: Mapping[str, tuple[str, ...]]) -> Index:
             typed.update({owner: {**typed.get(owner, {}), **each} for owner, each in added.items()})
             modules[module.name] = replace(module, members=typed)
     return catalog._replace(modules=modules) if under is not None else catalog
+
+
+def _joined(
+    catalog: Index,
+    found: Mapping[str, tuple[str, ...]],
+    seen: tuple[Mapping[str, Mapping[str, str]], frozenset[str]],
+) -> Index:
+    """Type a plain class's variable alike in every checked file's class above and under it that binds it.
+
+    As `classvars.joined` does in one module, across them all, after leaving out what
+    `classvars.unshadowed` does. `found`: each checked class's bases, resolved; `seen`: each one's
+    annotated attributes, and the classes plain only by their marks.
+
+    Returns:
+      The index, each such module with its variables' types joined among its `members`.
+
+    """
+    typed: dict[str, Mapping[str, str]] = {}
+    bare: dict[str, frozenset[str]] = {}
+    defined: dict[str, frozenset[str]] = {}
+    module: Module
+    for module in catalog.modules.values():
+        name: str
+        for name in module.plain:
+            if name in module.members:
+                typed[f"{module.name}.{name}"] = module.members[name]
+            if name in module.nulls:
+                bare[f"{module.name}.{name}"] = module.nulls[name]
+        defined.update({f"{module.name}.{name}": names for name, names in module.defined.items()})
+    kept: dict[str, dict[str, str]]
+    nones: dict[str, frozenset[str]]
+    kept, nones = classvars.unshadowed(typed, bare, (defined, found), seen[1])
+    joined: dict[str, dict[str, str]] = classvars.joined(kept, nones, found, seen[0], seen[1])
+    return _written(catalog, joined, typed)
+
+
+def _written(
+    catalog: Index,
+    joined: Mapping[str, Mapping[str, str]],
+    typed: Mapping[str, Mapping[str, str]],
+) -> Index:
+    """Write each class's joined variables among its module's `members`, where they changed.
+
+    Returns:
+      The index, so.
+
+    """
+    changed: dict[str, _Members] = {}
+    key: str
+    each: Mapping[str, str]
+    for key, each in joined.items():
+        if each != typed.get(key, {}):
+            owner: str
+            where: str
+            where, _, owner = key.rpartition(_DOT)
+            changed.setdefault(where, dict(catalog.modules[where].members))[owner] = each
+    if not changed:
+        return catalog
+    return catalog._replace(
+        modules={
+            **catalog.modules,
+            **{where: replace(catalog.modules[where], members=members) for where, members in changed.items()},
+        },
+    )
+
+
+def _inert(modules: Mapping[str, Module], module: Module, mark: str) -> bool:
+    """Check whether a class's decorator or metaclass (see `inert.marks`) leaves it plain, where it's defined.
+
+    Returns:
+      Whether its module, or the standard library, says so (`inert.judged`), or the checked file
+      that defines it, through imports and re-exports, has it among its `inert`.
+
+    """
+    origins: dict[str, str] = {
+        name: _DOT.join(part for part in origin if part) for name, origin in module.names.items()
+    }
+    judged: bool | None
+    if (judged := inert.judged(mark, module.inert, origins)) is not None:
+        return judged
+    first: str
+    rest: str
+    first, _, rest = mark.removeprefix(inert.METACLASS).removesuffix("()").partition(_DOT)
+    origin: Origin | None
+    if (origin := module.names.get(first)) is None:
+        return False
+    path: list[str] = [part for part in origin if part] + (rest.split(_DOT) if rest else [])
+    return len(path) > 1 and definition(modules, (_DOT.join(path[:-1]), path[-1]), INERT) is not None
 
 
 def _closed(key: str, found: Mapping[str, tuple[str, ...]]) -> bool:

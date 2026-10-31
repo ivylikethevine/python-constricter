@@ -378,3 +378,145 @@ def test_an_overload_is_matched_through_what_checked_files_declare(tmp_path: Pat
     assert all(line in fixed for line in CALLED), fixed
     fixed = shapes.read_text(encoding="utf-8")
     assert all(line in fixed for line in OWN_METHODS), fixed
+
+
+VIEWED: Final = """
+from typing import overload
+
+
+class Array: ...
+
+
+class Scalar:
+    @overload
+    def view(self, type: type[Array] = ...) -> "Scalar": ...
+    @overload
+    def view(self, dtype: str, type: type[Array] = ...) -> int: ...
+    def view(self, *args, **kwargs):
+        return self
+
+
+def use(scalar: Scalar) -> None:
+    viewed = scalar.view("i8")
+    same = scalar.view()
+"""
+
+VIEWED_FIXED: Final = ("    viewed: int = scalar.view(", "    same: Scalar = scalar.view()")
+
+
+def test_a_parameter_declared_alike_at_another_place_tells_the_overloads_apart(tmp_path: Path) -> None:
+    """As numpy's `view`: `type` first in one overload, second in the other; `view("i8")` is the other's."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    viewed: Path = _write(tmp_path, "pkg/scalars.py", VIEWED)
+    _ = cli.main(["--fix", "-q", str(tmp_path)])
+    fixed: str = viewed.read_text(encoding="utf-8")
+    assert all(line in fixed for line in VIEWED_FIXED), fixed
+
+
+KINDED: Final = """
+import functools
+from typing import Type, TypeVar, overload
+
+T = TypeVar("T")
+W = TypeVar("W", bound="Widget")
+
+
+class Widget: ...
+
+
+class Static(Widget): ...
+
+
+def query_one(selector: str, kind: type[T]) -> T:
+    return kind()
+
+
+def either(kind: type[T] | None = None) -> T:
+    return kind()
+
+
+def old(kind: Type[W]) -> W:
+    return kind()
+
+
+@functools.cache
+def cached(kind: type[T]) -> T:
+    return kind()
+
+
+def again(kind: type[T]) -> T:
+    return kind()
+
+
+def again(kind):
+    return kind()
+
+
+@overload
+def query(selector: str) -> Widget: ...
+@overload
+def query(selector: type[W]) -> W: ...
+def query(selector):
+    return Widget()
+
+
+class Node:
+    def query_one(self, selector: str, kind: type[T]) -> T:
+        return kind()
+"""
+KINDED_USE: Final = """
+import collections
+
+from pkg.widgets import Node, Static, again, cached, either, old, query, query_one
+
+
+def use(node: Node, kind) -> None:
+    mine = query_one("#x", Static)
+    builtin = query_one("#x", int)
+    keyword = query_one("#x", kind=Static)
+    optional = either(Static)
+    typed = old(Static)
+    method = node.query_one("#x", Static)
+    by_text = query("#x")
+    by_class = query(Static)
+    generic = query_one("#x", collections.OrderedDict)
+    unknown = query_one("#x", kind)
+    outside = old(int)
+    decorated = cached(Static)
+    redefined = again(Static)
+"""
+KINDED_IMPORTED: Final = "Widget"
+KINDED_FIXED: Final = (
+    "    mine: Static = query_one(",
+    "    builtin: int = query_one(",
+    "    keyword: Static = query_one(",
+    "    optional: Static = either(",
+    "    typed: Static = old(",
+    "    method: Static = node.query_one(",
+    "    by_text: Widget = query(",  # an overload binding a type variable no longer refuses them all
+    "    by_class: Static = query(",
+    "    generic = query_one(",  # a generic class without its arguments
+    "    unknown = query_one(",
+    "    outside = old(",  # a builtin outside the type variable's bound
+    "    decorated = cached(",
+    "    redefined = again(",  # its last definition declares nothing
+)
+
+
+def test_a_class_passed_for_a_type_variable_types_the_call(tmp_path: Path) -> None:
+    """`kind: type[T]) -> T` returns the class passed, as the call writes it: certain fixes."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/widgets.py", KINDED)
+    use: Path = _write(tmp_path, "pkg/use.py", KINDED_USE)
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    assert catalog.modules["pkg.widgets"].overloads.keys() == {
+        "Node.query_one",
+        "either",
+        "old",
+        "query",
+        "query_one",
+    }
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    fixed: str = use.read_text(encoding="utf-8")
+    assert all(line in fixed for line in KINDED_FIXED), fixed
+    assert KINDED_IMPORTED in fixed.split("def use", 1)[0], fixed  # imported for `by_text`

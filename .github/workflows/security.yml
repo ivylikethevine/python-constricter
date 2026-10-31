@@ -1,5 +1,10 @@
 name: Security
 
+# The repository's own security gates: the workflow audit, the dependency audits, dependency review
+# and the secrets scan. CodeQL runs from codeql.yml and the weekly external link check from
+# link-check.yml, both shared. Every tool here is a tools.txt row (sha256-verified, cached,
+# drift-checked by tool-versions.yml).
+
 on:
   push:
     branches: [main]
@@ -9,7 +14,7 @@ on:
     branches: [main, dev] # dev: the sync PRs' commits are graded by this PR
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 6 * * 1' # advisories and leaked secrets land without a push here
 
 permissions: {}
 
@@ -18,42 +23,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  codeql:
-    name: CodeQL (${{ matrix.language }})
-    if: github.event.pull_request.draft != true
-    strategy:
-      matrix:
-        language: [python, actions]
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      security-events: write # upload CodeQL results
-    steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: block
-          allowed-endpoints: >
-            github.com:443
-            api.github.com:443
-            release-assets.githubusercontent.com:443
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-        with:
-          languages: ${{ matrix.language }}
-          queries: security-extended
-      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
-
   workflows:
     name: Workflow audit
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
+      # the checkout, zizmor's online audits, the tool downloads and their cache
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
@@ -65,19 +43,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # from tools.txt (sha256-verified, cached): the version the shared workflows' ignores hold on
-      - uses: ./.github/actions/setup-tool
+      # zizmor at the version the shared workflows' ignores hold on
+      - uses: ./.github/actions/setup-tools
         with:
-          tool: zizmor
+          tools: zizmor actionlint
       - run: zizmor --persona pedantic .github/
         env:
           GH_TOKEN: ${{ github.token }}
-      - uses: ./.github/actions/tool
-        with:
-          url: https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          sha256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          binary: actionlint
-      - run: '"$RUNNER_TEMP/bin/actionlint"'
+      - run: actionlint
       # the conventions neither zizmor nor actionlint has a rule for (timeouts, checkout
       # credentials, top-level permissions, SHA pins, harden-runner first); yq and jq are on the runner
       - run: .github/scripts/lint_workflows.sh
@@ -90,27 +63,38 @@ jobs:
     permissions:
       contents: read
     steps:
+      # uv and the Python tools; osv-scanner's download and cache, and api.osv.dev for its advisories
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            api.github.com:443
             pypi.org:443
             files.pythonhosted.org:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
+            release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
+            api.osv.dev:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: uv export --locked --no-emit-project --format requirements-txt --quiet -o local/audit.txt
       - run: pip-audit --strict --require-hashes --disable-pip -r local/audit.txt
+      # Every lockfile git keeps, as Scorecard's Vulnerabilities check reads them after a merge, run
+      # before one; an osv-scanner.toml beside a lockfile (.github's) accepts the advisories it lists.
+      - uses: ./.github/actions/setup-tool
+        with:
+          tool: osv-scanner
+      - run: osv-scanner scan source --recursive .
 
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
@@ -137,43 +121,20 @@ jobs:
     permissions:
       contents: read
     steps:
+      # the checkout, gitleaks' download and its cache
       - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
+            api.github.com:443
             release-assets.githubusercontent.com:443
+            results-receiver.actions.githubusercontent.com:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0 # the whole history
-      - uses: ./.github/actions/tool
+      - uses: ./.github/actions/setup-tool
         with:
-          url: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
-          sha256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          binary: gitleaks
-      - run: '"$RUNNER_TEMP/bin/gitleaks" git --redact --no-banner --exit-code 1 .'
-
-  links:
-    name: External links
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      # Audit, not block: the hosts are whatever the docs link to.
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/tool
-        with:
-          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v0.24.2/lychee-x86_64-unknown-linux-gnu.tar.gz
-          sha256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
-          binary: lychee-x86_64-unknown-linux-gnu/lychee
-      - run: git ls-files -z '*.md' | xargs -0 "$RUNNER_TEMP/bin/lychee" --no-progress
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
+          tool: gitleaks
+      - run: gitleaks git --redact --no-banner --exit-code 1 .

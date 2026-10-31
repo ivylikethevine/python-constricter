@@ -31,7 +31,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   and not a return of `None`, `Any` or one that uses a `TypeVar`), in the same module or, with the
   CLI, in another file it's checking: `from pkg.util import f`, `import pkg.util as u` or
   `from pkg import util` then `u.f()`, relative imports and re-exports all work, a package's star
-  imports too (`from .main import *`, under `if TYPE_CHECKING:` as well), and
+  imports too (`from .main import *`, under `if TYPE_CHECKING:` as well, and a chain of them:
+  `nx.complement(G)` and `nx.Graph` by `networkx`'s from `.algorithms`'s from `.operators`'s, for
+  a function typed by its `return`s and a class's members too), and
   `m = pytest.importorskip("pkg.util")` as `import pkg.util as m`, in a function too, where every
   binding of `m` in the file is that. A name in the type the
   file doesn't import is imported for type checking alone (see below). A decorated function
@@ -94,7 +96,10 @@ the value decides it, for a plain `name = value` in a function or module body:
   a `str`/`bytes` method with a fixed return (`s.strip()`, `", ".join(parts)`,
   `"k=v".partition("=")` as `tuple[str, str, str]`; an `int`'s or a `float`'s too, `n.bit_length()`,
   `x.is_integer()`), or a `list`/`set`/`dict` method that returns its own element type
-  (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default of that type) or one
+  (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default of that type, and
+  `d.get(k, default)` or `d.pop(k, default)` by a literal or empty display: `V` where `V` takes it,
+  `[]` for a `list[str]`, else `V | T` for a literal's `T`, `d.get(k, "")` on a `dict[str, int]` an
+  `int | str`) or one
   type whatever it holds (`names.count(x)` and `pair.index(x)` are `int`s, `seen.issubset(other)` a
   `bool`, `seen.difference(other)` and `seen.intersection(other)` a `set` of `seen`'s own type);
   `self` is its class's instance in a method, and in a function defined in one that takes and binds
@@ -222,8 +227,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   `class Box[T]`), its type parameters bound by the receiver's arguments: `rows.first()` on a
   `Result[Row]` whose `first` returns `T | None` is a `Row | None`, a property or an annotated
   attribute the same way, and a method returning `Self` the receiver's own type (`Result[Row]`).
-  Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base, or the
-  type variables its subscripted bases name, in order. What it doesn't bind is its generic bases',
+  Its parameters are those `class C[T]` lists, or a `Generic[...]` or `Protocol[...]` base, whichever
+  module defines them, or the type variables the module defines that its subscripted bases name, in
+  order. What it doesn't bind is its generic bases',
   bound by its own arguments (`class Keyed(Pairs[str, V])`), and a class of the module's under one
   given its arguments (`class Rows(Result[Row])`) has the base's, `self.first()` there a
   `Row | None`. On the class bare (`Result`, whose parameters a checker doesn't know) only a member
@@ -263,7 +269,15 @@ the value decides it, for a plain `name = value` in a function or module body:
 - a call to an unannotated function (or method) of the module, when every `return` it has gives one
   type and it can't fall off its end: that type, certain for a function and a guess for a method (a
   subclass may override it); a function whose `return`s are themselves guesses makes its calls
-  guesses too. A generator function counts by its `yield`s instead: each a statement of its own
+  guesses too. `return`s of one type and of `None` (or a bare `return`) give `T | None`, a guess, as
+  a type checker infers the function's return. One whose `return`s decide nothing is typed by the return its docstring names, a
+  guess (`documented`): a numpydoc `Returns` section of one entry, a Google-style `Returns:` whose
+  first line names a type or a Sphinx `:rtype:`, naming `int`, `float`, `bool`, `str`, `bytes` or
+  `complex` (or `integer`, `boolean`, `string`), or one of them `or None`; only where every
+  `return` gives a value, of no known type or one the type takes, none without `or None` where one
+  is `return None`, and no number in a module importing numpy, whose scalars (`np.int64`) a checker
+  takes for none. A generator function counts by
+  its `yield`s instead: each a statement of its own
   (nothing is sent in), all of one type `T`, and no `return` of a value, give a
   `Generator[T, None, None]`, imported from `collections.abc` if it has to be; `yield from` gives
   its iterable's elements, and a `yield` of a local bound more than once is unknown. Chains (`f`
@@ -286,11 +300,21 @@ the value decides it, for a plain `name = value` in a function or module body:
   literal or a display of them, or to what the standard library gives as the module names it
   (`pattern = re.compile("x")`, `sep = os.sep`, `size = len(NAMES)`), and what reads it
   (`self.limit`, `cls.limit`, or `limit` on any value typed as the class or one inheriting it): the
-  value's type. A plain class is defined once in its module, with no decorator, metaclass or other
-  keyword, every base `object`, a `unittest` test case, `Generic[T]`, `abc.ABC` or another plain
-  class, subscripted or not (`Box[int]`; another checked file's too, with the CLI), and no class
-  that isn't plain inheriting from it (a model's mixin). A guess (`member`), since a subclass or
-  outside code may bind it to another type; a variable the module stores as anything else is left
+  value's type. A plain class is defined once in its module, with no keyword but a metaclass, every
+  base `object`, a `unittest` test case, `Generic[T]`, `abc.ABC` or another plain class, subscripted
+  or not (`Box[int]`; another checked file's too, with the CLI), and no class that isn't plain
+  inheriting from it (a model's mixin). Its decorators and metaclass, if any, read no annotations: a
+  checked file's decorator whose every `return` gives back its class (`return cls`, or a factory's
+  nested such decorator), a metaclass under `type` or `abc.ABCMeta`, neither naming
+  `__annotations__`, `get_type_hints`, `dataclass` or the like; or `functools.total_ordering`,
+  `typing.final`, `abc.ABCMeta`. A variable is one type in every class of its line that binds it,
+  as a checker holds an override to: the widest number (`priority = 0` under `0.5`, a `float`), with
+  `None` where one binds it to that (`name: str | None`), a tuple of any length
+  (`tuple[str, ...]`); one whose values fit no one type keeps each class's, but in a class plain only
+  by its marks, none. A variable the join alone types (bound to `None`), or a class plain only by
+  its marks, is left alone where a class above or under it defines the name (a property, a method).
+  A guess (`member`), since a subclass or outside code may bind it to another type; a variable the
+  module stores as anything else is left
   alone (`self.limit = size`; not `self.limit = 5` or `self.limit += 1`, which keep an `int`), and
   so is every other class body, where an annotation can be more than a type (a dataclass's, a
   `NamedTuple`'s or a model's field). A builtin exception or value class is a base a plain class may
@@ -315,7 +339,9 @@ the value decides it, for a plain `name = value` in a function or module body:
   `min-python` is 3.10 or later; a guess where `min-python` isn't known, and no fix where it's older
   (the import would fail there);
 - an attribute, property or method of a class another checked file defines, its type imported as a
-  declared return's is (the CLI only: the plugins see one file at a time);
+  declared return's is (the CLI only: the plugins see one file at a time), the class imported at
+  run time or for type checking alone (`if TYPE_CHECKING: from ..fields import FieldInfo`, then
+  `field_info: FieldInfo`);
 - with `--unsafe-fixes` (the CLI only), what's computed from an unannotated parameter of a plain
   top-level function (undecorated, without `*args` or `**kwargs`) when every call in the checked
   files passes it an argument of the same type made of builtins alone (`int`, `list[str]`; not a
@@ -397,7 +423,11 @@ the value decides it, for a plain `name = value` in a function or module body:
   picks it: `when - start`, two `datetime`s, is a `timedelta`, `when - span` a `datetime`,
   `price * 2` a `Decimal` (not where the right operand's class is under the left's, or is a checked
   file's or an installed package's, whose reflected method may answer), and a builtin number's with
-  a standard-library class's instance by that one's reflected method (`2 * span`, a `timedelta`). A
+  a standard-library class's instance by that one's reflected method (`2 * span`, a `timedelta`); a
+  `str`'s or `bytes`'s `+` or `*` with a value of no known type, the text's type, as a checker takes
+  it (`"pre-" + x`, `x + ".pyc"`, `" " * n`), a guess (`operand`: a NumPy array's or a pandas
+  `Series`'s own operator answers otherwise), and none where a call's type only takes it as an
+  argument (`os.path.join(root + "/x")` stays certain). A
   generic class's instance is matched by its type arguments (`Counter[str] + Counter[str]`, a
   `Counter[str]`; not where an earlier signature takes a base's, `dict[_KT, _VT]`, which may take
   it), and a class the module defines under a standard-library one as that one, where neither it
@@ -539,7 +569,9 @@ typeshed: `TypeVar("T")` is never a `TypeVar`. `mypy_extensions` is read for its
 
 A checked file's function defined with `@overload` is matched the same way, in the file defining it
 and in those importing it: `load(path, raw=True)` is a `bytes` where `raw: Literal[True]` returns
-one. What a parameter takes is read as below. One typed as nothing but checked files' classes
+one. Where every overload declares the same return (and the implementation that one or none), a
+call is that whatever its arguments, as a declared return: `DataTree.from_dict(d)`, each overload a
+classmethod returning `Self`, is a `DataTree`. What a parameter takes is read as below. One typed as nothing but checked files' classes
 (`frame: DataFrame`), or as an iterable of them (`objs: Iterable[DataFrame]`, beside a mapping or
 `None`), takes an argument by its class's bases, through the checked files: `concat([df, df])` is a
 `DataFrame`, where another overload takes `Series`; a class under a base that can't be followed
@@ -549,12 +581,18 @@ defined with `@overload` are matched on a receiver typed as the class (`frame.ge
 function called through its module however that's imported (`shapes.concat(...)` after
 `from pkg import shapes`). Each return is written as another checked file's type is: none of the
 function's calls is typed if one of its overloads declares no return, or returns a type variable or
-a generic class without its arguments.
+a generic class without its arguments; but for a type variable alone that a parameter binds to a
+class (`kind: type[T]`), the module's own, which a call passing a class names: `query_one("#x", Static)`
+is a `Static`, overloaded or not (an undecorated function or method with that one signature),
+`query_one("#x", int)` an `int`, and nothing for a generic class without its arguments or a builtin
+outside the variable's bound.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an
 `np.ndarray[tuple[int], np.dtype[np.float64]]` with numpy 2.5's stubs. What each parameter takes is
-read from its annotation through the package's aliases, type variables and protocols; a
+read from its annotation through the package's aliases, type variables and protocols (one every
+overload declares alike, at the same place, takes anything; `view(self, type: type[ndarray] = ...)`
+first and `type` second in the next is read, so `view("i8")` matches the next); a
 standard-library class it names (`SupportsIndex`) by the `scalars` table; and a class passed as the
 argument binds a `type[T]` parameter's `T`, as does an alias of one (`np.int32`). A builtin
 container argument is taken by its elements where the parameter says what they must be
@@ -754,7 +792,20 @@ than the fix says, the fix is changed, made a guess, or not offered:
 - a generic class is never written bare (`list[Box]`, as `[self]` in `Box` would be; `Box()` guessed
   to construct one): the module's own, another checked file's, or the standard library's
   (`logging.StreamHandler()`), unless every type parameter it has has a default
-  (`io.BufferedReader`);
+  (`io.BufferedReader`). A checked file's class under a subscripted base is generic only where the
+  subscript may pass a type variable: one naming only builtins, what the module defines at its top
+  level (no type variable, nor a bare alias of a name), public standard-library names (not
+  `typing`'s type variables, nor `_typeshed`'s), and names the module calls, subclasses,
+  subscripts, catches, gives `isinstance` or reads a member of, which a type variable allows none of,
+  binds every parameter (`class Dataset(Mapping[Hashable, "DataArray"])`): written bare, its members
+  read as a plain class's. With the CLI, a name another checked file defines as a class or a type
+  alias counts the same (`class Codec(Base[Buffer])`, `Buffer` another file's class), the class
+  written bare though its members aren't read. One whose every parameter has a default where its type variable is
+  defined (`Generic[_KeyColCC_co]`, `_KeyColCC_co = TypeVar(..., default=...)` in another checked
+  file; `class C[T = int]`) is written bare too, as a type checker reads it with them, its members
+  read as a generic class's on a bare receiver; but not constructed where its call passes `self` of
+  a class binding type variables, or a parameter annotated with one (`Context(ctx, server=self)` in
+  a method of `Server(Generic[T])`), which binds its parameters to them;
 - a declared return that names a type variable, the module's own, one it imports from another
   checked file (`from ._typing import T`, under `if TYPE_CHECKING:` too) or `typing.AnyStr`, depends
   on the arguments: its calls aren't typed;
@@ -844,7 +895,11 @@ reads them: the class is written through an import the module runs if it has one
 after `import shapes`), else imported under `if TYPE_CHECKING:` as another checked file's type is, a
 module body's annotation quoted. Never by an import that runs: the checker's Python may have a class
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
-later one importing it from elsewhere is dropped. Where what a hint shows names something the file
+later one importing it from elsewhere is dropped. A hint whose edit writes a name the file binds,
+where a module it imports whole has a class of that name too, is dropped: basedpyright shows
+`enum.Enum` as `Enum`, and its edit writes it so in a file defining an `Enum` of its own. A type alias naming a type variable, in a forward reference alone too
+(`Union["Mapper[_T]", "AliasedInsp[_T]"]`), takes arguments as a generic class does: neither a
+hint's edit nor a fix writes it bare (a fix copying another file's bare annotation of it included). Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
 `import things`), unless it writes a generic under another name than the hint shows: ty's edit for a
 generic alias (`NDArray[float64]`) is the class it stands for with the alias's arguments
@@ -975,8 +1030,8 @@ fix only where the function tests the name, as a checker's union is.
 
 Only a local no annotation types gets one: a name an assignment or a `for` loop binds to a value
 taken from a parameter no checker types (`row = rows[0].load()`, `made = make(n)`,
-`for row in rows:`): an unannotated one (not `self` or `cls`, which the class types) with no default
-but `None`, that its function doesn't bind again, test by a call (`isinstance(rows, list)`) or
+`for row in rows:`): an unannotated one (not `self`, `cls` or a `@classmethod`'s first parameter by
+any name, which the class types) with no default but `None`, that its function doesn't bind again, test by a call (`isinstance(rows, list)`) or
 match. Or from an attribute of `self` that a class with no base stores nothing else in
 (`conn = self.conn`, where every store is a plain `self.conn = conn` of such a parameter and the
 class's body doesn't bind it: a checker types the attribute by what's stored). Anything else a type
@@ -1035,6 +1090,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)            |
 | `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
 | `text`          | a function overloaded on `str` against `bytes` alone: its `str` signature's (a guess)     |
+| `operand`       | a `str`'s or `bytes`'s `+` or `*` with a value of no known type: the text's (a guess)     |
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
 | `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
@@ -1043,6 +1099,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                      |
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)  |
+| `documented`    | an unannotated function's docstring's named return, a builtin scalar (a guess)            |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)         |
 | `member`        | a plain class's variable, by its value in the class's body (a guess)                      |
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |

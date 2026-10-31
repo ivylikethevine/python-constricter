@@ -31,17 +31,20 @@ from constricter.fix.values.returned import held_back, unannotated
 from constricter.fix.values.stored import untouched
 from constricter.fix.values.tables import Tables, module_tables
 from constricter.overrides import override
-from constricter.source import parsed
+from constricter.source import parsed, quoted
 from constricter.source.annotations import dotted, is_composite, node_name
 from constricter.source.declarations import (
     GenericClass,
     awaited_returns,
+    defaulted_type_vars,
     defined_type_vars,
     descriptors,
     generic_classes,
     generic_members,
+    generic_names,
 )
 from constricter.source.decorators import Held, Pass, is_fixture, passing
+from constricter.source.inert import inert
 from constricter.source.keys import key, optional
 from constricter.source.syntax import child_statements, top_level
 from constricter.source.walked import classes as walked_classes
@@ -49,6 +52,7 @@ from constricter.source.walked import of_type
 
 PACKAGE: Final = "__init__"
 _DOT: Final = "."
+_HOPS: Final = 5  # how many re-exports a type variable's default is followed through (`project.HOPS`)
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
@@ -90,7 +94,15 @@ class Module:  # pylint: disable=too-many-instance-attributes
     method_calls: frozenset[str] = frozenset()  # the methods it calls on anything (`astype` in `a.astype(x)`)
     attributes: frozenset[str] = frozenset()  # every attribute it reads or calls, of anything (`x` in `a.x`)
     returned: Returns = field(default_factory=Returns)  # what they return, once it's checked
-    generics: frozenset[str] = frozenset()  # its generic classes, which a type mustn't write bare
+    # Its generic classes, and type aliases taking arguments: what a type mustn't write bare.
+    generics: frozenset[str] = frozenset()
+    # What each one's subscripted bases name that may be a type variable, and its own type variables
+    # with a default: a class whose every such name is one, where it's defined, is written bare.
+    generic_names: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    defaulted: frozenset[str] = frozenset()
+    # Its generic classes a type checker reads bare with a parameter's default: written bare, but not
+    # where a call binds that parameter (see `doubts.binds_defaults`).
+    defaulted_generics: frozenset[str] = frozenset()
     # Its descriptors, each with what its `__get__` gives an instance (see `declarations.descriptors`).
     descriptors: Mapping[str, str | None] = field(default_factory=dict[str, str | None])
     # Its generic classes' type parameters and members' types (see `declarations.generic_members`).
@@ -128,6 +140,14 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # Its classes' variables bound to a bare name, with that name (`classvars.named`): typed as the
     # Class it names, among `members`, where the index finds one (`plain.settled`).
     named: Mapping[str, Mapping[str, str]] = field(default_factory=dict[str, Mapping[str, str]])
+    # Its classes' variables bound to `None` alone (`classvars.nulls`), for `plain.settled`'s join.
+    nulls: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    # Its classes only their decorators and metaclass keep from plain, with them (`classvars.marked`),
+    # and its own decorators and metaclasses that leave a class plain (`inert.inert`).
+    marks: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
+    inert: frozenset[str] = frozenset()
+    # What each of its classes' bodies defines (`classvars.defined`): a variable it'd override.
+    defined: Mapping[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
     plain: frozenset[str] = frozenset()
     # Its classes' classmethods' and staticmethods' declared returns (see `declarations.class_methods`);
     # Those held back as `held` are, and those of them the index vouched for, now among `sides`.
@@ -144,7 +164,8 @@ class Module:  # pylint: disable=too-many-instance-attributes
     unions: Mapping[str, str] = field(default_factory=dict[str, str])
     # Its top-level pytest fixtures, and whether each is a generator (its value is what it yields).
     fixtures: Mapping[str, bool] = field(default_factory=dict[str, bool])
-    # A checked file's functions defined with `@overload`, each with its overloads' signatures.
+    # A checked file's functions defined with `@overload`, each with its overloads' signatures, or
+    # returning the class a `type[T]` parameter takes, with its one (see `declared.overloads`).
     overloads: Mapping[str, tuple[Signature, ...]] = field(default_factory=dict[str, tuple[Signature, ...]])
     folder: str = ""  # a checked file's directory: where pytest looks for the `conftest.py`s above it
     # Its top-level names bound by assignment to a value: not a type alias, nor a type variable.
@@ -316,7 +337,89 @@ def indexed(found: Iterable[Module | None]) -> Index:
             if module.name == CONFTEST and module.folder:
                 conftests[module.folder] = module
     repeated: frozenset[str] = frozenset(name for name, count in counts.items() if count > 1)
+    modules = {name: settled(modules, each) for name, each in modules.items()}
+    conftests = {folder: settled(modules, each) for folder, each in conftests.items()}
     return Index(modules, sorted(modules), repeated, conftests, Memo())
+
+
+def settled(modules: Mapping[str, Module], module: Module) -> Module:
+    """Drop the generic classes whose every type parameter has a default, or that have none at all.
+
+    `class FromClause(Generic[_KeyColCC_co])`, with `_KeyColCC_co = TypeVar(..., default=...)`
+    imported from another module: a type checker reads it bare with that default. And
+    `class Codec(BaseCodec[NDBuffer, Buffer])`, the names another module's classes: it binds every
+    parameter it inherits (see `concrete_in`).
+
+    Returns:
+      The module, its `generics` corrected, and those with a default among its `defaulted_generics`.
+
+    """
+    bare: frozenset[str] = frozenset(
+        name
+        for name, names in module.generic_names.items()
+        if name in module.generics
+        and all(defaulted_in(modules, module, each) or concrete_in(modules, module, each) for each in names)
+    )
+    defaulted: frozenset[str] = frozenset(
+        name
+        for name in bare
+        if any(defaulted_in(modules, module, each) for each in module.generic_names[name])
+    )
+    return (
+        replace(
+            module,
+            generics=module.generics - bare,
+            defaulted_generics=module.defaulted_generics | defaulted,
+        )
+        if bare
+        else module
+    )
+
+
+def concrete_in(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+    """Check whether `name` is a class or a type alias where it's defined: in `module`, or one it imports.
+
+    Followed as `defaulted_in` follows a type variable; a name its own module binds any other way
+    (a variable, which may be a type variable) or one out of the index's sight isn't.
+
+    Returns:
+      Whether it is.
+
+    """
+    root: str
+    rest: str
+    root, _, rest = name.partition(".")
+    if not rest and module.names.get(root) == (module.name, root):
+        return root not in module.type_vars and (root in module.classes or root in module.aliases)
+    origin: Origin | None = module.names.get(root) or module.guarded.get(root)
+    if origin is None or origin[0] == module.name or not hops:
+        return False
+    attribute: str = rest if origin[1] is None else _DOT.join(part for part in (origin[1], rest) if part)
+    onward: Module | None = modules.get(origin[0])
+    return onward is not None and bool(attribute) and concrete_in(modules, onward, attribute, hops - 1)
+
+
+def defaulted_in(modules: Mapping[str, Module], module: Module, name: str, hops: int = _HOPS) -> bool:
+    """Check whether `name` is a type variable with a default in `module`: its own, or one it imports.
+
+    Followed through re-exports, and through a module it imports whole (`t.T`).
+
+    Returns:
+      Whether it is (unknown: no).
+
+    """
+    root: str
+    rest: str
+    root, _, rest = name.partition(".")
+    if not rest and name in module.defaulted:
+        return True
+    origin: Origin | None = module.names.get(root) or module.guarded.get(root)
+    if origin is None or origin[0] == module.name or not hops:
+        return False
+    # `import pkg.types as t` then `t.T`: `T` there; `from pkg.types import T`: `pkg.types`'s `T`.
+    attribute: str = rest if origin[1] is None else _DOT.join(part for part in (origin[1], rest) if part)
+    onward: Module | None = modules.get(origin[0])
+    return onward is not None and bool(attribute) and defaulted_in(modules, onward, attribute, hops - 1)
 
 
 def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
@@ -338,7 +441,10 @@ def spliced(catalog: Index, found: Iterable[Module | None]) -> Index:
         before: Module | None
         if (before := conftests[again.folder] if local else modules.get(again.name)) is None:
             continue
-        module: Module = replace(again, returned=before.returned, parameters=before.parameters)
+        module: Module = settled(
+            modules,
+            replace(again, returned=before.returned, parameters=before.parameters),
+        )
         if local:
             conftests[module.folder] = module
         if modules.get(module.name) is before if local else module.name not in catalog.repeated:
@@ -374,6 +480,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
     named: str = name or module_name(path)
     is_package: bool = path.stem == PACKAGE
     aliases: dict[str, bool] = _aliases(tree)
+    defaulted: frozenset[str] = defaulted_type_vars(tree)
     type_vars: frozenset[str] = defined_type_vars(tree)
     names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
     names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
@@ -389,7 +496,11 @@ def read(path: Path, name: str | None = None) -> Module | None:
         unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
         called=_called(tree, names),
-        generics=generic_classes(tree),
+        generics=generic_classes(tree, defaulted)
+        | {alias for alias, generic in aliases.items() if generic and alias not in rebound},
+        defaulted_generics=generic_classes(tree) - generic_classes(tree, defaulted),
+        generic_names={name: names for name, names in generic_names(tree).items() if names},
+        defaulted=defaulted,
         descriptors=descriptors(tree),
         generic_members={} if installed else generic_members(tree),
         loose=frozenset[str]().union(*(_loose(node.body) for node in walked_classes(tree))),
@@ -412,6 +523,10 @@ def read(path: Path, name: str | None = None) -> Module | None:
         bound=dict(own.order.bound),
         members={} if installed else classvars.members(tree),
         named={} if installed else classvars.named(tree),
+        nulls={} if installed else classvars.nulls(tree),
+        marks={} if installed else classvars.marked(tree),
+        inert=frozenset() if installed else inert(tree),
+        defined={} if installed else classvars.defined(tree),
         sides=own.sides,
         held_sides=own.held_sides,
         partial=own.partial,
@@ -600,7 +715,7 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
 
     Returns:
       Each one's name, and whether it takes type arguments: its value names one of the module's type
-      variables, or it has type parameters of its own.
+      variables, in a forward reference too, or it has type parameters of its own.
 
     """
     type_vars: frozenset[str] = defined_type_vars(tree)
@@ -616,9 +731,9 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
                 annotation=annotation,
                 value=ast.expr() as value,
             ) if node_name(annotation) == _TYPE_ALIAS:
-                found[name] = _names_any(value, type_vars)
+                found[name] = _alias_names_any(value, type_vars)
             case ast.Assign(targets=[ast.Name(id=name)], value=value) if is_composite(value):
-                found[name] = _names_any(value, type_vars)
+                found[name] = _alias_names_any(value, type_vars)
             case _ if type(stmt).__name__ == _TYPE_ALIAS:
                 named: ast.Name = cast("ast.Name", getattr(stmt, "name", None))
                 found[named.id] = bool(cast("object", getattr(stmt, "type_params", ())))
@@ -665,6 +780,24 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
 
 def _names_any(value: ast.expr, names: frozenset[str]) -> bool:
     return any(node_name(node) in names for node in ast.walk(value))
+
+
+def _alias_names_any(value: ast.expr, names: frozenset[str]) -> bool:
+    """Check whether a type alias's value names any of `names`, in a forward reference too (`"Mapper[_T]"`).
+
+    Returns:
+      Whether it does.
+
+    """
+    node: ast.AST
+    for node in ast.walk(value):
+        if node_name(node) in names:
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            inner: ast.expr = quoted.parsed(node)
+            if inner is not node and _alias_names_any(inner, names):
+                return True
+    return False
 
 
 def _called(tree: ast.Module, names: Mapping[str, Origin]) -> frozenset[str]:

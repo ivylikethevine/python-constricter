@@ -354,3 +354,48 @@ def test_a_branch_narrowing_doesnt_reach_the_return() -> None:
         "x": ("int | None", False),
         "a": ("int | None", True),
     }
+
+
+_OR_NONE: str = """
+def find(items, key):
+    for item in items:
+        if item == key:
+            return "found"
+    return None
+
+
+def bare(flag):
+    if flag:
+        return 1
+    return
+
+
+def several(flag):
+    if flag:
+        return 1
+    return "a"
+
+
+def nothing(flag):
+    return None
+
+
+def use(items) -> None:
+    a = find(items, 1)
+    b = bare(True)
+    c = several(True)
+    d = nothing(True)
+"""
+
+
+def test_returns_of_one_type_and_none_type_a_call_as_their_union() -> None:
+    """`return x` and `return None` (or a bare `return`): a `T | None` guess; not two types, nor `None`."""
+    found: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(textwrap.dedent(_OR_NONE), checks=Checks())
+    }
+    assert {name: found[name] for name in "abcd"} == {
+        "a": ("str | None", True),
+        "b": ("int | None", True),
+        "c": (None, False),
+        "d": (None, False),
+    }

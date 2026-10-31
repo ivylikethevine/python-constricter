@@ -662,3 +662,96 @@ def test_another_files_descriptor_is_read_by_its_get(tmp_path: Path, jobs: str) 
     uses: Path = _write(tmp_path / "use.py", FRAME_READ.replace("a: Impl", "a").replace(GUARD, ""))
     _ = cli.main(["--fix", "-q", "--select=LVA001", f"--jobs={jobs}", str(tmp_path)])
     assert uses.read_text(encoding="utf-8") == FRAME_READ
+
+
+STARRED_UNARY: Final = """
+class Graph:
+    def nodes(self) -> list[int]: ...
+    def edges(self) -> list[str]: ...
+
+def complement(g):
+    return 1
+
+def _hidden():
+    return 1
+"""
+STARRED_USER: Final = """
+import pkg as nx
+from pkg import Graph, complement
+
+def run(g):
+    a = nx.complement(g)
+    b = complement(g)
+    made = nx.Graph()
+    nodes = made.nodes()
+    other = Graph()
+    edges = other.edges()
+
+def count(g):
+    n = g.nodes()
+    e = g.edges()
+"""
+
+
+_STARRED_FIXES: Final = (
+    ("a", "int"),
+    ("b", "int"),
+    ("made", "nx.Graph"),
+    ("nodes", "list[int]"),
+    ("other", "Graph"),
+    ("edges", "list[str]"),
+    ("n", "list[int]"),
+    ("e", "list[str]"),
+)
+
+
+def test_names_imported_by_a_chain_of_star_imports_are_followed(tmp_path: Path) -> None:
+    """`nx.complement` and `from pkg import Graph`, by `from .algo import *` in turn: as an import by name.
+
+    A function typed by its `return`s, a class and its methods, and the class spelled once where
+    `reads` asks which class a parameter is, though the file can write it two ways.
+    """
+    _ = _write(
+        tmp_path / "pkg" / "__init__.py",
+        "from missing import *\nfrom pkg.algo import *\nfrom pkg.algo import _hidden\n",
+    )
+    _ = _write(tmp_path / "pkg" / "algo" / "__init__.py", "from pkg.algo.unary import *\n")
+    _ = _write(tmp_path / "pkg" / "algo" / "unary.py", STARRED_UNARY)
+    uses: Path = _write(tmp_path / "uses.py", STARRED_USER)
+    _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    written: str = STARRED_USER
+    name: str
+    annotation: str
+    for name, annotation in _STARRED_FIXES:
+        written = written.replace(f"    {name} = ", f"    {name}: {annotation} = ")
+    assert uses.read_text(encoding="utf-8") == written
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    package: project.Module = catalog.modules["pkg"]
+    assert project.starred_origin(catalog.modules, package, "_hidden") is None
+    assert project.starred_origin(catalog.modules, package, "Graph", hops=1) is None
+    assert not project.starred_names(catalog.modules, package, hops=0)
+
+
+GUARDED_USER: Final = """
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..fields import Info
+
+def run(info: Info) -> None:
+    size = info.size()
+    named = info.name
+"""
+
+
+def test_a_class_imported_for_type_checking_alone_gives_its_members(tmp_path: Path) -> None:
+    """`if TYPE_CHECKING: from ..fields import Info`, a parameter annotated `Info`: as a run-time import."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "sub" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "fields.py", "class Info:\n    name: str\n    def size(self) -> int: ...\n")
+    uses: Path = _write(tmp_path / "pkg" / "sub" / "uses.py", GUARDED_USER)
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    assert uses.read_text(encoding="utf-8") == textwrap.dedent(GUARDED_USER).replace(
+        "    size = ",
+        "    size: int = ",
+    ).replace("    named = ", "    named: str = ")

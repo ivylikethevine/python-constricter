@@ -71,6 +71,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         classes=crossed.guarded_classes(modules, path, imported, guarded),
         hints=hints,
         type_vars=project.type_vars(modules, path),
+        defaulted=project.defaulted(modules, path),
         returned=awaits.returned(
             modules,
             path,
@@ -79,6 +80,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         ),
         guarded=guarded,
         generics=imported.generics | own.generics,
+        defaulted_generics=imported.defaulted_generics,
         generic=dict(imported.generic),
         descriptors=dict(imported.descriptors),
         callees=callers.callees(modules, path),

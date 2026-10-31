@@ -31,7 +31,7 @@ from typing import Final, cast
 from constricter._version import __version__  # not the package's: it imports the rules
 from constricter.empty import Empty
 from constricter.fix.core.known import Returns
-from constricter.fix.index.modules import DECLARED, PACKAGE, STUB, SUFFIX, Index, Memo, Module, read
+from constricter.fix.index.modules import DECLARED, PACKAGE, STUB, SUFFIX, Index, Memo, Module, read, settled
 from constricter.fix.index.project import HOPS, STDLIB
 from constricter.fix.index.stubs.declared import Class, Declarations
 
@@ -124,7 +124,7 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
     if not found:
         return catalog
     every: dict[str, Module] = {**catalog.modules, **found}
-    every.update((name, _generics(every, module)) for name, module in found.items())
+    every.update((name, _generics(every, settled(every, module))) for name, module in found.items())
     # The checked files' repeated names kept; what was worked out of the modules there were, not.
     return catalog._replace(modules=every, names=sorted(every), memo=Memo())
 

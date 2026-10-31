@@ -23,7 +23,10 @@ from constricter.fix.core.known import Returned, Returns
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered
 from constricter.fix.values.bodies import is_generator, plain, terminates
+from constricter.fix.values.documented import KIND as DOCUMENTED
+from constricter.fix.values.documented import documented, imports_numpy
 from constricter.fix.values.inference import RETURNED
+from constricter.fix.values.shapes import is_none
 from constricter.fix.values.stored import (
     Assigned,
     Recorded,
@@ -38,10 +41,11 @@ from constricter.fix.values.stored import (
 from constricter.source.annotations import roots
 from constricter.source.decorators import FIXTURES, spelled
 from constricter.source.flow import members
-from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.syntax import FunctionDef, Start, own_returns, within
 from constricter.source.walked import classes, of_type
 
 _NONE: Final = "None"
+_WITH_NONE: Final = 2  # a `return` of one type, and one of `None`
 _UNVOUCHED: Final[frozenset[str]] = frozenset()  # no decorator vouched for: a module read alone
 # What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
 _Callee: TypeAlias = tuple[str | None, str | None]
@@ -336,7 +340,8 @@ class Table:
         self._completed(func)
         slot: Slot | None = slots(self.module).get(id(func))
         found: tuple[str, frozenset[str]] | None
-        if slot is None or (found := _return_type(self.module, func, returns, self.vouched)) is None:
+        found = None if slot is None else _return_type(self.module, func, returns, self.vouched)
+        if slot is None or (found := found or _documented(self.module, func, returns, self.vouched)) is None:
             return
         annotation: str
         origins: frozenset[str]
@@ -436,8 +441,86 @@ def _typed(
     func: FunctionDef
     for func in plain(body):
         found: tuple[str, frozenset[str]] | None
-        if (found := _return_type(module, func, recorded.get(id(func), ()), vouched)) is not None:
+        returns: Sequence[Recorded] = recorded.get(id(func), ())
+        found = _return_type(module, func, returns, vouched) or _documented(module, func, returns, vouched)
+        if found is not None:
             yield _key(func), *found
+
+
+def _documented(
+    module: ast.Module,
+    func: FunctionDef,
+    returns: Sequence[Recorded],
+    vouched: frozenset[str],
+) -> tuple[str, frozenset[str]] | None:
+    """Type a plain function its `return`s don't decide by the return its docstring names (a guess).
+
+    As `_return_type` takes one: undecorated, unannotated, a plain `def` that ends by a `return`,
+    every one of them of a value (see `documented`).
+
+    Returns:
+      The type, and that it rests on the docstring; or `None`.
+
+    """
+    if not returns or _decorated(func, vouched) or func.returns is not None or func.type_comment:
+        return None
+    if not _ends_by_returning(module, func):
+        return None
+    types: list[str | None] = [None if typed is None else typed.annotation for typed, _ in returns]
+    found: str | None = documented(func, types, numpy=imports_numpy(module))
+    return None if found is None else (found, frozenset({DOCUMENTED}))
+
+
+def _ends_by_returning(module: ast.Module, func: FunctionDef) -> bool:
+    """Check whether a function ends by a `return` of a value, every one: a plain `def`, no generator.
+
+    Returns:
+      Whether it does.
+
+    """
+    return (
+        isinstance(func, ast.FunctionDef)
+        and not entered.is_manager(func)
+        and not is_generator(module, func)
+        and terminates(func.body)
+        and all(each.value is not None for each in own_returns(func.body))
+    )
+
+
+def _returned_types(module: ast.Module, func: FunctionDef, returns: Sequence[Recorded]) -> list[str | None]:
+    """Type each recorded `return` of a function: `None`'s own type for `return None` or a bare `return`.
+
+    The check records those as of no known type, as `None` is no fix of a binding's; matched to the
+    function's own `return` statements in source order, where there are as many (a generator's are
+    its `yield`s).
+
+    Returns:
+      Each one's type, `None` where it isn't known.
+
+    """
+    typed: list[str | None] = [None if found is None else found.annotation for found, _ in returns]
+    statements: list[ast.Return] = [] if is_generator(module, func) else own_returns(func.body)
+    if len(statements) != len(typed):
+        return typed
+    return [
+        _NONE if each is None and (stmt.value is None or is_none(stmt.value)) else each
+        for each, stmt in zip(typed, statements, strict=True)
+    ]
+
+
+def _or_none(types: set[str | None]) -> str | None:
+    """Join a function's `return`s' types where they're one type and `None`: `T | None`.
+
+    `return item` in a loop, then `return None`: as a type checker infers the function's return.
+
+    Returns:
+      The union, or `None` for any other set (one of no known type among them).
+
+    """
+    if len(types) != _WITH_NONE or _NONE not in types or None in types:
+        return None
+    other: str = next(each for each in types if each is not None and each != _NONE)
+    return other if _NONE in (members(other) or ()) else f"{other} | {_NONE}"
 
 
 def _return_type(
@@ -465,9 +548,9 @@ def _return_type(
     )
     if (_decorated(func, vouched) and not manager) or declared or not returns or not decided:
         return None
-    types: set[str | None] = {None if found is None else found.annotation for found, _ in returns}
+    types: set[str | None] = set(_returned_types(module, func, returns))
     found: str | None
-    if (found := next(iter(types)) if len(types) == 1 else None) is None:
+    if (found := next(iter(types)) if len(types) == 1 else _or_none(types)) is None or found == _NONE:
         return None
     if roots(found) & bound_within(func):  # a class it imports or defines itself: no caller can name it
         return None

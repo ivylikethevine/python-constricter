@@ -18,6 +18,7 @@ from constricter.fix.libraries.library import (
 )
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.values import called, decided, displays, operated, shapes
+from constricter.fix.values.documented import KIND as DOCUMENTED
 from constricter.fix.values.loops import comprehended, dict_view, looped, rebased
 from constricter.fix.values.members import (
     assigned_attribute,
@@ -68,6 +69,10 @@ _COMPARABLE: Final = frozenset(
     },
 )
 RETURNED: Final = "returned"  # the fix kind of an unannotated function's `return`s
+_DOCUMENTED: Final = frozenset({DOCUMENTED})
+OPERAND: Final = "operand"  # the fix kind of a text's operator with a value of no known type (a guess)
+_TEXTS: Final = frozenset({"str", "bytes"})
+_NONE_KINDS: Final[frozenset[str]] = frozenset()
 ASSIGNED: Final = "assigned"  # the fix kind of an instance attribute typed by its assignments
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _GET_ITEM: Final = "__getitem__"  # what types one of a class's instance
@@ -219,7 +224,13 @@ def _member_of(
             return (
                 found
                 if defined is None
-                else Inference(defined[1], f"`{defined[0]}.{attr}`'s `return`s", frozenset({RETURNED}))
+                else Inference(
+                    defined[1],
+                    f"`{defined[0]}.{attr}`'s `return`s",
+                    # A docstring's type, named: what else a method's guess rests on isn't (see `LIKELY`).
+                    frozenset({RETURNED})
+                    | (_DOCUMENTED & known.returned.guesses.get(f"{defined[0]}.{attr}", _NONE_KINDS)),
+                )
             )
         case _:
             return member(receiver, attr, None, known) or _unannotated(receiver, attr, known)
@@ -495,7 +506,46 @@ def _arithmetic(value: ast.BinOp, known: Known, declared: Mapping[str, str]) -> 
         return Inference(left, "a path joined by `/`", kinds)
     text: str | None = operated.operated(value, left, right, known.limits.max_length)
     builtin: str = "arithmetic on builtin types"
-    return library_operator(value.op, sides, known) if text is None else Inference(text, builtin, kinds)
+    if text is not None:
+        return Inference(text, builtin, kinds)
+    return library_operator(value.op, sides, known) or _with_text(value, sides)
+
+
+def _with_text(value: ast.BinOp, sides: tuple[Inference | None, Inference | None]) -> Inference | None:
+    """Infer a `str`'s or `bytes`'s `+` or `*` with a value of no known type, as a checker takes it (a guess).
+
+    `"pre-" + x`, `x + ".pyc"`, `" " * n`: the text's type, unless the other side's own operator
+    gives something else (a NumPy array's, a pandas `Series`'s).
+
+    Returns:
+      The inference, or `None` for another operator, or neither side or both known.
+
+    """
+    typed: list[Inference] = [side for side in sides if side is not None]
+    if not isinstance(value.op, ast.Add | ast.Mult) or len(typed) != 1 or typed[0].annotation not in _TEXTS:
+        return None
+    return Inference(
+        typed[0].annotation,
+        f"a `{typed[0].annotation}` and a value of no known type, by `{typed[0].annotation}`'s operator",
+        typed[0].kinds | {OPERAND},
+    )
+
+
+def operand_typed(value: ast.AST, known: Known, declared: Mapping[str, str]) -> bool:
+    """Check whether `value` is an operator typed by its one text operand: a guess (see `_with_text`).
+
+    Returns:
+      Whether it is.
+
+    """
+    if not isinstance(value, ast.BinOp):
+        return False
+    found: Inference | None = inference(value, known, declared)
+    return (
+        found is not None
+        and OPERAND in found.kinds
+        and not (inference(value.left, known, declared) and inference(value.right, known, declared))
+    )
 
 
 def _keys(value: ast.expr, known: Known, declared: Mapping[str, str]) -> Inference | None:

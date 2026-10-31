@@ -698,6 +698,9 @@ install = ["pip -e .[test] pytest-xdist mypy"]
 tests = "!python -m pytest -q -rfE --doctest-modules --doctest-plus --pyargs nibabel -n {workers}"
 checks = ["mypy nibabel"]
 
+[corpus.nibabel.suite.differs]
+"nibabel/tests/test_quaternions.py" = "its cases are drawn at import from an unseeded `np.random.default_rng()`, a different one failing from run to run"
+
 [corpus.seaborn]
 why = "numpy's types"
 version = "0.13.2"

@@ -1,5 +1,7 @@
 # Signatures from the project's own inference: how to build it
 
+Status: in progress; built in part, and `docs/ROADMAP.md`'s "Signatures from the project's own inference" has what is left.
+
 The roadmap's "Signatures from the project's own inference". Today `returned` decides an
 unannotated function's return where its `return`s agree (`Returned.calls`, certain;
 `Returned.methods`, guesses), `callers` a parameter every call passes one type, `fixture` a test's;

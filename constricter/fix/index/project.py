@@ -25,6 +25,9 @@ from constricter.fix.core.known import Classes, Guarded, Origin, Partial, Return
 from constricter.fix.index.modules import (
     Index,
     Module,
+    concrete_in,
+    defaulted_in,
+    exported,
     index,
     indexed,
     module_at,
@@ -51,9 +54,12 @@ NO_TYPE: Final = ""  # a class variable's type the file reading it can't write
 HOPS: Final = 5  # how many re-exports (`from .util import f` in an `__init__`) to follow
 DEPTH: Final = 8  # how many classes a line of bases is followed through
 DOT: Final = "."
+_UNDERSCORE: Final = "_"
+_STAR: Final = "*"  # what a `from m import *` binds, as the index records it
 FUNCTION: Final = "function"
 DECORATOR: Final = "decorator"  # a function that gives back the one it decorates
 CLASS: Final = "class"
+INERT: Final = "inert"  # a decorator or metaclass that leaves a class plain (see `source.inert`)
 ALIAS: Final = "alias"  # a type alias (see `modules.Module.aliases`)
 _TYPE_VAR: Final = "type variable"
 RETURNED: Final = "returned"  # an unannotated function its `return`s type
@@ -80,6 +86,8 @@ class Imported(NamedTuple):
     generic: Mapping[str, GenericClass] = Empty()
     # Its descriptors, each with what an instance's attribute of it gives (see `Module.descriptors`).
     descriptors: Mapping[str, str | None] = Empty()
+    # Its generic classes read bare with their defaults (see `Module.defaulted_generics`).
+    defaulted_generics: frozenset[str] = frozenset()
 
 
 def definition(
@@ -103,8 +111,60 @@ def definition(
         return None
     if attribute in kind_of(module, kind):
         return module, attribute
-    onward: Origin | None = module.names.get(attribute) or module.guarded.get(attribute)
+    onward: Origin | None = (
+        module.names.get(attribute)
+        or module.guarded.get(attribute)
+        or starred_origin(modules, module, attribute)
+    )
     return definition(modules, onward, kind, hops - 1) if onward and onward[0] != module.name else None
+
+
+def starred_origin(
+    modules: Mapping[str, Module],
+    module: Module,
+    name: str,
+    hops: int = HOPS,
+) -> Origin | None:
+    """Find which module `module` takes `name` from by importing everything from it (`from .main import *`).
+
+    The last that binds it, as the imports run, itself or by importing everything from another in
+    turn (`networkx` from `networkx.algorithms`, which takes it from `.operators`); a name with a
+    leading underscore no such import takes.
+
+    Returns:
+      The name there, or `None`.
+
+    """
+    if not hops or name.startswith(_UNDERSCORE):
+        return None
+    star: str
+    for star in reversed(module.stars):
+        other: Module | None = modules.get(star)
+        if other is not None and (name in exported(other) or starred_origin(modules, other, name, hops - 1)):
+            return star, name
+    return None
+
+
+def starred_names(modules: Mapping[str, Module], module: Module, hops: int = HOPS) -> dict[str, Origin]:
+    """Name what `module` takes by importing everything from others (see `starred_origin`).
+
+    Returns:
+      Each public name, and the module it's taken from there (the last import's, as they run).
+
+    """
+    found: dict[str, Origin] = {}
+    if not hops:
+        return found
+    star: str
+    other: Module | None
+    for star in module.stars:
+        if (other := modules.get(star)) is not None:
+            found.update(
+                (name, (star, name))
+                for name in (*starred_names(modules, other, hops - 1), *exported(other))
+                if not name.startswith(_UNDERSCORE) and name != _STAR
+            )
+    return found
 
 
 def type_definition(modules: Mapping[str, Module], origin: Origin) -> tuple[Module, str] | None:
@@ -157,7 +217,7 @@ def _holding(
         return None
     if has(module, name):
         return module, name
-    onward: Origin | None = module.names.get(name)
+    onward: Origin | None = module.names.get(name) or starred_origin(modules, module, name)
     return _holding(modules, onward, has, hops - 1) if onward and onward[0] != module.name else None
 
 
@@ -200,6 +260,7 @@ _KINDS: Final[Mapping[str, _Defined]] = {
     OPEN: lambda module: module.open,
     PARTIAL: lambda module: module.partial,
     DECORATOR: lambda module: module.passes,
+    INERT: lambda module: module.inert,
     SIGNATURES: lambda module: module.signatures,
     _TYPE_VAR: lambda module: module.type_vars,
 }
@@ -220,6 +281,28 @@ def type_vars(catalog: Index, path: Path) -> frozenset[str]:
         return frozenset()
     return frozenset(
         local for local in {*target.names, *target.guarded} if is_type_var(catalog.modules, target, local)
+    )
+
+
+def defaulted(catalog: Index, path: Path) -> frozenset[str]:
+    """Name what the file at `path`'s generic classes' bases name that leaves them written bare.
+
+    A type variable with a default where it's defined, or a class or type alias (see
+    `modules.settled`): a generic class of its own whose every such name is one is written bare (see
+    `generic_classes`), as the index writes it for the other files.
+
+    Returns:
+      Them, as the file writes them (`K`, `t.K`); none for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if (target := module_at(catalog, path)) is None:
+        return frozenset()
+    named: frozenset[str] = frozenset[str]().union(*target.generic_names.values())
+    return frozenset(
+        name
+        for name in named
+        if defaulted_in(catalog.modules, target, name) or concrete_in(catalog.modules, target, name)
     )
 
 

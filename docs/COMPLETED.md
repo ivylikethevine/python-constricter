@@ -421,6 +421,69 @@ What constricter does today and what was measured on the way, by scope. What's n
   `6b0ab18` (`mega-10-28-2026-0826`, 69 minutes on 16CPU/60GB), with both: new type errors 428, as
   on `b6ac32b`, none blamed on the three sets; `--likely` 211,064 bindings typed from 210,500, and
   mypy's 23 `tag: u8` back in every tier.
+- **A class under a base that binds its parameters**: a subscripted base makes a checked file's
+  class generic only where its subscript may pass a type variable (`concrete.binds_all`,
+  [FIXES.md](FIXES.md)); one naming another module's names is settled through the index, bare where
+  each is a class, a type alias or a type variable with a default (`modules.concrete_in`,
+  `project.defaulted`). xarray's 1,244 `Dataset()` calls were `declined` before. On the mega run of
+  2026-10-29 (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes on 16CPU/60GB) xarray's bindings with
+  no fix 11,247 from 14,326 and sqlalchemy's 9,662 from 10,140, as measured alone.
+- **A `dict`'s `get` and `pop` given a default**: `d.get(k, [])` on a `dict[str, list[int]]` is a
+  `list[int]` and `d.pop(k, None)` a `V | None`, as a checker picks typeshed's overload
+  (`returns._defaulted`); 199 such calls on the 47 corpora. No new type error on the mega run of
+  2026-10-29.
+- **Names a chain of star imports re-exports**, followed `HOPS` deep for a call's return and a
+  class's members (`project.starred_origin`, `starred_names`), a class spelt two ways one class
+  where `reads` asks (`reads._merge_spellings`); a module's `__all__` isn't read. On the mega run of
+  2026-10-29 networkx's bindings with no fix 16,022 from 16,046, dask's 18,248 from 18,356.
+- **A text's operator with a value of no known type** (`operand`, a guess): `"pre-" + x`,
+  `x + ".pyc"` and `" " * n` take the text's type (`inference._with_text`), a guess only where the
+  value's type rests on it (`guesses._rests_on_operands`). On the mega run of 2026-10-29: 324
+  guesses, 193 told, 100% held, none of 163 read blamed, and its set `literal+operand` 127 with 64
+  told: it passes [LIKELY.md](LIKELY.md)'s bars.
+- **A standard-library base's single-underscore members**: the tables hold a class's `_private`
+  methods too, not a dunder but `__enter__`, `__aenter__` and `__getitem__`, nor a mangled `__x`
+  (`stdlib_tables/reading._read`), so `self._expand_help(action)` in a `HelpFormatter` subclass is a
+  `str`: 129 more methods in `methods.json`. Measured alone (one process on 16CPU/60GB): pdm +6
+  fixes, pip +3, the standard library +15, none lost.
+- **Overloads that agree on their return**: a checked file's overloads all declaring one return,
+  and the implementation that one or none, are read as its declared return (`usable.agreed`), so
+  `DataTree.from_dict(groups)` is typed with `groups` of no known type (276 such calls on xarray).
+  None of the mega run of 2026-10-29's new type errors is from it.
+- **The members of a class imported for type checking alone**: a file's own `if TYPE_CHECKING:`
+  imports are taken as its run-time ones are (`crossed.imported`), so `info.size()` on an
+  `info: Info` imported that way is typed. pydantic 1,131 fixes to 1,141 and xarray 9,067 to 9,122,
+  measured alone (one process on 16CPU/60GB); the mega runs of 2026-10-29 covered its census.
+  Through it guesses copy sqlalchemy's own bare `_InternalEntityType`, a generic alias, into other
+  files ([ROADMAP.md](ROADMAP.md), Small).
+- **A generic class whose every parameter has a default**, written bare as a type checker reads it
+  with them: each module records its type variables with a default and what its generic classes'
+  bases name, and the index drops from `generics` those whose every such name resolves to one
+  (`modules.settled`, `defaulted_in`), installed modules' too; a `Generic[...]` or `Protocol[...]`
+  listing another module's type variable gives the class its parameters (`declarations._params`).
+  sqlalchemy 2,091 fixes to 2,263, measured alone. No `constructor` guess writes one bare where its
+  call passes `self` of a class binding type variables, or a parameter annotated with one
+  (`doubts.binds_defaults`, `Module.defaulted_generics`): mcp's 60 and strawberry-graphql's 18 new
+  type errors on the mega run of 2026-10-29 at 11:39 (`f7d53b2`) were those, none at 19:20
+  (`e793bc6`).
+- **`return`s of one type and of `None`** give `T | None`, a guess, as a type checker infers the
+  return: each recorded `return` matched to the function's own in source order, `return None` and a
+  bare `return` typed `None` (`returned._returned_types`, `_or_none`). django's bindings with no fix
+  11,709 from 11,712, measured alone; the mega runs check no types for django or pip.
+- **A class variable across its line, and classes under inert marks**: a plain class's variable is
+  joined across its line (`classvars.joined`, `plain._joined`: the widest number, `| None`,
+  `tuple[T, ...]`), values fitting no one type keeping each class's own; a decorator or metaclass
+  reading no annotations leaves a class plain (`source/inert.py`, `project.INERT`), none of its
+  variables typed where a class in its line defines the name or the join fails
+  (`classvars.unshadowed`). All `member` guesses, `--unsafe-fixes` only. On the mega runs of
+  2026-10-29, bindings with no fix: pygments 2,313 from 6,695, the standard library 62,138 from
+  63,071, django 11,609 from 11,747. Its type errors as measured alone (pygments 10 new and 6 gone,
+  django 17 new and 43 gone, one process on 16CPU/60GB): the runs check no types for either.
+- **A generic alias whose type variable is quoted**: sqlalchemy's
+  `_InternalEntityType = Union["Mapper[_T]", "AliasedInsp[_T]"]` is generic by the names in its
+  forward references (`modules._alias_names_any`), and a module's generic aliases are among its
+  `generics`, so neither a hint's edit nor a fix writes one bare: the mega run of 2026-10-29 at
+  22:41 (`d160aa8`) has no `_InternalEntityType` error, from 3.
 
 ## Command and output
 
@@ -781,7 +844,8 @@ What constricter does today and what was measured on the way, by scope. What's n
   CI's corpus setup), the runner plans its steps with CP-SAT before it starts
   (`tests/corpus/planning.py`: each step held to what the runner will hold for it,
   `sizing.Plan.wanted`, ports, each step after those it reads) and, of the steps that could start,
-  starts the one planned first; a step no run has measured keeps the rules (the longest chain first,
+  starts the one planned first; a step no run measured on its corpus is planned for what its like
+  corpora took (`planning.like`), one no corpus ran keeps the rules (the longest chain first,
   `_PATIENCE`, backfilling), and a stage plans its own steps alone (`planning.ranks`'s `chosen`).
   `scratch/run_timeline.py` lays a run out from its records, `scratch/schedule_sim.py` replays it,
   and `scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
@@ -836,6 +900,25 @@ What constricter does today and what was measured on the way, by scope. What's n
   where pyarrow isn't installed, 5 fewer (`pa.Scalar` generic there too); types-PyYAML nothing on
   dask or xarray; networkx nothing under any set, pandas-stubs or scipy-stubs, its scipy calls
   inside functions and their returns arrays `vague` refuses.
+- **`typing_extensions` in the standard-library tables, measured and set aside**: the tables
+  (generated from typeshed by `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so
+  a call through it (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class)
+  gets no fix, and a module read as untyped was never meant to stand in (the mega run of
+  2026-10-27). The mega run of 2026-10-28's census has 37 calls with no fix into it on the 47
+  corpora (`get_origin` 13, `get_args` 8), whose returns are vague anyway: not worth the
+  generator's change. If wanted: alias each name typeshed's stub re-exports to its `typing` entry,
+  and read the rest from the stub as the tables are generated.
+- **Stubs generated for compiled code, set aside**: `stubgen --inspect-mode`, pybind11-stubgen,
+  nanobind's and Cython's `embedsignature` signatures, mypy-protobuf and `__text_signature__` give
+  a compiled module's signatures, but few returns, and each needs the module imported. Next to no
+  reach in the corpora: lxml 8 calls, grpc 3, greenlet 3. Worth weighing again once a corpus calls
+  compiled code more.
+- **A new error blamed on the fix it names**: `corpus_suite._blamed` takes, of the fixes in an
+  error's line, one whose annotation holds a type the message quotes before the nearest one before
+  it: optuna's `params: dict[str, int | float]` error is the `copy+filled` guess's, not `name: str`'s
+  in the same line. A second pass's `left` counts its added lines alone (`corpus_table.added`), no
+  `+++` header among them: the standard library's one line left 1, from 2. Both on the mega run of
+  2026-10-29 at 22:41 (`d160aa8`).
 
 ## CI, security and releases
 

@@ -6,6 +6,37 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A test case's private attributes, which the standard-library tables hold since they keep
+  single-underscore members (`_testMethodName`), no longer type a subclass's variable of the name:
+  only `maxDiff`, `longMessage` and `failureException` do, as before.
+- A plain class's variable is one type in every class of its line that binds it, as a checker holds
+  an override to it: the widest number, with `None` where one binds it to that, a tuple of any
+  length (`priority: float`, `name: str | None`, `aliases: tuple[str, ...]`); before, a base's
+  `priority: int` and its subclass's `priority: float` were an incompatible override. And a class
+  under a decorator or metaclass that reads no annotations (a checked file's that gives back its
+  class, a metaclass under `type`; `functools.total_ordering`) is plain: pygments' lexers under
+  `LexerMeta`, sqlalchemy's elements under `_self_inspects` (pygments: 6,695 bindings with no fix to
+  2,313; sqlalchemy 10,140 to 9,691, with the items above).
+- A checked file's overloaded function whose every overload declares one return types its calls
+  by it, whatever their arguments (`DataTree.from_dict(d)` a `DataTree`); a standard-library base's
+  `_private` members are in the tables (`self._expand_help()` in a `HelpFormatter` subclass, a
+  `str`); and a class whose subscripted base names another checked file's classes is written bare.
+- A checked file's class under a subscripted base is generic only where the subscript may pass a
+  type variable: `class Dataset(Mapping[Hashable, "DataArray"])` is written bare and its members
+  read (xarray: 6,520 fixes to 9,067).
+- A generic class whose every type parameter has a default (`TypeVar("T", default=...)`, in any
+  checked file, or `class C[T = int]`) is written bare, and a `Generic[...]` or `Protocol[...]`
+  listing another module's type variables gives the class its parameters (sqlalchemy: 2,091 fixes
+  to 2,287, no new type errors).
+- A name re-exported by a chain of `from ... import *` is followed for calls, classes and members
+  (`nx.complement(G)`, `nx.Graph().nodes()`), and a class imported only under
+  `if TYPE_CHECKING:` gives its members, as one imported at run time does.
+- `d.get(k, default)` and `d.pop(k, default)` on a known `dict[K, V]` are typed by a literal or
+  empty-display default: `V` where it takes it (`[]` for a `list[int]`), else `V | T`.
+- Two guesses, `--unsafe-fixes` only until a mega run's witness reads them: `documented`, an
+  unannotated function's docstring naming a builtin scalar return (numpydoc, Google-style or
+  Sphinx `:rtype:`); and `operand`, a `str`'s or `bytes`'s `+` or `*` with a value of no known
+  type (`"pre-" + x`, `" " * n`).
 - `--likely` applies an installed package's declared returns where it has no `py.typed`: the sets
   `declared+returned`, `declared+returned+unpack` and `constructor+declared+returned` pass
   [LIKELY.md](LIKELY.md)'s bars on the mega run of 2026-10-28.
