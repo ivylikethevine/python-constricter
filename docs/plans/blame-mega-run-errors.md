@@ -1,5 +1,7 @@
 # Read the mega run of 2026-10-29
 
+Status: done; the read is in `docs/ROADMAP.md`, "Read on the mega runs of 2026-10-29".
+
 ## Context
 
 `mega-10-29-2026-1139` ran on `f7d53b2` with the 13 items under "Built, waiting on a run" in

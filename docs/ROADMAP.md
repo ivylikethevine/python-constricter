@@ -662,6 +662,32 @@ What to measure before building, smallest first.
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new
    errors. About 6 hours; coverage unknown until measured.
 
+### Repository upkeep
+
+Layout and size of the repository itself; none of these adds coverage.
+
+1. **`corpus-runs/` holds every run.** HEAD tracks about 434 MB in 40 files, and
+   `mega-10-26-2026-2120/report.json` alone is 77 MB, past GitHub's 50 MB warning. Proposed: keep
+   the release runs and put the rest in release assets, or commit only a run's report. This narrows
+   what is recorded, so which runs stay is the owner's call; existing history stays as it is. Done
+   when a new mega run adds nothing past that rule. About 2 hours.
+2. **`docs/RUNS.md` split by version.** It is 10,826 of `docs/`'s 16,681 lines, written by the corpus
+   runner (`runs-md` in `tests/corpus/runs/release.toml`). `docs/runs/<version>.md` needs the runner
+   and CONTRIBUTING changed with it, and loses nothing. Done when a release run writes its own file
+   and the old sections have moved. About 3 hours.
+3. **`COMPLETED.md`, `CHANGELOG.md` and `FIXES.md` read against each other.** Together about 4,000
+   lines, and they look like they overlap; nobody has checked. Give each fact one home and link the
+   others to it. Done when no measurement or rule is told twice. About 2 hours.
+4. **`scratch/README.md` down to the rule.** Its 168-line list repeats the docstrings and has
+   drifted: `watch_run.sh`, `relocate_venvs.py`, `node_caches.py`, `misplaced_hints.py`,
+   `witness_diff.py` and `lint_changed.py` aren't in it. Keep the opening paragraph; the docstrings
+   are the index. About 1 hour.
+5. **The scratch script families merged where they overlap.** By name, not yet read:
+   `fix_diff`/`fixes_diff`/`run_fixes_diff`, `second_pass`/`second_round`/`hinted_second_pass`,
+   `run_tick`/`watch_run`, and the four `widen_*`. Read each family, merge what repeats, delete what
+   a later script replaced. Done when each family's scripts answer different questions. About
+   3 hours.
+
 ## Ongoing
 
 - **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
