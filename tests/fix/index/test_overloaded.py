@@ -550,6 +550,7 @@ def use(holder: Holder, engine):
     backend = get_backend(guessed)
     held = holder.backend(guessed)
 """
+_CONCRETE_FIXED: Final = ("    backend: Base = get_backend(", "    held: Base = holder.backend(")
 
 
 def test_a_type_of_a_concrete_class_leaves_the_declared_return(tmp_path: Path) -> None:
@@ -559,8 +560,7 @@ def test_a_type_of_a_concrete_class_leaves_the_declared_return(tmp_path: Path) -
     use: Path = _write(tmp_path, "pkg/use.py", _CONCRETE_USE)
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = use.read_text(encoding="utf-8")
-    assert "    backend: Base = get_backend(" in fixed, fixed
-    assert "    held: Base = holder.backend(" in fixed, fixed
+    assert all(line in fixed for line in _CONCRETE_FIXED), fixed
 
 
 _VARIABLES: Final = """
@@ -626,6 +626,13 @@ def use() -> None:
     by_text = query("#x")
     unannotated = flagged(Static)
 """
+_IMPORTED_FIXED: Final = (
+    "    single: Static = one(",
+    "    other = wrong(",
+    "    by_class: Static = query(",
+    "    by_text: Widget = query(",
+    "    unannotated: Static = flagged(",
+)
 
 
 def test_a_type_variable_another_module_defines_binds_the_class_passed(tmp_path: Path) -> None:
@@ -636,11 +643,7 @@ def test_a_type_variable_another_module_defines_binds_the_class_passed(tmp_path:
     use: Path = _write(tmp_path, "pkg/use.py", _IMPORTED_USE)
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = use.read_text(encoding="utf-8")
-    assert "    single: Static = one(" in fixed, fixed
-    assert "    other = wrong(" in fixed, fixed
-    assert "    by_class: Static = query(" in fixed, fixed
-    assert "    by_text: Widget = query(" in fixed, fixed
-    assert "    unannotated: Static = flagged(" in fixed, fixed
+    assert all(line in fixed for line in _IMPORTED_FIXED), fixed
 
 
 _INHERITED_KIND: Final = """
@@ -692,6 +695,15 @@ def use(mid: Mid, replaced: Replaced, unfollowed: Unfollowed, leaf: Leaf) -> Non
     by_class = mid.checked(str)
     by_text = leaf.checked("#x")
 """
+_INHERITED_FIXED: Final = (
+    "        mine: int = self.query_one(",
+    "    inherited: int = mid.query_one(",
+    "    hidden = replaced.query_one(",
+    "    past = unfollowed.query_one(",
+    "    deeper: str = leaf.query_one(",
+    "    by_class: str = mid.checked(",  # under `if TYPE_CHECKING:`
+    "    by_text: int = leaf.checked(",
+)
 
 
 def test_a_subclass_takes_its_base_s_method_bound_by_the_class_passed(tmp_path: Path) -> None:
@@ -701,10 +713,4 @@ def test_a_subclass_takes_its_base_s_method_bound_by_the_class_passed(tmp_path: 
     use: Path = _write(tmp_path, "pkg/use.py", _INHERITED_USE)
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = use.read_text(encoding="utf-8")
-    assert "        mine: int = self.query_one(" in fixed, fixed
-    assert "    inherited: int = mid.query_one(" in fixed, fixed
-    assert "    hidden = replaced.query_one(" in fixed, fixed
-    assert "    past = unfollowed.query_one(" in fixed, fixed
-    assert "    deeper: str = leaf.query_one(" in fixed, fixed
-    assert "    by_class: str = mid.checked(" in fixed, fixed  # under `if TYPE_CHECKING:`
-    assert "    by_text: int = leaf.checked(" in fixed, fixed
+    assert all(line in fixed for line in _INHERITED_FIXED), fixed

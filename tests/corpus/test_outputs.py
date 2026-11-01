@@ -31,6 +31,9 @@ _TESTED_ROW: Final = (
     "            1 |    0 |     0 |"
 )
 _SUPER: Final = "# Super corpora\n"
+_SUPER_INDEX: Final = (
+    "# Corpus runs\n\n## Other\n\nkept\n\n## Runs\n\n- [Super corpora](runs/super-corpora.md)\n"
+)
 _SET_ROW: Final = "| unsafe      | constructor    |     2 |         |      2 |       |"
 _PROSE: Final = 100  # the width Prettier fills prose to
 _OLD: Final = "\nold\n"  # a section a run's replaces
@@ -589,9 +592,7 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
     index: str = runs.read_text(encoding="utf-8")
-    assert (
-        index == "# Corpus runs\n\n## Other\n\nkept\n\n## Runs\n\n- [Super corpora](runs/super-corpora.md)\n"
-    )
+    assert index == _SUPER_INDEX
     text: str = written.read_text(encoding="utf-8")
     assert text.startswith(_SUPER)
     assert _OLD not in text

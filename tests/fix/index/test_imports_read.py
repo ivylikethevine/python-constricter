@@ -15,6 +15,7 @@ def f(p):
     with tokenize.open(p) as g:
         e = g.encoding
 """
+_USE_FIXED: Final = "        e: str = g.encoding\n"
 
 
 def test_a_fix_importing_a_class_types_what_the_file_reads_of_it_in_the_same_run(tmp_path: Path) -> None:
@@ -23,7 +24,7 @@ def test_a_fix_importing_a_class_types_what_the_file_reads_of_it_in_the_same_run
     use: Path = tmp_path / "use.py"
     _ = use.write_text(_USE, encoding="utf-8")
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
-    assert "        e: str = g.encoding\n" in use.read_text(encoding="utf-8")
+    assert _USE_FIXED in use.read_text(encoding="utf-8")
 
 
 def test_what_a_file_reads_of_an_imported_class_is_told_by_its_members(tmp_path: Path) -> None:
