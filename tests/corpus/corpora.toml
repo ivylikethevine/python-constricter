@@ -257,6 +257,9 @@ install = ["pip -e . --group test --group types"]
 tests = "-n {workers} --dist=worksteal"
 checks = ["mypy"]
 
+[corpus.sphinx.suite.differs]
+"tests/test_builders/test_build_html_5_output.py::test_html5_rubric" = "it shares `markup-rubric`'s source directory with the man, LaTeX and texinfo tests on a worker, and finds their pickled environment when one ran first there, so the warning it asserts never comes"
+
 [corpus.mkdocs]
 why = "a typed application"
 version = "1.6.1"
@@ -700,6 +703,7 @@ checks = ["mypy nibabel"]
 
 [corpus.nibabel.suite.differs]
 "nibabel/tests/test_quaternions.py" = "its cases are drawn at import from an unseeded `np.random.default_rng()`, a different one failing from run to run"
+"nibabel/tests/test_euler.py" = "three of `test_euler_mat_2`'s cases fail as released, and which others join them changes from run to run with the same fixes"
 
 [corpus.seaborn]
 why = "numpy's types"

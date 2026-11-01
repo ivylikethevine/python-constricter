@@ -2,14 +2,14 @@
 
 - `json`: `report.json`, every record under its corpus, version and step, with the run's own facts;
   and `guesses.jsonl`, every fix a suite's type checks or traced tests could judge, a line each;
-- `markdown`: `report.md`, the tables docs/RUNS.md has a section of for each version, and
+- `markdown`: `report.md`, the tables docs/runs/ has a file of for each version, and
   `census.md`, what `--fix` can't type and why, where the run took the census;
 - `csv`: `tables/offences.csv`, `levels.csv`, `fixes.csv`, `census.csv`, `traced.csv`, `tests.csv`,
   `types.csv`, `type-errors.csv`, `coverage.csv`, `timing.csv`, `steps.csv`, and where they have a
   row `unshared.csv`, `uncounted.csv` and `resampled.csv`, a row a measurement.
 
-`publish` puts the tables in docs/RUNS.md where the run file says: a section a version, or one
-section of the whole run (`section`).
+`publish` puts the tables in docs/runs/ where the run file says, linked from docs/RUNS.md: a file a
+version, or one of the whole run (`section`).
 """
 
 import csv
@@ -62,8 +62,6 @@ _SUITE: Final = frozenset({TESTS, TYPES})  # the steps whose records have a fixe
 # The fix steps a second pass of which is to leave nothing: `--likely`'s is known to leave some.
 _CONVERGING: Final = frozenset({f"{FIX}{CERTAIN}", FIX_UNSAFE})
 _HEAVY: Final = 8  # gigabytes: a step that held more beside others is noted (a laptop has 16)
-_VERSIONS: Final = "\n## constricter "  # `corpus_table.record`'s sections, which a run's goes before
-_HEADING: Final = "\n## "
 MINUTES: Final = "minutes"  # in a run's facts: how long it took, unless it resumed another
 
 
@@ -357,10 +355,10 @@ def staged(facts: Record) -> str:
 
 
 def section(records: Records, facts: Record) -> str:
-    """Write the whole run as one section of docs/RUNS.md: its machine, and its last version's tables.
+    """Write the whole run as one file of docs/runs/: its machine, and its last version's tables.
 
     Returns:
-      The Markdown, from its heading on, laid out as Prettier does.
+      The Markdown below its heading, laid out as Prettier does.
 
     """
     version: str = records.versions[-1]
@@ -377,8 +375,6 @@ def section(records: Records, facts: Record) -> str:
     rows: list[Measured] = [measured(records, tree, version) for tree in records.trees]
     broke: list[str] = [f"- {each}" for each in (*problems(records), *notes(records))]
     parts: list[str] = [
-        f"## {records.run.publish.section}",
-        "",
         *corpus_table.filled(intro),
         "",
         corpus_table.tables(rows),
@@ -389,35 +385,20 @@ def section(records: Records, facts: Record) -> str:
     return "\n".join(parts).rstrip() + "\n"
 
 
-def _placed(text: str, heading: str, runs: Path) -> None:
-    """Write a section into `runs`, in place of the one of its `heading`, before the versions' sections."""
-    whole: str = runs.read_text(encoding="utf-8") if runs.exists() else ""
-    head: str
-    versions: str
-    rest: str
-    head, versions, rest = whole.partition(_VERSIONS)
-    after: str = ""
-    if heading in head:
-        old: str
-        head, _, old = head.partition(heading)
-        following: int = old.find(_HEADING)
-        after = "" if following < 0 else old[following:].strip() + "\n"
-    body: str = f"{head.rstrip()}\n\n{text}".lstrip() + (f"\n{after}" if after else "")
-    _ = runs.write_text(f"{body}{versions}{rest}", encoding="utf-8")
-
-
 def publish(records: Records, root: Path, facts: Record) -> None:
-    """Record the run's tables where its run file says, in docs/RUNS.md.
+    """Record the run's tables where its run file says, in files beside docs/RUNS.md, its index.
 
-    A section a version, of the per-version tables: `corpus_table.record` refuses to write over
-    one that's there, unless the run file says to replace it. Or, where the run file names a
-    `section`, that one alone, of the whole run (`section`), in place of the one that's there.
+    A file a version, of the per-version tables: `corpus_table.record` refuses to write over one
+    that's there, unless the run file says to replace it. Or, where the run file names a `section`,
+    that one alone, of the whole run (`section`), in place of its file that's there.
     """
     target: Path | None
     if (target := records.run.publish.runs_md) is None:
         return
-    if records.run.publish.section:
-        _placed(section(records, facts), f"## {records.run.publish.section}\n", root / target)
+    title: str
+    if title := records.run.publish.section:
+        name: str = title.lower().replace(" ", "-")
+        corpus_table.written(root / target, name, title, section(records, facts))
         return
     rows: list[Measured] = [
         measured(records, tree, version) for version in records.versions for tree in records.trees

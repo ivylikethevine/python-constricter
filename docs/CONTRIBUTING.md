@@ -8,8 +8,8 @@ every one must pass, coverage stays at 100%, and the project's own code passes
 behaviour, and note user-facing changes in [CHANGELOG.md](CHANGELOG.md).
 
 The version is the git tag's: nothing in the tree names it. Before tagging a release, record it in
-[RUNS.md](RUNS.md): run `local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml
---label 0.5.0`, which appends this checkout's results under that version, and commit it. Between
+`docs/runs/`: run `local/.venv/bin/python -m tests.corpus tests/corpus/runs/release.toml
+--label 0.5.0`, which writes this checkout's results under that version, and commit it. Between
 releases, `--label 0.5.0-rc.1` records a checkpoint under a pseudo-version. After a change to the
 release's build, run it on the branch first (`gh workflow run build.yml --ref dev`): it builds and
 attests every wheel, and publishes nothing.
@@ -116,7 +116,9 @@ the time: the run file, a record for each corpus, version and step, and `report.
 and `tables/*.csv` made from them. The folder is committed as two files: `report.json`, which holds
 the run's facts, every step's record and every table, and `listings.jsonl.gz`, its guesses, the
 witness's verdicts, the types the trace saw and the released tests by name, a line each
-(`tests/corpus/archive.py`); its `.gitignore` leaves out the rest, which stays on disk. Its paths
+(`tests/corpus/archive.py`); its `.gitignore` leaves out the rest, which stays on disk. Each release's
+folder and the latest mega and super stay tracked: after keeping a run, `scratch/retire_runs.py` takes
+the one it replaces out of the index, leaving it on disk and in git's history. Its paths
 are written relative to the checkout or under `~`, and its user unnamed. A later run reads its records from its report (a stopped run's from `records/`), the latest by
 when each started, and its own output is no change to the tree its facts record. `--resume FOLDER` carries on a stopped run under its label, its
 time the sum of its executions', `--only NAME` keeps one to a corpus or set, and `--minus NAME` leaves out a corpus's, a set's or a run file's corpora
@@ -127,14 +129,15 @@ hold are free: what it took in the last run under the same output, which its rec
 A step that fails leaves its traceback under `logs/`; the run exits 1 for it, and for anything a fix
 broke.
 
-A run file with a `[publish]` table records a section per version in [`docs/RUNS.md`](RUNS.md):
-offences per code, errors and warnings at each level, fixes, guesses, anything a fix broke, and the
-share of bindings typed before and after fixing (by this checkout's `--coverage`). Its `versions`
-may name releases too, each installed in an environment of its own. With `section`, it records that
-one section of the whole run instead: `tests/corpus/runs/basic.toml`, `super.toml` and `mega.toml`
-ask every step of their corpora (`basic`'s the `original` seven, so its rows compare with the other
-two's), and write RUNS.md's `Basic corpora`, `Super corpora` and `Mega corpora` sections, with the
-machine they ran on. Run super and mega before a release, outside a sandbox. `super-fast.toml` and
+A run file with a `[publish]` table records a file per version in `docs/runs/`, linked from
+[`docs/RUNS.md`](RUNS.md): offences per code, errors and warnings at each level, fixes, guesses,
+anything a fix broke, and the share of bindings typed before and after fixing (by this checkout's
+`--coverage`). Its `versions` may name releases too, each installed in an environment of its own.
+With `section`, it records one file of the whole run instead: `tests/corpus/runs/basic.toml`,
+`super.toml` and `mega.toml` ask every step of their corpora (`basic`'s the `original` seven, so its
+rows compare with the other two's), and write `docs/runs/basic-corpora.md`, `super-corpora.md` and
+`mega-corpora.md`, with the machine they ran on. Run super and mega before a release, outside a
+sandbox. `super-fast.toml` and
 `mega-fast.toml` measure the same corpora without publishing, a suite's tests only after each fix:
 the tests as released are the latest earlier run's at the suite's tag on the same checkout
 (`tests-released = false`), and nothing is traced. `mega.toml` takes them too, where the traced
@@ -221,17 +224,17 @@ tag's (hatch-vcs); a build between tags is a dev version, `0.5.1.dev3+g1a2b3c4`.
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                               | Why                                                                                                                   |
-| ------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                        |
-| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                        |
-| mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.             |
-| pylint             | `too-many-instance-attributes` on `Module`, `Outside` and `ImportPlan`             | Each is a record of one file's tables, a field a table, built by keyword.                                             |
-| typos              | the word `astroid`                                                                 | A real package name.                                                                                                  |
-| typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                        |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.                 |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | No recent release ships a wheel for Python 3.11+, so installing it builds from source with an unpinned `poetry-core`. |
-| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                 |
+| Tool               | Rule                                                                               | Why                                                                                                                          |
+| ------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                               |
+| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                               |
+| mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.                    |
+| pylint             | `too-many-instance-attributes` on `Module`, `Outside` and `ImportPlan`             | Each is a record of one file's tables, a field a table, built by keyword.                                                    |
+| typos              | the word `astroid`                                                                 | A real package name.                                                                                                         |
+| typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                               |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.                        |
+| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | Before 6.3.0 no release shipped a wheel for Python 3.11+, so installing it built from source with an unpinned `poetry-core`. |
+| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                        |
 
 ## AI-assisted contributions
 

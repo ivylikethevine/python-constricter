@@ -40,6 +40,7 @@ Origin: TypeAlias = tuple[str, str | None]
 SPELLED: Final = "="
 # After a fixture's `request` parameter's name: the key its `request.param` is typed under (see `Typed`).
 PARAM: Final = ".param"
+OWN_SELF: Final = "self.own"  # in a scope's types: the class whose method reads `self`, unannotated or not
 
 
 # A `dict` itself, not a `UserDict`: every inference reads it, as fast as a `dict` is read.

@@ -20,7 +20,7 @@ _Named: TypeAlias = list[tuple[str, str]]  # a fix step's fixes, by name and ann
 _Outcomes: TypeAlias = list[tuple[str, str]]  # a run's tests, by id and outcome
 _WARNING: Final = "a warning\n"
 _CRLF: Final = b"\r\n"  # a line's end that git keeps as LF
-_PUBLISHED: Final = "\n## constricter rc\n"  # in RUNS.md: `dev` under the run's label
+_PUBLISHED: Final = "- [constricter rc](runs/rc.md)\n"  # in RUNS.md: `dev` under the run's label
 _SECTION: Final = "## constricter rc+dev"
 # The Markdown's cells for what was fixed, likely and guessed on top, broken, and left by each second pass.
 _FIXES: Final = "| 2 (33.3%) | 1 (16.7%) | 2 (33.3%) |      0 |    0 |            1 |"
@@ -30,7 +30,10 @@ _TESTED_ROW: Final = (
     "| fix-unsafe                  | False            | 1 failed, 8 passed        |"
     "            1 |    0 |     0 |"
 )
-_SUPER: Final = "## Super corpora\n"
+_SUPER: Final = "# Super corpora\n"
+_SUPER_INDEX: Final = (
+    "# Corpus runs\n\n## Other\n\nkept\n\n## Runs\n\n- [Super corpora](runs/super-corpora.md)\n"
+)
 _SET_ROW: Final = "| unsafe      | constructor    |     2 |         |      2 |       |"
 _PROSE: Final = 100  # the width Prettier fills prose to
 _OLD: Final = "\nold\n"  # a section a run's replaces
@@ -564,6 +567,7 @@ def test_a_run_publishes_a_section_a_version(tmp_path: Path) -> None:
     published: Run = parse({"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md"}})
     render.publish(render.gathered(published, store, [tree]), tmp_path, {})
     assert _PUBLISHED in (tmp_path / "RUNS.md").read_text(encoding="utf-8")
+    assert (tmp_path / "runs" / "rc.md").read_text(encoding="utf-8").startswith("# constricter rc\n\n")
     with pytest.raises(ValueError, match="already has rc"):
         render.publish(render.gathered(published, store, [tree]), tmp_path, {})
     again: Run = parse({"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md", "replace": True}})
@@ -576,7 +580,10 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     tree: Tree
     store, tree = _recorded(tmp_path)
     runs: Path = tmp_path / "RUNS.md"
-    _ = runs.write_text(f"# Corpus runs\n\n{_SUPER}{_OLD}\n## Other\n\nkept\n{_PUBLISHED}", encoding="utf-8")
+    _ = runs.write_text("# Corpus runs\n\n## Other\n\nkept\n", encoding="utf-8")
+    written: Path = tmp_path / "runs" / "super-corpora.md"
+    written.parent.mkdir()
+    _ = written.write_text(f"{_SUPER}{_OLD}", encoding="utf-8")
     whole: Run = parse(
         {"run": {"label": "rc"}, "publish": {"runs-md": "RUNS.md", "section": "Super corpora"}},
     )
@@ -584,10 +591,11 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     facts |= {"python": "3.14.7", "system": "Linux"}
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts)
-    text: str = runs.read_text(encoding="utf-8")
-    assert text.count(_SUPER) == 1
+    index: str = runs.read_text(encoding="utf-8")
+    assert index == _SUPER_INDEX
+    text: str = written.read_text(encoding="utf-8")
+    assert text.startswith(_SUPER)
     assert _OLD not in text
-    assert text.index(_SUPER) < text.index("## Other\n\nkept\n") < text.index(_PUBLISHED)
     prose: str = " ".join(text.split())
     assert _MACHINE in prose
     assert _TOOK in prose
@@ -596,7 +604,7 @@ def test_a_run_publishes_one_section_of_itself(tmp_path: Path) -> None:
     assert _DIFFERS in text
     assert all(len(line) <= _PROSE or line.startswith("|") for line in text.splitlines())
     render.publish(render.gathered(whole, store, [tree]), tmp_path, facts | {"share": SHARE})
-    shared: str = " ".join(runs.read_text(encoding="utf-8").split())
+    shared: str = " ".join(written.read_text(encoding="utf-8").split())
     assert _MACHINE.replace("(Linux)", "(Linux), 75% of it") in shared
 
 

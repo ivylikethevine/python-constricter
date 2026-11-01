@@ -4,14 +4,17 @@ On a receiver typed as the class, as the calling file spells it: read and writte
 overloads are (see `constricter.fix.index.own_overloads`), each under `Class.method`.
 """
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import Guarded
 from constricter.fix.core.signatures import ReadSignature
-from constricter.fix.index import crossed, own_overloads
+from constricter.fix.index import crossed, own_overloads, plain, project
 from constricter.fix.index.modules import Index, Module, module_at
 from constricter.fix.index.stubs import stubbed
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import classvars
 from constricter.source.annotations import roots
 
 if TYPE_CHECKING:
@@ -46,10 +49,10 @@ def overloaded(
     }
     for key, defined in named.items():
         name: str
-        # Those it calls of the class's overloaded ones: few, of the thousands of classes it can name.
-        for name in sorted(_methods(catalog, defined[0]).get(defined[1], frozenset()) & target.method_calls):
-            entry: str = f"{defined[1]}.{name}"
-            written: tuple[Signature, ...] = defined[0].overloads.get(entry, ())
+        owner: tuple[Module, str]
+        for name, owner in _called(catalog, defined, target.method_calls):
+            entry: str = f"{owner[1]}.{name}"
+            written: tuple[Signature, ...] = owner[0].overloads.get(entry, ())
             # One returning `Self` is its receiver's class: not the type the signature writes; one
             # declaring its `self` is for some receivers alone.
             if not written or any(
@@ -59,11 +62,56 @@ def overloaded(
             found[f"{key}.{name}"] = own_overloads.spelled(
                 catalog,
                 target,
-                (defined[0], entry),
-                stubbed.read_signatures(catalog.modules, defined[0], entry),
+                (owner[0], entry),
+                stubbed.read_signatures(catalog.modules, owner[0], entry),
                 guarded,
             )
     return {entry: read for entry, read in found.items() if read}
+
+
+def _called(
+    catalog: Index,
+    defined: tuple[Module, str],
+    calls: frozenset[str],
+) -> Iterator[tuple[str, tuple[Module, str]]]:
+    """Find the methods `calls` names that a class or a checked file's base of it overloads.
+
+    A base's stands where no class before it in the line binds the name; the line ends at a base it
+    can't follow, which might.
+
+    Yields:
+      Each method's name, with the module and class defining it.
+
+    """
+    hidden: set[str] = set()
+    each: tuple[Module, str] | None
+    for each in _line(catalog, defined, project.DEPTH):
+        if each is None:
+            return
+        name: str
+        # Those it calls of the class's overloaded ones: few, of the thousands of classes it can name.
+        for name in sorted((_methods(catalog, each[0]).get(each[1], frozenset()) & calls) - hidden):
+            yield name, each
+        hidden |= each[0].bound.get(each[1], frozenset())
+
+
+def _line(catalog: Index, defined: tuple[Module, str], depth: int) -> Iterator[tuple[Module, str] | None]:
+    """Follow a checked file's class up its bases, past its keywords and decorators (`can_focus=True`).
+
+    Yields:
+      It, then its bases in turn; `None` for one that isn't a checked file's or the standard library's.
+
+    """
+    yield defined
+    base: str
+    for base in defined[0].bases.get(defined[1], ()):
+        path: str = "" if base == classvars.SPECIAL else plain.resolved(catalog.modules, defined[0], base)
+        module: Module | None = catalog.modules.get(path.rpartition(".")[0])
+        name: str = path.rpartition(".")[2]
+        if module is not None and not module.installed and name in module.bases and depth:
+            yield from _line(catalog, (module, name), depth - 1)
+        elif path and stdlib.held_whole(path) is None:
+            yield None
 
 
 def _methods(catalog: Index, module: Module) -> dict[str, frozenset[str]]:

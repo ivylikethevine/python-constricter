@@ -18,7 +18,7 @@ from constricter.cli.runs import CheckRun, FileRun, merged
 from constricter.cli.workers import Workers, running, started
 from constricter.empty import Empty
 from constricter.fix.core.known import Callee, Hints, Outside
-from constricter.fix.index import callers, decorated, loose, plain, project
+from constricter.fix.index import callers, crossed, decorated, loose, plain, project
 from constricter.fix.index.stubs import installed
 from constricter.offences import UNANNOTATED_ATTRIBUTE, UNANNOTATED_PARAMETER, Edit, Fix
 
@@ -67,10 +67,15 @@ def settled(
     again: list[int] = [
         index
         for index, run in enumerate(runs)
-        if fixing and paths[index] != STDIN and _unsettled(run, session, options.guesses)
+        if fixing
+        and paths[index] != STDIN
+        and (_unsettled(run, session, options.guesses) or _imports_read(modules, paths[index], run))
     ]
     changed: list[int] = [
-        at for at in range(len(runs)) if _reaching(paths[at], runs[at], onward=onward, signing=signing)
+        at
+        for at in range(len(runs))
+        if _reaching(paths[at], runs[at], onward=onward, signing=signing)
+        or (fixing and _imports_read(modules, paths[at], runs[at]))
     ]
     for _ in range(HINT_ROUNDS - 1):
         held: dict[int, FileRun] = {}
@@ -83,11 +88,35 @@ def settled(
         latest: project.Index
         fresh, latest = _round(paths, runs, (again, held), _How(check, options, session), modules)
         modules = latest if onward or signing else modules
-        again = [index for index, run in fresh if _unsettled(run, session, options.guesses)]
+        again = [
+            index
+            for index, run in fresh
+            if _unsettled(run, session, options.guesses) or _imports_read(modules, paths[index], run)
+        ]
         changed = [
-            index for index, run in fresh if _reaching(paths[index], run, onward=onward, signing=signing)
+            index
+            for index, run in fresh
+            if _reaching(paths[index], run, onward=onward, signing=signing)
+            or _imports_read(modules, paths[index], run)
         ]
     return runs
+
+
+def _imports_read(modules: project.Index, path: Path, run: FileRun) -> bool:
+    """Check whether a round of `--fix` imported a checked file's class whose members the file reads.
+
+    What's read of them had no type while the file didn't spell the class (`f: TextIO`, from the
+    standard-library tables, then `f.encoding`, on a corpus that checks `typing.py`).
+
+    Returns:
+      Whether it did.
+
+    """
+    return _changed(path, run) and any(
+        isinstance(made.offence.edit, Fix)
+        and crossed.reads_imported(modules, path, made.offence.edit.imports)
+        for made in cast("CheckRun", run).made
+    )
 
 
 def _reaching(path: Path, run: FileRun, *, onward: bool, signing: bool) -> bool:

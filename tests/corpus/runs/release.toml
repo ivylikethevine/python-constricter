@@ -1,4 +1,4 @@
-# What a version's section of docs/RUNS.md records: the seven corpora with this checkout, checked at
+# What a version's file in docs/runs/ records: the seven corpora with this checkout, checked at
 # every level and fixed, under `--label`: the release's version (`0.5.0`), or a checkpoint's (`0.5.0-rc.1`).
 
 [run]

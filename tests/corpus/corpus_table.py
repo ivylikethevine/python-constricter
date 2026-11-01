@@ -1,6 +1,6 @@
-"""Measure a corpus with a constricter version, and lay the results out as docs/RUNS.md has them.
+"""Measure a corpus with a constricter version, and lay the results out as docs/runs/ has them.
 
-The tables and the sections the corpus runner (`python -m tests.corpus`) writes: `tables`, and
+The tables and the files the corpus runner (`python -m tests.corpus`) writes: `tables`, and
 `record` for a run file's `[publish]`.
 
 The corpora are the pinned `corpus` dependency group's packages
@@ -75,7 +75,8 @@ ALL_SCOPES: Final = ("--all-scopes", JOBS)
 EVERYWHERE: Final = ("--level=suffocate", *ALL_SCOPES)
 _FIXED: Final = re.compile(r"fixed (\d+)")
 _TYPED: Final = re.compile(r"^Total: (\d+)/(\d+) typed", re.MULTILINE)  # `--coverage`'s summary
-_SECTION: Final = "## constricter "
+_RUNS_FOLDER: Final = "runs"  # beside the index, a file a run: `0.4.3.md`, `mega-corpora.md`
+_LISTED: Final = "## Runs"  # the index's list of them
 _WINDOWS: Final = "nt"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"  # where constricter looks for installed packages, beside its own path
 _ERROR: Final = "error"
@@ -98,7 +99,7 @@ _RUNS_HEADER: Final = """# Corpus runs
 
 What each constricter version found and fixed on the corpus: CPython's standard library and the
 pinned `corpus` packages, at every level with `all-scopes`. Recorded by the corpus runner
-(`tests/corpus/runs/release.toml`); a section per version, added when the version goes up (see
+(`tests/corpus/runs/release.toml`); a file per version, added when the version goes up (see
 [CONTRIBUTING](CONTRIBUTING.md)).
 """
 
@@ -768,34 +769,48 @@ def tables(measured: Sequence[Measured]) -> str:
     )
 
 
-def record(measured: Sequence[Measured], runs: Path = RUNS, *, replace: bool = False) -> None:
-    """Write a section per version into `runs`, replacing a release's section if it's there.
+def written(runs: Path, name: str, title: str, text: str) -> None:
+    """Write a run's record to a file of its own beside the index `runs`, and link it from there once."""
+    path: Path = run_file(runs, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(f"# {title}\n\n{text.rstrip()}\n", encoding="utf-8")
+    index: str = runs.read_text(encoding="utf-8") if runs.exists() else _RUNS_HEADER
+    head: str
+    rest: str
+    head, _, rest = index.partition(_LISTED)
+    links: list[str] = [line for line in rest.splitlines() if line]
+    link: str
+    if (link := f"- [{title}]({_RUNS_FOLDER}/{name}.md)") not in links:
+        links.append(link)
+    _ = runs.write_text(f"{head.rstrip()}\n\n{_LISTED}\n\n" + "\n".join(links) + "\n", encoding="utf-8")
 
-    Sections stay in the order they were first added: a new version's is appended. `dev` is
-    recorded under this checkout's own version (so run it right after bumping the version for a
-    release), and never over a section already there unless `replace`: that version was
-    released, and its section is the release's.
+
+def run_file(runs: Path, name: str) -> Path:
+    """Find the file a run's record goes in, beside the index `runs`.
+
+    Returns:
+      Its path.
+
+    """
+    return runs.parent / _RUNS_FOLDER / f"{name}.md"
+
+
+def record(measured: Sequence[Measured], runs: Path = RUNS, *, replace: bool = False) -> None:
+    """Write a file per version beside the index `runs`, replacing a release's if it's there.
+
+    `dev` is recorded under this checkout's own version (so run it right after bumping the version
+    for a release), and never over a file already there unless `replace`: that version was
+    released, and its file is the release's.
 
     Raises:
       ValueError: `dev` would overwrite a recorded version.
 
     """
-    text: str = runs.read_text(encoding="utf-8") if runs.exists() else _RUNS_HEADER
-    head: str
-    rest: list[str]
-    head, *rest = text.split(f"\n{_SECTION}")
-    sections: dict[str, str] = {}
-    part: str
-    for part in rest:
-        name: str = part.split("\n", 1)[0]
-        sections[name] = part
     version: str
     for version in dict.fromkeys(m.version for m in measured):
         release: str = version.removesuffix(f"+{DEV}")
-        if release != version and release in sections and not replace:
+        if release != version and run_file(runs, release).exists() and not replace:
             message: str = f"{runs} already has {release}: bump the version first, or pass --replace"
             raise ValueError(message)
         rows: list[Measured] = [m._replace(version=release) for m in measured if m.version == version]
-        sections[release] = f"{release}\n\n{tables(rows)}\n"
-    body: str = "".join(f"\n{_SECTION}{part.rstrip()}\n" for part in sections.values())
-    _ = runs.write_text(f"{head.rstrip()}\n{body}", encoding="utf-8")
+        written(runs, release, f"constricter {release}", tables(rows))

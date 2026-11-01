@@ -1,13 +1,14 @@
 """Fix a copy of each corpus as CI's `ci-fix` run does, then keep what a second pass still fixes.
 
-  local/.venv/bin/python -m scratch.second_pass [CORPUS ...] [--likely | --certain]
+  local/.venv/bin/python -m scratch.second_pass [CORPUS ...] [--likely | --certain | --widen]
 
-`--fix --unsafe-fixes` (or `--likely`, or neither) at `suffocate` in every scope, then `--diff` with
-the same: the count is the `+` lines as the runner's `left` counts them, and each diff is kept in
-`local/scratch/second-pass/<corpus>.diff`. Outside a sandbox (the workers' forkserver);
-`CORPUS_JOBS` sets the workers (every CPU, unset). The standard library and pandas took 5 minutes
-together, 8 workers on 8CPU/62GB. CI's pandas is its uninstalled clone, not the installed package
-this fixes: for CI's count, run `python -m tests.corpus tests/corpus/runs/ci-fix.toml --only pandas`.
+`--fix --unsafe-fixes` (or `--likely`, or neither, or `--unsafe-fixes` with every `fix-widen` kind)
+at `suffocate` in every scope, then `--diff` with the same: the count is the `+` lines as the
+runner's `left` counts them, and each diff is kept in `local/scratch/second-pass/<corpus>.diff`.
+Outside a sandbox (the workers' forkserver); `CORPUS_JOBS` sets the workers (every CPU, unset). The
+standard library and pandas took 5 minutes together, 8 workers on 8CPU/62GB. CI's pandas is its
+uninstalled clone, not the installed package this fixes: for CI's count, run
+`python -m tests.corpus tests/corpus/runs/ci-fix.toml --only pandas`.
 """
 
 import sys
@@ -16,7 +17,7 @@ from pathlib import Path
 from tests.corpus import corpus_table
 
 OUT = Path(__file__).resolve().parents[1] / "local" / "scratch" / "second-pass"
-TIERS = {"--likely": ["--likely"], "--certain": []}
+TIERS = {"--likely": ["--likely"], "--certain": [], "--widen": ["--unsafe-fixes", "--fix-widen=all"]}
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 # The `original` corpora (the seven every release is measured on), every way, as `super` and `mega`
 # measure theirs: every step, a suite's own tests, type checks and traced tests after each fix,
-# recorded as docs/RUNS.md's `Basic corpora` section, so its rows compare with theirs. The machine
+# recorded as docs/runs/basic-corpora.md, so its rows compare with theirs. The machine
 # sizes it: each step starts once the CPUs and the memory it took in the last run are free
 # (`sizing`); `cpus` and `memory` under `[run]` share out less. A stopped run carries on with
 # `--resume FOLDER`.

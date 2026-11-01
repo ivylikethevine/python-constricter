@@ -232,7 +232,8 @@ the value decides it, for a plain `name = value` in a function or module body:
   order. What it doesn't bind is its generic bases',
   bound by its own arguments (`class Keyed(Pairs[str, V])`), and a class of the module's under one
   given its arguments (`class Rows(Result[Row])`) has the base's, `self.first()` there a
-  `Row | None`. On the class bare (`Result`, whose parameters a checker doesn't know) only a member
+  `Row | None`. In a generic class's own method, `self`'s member is written with the parameters the
+  method binds (`self.first()` a `T | None`). On the class bare (`Result`, whose parameters a checker doesn't know) only a member
   naming none of them (`count() -> int`); nothing for a receiver of another number of arguments, a
   member naming another type variable (`def get(self, default: D) -> T | D`), a `ParamSpec` or a
   `TypeVarTuple`. Another checked file's class (the CLI only) as the file can write each member's
@@ -284,7 +285,8 @@ the value decides it, for a plain `name = value` in a function or module body:
   returns `g()`) are followed, a few links deep. With the CLI, a module function in another checked
   file types its calls the same way, imported as a declared one is (and as long as the file can name
   its type): the files are checked callees first, and files calling each other's functions are
-  checked again, up to 3 more times, while that types more;
+  checked again, up to 3 more times, while that types more, as is a file a fix imported a checked
+  file's class into whose members it reads;
 - with `--unsafe-fixes`, an unannotated instance attribute (`self.x`, or `x` on any value typed as
   its class), when every `self.x = value` in the class's own methods gives one known type (numbers
   widen to the widest: `int`, then `float`): that type. A guess, since a subclass or outside code
@@ -582,10 +584,13 @@ function called through its module however that's imported (`shapes.concat(...)`
 `from pkg import shapes`). Each return is written as another checked file's type is: none of the
 function's calls is typed if one of its overloads declares no return, or returns a type variable or
 a generic class without its arguments; but for a type variable alone that a parameter binds to a
-class (`kind: type[T]`), the module's own, which a call passing a class names: `query_one("#x", Static)`
-is a `Static`, overloaded or not (an undecorated function or method with that one signature),
-`query_one("#x", int)` an `int`, and nothing for a generic class without its arguments or a builtin
-outside the variable's bound.
+class (`kind: type[T]`), the module's own or one a checked file defines, which a call passing a class
+names: `query_one("#x", Static)` is a `Static`, overloaded or not (an undecorated function or method
+with that one signature), `query_one("#x", int)` an `int`, and nothing for a generic class without
+its arguments or a builtin outside the variable's bound. One signature binding no class
+(`engine: type[Base]) -> Base`) leaves its declared return, whatever its argument. Overloads under
+`if TYPE_CHECKING:` are read, and a subclass takes a checked base's method, up to a class binding the
+name or a base that can't be followed.
 
 An installed package's functions whose arguments decide their type (overloads, or a return naming a
 type variable) are matched as the standard library's are: `np.empty(n, dtype=np.float64)` is an

@@ -250,7 +250,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   overloaded method's return imports type what's read of it in the same pass: with every kind, a
   second `--fix --unsafe-fixes` pass leaves nothing on the seven corpora, from 12 bindings (pandas
   9, the standard library 2, pydantic 1), and pandas gets 25 fixes more without widening, pydantic
-  none (`scratch/widen_pass.py`, 4 workers on 16CPU/60GB).
+  none (`scratch/second_pass.py --widen`, 4 workers on 16CPU/60GB).
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
@@ -484,6 +484,139 @@ What constricter does today and what was measured on the way, by scope. What's n
   forward references (`modules._alias_names_any`), and a module's generic aliases are among its
   `generics`, so neither a hint's edit nor a fix writes one bare: the mega run of 2026-10-29 at
   22:41 (`d160aa8`) has no `_InternalEntityType` error, from 3.
+- **The text overload** (`text`, a guess): a standard-library function overloaded on `str`
+  against `bytes` alone, with no argument's type known, takes its `str` signature's return
+  (`os.path.join(root, name)` a `str`, `os.listdir(path)` a `list[str]`;
+  `fix/libraries/overloads.py`). It reaches `os.path`'s 687 calls with no fix on the 47 corpora
+  and `os`'s 246, about 0.3%; kept where the witness finds `bytes` under one in a hundred.
+- **An assignment's `# type:` comment as its fix** (`comment`, certain): with `type-comments`
+  off, `x = v  # type: T` becomes `x: T = v`, and an unpacking's or a `with`'s names are declared
+  before it, where `T` names only builtins and what the module binds (`rules/binding.py`). The
+  census doesn't see comments; held to pip's modules without `__future__` imports keeping their
+  comments' types.
+- **`defaultdict` and `Counter` through `filled`** (a guess): a local `Counter()`, or a
+  `defaultdict` of `list`, `set`, `int`, `float` or `str`, typed by what its function adds at its
+  keys (`fix/values/fills.py`). It reaches the 230 `collections.defaultdict(...)` calls with no
+  fix, under 0.1%.
+- **Name consistency** (`named`, a guess): a parameter left unannotated with no default takes the
+  one type the checked files annotate its name with, at least three times (`AGREED`), read
+  through re-exports and never `Any` or `object` (`fix/index/consistent.py`). The names are
+  concentrated (`result` 9,213, `expected` 3,609, `df` 663, `parser` 580 in the 2026-10-02 rows);
+  kept if its sets pass [LIKELY.md](LIKELY.md)'s bars.
+- **A receiver by what's read of it** (`reads`, a guess): an unannotated parameter whose members
+  read, two or more and no dunder, are all one class's, the module's own at its top level (a base
+  where the classes under it have them too) or another checked file's, and not all of any builtin
+  type's or standard-library class's; never one the function probes (`isinstance`, `hasattr`,
+  `getattr`, `type`; `fix/values/reads.py`). 13,077 of the seven corpora's bindings with no fix
+  copy, read a member of or call a method of an unannotated parameter: up to 5%. Kept where the
+  witness agrees. Built on 2026-10-26: every class the file names is a candidate (another checked
+  file's with its members typed or not, from the index's `bound`; an installed package's; a
+  subclass's with its imported base's), and the standard library's where one class the tables
+  hold is what every other with those members is under (`datetime.date` for `year` and
+  `strftime`; not `pathlib.PurePath` for `stem` and `suffix`, which `zipfile.Path` has too),
+  through an import added. On django
+  (`scratch/signatures_measure.py django --modes unsafe --select LVA015`, one process on
+  16CPU/60GB): `--fix --unsafe-fixes` 5,428 from 5,408 with the tables' classes (+20 bindings),
+  and with `--extend-select LVA015` 537 parameters typed from 525 with the index's members (+12);
+  pydantic not measured. `reads.members` keeps every module's attributes since, and each file's
+  `Outside` the members of the classes it names: the check was last timed whole on 2026-10-27 ("A
+  parallel check, past its longest chain"). On the mega run of 2026-10-26
+  (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the signature codes in every fix step):
+  `reads` 725 guesses, 21 told, 95.2% held, 44 of 450 read blamed (9.78 in each 100); `named`
+  1,794, 6 told, 78 of 750 blamed (10.4): neither passes, both lose more than the index's members
+  gained. On the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the
+  signature codes out of the run files): `reads` 57 guesses, 26 told, 96.2% held, none of 19 read
+  blamed, so it passes the bars as a mechanism, but no set of it has 20 guesses (`LIKELY` takes
+  whole sets); `named` 2, none told.
+- **Instance attributes, LVA013**: an attribute a plain class's method first stores unannotated,
+  declared nowhere in the class (`rules/attributes.py`); opt-in as LVA012 is
+  (`--extend-select LVA013`, pylint's `C9113`), an error from `strict` and counted by
+  `--coverage` once selected. Its fix, a guess (`--likely` for a value of no guess of its own),
+  writes the `assigned` type a read already takes (`self.count: int = 0`), or `T | None` for one
+  stored `None` and else only a known `T`. 5,999 of the 47 corpora's bindings with no fix read a
+  `self.x`, 1,660 of them in annotated functions; the stores themselves are offences of their
+  own, outside the 252,637.
+- **Narrowed reads** (`tested`, certain): a name or attribute read where a test around it narrows
+  its union is what the test leaves (`if self.conn is None: return`, then `conn = self.conn` a
+  `Connection`; `isinstance`, truth tests, `not`, `and`, `or`), not past a store between the test
+  and the read (`narrowed.narrowed_to`). Of the 13,972 bindings with no fix that copy a name or
+  an attribute in a function, 424 follow a test of what they copy: `is None` (159), `isinstance`
+  (148) or its truth (117), about 0.2%; held to the packages' checkers bringing no new error.
+- **The project's own generic classes** (`method` and `attribute`, certain; no kind of its own):
+  a member of a checked file's generic class, its type parameters bound by the receiver's
+  arguments (`rows.first()` on a `Result[Row]` a `Row | None`; `class C[T]`, `Generic[...]`, a
+  subscripted base), through its generic bases and under a plain class given its arguments
+  (`class Rows(Result[Row])`; `declarations.generic_members`, `members._own_generic`); another
+  file's too, its bases not followed. sqlalchemy defines 101 generic classes (their subclasses
+  included), pandas 30, pydantic 11: 75 bindings with no fix are a member of a name annotated
+  with one, parameterised (74 of them sqlalchemy's), and 246 a member of `self` in one's own
+  method (sqlalchemy 136, the standard library 77, pandas 30), about 0.1%.
+- **The mechanisms above, counted.** Counted on the 0.4.3-rc.1 mega run (`tables/mechanisms.csv`, 47 corpora; held by
+  `scratch/guess_report.py --from` on 42 packages): `text` 785 guesses, 136 a test told of, 99.3%
+  held and none blamed for an error, so it passes; `comment` 31 certain; `tested` 66 certain;
+  `filled` 575 likely and 580 guesses (`defaultdict` and `Counter` not told apart from the older
+  fills); `named` 11 guesses, none told of; `reads` 10, 5 told of, 2 held. LVA013, in a run of its
+  own beside it (`tests/corpus/runs/mega-lva013.toml`: mega's corpora with
+  `--extend-select LVA013`, no hints, census, timing or traced tests; 36 minutes on 16CPU/60GB):
+  4,521 more `fix-likely` fixes and 5,093 more `fix-unsafe`, none certain; every suite's tests the
+  same but nibabel's randomised ones; 6 new type errors (0.12 for each hundred fixes), pandas's 5
+  from `self.index` stored after a test narrowed it (typed as the tests leave it since) and
+  sqlalchemy's `self._dict: util.PopulateDict`, a generic class written bare. Its `fix-unsafe` left
+  a second pass something on 22 corpora (mypy 228 lines): a guess one file declared reached the
+  other files' reads only on the next run, and is checked again in the same run since. A generic
+  class without its arguments is no LVA013 fix since, as it's none for a binding
+  (`attributes.unannotated`). Traced on 2026-10-23 (`tests/corpus/runs/mega-lva013.toml`: the
+  uncommitted tree past `15167da`, 51 minutes on 16CPU/60GB), held by
+  `scratch/guess_report.py --from` on 42 packages: `assigned`, LVA013's kind, 4,703 guesses, 867 a
+  test told of, 99.0% held and 2 blamed for an error (0.06 for each hundred), its set alone 3,147,
+  134 told, 98.5% held and 1 blamed, so it passes [LIKELY.md](LIKELY.md)'s bars; `reads` 13, 5
+  told, 2 held; `named` 6, none told. The two blamed: pydantic's
+  `self.from_type: TypeForm[_FromTypeT]`, the method's own type variable, unbound where the
+  attribute is declared; and werkzeug's `self.observer: Observer`, watchdog's `Observer` bound in
+  its platform branches, which a checker reads as a variable (a local's constructor guess writes it
+  too, `likely`). Its `fix-unsafe` left litestar 3 lines for a second pass, reads above the class
+  whose attribute the file declared, which the run now checks again. sphinx's `test_html5_rubric`
+  failed after `fix-likely`, both times, with a patch all but the earlier run's, which passed: it
+  shares `markup-rubric`'s source directory with the man, LaTeX and texinfo tests on a pytest-xdist
+  worker, and finds their pickled environment when one ran first there, so the directive's warning
+  it asserts never comes (the suite's own order, a `differs` entry's to name). The two blamed
+  fixes' causes are Small proposals of their own (an attribute typed with its method's type
+  variable; a constructor guess of a class bound in branches). `named` and `reads` stay for now,
+  though too few to read against the bars: on the 0.4.3-rc.5 mega run (`9892f71`) 49 and 45
+  fixes over every fix step, as on rc.1, rc.7 and rc.8. They need more data before they're kept
+  or dropped: more guesses a test tells of, from more corpora or a wider reach. On the mega run of 2026-10-29 (`f7d53b2`): `reads` 68 guesses, 37
+  told, 94.6% held, none of 30 read blamed; `named` 2.
+- **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
+  declared `def query_one(self, selector: str, kind: type[T]) -> T`, had no fix: a checked file's
+  function whose return names a type variable was never read, overloaded or not. An undecorated
+  function or method returning a name alone that a parameter's `type[...]` takes is read as its one
+  signature (`declared._class_typed`), and a return that is a type variable a parameter binds to a
+  class stays a template (`own_overloads._class_bound`), so the matcher writes the class as the call
+  does, as for an installed package's: `query_one("#x", Static)` is a `Static` (certain), and an
+  overload set with such a member, refused whole before, is matched (`query("#x")` a `Widget`). 98
+  such definitions on the mega corpora's sources (textual 18, cattrs 14, zarr 10, litestar 9). On
+  `mega-10-30-2026-0857` it has the fixes (`--unsafe-fixes` 2 more on each of mkdocs, tox and
+  werkzeug), with no error.
+- **`type[T]`, across files and bases**: a type variable another checked file defines binds the class
+  passed as the module's own does (`atoms.class_binds`, `Reader.names_variable`), textual's
+  `QueryType` under `TYPE_CHECKING` too; overloads under `if TYPE_CHECKING:` are read
+  (`declared._checker_sees`); and a method a subclass inherits from a checked base is matched, past a
+  class's keywords and decorators, up to a class binding the name or a base it can't follow
+  (`own_methods._line`). A function with one signature binding no class
+  (`get_backend(engine: str | type[BackendEntrypoint]) -> BackendEntrypoint`) is no overload
+  (`own_overloads.spelled`), so a guessed argument leaves its declared return: xarray's 6 fixes in
+  `backends/api.py`, `--likely` since the first `type[T]`, are certain again, its 9,598 otherwise the
+  same (`scratch/fix_diff.py`, one process on 16CPU/60GB).
+- **`self` in a generic class's own methods**: a member of `self` is written with the parameters the
+  method binds (`members.own_instance`), only where `self` is the method's own (`OWN_SELF`), not a
+  function's parameter of that name. `self.first()`, returning `T | None`, is a `T | None`, as a guess
+  as any `self`'s method is; one returning `Self` is left as it was. sqlalchemy 2,375 fixes from 2,336
+  with the `type[T]` changes, none lost, and basedpyright's errors 2,288 from 2,287.
+- **A file checked again for what it reads of a class a fix imported** (`rounds._imports_read`,
+  `crossed.reads_imported`): `f: TextIO`, from the tables, then `f.encoding`, on a tree that checks
+  `typing.py`, was typed only by a second pass, since a file takes none of a class's members until it
+  spells it. The standard library without its tests (`--level=suffocate --all-scopes`, one process on
+  16CPU/60GB): a second pass 0 lines from 1, 21.1s from 20.2s, once each.
 
 ## Command and output
 
@@ -526,7 +659,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   their sdists and their suites are `corpora.toml`'s. Every step starts constricter one way
   (`launch.run`), on one tree a corpus (`trees.Tree`): a suite's checkout at its pinned tag, with
   its settings and environment, where a corpus has one. No other script starts constricter on a
-  corpus: CI's Corpus and Profile jobs are run files, and so are a release's section of
+  corpus: CI's Corpus and Profile jobs are run files, and so are a release's file under
   [RUNS.md](RUNS.md) (`runs/release.toml`, with `--label` for a pseudo-version, `0.2.4-rc.N`).
 - **Its steps**: a check at every level, each fix on a copy (no crash, nothing broken, one pass),
   `--infer-with` each type checker's hints, coverage, the census of what has no fix, a timed and a
@@ -621,7 +754,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   28s to 41s, beside released runs of 111s and 32s; their whole tests took 586s and 219s, one after
   another, in the mega run before.
 - **`tests/corpus/runs/super.toml`** asks every step of the `super` corpora (the seven and every
-  fast one) and writes [RUNS.md](RUNS.md)'s `Super corpora` section from the run's folder, with the
+  fast one) and writes [its file](runs/super-corpora.md) from the run's folder, with the
   machine it ran on; **`mega.toml`** the same of every corpus, the seven and 40 more packages
   `corpora.toml` pins (38 with a suite read from their own CI): typed applications, `asyncio` code,
   pytest-heavy test trees, scientific packages on numpy's types, `TypedDict`s and overloads of their
@@ -919,6 +1052,149 @@ What constricter does today and what was measured on the way, by scope. What's n
   in the same line. A second pass's `left` counts its added lines alone (`corpus_table.added`), no
   `+++` header among them: the standard library's one line left 1, from 2. Both on the mega run of
   2026-10-29 at 22:41 (`d160aa8`).
+- **Signatures from the project's own inference.** `returned` decides a function's return where its
+  `return`s agree, `callers` an unannotated parameter every call passes one type and `fixture` a
+  test's, but each types only the locals bound to them: no edit writes `-> T` on the def or `: T`
+  on the parameter (`Edit` has `annotate`, `replace` and `declare`). `pyrefly infer` and
+  `dmypy suggest` were measured for signatures ([done](COMPLETED.md#corpus)), never constricter's
+  own certain returns written back, which turn every caller's `returned` guess in other files into
+  a certain fix and give ruff's ANN201 a fix it lacks. An edit kind for the signature: `-> T` where
+  the function's `return`s decide one type (a method's a guess: a subclass may return another),
+  `-> None` where none returns a value, a parameter's by `callers` and `fixture` as the guesses
+  they are; opt-in codes, as LVA012 is, since ruff's ANN reports the offences already. Done when
+  the corpora's own type checkers find no new error after the returns alone, and `--fix` on pandas
+  gains the callers' fixes the written returns make certain. Built in part, not yet run: LVA014
+  (opt-in), a plain function's or method's missing return type, its fix `-> T` before the header's
+  `:` (`Edit.SIGNATURE`, `rules/returning.py`) from `returned`'s types or `None`; the parameters
+  (`callers`, `fixture`) came after. On
+  pydantic (2026-10-24, `--fix --unsafe-fixes --extend-select LVA014`): 34 functions reported, 31
+  fixed (29 `-> None`, 2 `-> str`; 29 of them methods' guesses), the other 1,596 fixes the same,
+  `pyright pydantic` 0 errors as without, and its 12,311 tests passing. Built on 2026-10-26: LVA015
+  (opt-in), a parameter's `: T` from what typed it for the function's own check (`callers`,
+  `reads`, `fixture`, `named`; `rules/parameters.py`), a guess resting on that mechanism; LVA014's
+  fix a guess where the `return`s' values are guessed (`return Box()`), resting on their kinds,
+  which `--likely` and `unsafe-fix-select` weigh (before, a module function's was written certain:
+  `_lazy_re_compile`'s `-> SimpleLazyObject`, a `constructor`); and a signature written reaches the
+  other files in the same run (`rounds._reaching`: the file indexed again, its callers checked
+  again), so what a declared return makes certain needs no second pass. Measured on django
+  (`scratch/signatures_measure.py django --select LVA014,LVA015 --modes certain,likely,unsafe,signed`:
+  a copy fixed pass after pass until a pass fixes nothing, one process on 16CPU/60GB, 6 to 21s a
+  pass; `--coverage`'s first bindings, of 17,181):
+
+  | Mode                                                        | Plain | With the codes | Signatures written |
+  | ----------------------------------------------------------- | ----: | -------------: | -----------------: |
+  | `--fix`                                                     | 2,627 |          2,637 |                247 |
+  | `--fix --likely`                                            | 3,273 |          3,414 |                557 |
+  | `--fix --unsafe-fixes`                                      | 5,413 |          5,460 |        3,476 + 605 |
+  | `--fix --unsafe-fixes --select LVA014,LVA015`, then `--fix` |     — |          2,956 |        3,467 + 467 |
+
+  The last row is the workflow the codes are for: the signatures written first (every guess among
+  them, 3,467 returns and 467 parameters, in one pass of 21s), plain `--fix` then types 2,956, 329
+  more than without them (12.5% of its fixes), and a second pass finds nothing. `--likely` gains
+  141 since LVA014's guesses carry their `return`s' kinds (`constructor+returned`, a likely set).
+  Before the guess fix, `--fix` with LVA014 gave 2,737: 100 of them from a guessed return written
+  as certain. Left: under `--unsafe-fixes` 138 of the parameter fixes come only on a second pass (a
+  guess written on a caller's argument is a known type for `callers` on the next pass: the second
+  row's pass 2 to 4, 150 fixes), which a recheck after writing guesses would bring in
+  (`rounds._unsettled` does it with `--likely` alone). Read again on 2026-10-30 from that
+  measurement's own listings (`--show-fixes`, each pass's, the tree of 2026-10-26): of
+  the 135 LVA015 fixes its second `--unsafe-fixes` pass made, 128 are `named`, a name the first
+  pass's own parameter fixes brought to `AGREED` annotations, and 7 `callers`. A recheck would
+  have `named` count its own guesses as the project's annotations, so it isn't built, and 7
+  `callers` fixes are too few to build one for. And LVA015's reach is the seeds', 1 of
+  `--unsafe-fixes`' 5,408 binding fixes on django resting on one before the codes. The roadmap's 10
+  hours spent; coverage: `--fix` +12.5% on django after a signatures pass, the `--unsafe-fixes` row
+  under 1%. On the mega run of 2026-10-26 (`mega-10-26-2026-2120`, 98 minutes on 16CPU/60GB, the
+  signature codes in every fix step): bindings typed, of 474,291, `--fix` 161,191 from 161,134,
+  `--likely` 211,563 from 210,156, `--unsafe-fixes` 229,556 from 227,933; but the new type errors
+  54,366 from the 0.4.3-rc.8 mega run's 403 (`--fix` 1,145 from 1, pandas 1,002; 25,063 untraced to
+  a line with a fix, a signature written in another file), and the witness blames 893 certain fixes
+  of 49,840 checked (1.79 in each 100; 1 of 42,073 before): a return written on the def constrains
+  every caller and every override where a local's annotation constrained one binding, and mypy's
+  incomplete-def check fires on sqlalchemy where a return is written on a function whose parameters
+  stay bare. The signatures-first workflow stands for a project that reviews them; as a step of the
+  fix runs they fail the bars, so the run files select them no more (the same day). Built the same
+  day: a signature written whole or not at all (`rules/signatures.py`), a function's fixes held
+  back until every parameter but its receiver and its return are annotated or fixed, which was most
+  of the errors blamed on `reads` and `named` (mypy's incomplete-def check, overrides); what a
+  return alone exposes in a body mypy didn't check (pandas's tests, `check_untyped_defs = false`
+  there) no rule here avoids. Under it, django's signatures-first workflow writes 931 returns and
+  81 parameters (from 3,467 and 467), and `--fix` then types 2,749 bindings from 2,627 (+122, from
+  +329). Left: the codes' errors read on a run with them again, if they're to go back into one. On
+  the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the signature codes
+  out of the run files): bindings typed, of 474,291, `--fix` 161,111, `--likely` 210,548,
+  `--unsafe-fixes` 229,024 (rc.8's 161,134, 210,156 and 227,933); new type errors 5,927, 5,516
+  sqlalchemy's from `typing_extensions` read as an untyped package ([COMPLETED.md](COMPLETED.md)),
+  411 elsewhere (rc.8's 403). The witness there: `constructor` fails the bars only through the
+  cascade (183 of its 199 blamed errors sqlalchemy's); `method` 2 blamed of 1,047 (0.19 in each
+  100, the bar 0.1), nibabel's as on rc.8 and pandas's new since.
+
+- **Read on the mega runs of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes,
+  `mega-10-29-2026-1920` on `e793bc6`, 65 minutes, and `mega-10-29-2026-2241` on `d160aa8`, 76
+  minutes, all on 16CPU/60GB), against `mega-10-28-2026-0826` and each other by
+  `scratch/type_errors_diff.py` and `scratch/guess_report.py --from`:
+  - Bindings typed of 474,291 on `d160aa8`: `--fix` 164,036, `--likely` 217,161, `--unsafe-fixes`
+    241,719 (161,113, 211,064 and 228,999 on 2026-10-28's `6b0ab18`); `infer-trace` 146,385 of
+    292,568 (134,815). Bindings with no fix 232,959 from 245,708 on `f7d53b2`: pygments 2,313 from
+    6,695, xarray 11,247 from 14,326, the standard library 62,138 from 63,071, sqlalchemy 9,662 from
+    10,140, django 11,609 from 11,747, each item's own measure or within 30. The standard library's
+    hinted steps move between runs with nothing changed in them: `infer-pyrefly` 60,720 on `f7d53b2`
+    and `d160aa8`, 60,876 on `e793bc6`.
+  - New type errors 462 on `d160aa8`, 470 on `e793bc6`, 562 on `f7d53b2`, 428 on `6b0ab18`. Of
+    `f7d53b2`'s 134 more, mcp's 60 and strawberry-graphql's 19 were a defaulted generic written bare
+    by a `constructor` guess whose call passes the enclosing class's type variable, and pandas's 4
+    certain fixes in each step numpy's `view` taking its first overload, a parameter declared alike in
+    every overload read as taking anything; both mended on `e793bc6` (`doubts.binds_defaults`,
+    `signatures._placed`). On `d160aa8` sqlalchemy's `_InternalEntityType` errors are gone (3 to 0)
+    and nibabel's `documented` ones (5 to 0). Left, each on the roadmap: sqlalchemy's 12 `Enum` errors, optuna's 6
+    (one fix's, in six steps: a copy of a name each branch binds) and pint's 3 (`Quantity`
+    depending on itself).
+  - Against [LIKELY.md](LIKELY.md)'s bars on `d160aa8`: `text` (241 guesses, 135 told, 99.3% held,
+    none blamed) and `operand` (324, 192, 100%, none; its set `literal+operand` 127 with 64 told)
+    pass; `constructor` 15 of 26,457 read blamed (0.06 in each 100), `method`'s set alone 2 of
+    1,083 (0.18, the bar 0.1), as on 2026-10-27, when they were nibabel's `magic_number: bytes` and
+    pandas's `subarr: Index` in a method returning `Self` (`core/indexes/datetimes.py`): to read
+    before `method` is counted out; `reads` 68 guesses, 37 told, 94.6% held, short of
+    the held bar; `named` 2.
+  - One problem on each of `e793bc6` and `d160aa8`: the standard library's second pass, `trace.py`'s
+    `encoding`, 1 line left. nibabel's randomised quaternion tests, `f7d53b2`'s other problem,
+    are a `differs` entry since.
+  - basedpyright's servers aborted four times in dask's `infer-union` on `f7d53b2`, none on
+    `e793bc6`.
+- **Read on `mega-10-30-2026-0857`** (`a8de20a`, 70 minutes, 16CPU/60GB), against the 22:41 run by
+  `scratch/type_errors_diff.py` and `scratch/run_fixes_diff.py`: new type errors 461 from 462, none
+  gained (nibabel's `file_map`). `type[T]` and a `@classmethod`'s
+  receiver hold. New failures: sphinx's `test_html5_rubric` in 4 steps of 8 with its fixes
+  the same as the 22:41 run's, and nibabel's randomised `test_mult` and `test_euler_mat_2`, none blamed
+  on a fix; sqlalchemy's 4 `test_compare` and joblib's 1 are gone. Every corpus has records, so the run
+  leaves the planning of an unmeasured step ("A run with no earlier run, held to the solver's shortest")
+  ungated.
+- **A step no run measured, planned by its like corpora.** Replayed on 2026-10-30
+  (`scratch/schedule_sim.py --timing-beside --unmeasured`, 16 CPUs and 36 GB, each step's true seconds
+  and use), the runner's rules with nothing measured, the waiting steps taken as they came, against its
+  order on measured seconds (the longest chain first): the mega runs of 2026-10-29 at 22:41, 19:20 and
+  11:39 in 75.3, 68.6 and 89.1 minutes against 65.0, 56.5 and 73.7 (16% to 21% over), and 67.3, 57.7
+  and 75.2 with nothing kept waiting (`_PATIENCE` off): with no step's seconds known, a step kept
+  waiting holds back every other, none ending soon enough to go beside it. The replay holds each step
+  to what it used; the runner sizes an unmeasured one by its kind's defaults and then by what it's seen
+  to use (`Plan.fitted`). Since, a step no run measured on its corpus is planned for the median seconds
+  of the corpora that ran it in its corpus's set by size and time (`corpora.toml`'s `fast-small` to
+  `slow-large`), or else of every one that did (`planning.like`); one no corpus ran keeps the rules, as
+  does a run under a new `output`. Replayed with each of six large corpora new to the output (`--new
+CORPUS`, the order the longest chain first, the new corpus's steps after every ranked one or by its
+  group's seconds), on the same three runs: 1,187 minutes over the 18 replays against 1,213 unranked,
+  pandas on the 22:41 run 67.5 against 72.5, the standard library and mypy on the 11:39 run 73.4 and
+  74.0 against 78.7 and 79.6, the most lost 0.8 (the standard library on the 19:20 run).
+- **`method`'s two blamed guesses, read** (`scratch/guess_report.py --blamed method`, on
+  `mega-10-30-2026-0857`): nibabel's `magic_number: bytes` (`streamlines/tck.py`) is right, all 51 of
+  its values `bytes`, and mypy's `str-bytes-safe` is on the package's own f-string, which only a true
+  type shows. pandas's `subarr: Index` is the fix's: every one of its 650 values an `Index`, but a
+  `DatetimeIndex`, and `return subarr` is under `-> Self`. Without nibabel's, the set is at 0.09 in
+  each 100 against the bar's 0.1; `method` stays as it is until that's decided.
+- **Tests that fail with no fix to blame, named**: sphinx's `test_html5_rubric` and nibabel's
+  `test_euler.py` under their suites' `differs`. `test_euler_mat_2`'s cases aren't drawn at random:
+  three fail as released, in every run since 2026-10-26, and a fourth comes and goes
+  (`-4.71, -4.71, -1.57` on 2026-10-30, `-4.71, -6.28, -1.57` on 2026-10-28).
 
 ## CI, security and releases
 
@@ -981,6 +1257,17 @@ What constricter does today and what was measured on the way, by scope. What's n
   (`.github/actionlint.yaml` names the label, which actionlint 1.7.12 doesn't know); the ARM wheels
   stay on `ubuntu-24.04-arm`, there being no 26.04 ARM image. CI, Security, CodeQL and the 0.4.3
   release passed on it, harden-runner's allowlists unchanged.
+- **CI's tools and security workflows, the shared way**: every CI tool installs from
+  `.github/actions/setup-tool/tools.txt`; `codeql.yml` and `link-check.yml` run what `security.yml`'s
+  own jobs did; the Dependency audit runs `osv-scanner scan source --recursive .` after pip-audit, as
+  `tests/ci_local.py` does where it's on `PATH`. osv-scanner's first local pass found virtualenv
+  21.14.12 (GHSA-cx6f-vjhg-g3cc), which pip-audit had passed, so `uv.lock` moved to 21.14.13; the
+  shared `osv-scanner.toml` dropped its braces entry, withdrawn upstream. Every workflow is green on
+  pull request #70 and on `main` at `be2b279`. Each job's `allowed-endpoints` read against the hosts
+  harden-runner's log says it called (`scratch/egress_read.py`, on #70): `api.github.com` is gone from
+  the Dependency audit's, Secrets' and Docs', none of whose steps call it.
+  `release-assets.githubusercontent.com` stays, a cold tool cache's download, and
+  `api.securityscorecards.dev`, the Dependency review's when a dependency changes.
 
 ## Project
 
@@ -1078,3 +1365,21 @@ What constricter does today and what was measured on the way, by scope. What's n
   only `LICENSE.md`, so no file carries a header of its own; ruff's `missing-copyright-notice` is
   off, and `git grep` finds the identifier in `REUSE.toml` alone. The synced CI files lose theirs
   in their source, which the sync carries.
+- **`docs/RUNS.md` split**: it's the index now, with the test suites' prose; each run's record is a
+  file under `docs/runs/`, a version's (`0.4.3.md`) or a run's own (`mega-corpora.md`), which a run
+  file's `[publish]` writes and links (`corpus_table.written`).
+- **`COMPLETED.md`, `CHANGELOG.md` and `FIXES.md` read against each other** (`scratch/doc_overlap.py`):
+  each measurement told twice now lives here alone, the changelog keeping what a release changed;
+  docs/README.md says which doc holds what. What's left in common, 4,541 words of the three's 59,556
+  in runs of 8 or more, is rules in a release's words beside the reference's, which that split allows.
+- **`scratch/` tidied**: `README.md` is its rule alone, the docstrings the index; `widen_pass` went into
+  `second_pass --widen`, `widen_one` into `widen_suites --keep`, and `run_tick` into `watch_run`, which
+  takes an `HH:MM` mark and a cap and stops on a `Traceback` or a new `problem:` line. Read and kept
+  apart: `fix_diff` (two trees, live), `fixes_diff` (two saved listings), `run_fixes_diff` (two runs'
+  records), `second_round` (a check's timing, despite its name), `hinted_second_pass` (a checkout's
+  layout) and `widen_census`.
+- **`corpus-runs/` down to what's read**: HEAD tracks each release's folder and the latest mega and
+  super, 41.5 MB in 7 files from 434 MB in 41; `scratch/retire_runs.py` takes out what a new run
+  replaces, and the older folders stay on disk and in git's history. Later runs read every folder on
+  disk (`suite_steps.earlier`, the released tests' samples), so a fresh clone has fewer samples of a
+  suite's flaky tests than a machine that kept them, until its own runs add some.

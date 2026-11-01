@@ -12,7 +12,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import added_dotted
-from constricter.fix.core.known import ImportPlan, Inference, Known
+from constricter.fix.core.known import OWN_SELF, ImportPlan, Inference, Known
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.libraries import generics, overloads, stdlib
 from constricter.fix.libraries.library import library_awaited
@@ -36,6 +36,7 @@ _INT: Final = "int"
 _STR: Final = "str"
 _SUBSCRIPT: Final = "subscript"  # the fix kind of a subscript
 _OPTIONAL: Final = "Optional"
+_SELF: Final = "self"
 _SELF_TYPE: Final = "Self"  # a generic class's method returning its receiver (see `GenericClass`)
 _DEEPEST: Final = 8  # how many generic bases up a member is looked for
 # One way to type a member: given the receiver's type as text, the member's name, and the call
@@ -389,6 +390,36 @@ def _own_generic(receiver: str, name: str, call: ast.Call | None, known: Known) 
 
     """
     return _generic_member(receiver, _Asked(name, call, receiver), known) if known.generic else None
+
+
+def own_instance(
+    value: ast.expr,
+    receiver: str,
+    name: str,
+    known: Known,
+    declared: Mapping[str, str],
+) -> Inference | None:
+    """Type `value`, a member of `self` in a generic class's own method, its parameters as they stand.
+
+    `self` is the class bare (see `_own_generic`), but the method binds the class's parameters:
+    `self.first()` whose `first` returns `T | None` is a `T | None`. `declared`: its scope's types.
+
+    Returns:
+      Its inference, or `None`: for any other receiver, too.
+
+    """
+    klass: GenericClass | None = known.generic.get(receiver)
+    call: ast.Call | None = value if isinstance(value, ast.Call) else None
+    taken: ast.expr = value if call is None else call.func
+    if (
+        klass is None
+        or declared.get(OWN_SELF) != receiver
+        or not isinstance(taken, ast.Attribute)
+        or not isinstance(taken.value, ast.Name)
+        or taken.value.id != _SELF
+    ):
+        return None
+    return _generic_member(f"{receiver}[{', '.join(klass.params)}]", _Asked(name, call, receiver), known)
 
 
 class _Asked(NamedTuple):

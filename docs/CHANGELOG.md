@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A class passed for a `type[T]` types the call through more of a project's own code: a type variable
+  another checked file defines, overloads under `if TYPE_CHECKING:`, and a method a subclass inherits
+  from a checked base (textual: 17 more fixes). A function taking `type[Base]` of a concrete class
+  keeps its declared return whatever its argument is (xarray: 6 fixes certain again).
+- A member of `self` in a generic class's own method is typed with the class's parameters, which the
+  method binds: `self.first()` whose `first` returns `T | None` is a `T | None` (sqlalchemy: 39 more
+  fixes).
+- `--fix` checks a file again where a fix imported a checked file's class it reads the members of, so
+  a second pass is left nothing of them (`f: TextIO`, then `f.encoding`, on a tree that checks
+  `typing.py`).
 - A test case's private attributes, which the standard-library tables hold since they keep
   single-underscore members (`_testMethodName`), no longer type a subclass's variable of the name:
   only `maxDiff`, `longMessage` and `failureException` do, as before.
@@ -127,7 +137,7 @@ Notable changes, newest first. Each release's full notes are generated from its 
   its harness carries a case's requirement onto the later cases of the same test function, so
   its skip count changed with xdist's order.
 - `--infer-with basedpyright` caps each server's Node heap at nine tenths of its share of
-  `--infer-memory` (`--max-old-space-size`; Node's own cap was 4.2 GB whatever the share): near it
+  `--infer-memory` (`--max-old-space-size`): near it
   basedpyright empties its caches, and a server that exits past it is restarted and asked about its
   files one at a time, as a hung one is.
 - `--infer-with` no longer stops with a `KeyError` on a file a checker hung on in an earlier run
@@ -275,7 +285,7 @@ DatetimeIndex): raise` is a `DatetimeIndex`, not the parameter's `DatetimeIndex 
 - `--fix --unsafe-fixes` guesses a call to a standard-library function overloaded on `str` against
   `bytes` alone whose arguments' types are unknown: the `str` signature's type (`text`), as
   `os.path.join(root, name)`'s `str`, `os.listdir(path)`'s `list[str]`. Before, the signatures'
-  disagreement left it with no fix: `os.path` has 688 such calls on the 47 corpora, `os` 246.
+  disagreement left it with no fix.
 - `--fix --unsafe-fixes` types what's read of an unannotated parameter whose members the function
   reads, two or more, are all one class's: one the module defines at its top level (a base, where
   classes inheriting from it have them too) or imports from another checked file, and not all of
@@ -400,8 +410,7 @@ DatetimeIndex): raise` is a `DatetimeIndex`, not the parameter's `DatetimeIndex 
   they are to every checker.
 - The corpus runner runs fewer of a suite's tests for the same answer. A part after a fix whose
   patch another fix's part already ran is that part's (`implied`, `patch: same`), and so is one
-  whose patch a clean run's holds (`within`): `infer-trace`'s patch was `fix-unsafe`'s on 22 of the
-  0.3.9-rc.1 mega run's 42 suites. The tests run first after every source's fixes at once
+  whose patch a clean run's holds (`within`). The tests run first after every source's fixes at once
   (`infer-union`, a fix step with every checker's hints and the trace's), and where that run is the
   released tests' it stands for each fix's (`patch: union`): none of the 0.4.0-rc.1 mega run's 42
   suites had a fix break a test, and the per-fix runs were 812 CPU-minutes of it
@@ -507,7 +516,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   the members of a class an overloaded method's return imports type what's read of it in the same
   pass (`df.explode()` after `df = pd.DataFrame(...).set_index("C")`). With every `fix-widen` kind,
   a second `--fix --unsafe-fixes` pass leaves nothing on the seven corpora, where it typed 12
-  bindings; pandas gets 25 fixes more without widening.
+  bindings.
 - A wheel compiled with mypyc for each platform and CPython 3.11 to 3.14, which pip picks where it
   can: the same findings and fixes, a check of pydantic about a fifth faster in one process. The
   pure wheel stays, for PyPy, free-threaded builds and anywhere else.
@@ -520,8 +529,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   `corpora.toml`), not the running Python's own: any Python 3.14 runs the corpora, a prebuilt one
   too, where a prebuilt one checked 662 of the 1,867 files (it has no `test` package).
 - `--jobs` workers are told the index through a file each maps, written once: a pool pickled it
-  again down each worker's pipe, every copy held at once. Telling 16 workers the standard library's
-  takes 0.28s, from 0.33s, and nothing more is held as it's told.
+  again down each worker's pipe, every copy held at once.
 - `--fix --likely` checks again, in the same run, what another file's guess made certain: the files
   a round changed are indexed again, and each other file is checked again where what it knows from
   outside changed (and only there: by the `Outside` its last check had). A second pass fixed 2 lines
@@ -795,9 +803,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   and `vague` (a known type vaguer than `vague` allows, written anyway). Every statement a widening
   writes ends with `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart
   (`3/4 typed (75.0%), 1 widened`, and `widened` in its JSON), and once its value's type is known
-  it's reported as LVA005 with that type as its fix, which drops the mark. On SQLAlchemy all five
-  annotate 662 bindings (4.5%); basedpyright finds no error in a file under a rule it hadn't one
-  for, and 22 fewer, which the `Any`s hide.
+  it's reported as LVA005 with that type as its fix, which drops the mark.
 - With `--infer-with`, `ty` and pyrefly get up to four servers, as basedpyright does: a hinted check
   of pandas takes 21s with `ty` (from 36s with one) and 18s with pyrefly (from 69s). Each checker's
   servers are counted by its own memory, where all were by basedpyright's.
@@ -1203,9 +1209,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
 - Together, on pydantic: 179 more certain fixes (878 to 1,057) and 196 more guesses (255 to 451),
   375 fewer bindings with no fix (2,042 to 1,667); no new basedpyright error after `--fix` or
   `--fix --unsafe-fixes`, nothing broken, and one pass converges.
-- A check of many files is faster: the standard library with its tests (1,867 files) in 108s with
-  `--jobs=1` (from 185s) and 35s with `--jobs=0` on 8 cores (from 62s), pydantic in 4.2s (from
-  6.0s). What a file passes other files' functions is read from the module's one shared walk, only
+- A check of many files is faster: pydantic in 4.2s (from 6.0s). What a file passes other files' functions is read from the module's one shared walk, only
   the functions that name one walked; a function is walked for a `yield`, a rebound `self` or a
   shadowed import only where the module has one in it; a caller is checked again only where what it
   imports now returns something else; a function's declared return is read once for every class
@@ -1252,7 +1256,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   `proxy["k"]` on a `MappingProxyType[str, int]` is an `int`, `queue[0]` on a `deque[str]` a `str`,
   `parser["section"]` a `configparser.SectionProxy`. Nothing changes on pydantic.
 - A build from a checkout (the Action, a pre-commit hook's install, an editable install) generates
-  the standard-library tables in about 12s on 4 cores, from 70s: each of the twelve configurations
+  the standard-library tables faster: each of the twelve configurations
   is read in a worker process (in the one process where none can start), and what's asked again and
   again is worked out once. The tables are the same.
 - `--fix --unsafe-fixes` annotates a plain class's variables (`limit = 3` in its body becomes
@@ -1339,8 +1343,8 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   comment is no longer typed by its `return`s. On the standard library, django, sqlalchemy,
   pydantic, pandas and pip, inherited methods add 103 certain fixes and 299 guesses, generators and
   iterables 178 and 122, and 506 guesses become certain; basedpyright finds 5 new errors after them
-  (4 on pandas, 1 on sqlalchemy). Joining two `return` types into a union was measured and left out:
-  275 more fixes, and 38 new basedpyright errors.
+  (4 on pandas, 1 on sqlalchemy). Joining two `return` types into a union was measured and left out
+  ([COMPLETED.md](COMPLETED.md#corpus)).
 - `--fix` declares a `with` statement's target by what its context manager's `__enter__` returns: a
   standard-library manager by the tables (`with zipfile.ZipFile(p) as z:` is a `zipfile.ZipFile`,
   `with tempfile.TemporaryDirectory() as d:` a `str`), a class's declared `__enter__`, and a

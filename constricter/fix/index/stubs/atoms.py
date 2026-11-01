@@ -346,8 +346,10 @@ def scalar_binds(atoms: Sequence[Atom], scalar: str, owner: str) -> tuple[str, s
     return taking[0].name, STR if scalar == LITERAL_STRING else scalar
 
 
-def class_binds(atoms: Sequence[Atom], owner: str) -> str | None:
+def class_binds(atoms: Sequence[Atom], owner: str | None) -> str | None:
     """Find the type variable a class argument binds: a `type[T]`, all else refusing a class.
+
+    `owner`: the module whose it must be; `None` for any (a checked file's, whose imports bind them too).
 
     Returns:
       Its name, or `None`.
@@ -358,7 +360,9 @@ def class_binds(atoms: Sequence[Atom], owner: str) -> str | None:
         return None
     inner: tuple[Atom, ...] = types[0].inner
     variable: Atom | None = inner[0] if len(inner) == 1 and inner[0].kind == VAR else None
-    return None if variable is None or variable.constrained or not owned(variable, owner) else variable.name
+    if variable is None or variable.constrained or (owner is not None and not owned(variable, owner)):
+        return None
+    return variable.name
 
 
 def class_bounded(atoms: Sequence[Atom]) -> bool:

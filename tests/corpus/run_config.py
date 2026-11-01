@@ -43,9 +43,9 @@
     every-level = false              # true: a check at each level, not one the levels are read from
 
     [publish]
-    runs-md = "docs/RUNS.md"         # and a section a version there, of the per-version tables
-    replace = false                  # over a section that's already there
-    section = "Super corpora"        # or one section of that heading: every table of the run's last version
+    runs-md = "docs/RUNS.md"         # the index: a file a version beside it, of the per-version tables
+    replace = false                  # over a file that's already there
+    section = "Super corpora"        # or one file of that title: every table of the run's last version
 
     [stages]                         # what `--stage NAME` runs: its steps, by name or `fnmatch` pattern
     fixes = ["check", "fix-*", "infer-*", "census", "coverage"]   # with none, `stages.BUILT_IN`'s
@@ -153,9 +153,9 @@ class Steps(NamedTuple):
 class Publish(NamedTuple):
     """Where a run's tables go beside its folder."""
 
-    runs_md: Path | None = None  # docs/RUNS.md: a section a version, of the tables `corpus_table` lays out
-    replace: bool = False  # over a section that's there
-    section: str = ""  # its heading, for one section of the whole run in place of a version's
+    runs_md: Path | None = None  # docs/RUNS.md, the index: a file a version, as `corpus_table` lays out
+    replace: bool = False  # over a file that's there
+    section: str = ""  # its title, for one file of the whole run in place of a version's
 
 
 class Run(NamedTuple):

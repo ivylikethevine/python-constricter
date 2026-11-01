@@ -7,7 +7,8 @@ only where every name in a type means the same in the file as where it was writt
 `spelling.portable`).
 """
 
-from collections.abc import Iterator, Mapping
+import ast
+from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias
 
@@ -229,6 +230,35 @@ def _take(catalog: Index, target: Module, named: _Named, taken: _Taken, guarded:
             _used(catalog.modules, (target, defined), key, table.get(defined[1]), guarded)
             for table in (defined[0].classes, defined[0].methods, defined[0].partial_methods)
         )
+
+
+def reads_imported(catalog: Index, path: Path, statements: Iterable[str]) -> bool:
+    """Check whether a file reads a member of a checked file's class that `statements` import into it.
+
+    It took none of the class's members while it didn't spell the class (see `_take`).
+
+    Returns:
+      Whether it does; not for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if (target := module_at(catalog, path)) is None:
+        return False
+    statement: str
+    for statement in statements:
+        node: ast.stmt = ast.parse(statement).body[0]
+        names: list[ast.alias] = node.names if isinstance(node, ast.ImportFrom) else []
+        module: str = node.module or "" if isinstance(node, ast.ImportFrom) else ""
+        alias: ast.alias
+        for alias in names:
+            defined: tuple[Module, str] | None = definition(catalog.modules, (module, alias.name), CLASS)
+            if (
+                defined is not None
+                and not defined[0].installed
+                and not _declared_members(catalog, defined).isdisjoint(target.attributes)
+            ):
+                return True
+    return False
 
 
 def _written(spelled: str, attributes: frozenset[str]) -> bool:
