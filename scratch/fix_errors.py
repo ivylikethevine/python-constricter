@@ -111,20 +111,31 @@ def main() -> int:
         label: Counter((path, rule, message) for path, rule, message, _ in errors)
         for label, errors in found.items()
     }
+    for label in (args.ref, "tree"):
+        brought = keyed[label] - keyed["plain"]
+        print(
+            f"{label} brings {sum(brought.values())} errors the plain copy lacks:",
+            dict(
+                Counter(rule for (_, rule, _), count in brought.items() for _ in range(count)).most_common(8)
+            ),
+        )
     new = keyed["tree"] - keyed[args.ref]
     gone = keyed[args.ref] - keyed["tree"]
     print(f"new with the tree: {sum(new.values())}, gone: {sum(gone.values())}")
-    print(
-        " by rule:",
-        dict(Counter(rule for (_, rule, _), count in new.items() for _ in range(count)).most_common(10)),
-    )
-    lines = {(path, rule, message): line for path, rule, message, line in found["tree"]}
-    tree = OUT / "tree"
-    for key in list(new)[: args.top]:
-        path, rule, message = key
-        line = lines[key]
-        text = (tree / path).read_text(encoding="utf-8").splitlines()[line - 1].strip()
-        print(f"+ {path}:{line} [{rule}] {message[:200]}\n      {text[:160]}")
+    for sign, label, changed in (("+", "tree", new), ("-", args.ref, gone)):
+        print(
+            f"{sign} by rule:",
+            dict(
+                Counter(rule for (_, rule, _), count in changed.items() for _ in range(count)).most_common(10)
+            ),
+        )
+        lines = {(path, rule, message): line for path, rule, message, line in found[label]}
+        copy = OUT / label.replace("/", "-")
+        for key in list(changed)[: args.top]:
+            path, rule, message = key
+            line = lines[key]
+            text = (copy / path).read_text(encoding="utf-8").splitlines()[line - 1].strip()
+            print(f"{sign} {path}:{line} [{rule}] {message[:200]}\n      {text[:160]}")
     return 0
 
 

@@ -159,10 +159,12 @@ def _joined(
     typed: dict[str, Mapping[str, str]] = {}
     bare: dict[str, frozenset[str]] = {}
     defined: dict[str, frozenset[str]] = {}
+    every: set[str] = set()
     module: Module
     for module in catalog.modules.values():
         name: str
         for name in module.plain:
+            every.add(f"{module.name}.{name}")
             if name in module.members:
                 typed[f"{module.name}.{name}"] = module.members[name]
             if name in module.nulls:
@@ -170,7 +172,7 @@ def _joined(
         defined.update({f"{module.name}.{name}": names for name, names in module.defined.items()})
     kept: dict[str, dict[str, str]]
     nones: dict[str, frozenset[str]]
-    kept, nones = classvars.unshadowed(typed, bare, (defined, found), seen[1])
+    kept, nones = classvars.unshadowed(typed, bare, (defined, found), frozenset(every))
     joined: dict[str, dict[str, str]] = classvars.joined(kept, nones, found, seen[0], seen[1])
     return _written(catalog, joined, typed)
 

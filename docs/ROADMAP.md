@@ -20,23 +20,28 @@ measure before building.
 ### Built, waiting on a run
 
 The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
-[COMPLETED.md](COMPLETED.md#corpus)).
+[COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora on the current tree,
+`basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on
+16CPU/60GB, from 0.3.8's 58; the mega run's 70 buys the other 40 corpora for 35 minutes more.
 
 1. **What the tree changes since the latest read.** `type[T]` through a type variable another checked
    file defines, overloads under `if TYPE_CHECKING:`, a method a subclass inherits from a checked base,
    a concrete class's `type[Base]` left to its declared return, a member of `self` in a generic class's
    own method written with its parameters, and a file checked again where a fix imported a class it
    reads the members of ([COMPLETED.md](COMPLETED.md#--fix)); `differs` entries for sphinx's
-   `test_html5_rubric` and nibabel's `test_euler.py`; `api.github.com` out of the Dependency audit's,
-   Secrets' and Docs' allowed endpoints, read from one run with a warm tool cache, for the next pull
-   request's CI to prove. On textual (`scratch/fix_diff.py`, one process on 16CPU/60GB) 3,254 fixes
-   from 3,237, none lost, and basedpyright's errors after `--fix --unsafe-fixes` the same 412
-   (`scratch/fix_errors.py`); on xarray the 6 certain again; on sqlalchemy 2,375 from 2,336, none lost,
+   `test_html5_rubric` and nibabel's `test_euler.py`. On textual (`scratch/fix_diff.py`, one process
+   on 16CPU/60GB) 3,254 fixes from 3,237, none lost, and basedpyright's errors after
+   `--fix --unsafe-fixes` the same 412 (`scratch/fix_errors.py`); on xarray the 6 certain again; on
+   sqlalchemy 2,375 from 2,336, none lost,
    and 1 new error of 2,288 (`manager`, a `ClassManager[_O]`, then `manager.original_init(...)`, which
    the class declares `Optional`); on the standard library without its tests, a second pass 0 lines
-   from 1, 21.1s from 20.2s (`scratch/rounds_cost.py`); on pydantic no change. Done when a mega run has
-   the fixes, no new error from them and neither test among its new failures, and that CI is green.
-   About an hour beside the run; coverage under 0.1%.
+   from 1, 21.1s from 20.2s (`scratch/rounds_cost.py`); on pydantic no change. On the seven,
+   `basic-11-03-2026-2103` has them: sqlalchemy's certain fixes 2,144 from `mega-10-30-2026-0857`'s
+   2,117, with `--unsafe-fixes` 3,308 from 3,269; its one new type error on every fix step is
+   `manager`'s, and the other three corpora with a type check have the mega run's errors exactly;
+   none of django's, sqlalchemy's, pydantic's or pandas's tests fails anew after any step. Done when a
+   mega run has the fixes, no new error from them and neither test among its new failures. About an
+   hour beside the run; coverage under 0.1%.
 2. **`named` and `reads`, kept or dropped.** Two guesses built ([COMPLETED.md](COMPLETED.md#--fix)) and
    kept for now, too few to read against [LIKELY.md](LIKELY.md)'s bars: on `mega-10-30-2026-0857`, as on
    `f7d53b2`, `reads` 68 guesses, 37 told, 94.6% held (the bar 95%), none of 30 read blamed, and no set of
@@ -45,29 +50,21 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    corpora or a wider reach. 13,077 of the seven corpora's bindings with no fix copy, read a member of or
    call a method of an unannotated parameter. Done when both are decided. About 1 hour; coverage up to
    6%, likely far less.
-3. **Signatures from the project's own inference.** Built ([COMPLETED.md](COMPLETED.md#corpus)):
-   LVA014, a function's `-> T`, and LVA015, a parameter's `: T`, opt-in, each written whole or not at all
-   (`rules/signatures.py`). As a step of the fix runs they failed the bars on `mega-10-26-2026-2120`
-   (893 certain fixes blamed of 49,840; new type errors 54,366 from 403), so the run files select them
-   no more; the signatures-first workflow stands for a project that reviews them. A recheck after writing
-   guesses isn't built: `named` would count its own guesses as the project's annotations, and 7 `callers`
-   fixes are too few to build one for. Left: the codes' errors read on a run with them again, if they're
-   to go back into one. Done when the corpora's own type checkers find no new error after the returns
-   alone, and `--fix` on pandas gains the callers' fixes the written returns make certain. About an hour
-   beside the run; coverage on django, `--fix` after a signatures pass 2,749 bindings from 2,627 (+4.6%).
-4. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
+3. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
-   naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain unannotated function's calls where its `return`s
-   decide nothing and none gives a value the type doesn't take (`fix/values/documented.py`). A
+   naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
+   unannotated function's calls where its `return`s decide nothing and none gives a value the type
+   doesn't take (`fix/values/documented.py`). A
    method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
    out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
    32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
    vouches gives its function back. nibabel (`scratch/fix_diff.py`, one process on 16CPU/60GB):
    2,427 to 2,448 fixes, 14 of them `documented`; networkx 1. basedpyright's errors after
    `--fix --unsafe-fixes` on nibabel, with every item then built: 33 new and 24 gone, five of the new
-   from `documented` guesses naming `int` or `float` where numpy's own scalars come back (`_fread3`, `mask_volume`): `np.int64` is no `int` to a checker, which
-   the witness tells of too. On the mega run of 2026-10-29 (`f7d53b2`) it missed every
-   bar (27 guesses, 16 told, 62.5% held, 1 of 25 read blamed), its misses numpy's `int32` and
+   from `documented` guesses naming `int` or `float` where numpy's own scalars come back (`_fread3`,
+   `mask_volume`): `np.int64` is no `int` to a checker, which the witness tells of too. On the mega
+   run of 2026-10-29 (`f7d53b2`) it missed every bar (27 guesses, 16 told, 62.5% held, 1 of 25 read
+   blamed), its misses numpy's `int32` and
    `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
    On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
    function ending `return None`, which the check records as of no known type; a `return None` or a
@@ -77,7 +74,7 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    ("numpydoc Returns sections", under Measurement) or the item decided on what's there. Done when a
    mega run reads it against the bars on 20 told, or it's decided. About an hour beside the run;
    coverage under 0.1%.
-5. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+4. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
    regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
    needing a stage still to run left for it; the report is written from the records so far, naming
@@ -91,7 +88,7 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-6. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+5. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
@@ -117,8 +114,9 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    fixes). basedpyright's hint `MappingProxyType[str, Enum]` means `enum.Enum`; written in
    sqlalchemy's `sqltypes.py`, which defines `class Enum(..., TypeEngine[...])`, it names that
    class, since the subscripted bases made the class plain (it was a generic written bare before,
-   refused): 8 new type errors over the `infer-*` steps on `f7d53b2`, 12 on `e793bc6` and
-   `d160aa8` (`_members: MappingProxyType[str, Enum]`, `objects: list[Enum]`). Built, and not
+   refused): 8 new type errors over the `infer-*` steps on `f7d53b2`, 12 on `e793bc6`, `d160aa8`,
+   `a8de20a` and `basic-11-03-2026-2103` (`_members: MappingProxyType[str, Enum]`,
+   `objects: list[Enum]`). Built, and not
    enough: a hint whose edit writes a name the file binds, where a module it imports whole has a
    class of that name too, is no fix (`offers._ambiguous`); but `_ambiguous` judges a hint's edits
    alone, and `hinted.hinted` takes the checker's shown type first, whatever the edits say.
@@ -132,7 +130,18 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    `_render_label_in_columns_clause: bool` under a subclass's `@memoized_attribute` of the name is
    still written (sqlalchemy's `reportIncompatibleVariableOverride` 110 after HEAD's
    `--fix --unsafe-fixes`, 103 before it). Applying the exclusion to every plain class withdraws
-   those. Measure first: the fixes withdrawn and the errors gone on sqlalchemy and django. About an hour.
+   those. Built on 2026-11-04, in the tree and waiting on a decision: `classvars.unshadowed` takes
+   every plain class (`classvars.variables`, `plain._joined`), `joined` as before. Measured
+   (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`, one process on 16CPU/60GB):
+   sqlalchemy 11 `member` guesses withdrawn of 3,147, django 62 of 5,567, none added; the errors
+   basedpyright finds after `--fix --unsafe-fixes` that the plain tree lacks, sqlalchemy 59 from 64
+   (`reportIncompatibleVariableOverride` 2 from 7), django 96 from 168 (5 from 76). Of the errors
+   that come back with the fixes withdrawn, 9 on sqlalchemy and 23 on django are the plain tree's own
+   (`Literal[True]` assigned where a base declares a `cached_property`), which the annotation had
+   turned into override errors. On the 47 corpora (`mega-fixes-11-04-2026-0756`, the fix steps and
+   type checks alone, 10 minutes on 16CPU/60GB, read against `mega-10-30-2026-0857`'s records): 75
+   `member` guesses withdrawn (django 57, sqlalchemy 9, dask 3, pandas 2, pip 2, celery 1, optuna 1),
+   and the corpora's own type checks unchanged by it. About an hour; coverage down by those fixes.
 4. **An attribute typed with its method's type variable** (a proposal: it withdraws fixes). LVA013
    writes an attribute's type where a method first stores it, and a type variable that method's
    signature declares is unbound for the attribute, which the class holds: pydantic's
@@ -144,8 +153,21 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    watchdog's `Observer` is bound in its platform branches, which a checker reads as a variable, so
    werkzeug's `self.observer: Observer` (LVA013's) is an error, blamed on the traced LVA013 run of
    2026-10-23; a local's constructor guess writes it too (`likely`). Proposed: a constructor guess
-   of a name its installed module binds in branches is no fix. Measure first: the guesses it
-   withdraws on the mega corpora, and the errors gone. About an hour.
+   of a name its installed module binds in branches is no fix. Built on 2026-11-04, in the tree and
+   waiting on a decision: watchdog 6.0.0 binds `Observer = _get_observer_cls()`, a call's result, so
+   the rule takes a top-level name an installed module binds to a call or in more than one arm of an
+   `if` or a `try` (`Module.variables`), imported at the file's top level or inside a function
+   (`Module.inner`, which the installed index now reads for), as `linked.values` takes a checked
+   module's assigned names: no constructor guess. On werkzeug in its own environment
+   (`scratch/fix_diff.py --python`, one process on 16CPU/60GB) it withdraws `self.observer: Observer`
+   alone with LVA013 selected, and nothing without it. On the 47 corpora
+   (`mega-fixes-11-04-2026-0756`, `tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks
+   alone, 10 minutes on 16CPU/60GB, read against `mega-10-30-2026-0857`'s records) it withdrew two
+   `likely` guesses: pdm's `backend: DEFAULT_BACKEND`, a variable of pdm's own `models.backends`
+   imported inside the function, which `inner` reads since; and dask's `shuffle_id: ShuffleId`,
+   distributed's `NewType`, a type, so a call that makes one (`NewType`, `namedtuple`, `Enum`;
+   `_MAKERS`) leaves its name a class since. One guess on the 47, and no type check changed. About
+   an hour beside the run.
 6. **`reuse lint` back on.** It's off because no release shipped a wheel for Python 3.11+
    ([disabled rules](CONTRIBUTING.md#disabled-rules)); 6.3.0 of 2026-10-30 ships `py3-none-any`. Add it
    to the lint group, `uv lock`, and a step in the Lint job. Not before 2026-11-06, the seven-day cutoff
@@ -175,8 +197,13 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
    or the one every value fits as `rebound` takes it) would type them as a checker does, and
    withdraw or change the fixes that rest on the last branch alone. The mega runs of 2026-10-29
    have one such fix, an error in each of six steps: optuna's `params: dict[str, int | float]`,
-   filled from `param`, a `str` in its other branch. Measure first: how many `copy` guesses rest
-   on such a read, and what the witness says of them. About 2 hours.
+   filled from `param`, a `str` in its other branch. Measured on 2026-11-04
+   (`scratch/branch_copies.py` on `mega-10-30-2026-0857`): of 10,058 `copy` guesses on the 47
+   corpora, 9 copy a name a statement before them binds in two or more of its arms (3 of them
+   `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
+   `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
+   branches, not a copy. Too few to build a join for; left as it is unless a run shows more. About 2
+   hours.
 10. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
     basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
     share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
@@ -324,7 +351,8 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
      to, as LVA009 checks a value against its annotation.
    - `index: Index`, then `index.table`, a `Table | None` that `_verify_index_table` raises on,
      passed where a `FromClause` is declared: typing the local exposes what a body checked against
-     `Any` let by, which no rule here avoids, as for a written return ("Signatures from the project's own inference").
+     `Any` let by, which no rule here avoids, as for a written return (the signature codes,
+     [COMPLETED.md](COMPLETED.md#corpus)).
 2. **A method's `return` of an untyped value.** Of the 11,959 `self.method()` bindings with no fix,
    5,617 call a method the class doesn't define itself, and 5,436 one whose `return` gives a value
    `--fix` can't type: a tuple (1,858), a call (1,455), a local or another name (1,396), a subscript

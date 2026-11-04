@@ -1,0 +1,28 @@
+# The `original` corpora as `basic.toml` measures them, with the signature codes selected in every
+# fix step (LVA014, a function's `-> T`; LVA015, a parameter's `: T`, each written whole or not at
+# all): their offences, their fixes, and each suite's tests, type checks and traced tests after
+# them, against the basic run at the same commit. No hints, census or timing. Not published: the
+# codes change every table's rows.
+
+[run]
+label = "basic-signatures"
+versions = ["dev"]
+jobs = 4
+at-once = 7
+options = ["--extend-select", "LVA014,LVA015"]
+
+[corpora]
+include = ["original"]
+
+[steps]
+check = true
+fix = ["certain", "likely", "unsafe"]
+infer-with = []
+census = false
+coverage = true
+timing = 0
+profile = false
+tests = true
+types = true
+traced = true
+tests-released = false

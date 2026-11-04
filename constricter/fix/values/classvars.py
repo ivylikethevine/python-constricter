@@ -426,7 +426,7 @@ def variables(
             {name: typed[name] for name in own if name in typed},
             {name: each for name, each in bare.items() if name in own},
             (defined(tree), single),
-            reached,
+            own,
         )
         typed = joined(kept, nones, single, annotated(tree), reached)
     return {**indexed, **{name: typed[name] for name in own if name in typed}}

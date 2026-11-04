@@ -1,11 +1,12 @@
 """The fixes `--show-fixes --unsafe-fixes` lists on pydantic, by HEAD's code and by the working tree's.
 
-  local/.venv/bin/python -m scratch.fix_diff [REF] [--source PACKAGE_DIR] [--jobs N] [--top N]
+  local/.venv/bin/python -m scratch.fix_diff [REF] [--source PACKAGE_DIR] [--jobs N] [--top N] [--python EXE]
       [--option=FLAG ...]
 
 `--source` checks another package's directory instead (xarray's from its sdist, say), copied as
 pydantic is; `--top` prints only that many of each side's lines, after a count of them by type;
-`--option` passes a flag to each check (`--option=--all-scopes`, as the corpus runs check).
+`--option` passes a flag to each check (`--option=--all-scopes`, as the corpus runs check); `--python`
+runs the checks with another interpreter (a suite's own environment, whose packages then resolve).
 
 Copies `constricter/` as of REF (HEAD by default, with the tree's generated tables and `_version.py`)
 and as the tree has it into `local/scratch/fix-diff/`, and the installed pydantic beside them, then
@@ -44,10 +45,10 @@ def _copy(ref: str | None, into: Path) -> None:
     shutil.copy2(ROOT / CODE / "_version.py", into / CODE / "_version.py")
 
 
-def _fixes(code: Path, corpus: Path, name: str, jobs: int, options: list[str]) -> list[str]:
+def _fixes(code: Path, corpus: Path, name: str, jobs: int, options: list[str], python: str) -> list[str]:
     done = subprocess.run(
         [
-            sys.executable,
+            python,
             "-P",
             "-m",
             CODE,
@@ -80,6 +81,7 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--top", type=int, default=None)
     parser.add_argument("--option", action="append", default=[])
+    parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
     ref = args.ref
     name = args.source.name
@@ -89,7 +91,7 @@ def main() -> int:
     sides = {}
     for label, source in ((ref, ref), ("tree", None)):
         _copy(source, OUT / label.replace("/", "-"))
-        sides[label] = _fixes(OUT / label.replace("/", "-"), corpus, name, args.jobs, args.option)
+        sides[label] = _fixes(OUT / label.replace("/", "-"), corpus, name, args.jobs, args.option, args.python)
         (OUT / f"{label.replace('/', '-')}.txt").write_text("\n".join(sides[label]) + "\n", encoding="utf-8")
         print(f"{label}: {len(sides[label])} fixes")
     old, new = (set(each) for each in sides.values())

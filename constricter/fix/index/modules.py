@@ -22,7 +22,7 @@ from constricter.fix.core.imports import taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.index import annotated
-from constricter.fix.index.origins import guarded_origins, origins_of, skipped, starred
+from constricter.fix.index.origins import guarded_origins, inner_origins, origins_of, skipped, starred
 from constricter.fix.index.params import Param, open_functions
 from constricter.fix.index.stubs.declared import Declarations, Signature, declarations, kinds, overloads
 from constricter.fix.values import classvars, entered, fills
@@ -56,6 +56,25 @@ _HOPS: Final = 5  # how many re-exports a type variable's default is followed th
 _TYPE_ALIAS: Final = "TypeAlias"  # the annotation, and the node class of `type X = ...` (Python 3.12+)
 # What a type checker decides an `if` by, taking one arm alone: `sys.version_info`, `TYPE_CHECKING`.
 _DECIDED: Final = frozenset({"version_info", "platform", "TYPE_CHECKING"})
+# Calls at a module's top level that make a type, so the name they bind is one (see `_variables`).
+_MAKERS: Final = frozenset(
+    {
+        "NewType",
+        "TypeVar",
+        "ParamSpec",
+        "TypeVarTuple",
+        "TypeAliasType",
+        "namedtuple",
+        "NamedTuple",
+        "TypedDict",
+        "Enum",
+        "IntEnum",
+        "StrEnum",
+        "Flag",
+        "IntFlag",
+        "type",
+    },
+)
 SUFFIX: Final = ".py"
 CONFTEST: Final = "conftest"  # the module pytest reads a directory's fixtures from
 _UNNAMED: Final = frozenset({"__call__", "__enter__"})  # members a statement takes without naming them
@@ -129,6 +148,12 @@ class Module:  # pylint: disable=too-many-instance-attributes
     aliases: Mapping[str, bool] = field(default_factory=dict[str, bool])
     # The names its top level assigns twice or more (see `_assigned`): variables, to a type checker.
     rebound: frozenset[str] = frozenset()
+    # The names its functions and classes import for their own use (see `inner_origins`).
+    inner: Mapping[str, Origin] = field(default_factory=dict[str, Origin])
+    # Its top-level names bound to a call's result (`Observer = _get_observer_cls()`), or bound, by
+    # assignment or import, in more than one arm of an `if` or a `try` (see `_variables`): variables,
+    # not classes, to a type checker, so a call to one constructs nothing it can name.
+    variables: frozenset[str] = frozenset()
     # Its top-level names something in it binds as a value too (a local `m`, under `import pkg.m as m`).
     shadowed: frozenset[str] = frozenset()
     # Its classes' bases as written, their variables typed by their values, and which of them are
@@ -517,6 +542,8 @@ def read(path: Path, name: str | None = None) -> Module | None:
         passes=own.passes,
         aliases={alias: generic for alias, generic in aliases.items() if alias not in rebound},
         rebound=rebound,
+        inner={} if installed else inner_origins(tree, named, is_package=is_package),
+        variables=_variables(tree.body) - own.classes.keys(),
         assigned=frozenset(assigned).difference(aliases.keys(), type_vars),
         shadowed=frozenset() if installed else frozenset(names) & taken_names(tree)[1],
         bases={} if installed else classvars.bases(tree),
@@ -773,6 +800,75 @@ def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
                 counts += (arms[0] | arms[1]) if _names_any(test, _DECIDED) else (arms[0] + arms[1])
             case ast.Try() | ast.TryStar():
                 counts += _assigned(child_statements(stmt))
+            case _:
+                pass
+    return counts
+
+
+def _variables(body: Sequence[ast.stmt]) -> frozenset[str]:
+    """Name what a module's top level binds that a type checker reads as a variable, not a class.
+
+    A name bound to a call's result (`Observer = _get_observer_cls()`), unless the call makes a type
+    (`ShuffleId = NewType("ShuffleId", str)`, a `namedtuple`, an `Enum`; `_MAKERS`), or bound, by
+    assignment or import, in more than one arm of an `if` or a `try` (`if is_linux(): from .inotify
+    import InotifyObserver as Observer` / `else: ...`), whatever the test.
+
+    Returns:
+      Each such name.
+
+    """
+    called: set[str] = set()
+    counts: Counter[str] = Counter()
+    stmt: ast.stmt
+    name: str
+    func: ast.expr
+    for stmt in body:
+        match stmt:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func))
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.Call(func=func))
+            ):
+                if node_name(func) not in _MAKERS:
+                    called.add(name)
+            case ast.If():
+                arms: list[Counter[str]] = [_bound(stmt.body), _bound(stmt.orelse)]
+                counts += Counter({each: 1 for arm in arms for each in arm})
+                called |= set().union(*(_variables(arm) for arm in (stmt.body, stmt.orelse)))
+            case ast.Try() | ast.TryStar():
+                handlers: list[Sequence[ast.stmt]] = [
+                    stmt.body,
+                    *(h.body for h in stmt.handlers),
+                    stmt.orelse,
+                ]
+                counts += Counter({each: 1 for arm in handlers for each in _bound(arm)})
+                called |= set().union(*(_variables(arm) for arm in handlers))
+            case _:
+                pass
+    return frozenset(called) | frozenset(each for each, count in counts.items() if count > 1)
+
+
+def _bound(body: Sequence[ast.stmt]) -> Counter[str]:
+    """Count the names a run of statements binds, by assignment or import, under its `if`s and `try`s too.
+
+    Returns:
+      Each name's count.
+
+    """
+    counts: Counter[str] = Counter()
+    stmt: ast.stmt
+    name: str
+    names: list[ast.alias]
+    alias: ast.alias
+    for stmt in top_level(body):
+        match stmt:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)])
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr())
+            ):
+                counts[name] += 1
+            case ast.Import(names=names) | ast.ImportFrom(names=names):
+                for alias in names:
+                    counts[(alias.asname or alias.name).partition(".")[0]] += 1
             case _:
                 pass
     return counts

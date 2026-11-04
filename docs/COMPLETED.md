@@ -1120,7 +1120,23 @@ What constricter does today and what was measured on the way, by scope. What's n
   return alone exposes in a body mypy didn't check (pandas's tests, `check_untyped_defs = false`
   there) no rule here avoids. Under it, django's signatures-first workflow writes 931 returns and
   81 parameters (from 3,467 and 467), and `--fix` then types 2,749 bindings from 2,627 (+122, from
-  +329). Left: the codes' errors read on a run with them again, if they're to go back into one. On
+  +329). Read again on `basic-signatures-11-03-2026-2231` (`tests/corpus/runs/basic-signatures.toml`:
+  the seven corpora with both codes in every fix step, no hints, census or timing; 22 minutes on
+  16CPU/60GB) against `basic-11-03-2026-2103` on the same commit: the signature rule holds, the
+  witness blaming no more certain fixes than without (pandas 105 differed of 13,071 against 105 of
+  13,044; sqlalchemy 22 of 1,182 against 20 of 1,184, the two `wce: ColumnElement[_T]`, `attribute`
+  fixes in `sql/elements.py` that differ once in some 180 observations), and no suite's tests fail
+  anew. The certain step writes 3,622 returns on pandas, 36 on django and 15 on sqlalchemy, and the
+  locals gain almost nothing from them in the same run: first bindings typed after `--fix` pandas
+  18,400 from 18,399, django 2,627 both, sqlalchemy 4,479 both; after `--unsafe-fixes` pandas 44,162
+  from 44,151, django 5,595 from 5,572. The type checks: new errors over the four fix steps 8,845
+  from 35, pandas's 804 after `--fix` (from 3) 801 in `pandas/tests`, where its mypy sets
+  `check_untyped_defs = false` and a `def` given `-> None` has its body checked for the first time
+  (631 of them on a line with no fix); sqlalchemy's after `--fix` the same 1, after `--likely` 2
+  (`_memoized_attr__all_column_expressions: WriteableColumnCollection`, a `constructor+returned`
+  guess), after `--unsafe-fixes` 7; pydantic's 0 throughout. Decided on 2026-11-04: the codes stay
+  opt-in and out of the run files, for a project that reviews the signatures they write; what a return
+  exposes in a body the checker skipped is no rule's to avoid. On
   the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the signature codes
   out of the run files): bindings typed, of 474,291, `--fix` 161,111, `--likely` 210,548,
   `--unsafe-fixes` 229,024 (rc.8's 161,134, 210,156 and 227,933); new type errors 5,927, 5,516
@@ -1265,8 +1281,8 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   shared `osv-scanner.toml` dropped its braces entry, withdrawn upstream. Every workflow is green on
   pull request #70 and on `main` at `be2b279`. Each job's `allowed-endpoints` read against the hosts
   harden-runner's log says it called (`scratch/egress_read.py`, on #70): `api.github.com` is gone from
-  the Dependency audit's, Secrets' and Docs', none of whose steps call it.
-  `release-assets.githubusercontent.com` stays, a cold tool cache's download, and
+  the Dependency audit's, Secrets' and Docs', none of whose steps call it (the three green on pull
+  request #74, merged 2026-11-01). `release-assets.githubusercontent.com` stays, a cold tool cache's download, and
   `api.securityscorecards.dev`, the Dependency review's when a dependency changes.
 
 ## Project

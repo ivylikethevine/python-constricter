@@ -320,6 +320,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
 
     `from pkg import util` may name the module `pkg.util` as well as something `pkg` defines; a call
     through an imported module (`pkg.util.f()` after `import pkg.util`) names each module on its way.
+    What a function imports for its own use counts too (`Module.inner`).
 
     Returns:
       Their names, in order, each once.
@@ -329,7 +330,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
     module: Module
     for module in found:
         origin: tuple[str, str | None]
-        for origin in (*module.names.values(), *module.guarded.values()):
+        for origin in (*module.names.values(), *module.guarded.values(), *module.inner.values()):
             if origin[0].partition(".")[0] not in STDLIB and origin[0] != module.name:
                 names[origin[0]] = None
                 if origin[1] is not None:
