@@ -527,7 +527,10 @@ What constricter does today and what was measured on the way, by scope. What's n
   gained. On the mega run of 2026-10-27 (`mega-10-27-2026-0131`, 91 minutes on 16CPU/60GB, the
   signature codes out of the run files): `reads` 57 guesses, 26 told, 96.2% held, none of 19 read
   blamed, so it passes the bars as a mechanism, but no set of it has 20 guesses (`LIKELY` takes
-  whole sets); `named` 2, none told.
+  whole sets); `named` 2, none told. Decided on 2026-11-04: both stay `--unsafe-fixes` guesses, out
+  of `--likely` until a mega run reads a set of 20 told against the bars, and no run waits on them;
+  on `mega-10-30-2026-0857` `reads` 68 guesses, 37 told, 94.6% held, none of 30 read blamed, and
+  `named` 2, none told, as on the three mega runs before it.
 - **Instance attributes, LVA013**: an attribute a plain class's method first stores unannotated,
   declared nowhere in the class (`rules/attributes.py`); opt-in as LVA012 is
   (`--extend-select LVA013`, pylint's `C9113`), an error from `strict` and counted by
@@ -617,6 +620,56 @@ What constricter does today and what was measured on the way, by scope. What's n
   `typing.py`, was typed only by a second pass, since a file takes none of a class's members until it
   spells it. The standard library without its tests (`--level=suffocate --all-scopes`, one process on
   16CPU/60GB): a second pass 0 lines from 1, 21.1s from 20.2s, once each.
+- **An override exclusion for every plain class** (decided 2026-11-04, kept): a class plain only by its
+  inert marks, or a variable bound to `None`, has no variable typed where a class in its line defines
+  the name (`classvars.unshadowed`, over every plain class: `classvars.variables`, `plain._joined`),
+  so a subclass's `@memoized_attribute` of the name no longer makes `_render_label_in_columns_clause:
+bool` an override error. Measured (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`,
+  one process on 16CPU/60GB): sqlalchemy 11 `member` guesses withdrawn of 3,147, django 62 of 5,567,
+  none added; the errors basedpyright finds after `--fix --unsafe-fixes` that the plain tree lacks,
+  sqlalchemy 59 from 64 (`reportIncompatibleVariableOverride` 2 from 7), django 96 from 168 (5 from
+  76); of those that stay, 9 on sqlalchemy and 23 on django are the plain tree's own (`Literal[True]`
+  assigned where a base declares a `cached_property`). On the 47 corpora (`mega-fixes-11-04-2026-0756`,
+  10 minutes on 16CPU/60GB, against `mega-10-30-2026-0857`'s records): 75 `member` guesses withdrawn
+  (django 57, sqlalchemy 9, dask 3, pandas 2, pip 2, celery 1, optuna 1), the corpora's own type
+  checks unchanged.
+- **A constructor guess of a class bound in branches** (decided 2026-11-04, kept): watchdog binds
+  `Observer = _get_observer_cls()`, which a checker reads as a variable, so werkzeug's
+  `self.observer: Observer` (LVA013's) was an error on the traced LVA013 run of 2026-10-23. A
+  top-level name an installed module binds to a call or in more than one arm of an `if` or a `try`
+  (`Module.variables`), imported at the file's top level or inside a function (`Module.inner`, which
+  the installed index reads for), gets no constructor guess, as `linked.values` takes a checked
+  module's assigned names; a call that makes a type (`NewType`, `namedtuple`, `Enum`; `_MAKERS`)
+  leaves its name a class. On werkzeug in its own environment (`scratch/fix_diff.py --python`, one
+  process on 16CPU/60GB) it withdraws `self.observer: Observer` alone with LVA013 selected, and
+  nothing without it. On the 47 corpora (`mega-fixes-11-04-2026-0756`, 10 minutes on 16CPU/60GB,
+  against `mega-10-30-2026-0857`'s records) one `likely` guess withdrawn, pdm's
+  `backend: DEFAULT_BACKEND`, a variable of pdm's own `models.backends` imported inside the function,
+  and no type check changed.
+- **No type naming a builtin the module binds itself** (decided 2026-11-04, built): `from .compat
+import str` (requests' Python 2 shim, vendored in pip) makes `pat: re.Pattern[str]` name a variable
+  to basedpyright ("Variable not allowed in type expression"), so a fix whose type names a builtin the
+  module binds at its top level is no fix (`doubts.corrected`, over `ImportPlan.defined`). pip
+  (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`, `--all-scopes`, one process on
+  16CPU/60GB): 3,584 fixes from 3,615, the 31 withdrawn in requests' `auth.py`, `models.py` and
+  `utils.py` (`str`, `bytes`, `re.Pattern[str]`, `str | None`, `frozenset[str]`; the shim binds `bytes`
+  too), one `member` guess re-listed as `rebound` too; basedpyright's errors after `--fix
+--unsafe-fixes` that the plain copy lacks 131 from 163 (`reportInvalidTypeForm` 50 from 82), 32
+  gone and 2 new on `utils.py:958`'s `pat.match(value)`, which the withdrawn annotations had left
+  unchecked (`pat` of no known type). Read on all 47 by the next `mega-fixes` run.
+- **A checker's short name for a class the module defines another of** (decided 2026-11-04,
+  built): basedpyright's hint `MappingProxyType[str, Enum]` means `enum.Enum`, but written in
+  sqlalchemy's `sqltypes.py`, which defines `class Enum(..., TypeEngine[...])`, it names that class,
+  12 new type errors over the `infer-*` steps on every run since `e793bc6`. A hint's edit writing such
+  a name was already no edit (`offers._ambiguous`), but `hinted.hinted` takes the shown type first;
+  now a hint showing a name the file binds, where a module it imports whole has a class of that name
+  too, is dropped whole (`offers.vetted`). sqlalchemy with basedpyright's hints
+  (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`, `--all-scopes
+--infer-with=basedpyright`, one process on 16CPU/60GB): 4,103 fixes from 4,107, the two `Enum`
+  guesses and two `Pattern[str]` in `compiler.py`, which binds `typing.Pattern` and imports `re`
+  whole, an alias of one class the rule can't tell from two; basedpyright's errors after
+  `--fix --unsafe-fixes` that the plain copy lacks 68 from 73, 5 gone (the `Enum` lines) and none
+  new. Read on all 47 by the next `mega-fixes` run.
 
 ## Command and output
 
@@ -1033,6 +1086,38 @@ What constricter does today and what was measured on the way, by scope. What's n
   where pyarrow isn't installed, 5 fewer (`pa.Scalar` generic there too); types-PyYAML nothing on
   dask or xarray; networkx nothing under any set, pandas-stubs or scipy-stubs, its scipy calls
   inside functions and their returns arrays `vague` refuses.
+- **typeshed's third-party stubs, for an installed package with none** (decided 2026-11-04, built):
+  basedpyright bundles typeshed's 201 third-party stub sets (`typeshed-fallback/stubs`; 18 of the
+  top 100 PyPI packages are typed only there: PyYAML, python-dateutil, six, protobuf, tqdm, pytz,
+  regex, ...). A module `locate` finds no types for, but which is installed, is read from the first
+  set on the search path stubbing it (`installed.bundled`, its sets mapped once by their top-level
+  packages and modules, `_sets`): as a stub package where the installed distribution's version is
+  one the set's `METADATA.toml` names (`installed.fits`: `6.0.*` any 6.0 release, `~=7.34.1` a
+  compatible release, a bare version that one; the distributions read by `importlib.metadata` from
+  the same directories), else, or where no distribution is found, as `declared` guesses
+  (`as_untyped`); a module the set lacks (a partial set's) is the package's own. `mypy_extensions`
+  keeps its classes-alone read. The corpus runs find the bundle through the interpreter running
+  constricter (`local/.venv`), behind the corpus's `VIRTUAL_ENV`; a constricter installed without
+  basedpyright reads no set. dateutil's `isoparse` and overloaded `parse` and six's `ensure_str`
+  are typed in a probe; on dask in its own environment (`scratch/fix_diff.py --venv`, one process
+  on 16CPU/60GB) 5,921 fixes both ways, its yaml calls `Any`. Reach measured on
+  `mega-10-30-2026-0857` (`scratch/typeshed_reach.py`): 135 of 7,381 third-party bindings with no
+  fix, 69 of them "imported", mostly a submodule called through `from pkg import sub` (a roadmap
+  finding). Read on all 47 by the next `mega-fixes` run. About 4 hours; coverage under 0.1% on the
+  corpora, its reach users' code.
+- **pyrefly's `stubgen` for untyped packages, measured and set aside** (decided 2026-11-04): stubs
+  pyrefly writes from what it infers for an installed package with no types (experimental;
+  `Incomplete` where it can't tell), read as an installed package's stubs are. Measured on
+  2026-10-28 (`scratch/stubgen_measure.py`, pyrefly 1.3.2, one process on 16CPU/60GB): each untyped
+  package stubbed as a `-stubs` package (pandas 23,928 returns concrete and 1,176 `Incomplete`,
+  pyarrow 2,881 and 441, fsspec 596 and 266, toolz, tlz, yaml), and `--unsafe-fixes --show-fixes`
+  listed with and without them. dask 5,864 fixes from 5,815 (certain 3,152 from 3,120, likely 1,867
+  from 1,769, guesses 845 from 926; 104 gained, 55 lost, 38 changed), most `DataFrame` and fsspec's
+  `OpenFiles`, the lost the `declared` guesses the stubs stand in for (`DatetimeIndex` 13); xarray
+  with pandas and yaml stubbed 6,999 from 7,018 (certain 3,641 from 3,557, 67 of them
+  `pd.MultiIndex`; guesses 261 from 384, 84 `DatetimeIndex`). Under 1% either way, the certain ones
+  rest on pyrefly's inference and would need a guess kind of their own, and the tool is
+  experimental: not built. About 3 hours spent.
 - **`typing_extensions` in the standard-library tables, measured and set aside**: the tables
   (generated from typeshed by `stdlib_tables/generate.py`) hold no `typing_extensions` entries, so
   a call through it (`typing_extensions.get_type_hints`, a `TypedDict`'s or a `Protocol`'s class)

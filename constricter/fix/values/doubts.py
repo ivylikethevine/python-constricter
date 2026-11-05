@@ -15,6 +15,7 @@
 
 import ast
 import bisect
+import builtins
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -44,6 +45,7 @@ _READ_KINDS: Final = tuple(_READS)
 # Where a function tests a value, a type checker may narrow it (`isinstance`, `is None`, a `TypeGuard`).
 _TESTS: Final = (ast.If, ast.While, ast.Assert, ast.IfExp, ast.comprehension, ast.Match)
 _SELF: Final = "Self"
+_BUILTINS: Final = frozenset(dir(builtins))
 _STDLIB: Final = "stdlib"  # the fix kind of what typeshed declares
 _COMPREHENSION: Final = "comprehension"
 _LITERAL: Final = "literal"
@@ -540,10 +542,15 @@ def corrected(
 ) -> Inference | None:
     """Write `found` as a type checker sees it: `Self` where the value is one; nothing for a bare generic.
 
+    Nor for a type written with a builtin the module binds at its top level (`from .compat import
+    str`, a Python 2 shim): a type checker reads the module's own name there, a variable.
+
     Returns:
       The inference to offer, or `None` if there's none to.
 
     """
+    if plan is not None and not roots(found.annotation).isdisjoint(_BUILTINS & plan.defined.keys()):
+        return None
     written: str | None
     if (written := None if owner is None else _selfish(value, found, owner)) is not None:
         spelled: str | None = None if plan is None else spelled_self(plan)

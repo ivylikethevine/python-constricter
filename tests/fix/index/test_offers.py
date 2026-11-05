@@ -213,19 +213,23 @@ def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path
         ("import enum\n\n\nx = 1\n", True),  # nothing of its own of that name
     ],
 )
-def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_edit(
+def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_hint(
     tmp_path: Path,
     source: str,
     *,
     kept: bool,
 ) -> None:
-    """As basedpyright writes `enum.Enum`: `Enum`, where the file may define an `Enum` of its own."""
+    """As basedpyright writes `enum.Enum`: `Enum`, where the file may define an `Enum` of its own.
+
+    What the hint shows is taken before its edit, so the hint goes whole, not its edit alone.
+    """
     path: Path = tmp_path / "kinds.py"
     _ = path.write_text(source, encoding="utf-8")
     offered: Offered = Offered("MappingProxyType[str, Enum]", ("from types import MappingProxyType",))
-    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text, (2, 1): "int"}, {_AT: offered}),)
     found: Hints = offers.vetted(project.index([path]), path, hints)[0]
     assert found.offered == ({_AT: offered} if kept else {})
+    assert found.types == ({_AT: offered.text, (2, 1): "int"} if kept else {(2, 1): "int"})
 
 
 @pytest.mark.parametrize("text", ["Decimal", "Decimal["])

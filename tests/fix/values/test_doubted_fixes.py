@@ -699,3 +699,23 @@ def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
         "t": (None, False),  # by a pattern
         "u": (None, False),  # by an import
     }
+
+
+def test_a_type_naming_a_builtin_the_module_binds_is_no_fix() -> None:
+    """A type checker reads the module's own `str` as a variable, so no type is written with it."""
+    source: str = """
+    import re
+    from .compat import str
+
+    def f(s: bytes) -> None:
+        pat = re.compile("a")
+        n = len(s)
+        text = s.decode()
+        parts = ["a", "b"]
+    """
+    assert _found(source) == {
+        "pat": (None, False),  # `re.Pattern[str]` without the shim
+        "n": ("int", False),
+        "text": (None, False),  # `str`
+        "parts": (None, False),  # `list[str]`
+    }
