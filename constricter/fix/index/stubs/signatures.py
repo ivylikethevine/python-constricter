@@ -100,7 +100,9 @@ def read_all(
     A parameter every signature declares the same way, at the same place among the positional ones,
     takes whatever a call passes it, unless it names a type variable (the module's, the class's in
     `variables`, or the signature's own): numpy's `view(self, type: type[ndarray] = ...)` is no
-    match for `view("i8")`, where another declares `type` second.
+    match for `view("i8")`, where another declares `type` second. Of the type variables a checked
+    file imports, only one a signature returns binds a call's argument (`kind: type[Kind]) -> Kind`):
+    pandas's `**kwds: Unpack[_read_shared[HashableT]]` takes whatever as before.
 
     Returns:
       Them.
@@ -120,11 +122,13 @@ def read_all(
             *(param for each in written for param, _ in each.type_params),
         },
     )
+    returned: frozenset[str] = frozenset(
+        name for each in written for name in reader.variables(each.returns, module)
+    )
     shared = {
         param
         for param in shared
-        if not _names_any(param[3], named)
-        and (module.installed or not reader.names_variable(param[3], module))
+        if not _names_any(param[3], named) and reader.variables(param[3], module).isdisjoint(returned)
     }
     return tuple(reader.signature(module, signature, shared, params) for signature in written)
 
@@ -176,22 +180,23 @@ class Reader(Resolver):
         super().__init__(modules)
         self.matching: bool = False  # writing a pattern to match a receiver against (see `pattern`)
 
-    def names_variable(self, annotation: str | None, module: Module) -> bool:
-        """Check whether an annotation a checked file writes names a type variable, one it imports too.
+    def variables(self, annotation: str | None, module: Module) -> frozenset[str]:
+        """Name the type variables an annotation a checked file writes names, those it imports too.
 
         Returns:
-          Whether it does.
+          Each, by the name the annotation writes; none for an installed module's, or no annotation.
 
         """
-        if annotation is None:
-            return False
+        if annotation is None or module.installed:
+            return frozenset()
         scope: Scope = Scope(module, {}, module.name)
+        found: set[str] = set()
         node: ast.AST
         for node in ast.walk(parse_text(annotation)):
             resolved: Resolved | None = self.resolve(node, scope) if isinstance(node, ast.Name) else None
-            if isinstance(resolved, Atom) and resolved.kind == VAR:
-                return True
-        return False
+            if isinstance(node, ast.Name) and isinstance(resolved, Atom) and resolved.kind == VAR:
+                found.add(node.id)
+        return frozenset(found)
 
     def signature(
         self,

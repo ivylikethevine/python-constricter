@@ -242,3 +242,19 @@ def test_an_edit_nothing_can_call_ambiguous_is_kept(tmp_path: Path, text: str) -
     catalog: project.Index
     for catalog in (project.index([]), project.index([path])):
         assert offers.vetted(catalog, path, hints)[0].offered == {_AT: offered}
+
+
+def test_a_class_a_whole_import_reexports_is_the_one_the_file_binds(tmp_path: Path) -> None:
+    """`pandas.Index` is `pandas.core.indexes.base.Index`: a hint showing `Index` names the one class."""
+    _ = (tmp_path / "pkg").mkdir()
+    _ = (tmp_path / "pkg" / "__init__.py").write_text(
+        "from pkg.base import Index as Index\n", encoding="utf-8",
+    )
+    _ = (tmp_path / "pkg" / "base.py").write_text("class Index:\n    pass\n", encoding="utf-8")
+    path: Path = tmp_path / "pkg" / "uses.py"
+    _ = path.write_text("import pkg\nfrom pkg.base import Index\n\nx = 1\n", encoding="utf-8")
+    offered: Offered = Offered("list[Index]", ())
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    paths: list[Path] = [tmp_path / "pkg" / "__init__.py", tmp_path / "pkg" / "base.py", path]
+    found: Hints = offers.vetted(project.index(paths), path, hints)[0]
+    assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})

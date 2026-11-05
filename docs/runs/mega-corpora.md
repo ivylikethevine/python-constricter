@@ -1,9 +1,9 @@
 # Mega corpora
 
 The run `mega` (`python -m tests.corpus`) on mega: constricter 0.4.5.dev1+gd61ea5d39.d20261029
-(`a8de20a381f7`), Python 3.14.7, on 16CPU/60GB (Linux): `--jobs=4`, each step a process of its own,
+(`45d82682dcb4`), Python 3.14.7, on 16CPU/60GB (Linux): `--jobs=4`, each step a process of its own,
 started once the CPUs it's expected to keep busy and the memory it's expected to hold are free. The
-run took 70 minutes. Timings don't compare across machines, nor their seconds across runs, taken
+run took 85 minutes. Timings don't compare across machines, nor their seconds across runs, taken
 beside the other steps: their instructions do.
 
 Offences per code at `suffocate`, with `all-scopes` (Python 3.14.7); the total row gives each code's
@@ -67,54 +67,54 @@ would still fix, with every guess and with the likely ones:
 
 | Corpus             | constricter |   `relaxed` |         `strict` |     `constrict` | `suffocate` |           Fixed |         Likely |        Guessed | Broken | Left | Left, likely |
 | ------------------ | ----------- | ----------: | ---------------: | --------------: | ----------: | --------------: | -------------: | -------------: | -----: | ---: | -----------: |
-| standard library   | mega+dev    | 0 / 113,679 | 101,337 / 12,413 |    113,679 / 71 | 113,750 / 0 |  37,329 (32.8%) |   6,947 (6.1%) | 14,214 (12.5%) |      0 |    0 |            0 |
-| django             | mega+dev    |  0 / 17,177 |   15,010 / 2,167 |      17,177 / 0 |  17,177 / 0 |   2,622 (15.3%) |     726 (4.2%) |  2,945 (17.1%) |      0 |    0 |            0 |
-| sqlalchemy         | mega+dev    |  0 / 12,934 |   11,296 / 2,339 |    12,934 / 701 |  13,635 / 0 |   2,117 (15.5%) |     433 (3.2%) |   1,152 (8.4%) |      0 |    0 |            0 |
+| standard library   | mega+dev    | 0 / 113,679 | 101,337 / 12,413 |    113,679 / 71 | 113,750 / 0 |  37,325 (32.8%) |   6,944 (6.1%) | 14,197 (12.5%) |      0 |    0 |            0 |
+| django             | mega+dev    |  0 / 17,177 |   15,010 / 2,167 |      17,177 / 0 |  17,177 / 0 |   2,622 (15.3%) |     703 (4.1%) |  2,860 (16.7%) |      0 |    0 |            0 |
+| sqlalchemy         | mega+dev    |  0 / 12,934 |   11,296 / 2,339 |    12,934 / 701 |  13,635 / 0 |   2,144 (15.7%) |     445 (3.3%) |   1,152 (8.4%) |      0 |    0 |            0 |
 | pydantic           | mega+dev    |   0 / 3,117 |      2,677 / 639 |     3,117 / 199 |   3,316 / 0 |   1,196 (36.1%) |     150 (4.5%) |    413 (12.5%) |      0 |    0 |            0 |
-| pandas             | mega+dev    |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 |  17,171 (22.0%) | 24,369 (31.3%) | 25,643 (32.9%) |      0 |    0 |            0 |
+| pandas             | mega+dev    |  0 / 77,794 |   75,015 / 2,916 |    77,794 / 137 |  77,931 / 0 |  17,131 (22.0%) | 24,496 (31.4%) | 25,765 (33.1%) |      0 |    0 |            0 |
 | twisted            | mega+dev    |  0 / 17,874 |   16,525 / 1,349 |      17,874 / 0 |  17,874 / 0 |   2,435 (13.6%) |  3,741 (20.9%) |  4,829 (27.0%) |      0 |    0 |            0 |
-| pip                | mega+dev    |   0 / 8,923 |    7,773 / 1,150 |       8,923 / 0 |   8,923 / 0 |   2,271 (25.5%) |     490 (5.5%) |  1,349 (15.1%) |      0 |    0 |            0 |
+| pip                | mega+dev    |   0 / 8,923 |    7,773 / 1,150 |       8,923 / 0 |   8,923 / 0 |   2,242 (25.1%) |     490 (5.5%) |  1,342 (15.0%) |      0 |    0 |            0 |
 | structlog          | mega+dev    |     0 / 316 |         269 / 60 |        316 / 13 |     329 / 0 |      98 (29.8%) |      15 (4.6%) |      28 (8.5%) |      0 |    0 |            0 |
 | attrs              | mega+dev    |     0 / 394 |         343 / 53 |         394 / 2 |     396 / 0 |      93 (23.5%) |       9 (2.3%) |      14 (3.5%) |      0 |    0 |            0 |
-| click              | mega+dev    |     0 / 607 |         549 / 87 |        607 / 29 |     636 / 0 |     310 (48.7%) |      26 (4.1%) |      63 (9.9%) |      0 |    0 |            0 |
+| click              | mega+dev    |     0 / 607 |         549 / 87 |        607 / 29 |     636 / 0 |     311 (48.9%) |      27 (4.2%) |     64 (10.1%) |      0 |    0 |            0 |
 | hypercorn          | mega+dev    |     0 / 355 |         288 / 75 |         355 / 8 |     363 / 0 |     137 (37.7%) |      20 (5.5%) |     58 (16.0%) |      0 |    0 |            0 |
-| starlette          | mega+dev    |     0 / 744 |        645 / 117 |        744 / 18 |     762 / 0 |     321 (42.1%) |      74 (9.7%) |    115 (15.1%) |      0 |    0 |            0 |
-| werkzeug           | mega+dev    |   0 / 1,293 |      1,058 / 251 |      1,293 / 16 |   1,309 / 0 |     536 (40.9%) |      69 (5.3%) |     129 (9.9%) |      0 |    0 |            0 |
+| starlette          | mega+dev    |     0 / 744 |        645 / 117 |        744 / 18 |     762 / 0 |     321 (42.1%) |      75 (9.8%) |    116 (15.2%) |      0 |    0 |            0 |
+| werkzeug           | mega+dev    |   0 / 1,293 |      1,058 / 251 |      1,293 / 16 |   1,309 / 0 |     545 (41.6%) |      72 (5.5%) |    138 (10.5%) |      0 |    0 |            0 |
 | mkdocs             | mega+dev    |   0 / 2,331 |      2,133 / 206 |       2,331 / 8 |   2,339 / 0 |     826 (35.3%) |    430 (18.4%) |    552 (23.6%) |      0 |    0 |            0 |
 | httpx              | mega+dev    |     0 / 569 |        457 / 113 |         569 / 1 |     570 / 0 |     240 (42.1%) |     69 (12.1%) |     84 (14.7%) |      0 |    0 |            0 |
 | black              | mega+dev    |   0 / 1,273 |      1,041 / 241 |       1,273 / 9 |   1,282 / 0 |     714 (55.7%) |    128 (10.0%) |    169 (13.2%) |      0 |    0 |            0 |
 | fastapi            | mega+dev    |     0 / 742 |        637 / 208 |       742 / 103 |     845 / 0 |     258 (30.5%) |      45 (5.3%) |      71 (8.4%) |      0 |    0 |            0 |
-| cattrs             | mega+dev    |     0 / 520 |         450 / 80 |        520 / 10 |     530 / 0 |     111 (20.9%) |      34 (6.4%) |      52 (9.8%) |      0 |    0 |            0 |
-| pytest             | mega+dev    |   0 / 3,000 |      2,530 / 512 |      3,000 / 42 |   3,042 / 0 |   1,374 (45.2%) |     159 (5.2%) |    310 (10.2%) |      0 |    0 |            0 |
-| botocore           | mega+dev    |   0 / 3,786 |      3,419 / 369 |       3,786 / 2 |   3,788 / 0 |     543 (14.3%) |     180 (4.8%) |    651 (17.2%) |      0 |    0 |            0 |
+| cattrs             | mega+dev    |     0 / 520 |         450 / 80 |        520 / 10 |     530 / 0 |     112 (21.1%) |      34 (6.4%) |      52 (9.8%) |      0 |    0 |            0 |
+| pytest             | mega+dev    |   0 / 3,000 |      2,530 / 512 |      3,000 / 42 |   3,042 / 0 |   1,374 (45.2%) |     160 (5.3%) |    313 (10.3%) |      0 |    0 |            0 |
+| botocore           | mega+dev    |   0 / 3,786 |      3,419 / 369 |       3,786 / 2 |   3,788 / 0 |     548 (14.5%) |     182 (4.8%) |    656 (17.3%) |      0 |    0 |            0 |
 | uvicorn            | mega+dev    |     0 / 489 |         418 / 86 |        489 / 15 |     504 / 0 |     236 (46.8%) |      32 (6.3%) |     57 (11.3%) |      0 |    0 |            0 |
-| mcp                | mega+dev    |   0 / 1,720 |      1,547 / 286 |     1,720 / 113 |   1,833 / 0 |     712 (38.8%) |     162 (8.8%) |    248 (13.5%) |      0 |    0 |            0 |
-| textual            | mega+dev    |   0 / 6,483 |      5,765 / 775 |      6,483 / 57 |   6,540 / 0 |   2,740 (41.9%) |     489 (7.5%) |    749 (11.5%) |      0 |    0 |            0 |
-| pdm                | mega+dev    |   0 / 2,713 |      2,296 / 456 |      2,713 / 39 |   2,752 / 0 |   1,246 (45.3%) |     219 (8.0%) |    365 (13.3%) |      0 |    0 |            0 |
-| strawberry-graphql | mega+dev    |   0 / 1,806 |      1,563 / 382 |     1,806 / 139 |   1,945 / 0 |     649 (33.4%) |     173 (8.9%) |    239 (12.3%) |      0 |    0 |            0 |
-| pygments           | mega+dev    |   0 / 7,666 |      7,127 / 539 |       7,666 / 0 |   7,666 / 0 |      735 (9.6%) |      82 (1.1%) |  4,618 (60.2%) |      0 |    0 |            0 |
-| streamlink         | mega+dev    |   0 / 3,029 |      2,719 / 358 |      3,029 / 48 |   3,077 / 0 |     700 (22.7%) |     135 (4.4%) |    577 (18.8%) |      0 |    0 |            0 |
-| sphinx             | mega+dev    |   0 / 7,978 |    6,636 / 1,447 |     7,977 / 106 |   8,083 / 0 |   3,392 (42.0%) |     537 (6.6%) |    941 (11.6%) |      0 |    0 |            0 |
-| tox                | mega+dev    |   0 / 1,762 |      1,476 / 309 |      1,762 / 23 |   1,785 / 0 |     985 (55.2%) |     102 (5.7%) |     157 (8.8%) |      0 |    0 |            0 |
-| pint               | mega+dev    |   0 / 3,078 |      2,781 / 313 |      3,078 / 16 |   3,094 / 0 |     648 (20.9%) |     275 (8.9%) |    327 (10.6%) |      0 |    0 |            0 |
-| altair             | mega+dev    |   0 / 1,700 |      1,570 / 198 |      1,700 / 68 |   1,768 / 0 |     388 (21.9%) |      49 (2.8%) |      62 (3.5%) |      0 |    0 |            0 |
+| mcp                | mega+dev    |   0 / 1,720 |      1,547 / 286 |     1,720 / 113 |   1,833 / 0 |     718 (39.2%) |     162 (8.8%) |    248 (13.5%) |      0 |    0 |            0 |
+| textual            | mega+dev    |   0 / 6,483 |      5,765 / 775 |      6,483 / 57 |   6,540 / 0 |   2,795 (42.7%) |     508 (7.8%) |    774 (11.8%) |      0 |    0 |            0 |
+| pdm                | mega+dev    |   0 / 2,713 |      2,296 / 456 |      2,713 / 39 |   2,752 / 0 |   1,246 (45.3%) |     218 (7.9%) |    364 (13.2%) |      0 |    0 |            0 |
+| strawberry-graphql | mega+dev    |   0 / 1,806 |      1,563 / 382 |     1,806 / 139 |   1,945 / 0 |     656 (33.7%) |     174 (8.9%) |    241 (12.4%) |      0 |    0 |            0 |
+| pygments           | mega+dev    |   0 / 7,666 |      7,127 / 539 |       7,666 / 0 |   7,666 / 0 |      735 (9.6%) |      81 (1.1%) |  4,617 (60.2%) |      0 |    0 |            0 |
+| streamlink         | mega+dev    |   0 / 3,029 |      2,719 / 358 |      3,029 / 48 |   3,077 / 0 |     701 (22.8%) |     136 (4.4%) |    578 (18.8%) |      0 |    0 |            0 |
+| sphinx             | mega+dev    |   0 / 7,978 |    6,636 / 1,447 |     7,977 / 106 |   8,083 / 0 |   3,392 (42.0%) |     538 (6.7%) |    942 (11.7%) |      0 |    0 |            0 |
+| tox                | mega+dev    |   0 / 1,762 |      1,476 / 309 |      1,762 / 23 |   1,785 / 0 |     985 (55.2%) |     103 (5.8%) |     158 (8.9%) |      0 |    0 |            0 |
+| pint               | mega+dev    |   0 / 3,078 |      2,781 / 313 |      3,078 / 16 |   3,094 / 0 |     649 (21.0%) |     275 (8.9%) |    327 (10.6%) |      0 |    0 |            0 |
+| altair             | mega+dev    |   0 / 1,700 |      1,570 / 198 |      1,700 / 68 |   1,768 / 0 |     389 (22.0%) |      52 (2.9%) |      65 (3.7%) |      0 |    0 |            0 |
 | seaborn            | mega+dev    |   0 / 2,895 |      2,525 / 396 |      2,895 / 26 |   2,921 / 0 |     657 (22.5%) |     164 (5.6%) |     242 (8.3%) |      0 |    0 |            0 |
-| aiohttp            | mega+dev    |   0 / 1,859 |      1,662 / 215 |      1,859 / 18 |   1,877 / 0 |     717 (38.2%) |     152 (8.1%) |    274 (14.6%) |      0 |    0 |            0 |
+| aiohttp            | mega+dev    |   0 / 1,859 |      1,662 / 215 |      1,859 / 18 |   1,877 / 0 |     722 (38.5%) |     152 (8.1%) |    274 (14.6%) |      0 |    0 |            0 |
 | websockets         | mega+dev    |     0 / 791 |         706 / 85 |         791 / 0 |     791 / 0 |     362 (45.8%) |      77 (9.7%) |    130 (16.4%) |      0 |    0 |            0 |
-| anyio              | mega+dev    |     0 / 715 |        638 / 109 |        715 / 32 |     747 / 0 |     217 (29.0%) |      36 (4.8%) |      69 (9.2%) |      0 |    0 |            0 |
-| zarr               | mega+dev    |   0 / 2,411 |      2,041 / 431 |      2,411 / 61 |   2,472 / 0 |   1,168 (47.2%) |      79 (3.2%) |     118 (4.8%) |      0 |    0 |            0 |
+| anyio              | mega+dev    |     0 / 715 |        638 / 109 |        715 / 32 |     747 / 0 |     230 (30.8%) |      36 (4.8%) |      69 (9.2%) |      0 |    0 |            0 |
+| zarr               | mega+dev    |   0 / 2,411 |      2,041 / 431 |      2,411 / 61 |   2,472 / 0 |   1,169 (47.3%) |      79 (3.2%) |     118 (4.8%) |      0 |    0 |            0 |
 | joblib             | mega+dev    |   0 / 2,239 |      2,081 / 159 |       2,239 / 1 |   2,240 / 0 |     525 (23.4%) |     179 (8.0%) |    301 (13.4%) |      0 |    0 |            0 |
 | networkx           | mega+dev    |  0 / 22,456 |   19,235 / 3,229 |      22,456 / 8 |  22,464 / 0 |   3,971 (17.7%) |   2,206 (9.8%) |  2,522 (11.2%) |      0 |    0 |            0 |
 | nibabel            | mega+dev    |   0 / 8,466 |    7,434 / 1,038 |       8,466 / 6 |   8,472 / 0 |   1,870 (22.1%) |     841 (9.9%) |  1,172 (13.8%) |      0 |    0 |            0 |
-| narwhals           | mega+dev    |   0 / 3,112 |      3,006 / 173 |      3,112 / 67 |   3,179 / 0 |   1,075 (33.8%) |      70 (2.2%) |     124 (3.9%) |      0 |    0 |            0 |
-| xarray             | mega+dev    |  0 / 21,344 |   19,745 / 1,874 |    21,344 / 275 |  21,619 / 0 |   4,605 (21.3%) |  5,149 (23.8%) |  5,494 (25.4%) |      0 |    0 |            0 |
-| litestar           | mega+dev    |   0 / 1,909 |      1,599 / 488 |     1,909 / 178 |   2,087 / 0 |     646 (31.0%) |     110 (5.3%) |     182 (8.7%) |      0 |    0 |            0 |
-| stripe             | mega+dev    |   0 / 3,357 |      3,308 / 919 |     3,357 / 870 |   4,227 / 0 |     779 (18.4%) |     164 (3.9%) |    669 (15.8%) |      0 |    0 |            0 |
-| celery             | mega+dev    |   0 / 3,749 |      3,416 / 333 |       3,749 / 0 |   3,749 / 0 |     508 (13.6%) |     130 (3.5%) |     372 (9.9%) |      0 |    0 |            0 |
-| optuna             | mega+dev    |   0 / 3,595 |      3,149 / 478 |      3,595 / 32 |   3,627 / 0 |   1,581 (43.6%) |     218 (6.0%) |     327 (9.0%) |      0 |    0 |            0 |
-| dask               | mega+dev    |  0 / 24,173 |   22,480 / 1,775 |     24,173 / 82 |  24,255 / 0 |   3,157 (13.0%) |   1,980 (8.2%) |  2,901 (12.0%) |      0 |    0 |            0 |
-| mypy               | mega+dev    |  0 / 11,401 |    9,204 / 2,583 |    11,401 / 387 |  11,788 / 0 |   5,139 (43.6%) |  1,209 (10.3%) |  1,614 (13.7%) |      0 |    0 |            0 |
-| **Total**          | mega+dev    | 0 / 420,324 | 379,579 / 44,779 | 420,323 / 4,036 | 424,359 / 0 | 110,110 (25.9%) | 53,133 (12.5%) | 77,692 (18.3%) |      0 |    0 |            0 |
+| narwhals           | mega+dev    |   0 / 3,112 |      3,006 / 173 |      3,112 / 67 |   3,179 / 0 |   1,082 (34.0%) |      76 (2.4%) |     131 (4.1%) |      0 |    0 |            0 |
+| xarray             | mega+dev    |  0 / 21,344 |   19,745 / 1,874 |    21,344 / 275 |  21,619 / 0 |   4,622 (21.4%) |  5,151 (23.8%) |  5,499 (25.4%) |      0 |    0 |            0 |
+| litestar           | mega+dev    |   0 / 1,909 |      1,599 / 488 |     1,909 / 178 |   2,087 / 0 |     648 (31.0%) |     124 (5.9%) |     198 (9.5%) |      0 |    0 |            0 |
+| stripe             | mega+dev    |   0 / 3,357 |      3,308 / 919 |     3,357 / 870 |   4,227 / 0 |     781 (18.5%) |     166 (3.9%) |    671 (15.9%) |      0 |    0 |            0 |
+| celery             | mega+dev    |   0 / 3,749 |      3,416 / 333 |       3,749 / 0 |   3,749 / 0 |     508 (13.6%) |     130 (3.5%) |     371 (9.9%) |      0 |    0 |            0 |
+| optuna             | mega+dev    |   0 / 3,595 |      3,149 / 478 |      3,595 / 32 |   3,627 / 0 |   1,583 (43.6%) |     219 (6.0%) |     327 (9.0%) |      0 |    0 |            0 |
+| dask               | mega+dev    |  0 / 24,173 |   22,480 / 1,775 |     24,173 / 82 |  24,255 / 0 |   3,158 (13.0%) |   1,980 (8.2%) |  2,898 (11.9%) |      0 |    0 |            0 |
+| mypy               | mega+dev    |  0 / 11,401 |    9,204 / 2,583 |    11,401 / 387 |  11,788 / 0 |   5,142 (43.6%) |  1,209 (10.3%) |  1,616 (13.7%) |      0 |    0 |            0 |
+| **Total**          | mega+dev    | 0 / 420,324 | 379,579 / 44,779 | 420,323 / 4,036 | 424,359 / 0 | 110,204 (26.0%) | 53,303 (12.6%) | 77,783 (18.3%) |      0 |    0 |            0 |
 
 Annotation coverage (`--coverage` with `all-scopes`, counted by this checkout for every version):
 the share of bindings typed as released, after `--fix`, after `--fix --likely` and after
@@ -124,763 +124,763 @@ a share of the bindings that were untyped:
 | Corpus             | constricter | Typed as released | After `--fix` | After `--likely` | After `--unsafe-fixes` |           Raised by `--fix` |         Raised with guesses |
 | ------------------ | ----------- | ----------------: | ------------: | ---------------: | ---------------------: | --------------------------: | --------------------------: |
 | standard library   | mega+dev    |              1.2% |         33.6% |            39.7% |                  46.0% | +32.5 pts, 32.8% of untyped | +44.8 pts, 45.3% of untyped |
-| django             | mega+dev    |              0.0% |         15.3% |            19.5% |                  32.4% | +15.3 pts, 15.3% of untyped | +32.4 pts, 32.4% of untyped |
-| sqlalchemy         | mega+dev    |             15.3% |         29.1% |            31.9% |                  36.6% | +13.8 pts, 16.3% of untyped | +21.4 pts, 25.2% of untyped |
+| django             | mega+dev    |              0.0% |         15.3% |            19.4% |                  31.9% | +15.3 pts, 15.3% of untyped | +31.9 pts, 31.9% of untyped |
+| sqlalchemy         | mega+dev    |             15.3% |         29.3% |            32.2% |                  36.8% | +14.0 pts, 16.5% of untyped | +21.5 pts, 25.4% of untyped |
 | pydantic           | mega+dev    |             22.4% |         52.2% |            55.9% |                  62.5% | +29.8 pts, 38.4% of untyped | +40.0 pts, 51.6% of untyped |
-| pandas             | mega+dev    |              1.6% |         23.3% |            54.1% |                  55.8% | +21.7 pts, 22.1% of untyped | +54.2 pts, 55.0% of untyped |
+| pandas             | mega+dev    |              1.6% |         23.3% |            54.3% |                  55.9% | +21.7 pts, 22.0% of untyped | +54.3 pts, 55.1% of untyped |
 | twisted            | mega+dev    |              0.0% |         13.6% |            34.6% |                  40.6% | +13.6 pts, 13.6% of untyped | +40.6 pts, 40.6% of untyped |
-| pip                | mega+dev    |              1.5% |         26.6% |            32.0% |                  41.4% | +25.1 pts, 25.4% of untyped | +39.9 pts, 40.6% of untyped |
+| pip                | mega+dev    |              1.5% |         26.2% |            31.7% |                  41.1% | +24.7 pts, 25.1% of untyped | +39.5 pts, 40.1% of untyped |
 | structlog          | mega+dev    |             25.6% |         48.7% |            52.2% |                  55.3% | +23.1 pts, 31.0% of untyped | +29.6 pts, 39.9% of untyped |
 | attrs              | mega+dev    |              0.8% |         24.2% |            26.5% |                  27.8% | +23.5 pts, 23.7% of untyped | +27.0 pts, 27.2% of untyped |
-| click              | mega+dev    |             31.5% |         66.4% |            69.3% |                  73.5% | +34.9 pts, 51.0% of untyped | +42.1 pts, 61.3% of untyped |
+| click              | mega+dev    |             31.5% |         66.5% |            69.6% |                  73.7% | +35.1 pts, 51.2% of untyped | +42.3 pts, 61.7% of untyped |
 | hypercorn          | mega+dev    |             32.4% |         58.5% |            62.3% |                  69.5% | +26.1 pts, 38.6% of untyped | +37.1 pts, 54.9% of untyped |
-| starlette          | mega+dev    |             10.3% |         49.0% |            57.9% |                  62.8% | +38.7 pts, 43.1% of untyped | +52.6 pts, 58.6% of untyped |
-| werkzeug           | mega+dev    |             14.3% |         49.8% |            54.4% |                  58.4% | +35.5 pts, 41.5% of untyped | +44.1 pts, 51.4% of untyped |
+| starlette          | mega+dev    |             10.3% |         49.0% |            58.0% |                  63.0% | +38.7 pts, 43.1% of untyped | +52.7 pts, 58.7% of untyped |
+| werkzeug           | mega+dev    |             14.3% |         50.4% |            55.2% |                  59.6% | +36.1 pts, 42.2% of untyped | +45.3 pts, 52.8% of untyped |
 | mkdocs             | mega+dev    |              4.5% |         38.4% |            56.0% |                  60.9% | +33.8 pts, 35.4% of untyped | +56.4 pts, 59.1% of untyped |
 | httpx              | mega+dev    |              6.3% |         45.8% |            57.2% |                  59.6% | +39.5 pts, 42.2% of untyped | +53.4 pts, 56.9% of untyped |
 | black              | mega+dev    |             15.9% |         63.1% |            71.5% |                  74.2% | +47.2 pts, 56.1% of untyped | +58.4 pts, 69.4% of untyped |
 | fastapi            | mega+dev    |             42.0% |         62.2% |            65.7% |                  67.7% | +20.2 pts, 34.8% of untyped | +25.7 pts, 44.3% of untyped |
-| cattrs             | mega+dev    |              7.0% |         26.8% |            32.9% |                  36.1% | +19.9 pts, 21.3% of untyped | +29.2 pts, 31.3% of untyped |
-| pytest             | mega+dev    |             12.1% |         52.3% |            57.0% |                  61.4% | +40.2 pts, 45.8% of untyped | +49.3 pts, 56.1% of untyped |
-| botocore           | mega+dev    |              0.5% |         14.7% |            19.5% |                  31.8% | +14.3 pts, 14.3% of untyped | +31.4 pts, 31.5% of untyped |
+| cattrs             | mega+dev    |              7.0% |         27.0% |            33.1% |                  36.3% | +20.0 pts, 21.5% of untyped | +29.3 pts, 31.5% of untyped |
+| pytest             | mega+dev    |             12.1% |         52.3% |            57.0% |                  61.5% | +40.2 pts, 45.8% of untyped | +49.4 pts, 56.2% of untyped |
+| botocore           | mega+dev    |              0.5% |         14.9% |            19.7% |                  32.1% | +14.4 pts, 14.5% of untyped | +31.6 pts, 31.8% of untyped |
 | uvicorn            | mega+dev    |             23.6% |         60.5% |            65.5% |                  69.4% | +36.9 pts, 48.3% of untyped | +45.8 pts, 59.9% of untyped |
-| mcp                | mega+dev    |             30.7% |         59.4% |            65.9% |                  69.4% | +28.7 pts, 41.4% of untyped | +38.7 pts, 55.8% of untyped |
-| textual            | mega+dev    |             15.6% |         51.2% |            57.6% |                  61.0% | +35.7 pts, 42.3% of untyped | +45.4 pts, 53.8% of untyped |
-| pdm                | mega+dev    |             11.7% |         52.2% |            59.3% |                  64.0% | +40.5 pts, 45.8% of untyped | +52.3 pts, 59.3% of untyped |
-| strawberry-graphql | mega+dev    |             30.1% |         55.2% |            61.9% |                  64.4% | +25.1 pts, 35.9% of untyped | +34.4 pts, 49.2% of untyped |
-| pygments           | mega+dev    |              0.0% |          9.6% |            10.7% |                  69.8% |   +9.6 pts, 9.6% of untyped | +69.8 pts, 69.8% of untyped |
-| streamlink         | mega+dev    |             42.8% |         56.0% |            58.5% |                  66.9% | +13.2 pts, 23.1% of untyped | +24.1 pts, 42.2% of untyped |
-| sphinx             | mega+dev    |             10.4% |         48.5% |            54.6% |                  59.1% | +38.1 pts, 42.5% of untyped | +48.7 pts, 54.3% of untyped |
-| tox                | mega+dev    |             16.0% |         63.0% |            67.8% |                  70.4% | +46.9 pts, 55.9% of untyped | +54.4 pts, 64.8% of untyped |
-| pint               | mega+dev    |              5.1% |         25.1% |            33.5% |                  35.2% | +20.0 pts, 21.1% of untyped | +30.1 pts, 31.7% of untyped |
-| altair             | mega+dev    |             49.7% |         61.2% |            62.6% |                  63.0% | +11.5 pts, 22.8% of untyped | +13.3 pts, 26.5% of untyped |
+| mcp                | mega+dev    |             30.7% |         59.6% |            66.2% |                  69.6% | +28.9 pts, 41.7% of untyped | +38.9 pts, 56.2% of untyped |
+| textual            | mega+dev    |             15.6% |         52.0% |            58.6% |                  62.0% | +36.4 pts, 43.1% of untyped | +46.5 pts, 55.1% of untyped |
+| pdm                | mega+dev    |             11.7% |         52.2% |            59.3% |                  64.0% | +40.5 pts, 45.8% of untyped | +52.3 pts, 59.2% of untyped |
+| strawberry-graphql | mega+dev    |             30.1% |         55.5% |            62.2% |                  64.8% | +25.4 pts, 36.3% of untyped | +34.7 pts, 49.7% of untyped |
+| pygments           | mega+dev    |              0.0% |          9.6% |            10.6% |                  69.8% |   +9.6 pts, 9.6% of untyped | +69.8 pts, 69.8% of untyped |
+| streamlink         | mega+dev    |             42.8% |         56.0% |            58.6% |                  66.9% | +13.2 pts, 23.1% of untyped | +24.2 pts, 42.2% of untyped |
+| sphinx             | mega+dev    |             10.4% |         48.5% |            54.6% |                  59.1% | +38.1 pts, 42.5% of untyped | +48.7 pts, 54.4% of untyped |
+| tox                | mega+dev    |             16.0% |         63.0% |            67.9% |                  70.5% | +46.9 pts, 55.9% of untyped | +54.5 pts, 64.9% of untyped |
+| pint               | mega+dev    |              5.1% |         25.1% |            33.6% |                  35.2% | +20.0 pts, 21.1% of untyped | +30.1 pts, 31.7% of untyped |
+| altair             | mega+dev    |             49.7% |         61.2% |            62.8% |                  63.1% | +11.5 pts, 22.9% of untyped | +13.4 pts, 26.7% of untyped |
 | seaborn            | mega+dev    |              6.9% |         28.0% |            33.3% |                  35.8% | +21.1 pts, 22.7% of untyped | +28.9 pts, 31.1% of untyped |
-| aiohttp            | mega+dev    |             23.7% |         53.1% |            59.4% |                  64.4% | +29.5 pts, 38.6% of untyped | +40.7 pts, 53.4% of untyped |
+| aiohttp            | mega+dev    |             23.7% |         53.3% |            59.6% |                  64.6% | +29.7 pts, 38.9% of untyped | +40.9 pts, 53.6% of untyped |
 | websockets         | mega+dev    |             13.8% |         53.3% |            61.7% |                  67.4% | +39.4 pts, 45.8% of untyped | +53.6 pts, 62.2% of untyped |
-| anyio              | mega+dev    |             27.8% |         49.7% |            53.3% |                  56.7% | +21.9 pts, 30.3% of untyped | +28.9 pts, 40.0% of untyped |
-| zarr               | mega+dev    |             21.7% |         59.6% |            62.2% |                  63.5% | +37.9 pts, 48.4% of untyped | +41.8 pts, 53.3% of untyped |
+| anyio              | mega+dev    |             27.8% |         51.0% |            54.6% |                  58.0% | +23.2 pts, 32.2% of untyped | +30.2 pts, 41.8% of untyped |
+| zarr               | mega+dev    |             21.7% |         59.7% |            62.2% |                  63.5% | +38.0 pts, 48.5% of untyped | +41.8 pts, 53.4% of untyped |
 | joblib             | mega+dev    |              0.0% |         23.5% |            31.5% |                  36.9% | +23.4 pts, 23.4% of untyped | +36.9 pts, 36.9% of untyped |
 | networkx           | mega+dev    |              0.3% |         17.9% |            27.7% |                  29.1% | +17.6 pts, 17.7% of untyped | +28.8 pts, 28.9% of untyped |
 | nibabel            | mega+dev    |              1.0% |         22.8% |            32.7% |                  36.5% | +21.9 pts, 22.1% of untyped | +35.6 pts, 35.9% of untyped |
-| narwhals           | mega+dev    |             21.7% |         48.7% |            50.4% |                  51.8% | +27.0 pts, 34.5% of untyped | +30.1 pts, 38.4% of untyped |
-| xarray             | mega+dev    |              4.6% |         25.2% |            48.2% |                  49.7% | +20.6 pts, 21.6% of untyped | +45.1 pts, 47.3% of untyped |
-| litestar           | mega+dev    |             44.9% |         63.6% |            66.8% |                  68.9% | +18.7 pts, 33.9% of untyped | +23.9 pts, 43.5% of untyped |
-| stripe             | mega+dev    |             89.5% |         92.0% |            92.5% |                  94.1% |  +2.4 pts, 23.2% of untyped |  +4.5 pts, 43.1% of untyped |
+| narwhals           | mega+dev    |             21.7% |         48.9% |            50.8% |                  52.1% | +27.2 pts, 34.7% of untyped | +30.4 pts, 38.9% of untyped |
+| xarray             | mega+dev    |              4.6% |         25.3% |            48.3% |                  49.8% | +20.7 pts, 21.7% of untyped | +45.2 pts, 47.4% of untyped |
+| litestar           | mega+dev    |             44.9% |         63.7% |            67.2% |                  69.4% | +18.7 pts, 34.0% of untyped | +24.5 pts, 44.4% of untyped |
+| stripe             | mega+dev    |             89.5% |         92.0% |            92.5% |                  94.1% |  +2.4 pts, 23.3% of untyped |  +4.5 pts, 43.3% of untyped |
 | celery             | mega+dev    |              0.4% |         13.9% |            17.4% |                  23.8% | +13.5 pts, 13.6% of untyped | +23.4 pts, 23.5% of untyped |
-| optuna             | mega+dev    |              7.5% |         48.1% |            53.7% |                  56.5% | +40.7 pts, 43.9% of untyped | +49.1 pts, 53.0% of untyped |
-| dask               | mega+dev    |              1.1% |         14.0% |            22.1% |                  25.9% | +12.9 pts, 13.1% of untyped | +24.8 pts, 25.1% of untyped |
-| mypy               | mega+dev    |             16.8% |         54.3% |            63.1% |                  66.1% | +37.5 pts, 45.1% of untyped | +49.3 pts, 59.2% of untyped |
+| optuna             | mega+dev    |              7.5% |         48.2% |            53.8% |                  56.6% | +40.7 pts, 44.0% of untyped | +49.1 pts, 53.1% of untyped |
+| dask               | mega+dev    |              1.1% |         14.0% |            22.1% |                  25.8% | +12.9 pts, 13.1% of untyped | +24.8 pts, 25.1% of untyped |
+| mypy               | mega+dev    |             16.8% |         54.3% |            63.1% |                  66.1% | +37.5 pts, 45.1% of untyped | +49.3 pts, 59.3% of untyped |
 | **Total**          | mega+dev    |             11.4% |         34.6% |            45.8% |                  51.0% | +23.2 pts, 26.2% of untyped | +39.6 pts, 44.7% of untyped |
 
 Each fix on a copy: by tier, and with `--infer-with` each type checker or a trace:
 
 | corpus             | fix                |  fixed | certain | likely |  guess | broken | left |  typed | bindings | seconds |
 | ------------------ | ------------------ | -----: | ------: | -----: | -----: | -----: | ---: | -----: | -------: | ------: |
-| standard library   | certain            | 37,329 |  37,329 |        |        |      0 |    1 | 38,658 |  115,001 |    55.8 |
-| standard library   | likely             | 44,276 |  37,606 |  6,670 |        |      0 |    0 | 45,605 |  115,001 |    96.2 |
-| standard library   | unsafe             | 51,543 |  37,338 |  6,650 |  7,555 |      0 |    0 | 52,872 |  115,001 |    85.6 |
-| standard library   | infer-basedpyright | 59,268 |  37,339 |  7,060 | 14,869 |      0 |    7 | 60,597 |  115,001 |   112.0 |
-| standard library   | infer-ty           | 57,032 |  37,374 |  7,044 | 12,614 |      0 |    5 | 58,361 |  115,001 |   108.4 |
-| standard library   | infer-pyrefly      | 59,391 |  37,329 |  7,097 | 14,965 |      0 |   39 | 60,720 |  115,001 |   112.8 |
-| django             | certain            |  2,622 |   2,622 |        |        |      0 |    0 |  2,627 |   17,181 |    16.3 |
-| django             | likely             |  3,348 |   2,627 |    721 |        |      0 |    0 |  3,353 |   17,181 |    23.0 |
-| django             | unsafe             |  5,567 |   2,622 |    719 |  2,226 |      0 |    0 |  5,572 |   17,181 |    36.2 |
-| django             | infer-basedpyright |  5,958 |   2,616 |    732 |  2,610 |      0 |    0 |  5,963 |   17,181 |    28.0 |
-| django             | infer-ty           |  5,770 |   2,623 |    727 |  2,420 |      0 |    0 |  5,775 |   17,181 |    28.7 |
-| django             | infer-pyrefly      |  6,242 |   2,611 |    740 |  2,891 |      0 |    0 |  6,247 |   17,181 |    30.5 |
-| django             | infer-trace        |  6,108 |   2,622 |    749 |  2,737 |      0 |    0 |  6,113 |   17,181 |    14.7 |
-| sqlalchemy         | certain            |  2,117 |   2,117 |        |        |      0 |    0 |  4,452 |   15,304 |    16.1 |
-| sqlalchemy         | likely             |  2,550 |   2,125 |    425 |        |      0 |    0 |  4,885 |   15,304 |    23.5 |
-| sqlalchemy         | unsafe             |  3,269 |   2,117 |    425 |    727 |      0 |    0 |  5,604 |   15,304 |    25.4 |
-| sqlalchemy         | infer-basedpyright |  4,003 |   2,119 |    462 |  1,422 |      0 |    0 |  6,338 |   15,304 |    30.0 |
-| sqlalchemy         | infer-ty           |  3,951 |   2,119 |    451 |  1,381 |      0 |    0 |  6,286 |   15,304 |    26.2 |
-| sqlalchemy         | infer-pyrefly      |  3,754 |   2,118 |    444 |  1,192 |      0 |    0 |  6,089 |   15,304 |    28.2 |
-| sqlalchemy         | infer-trace        |  3,423 |   2,117 |    425 |    881 |      0 |    0 |  5,758 |   15,304 |    14.8 |
-| pydantic           | certain            |  1,196 |   1,196 |        |        |      0 |    0 |  2,098 |    4,019 |     2.4 |
-| pydantic           | likely             |  1,346 |   1,203 |    143 |        |      0 |    0 |  2,248 |    4,019 |     3.0 |
-| pydantic           | unsafe             |  1,609 |   1,196 |    142 |    271 |      0 |    0 |  2,511 |    4,019 |     6.3 |
-| pydantic           | infer-basedpyright |  1,828 |   1,197 |    144 |    487 |      0 |    0 |  2,730 |    4,019 |     5.4 |
-| pydantic           | infer-ty           |  1,743 |   1,196 |    140 |    407 |      0 |    0 |  2,645 |    4,019 |     6.5 |
-| pydantic           | infer-pyrefly      |  1,807 |   1,196 |    141 |    470 |      0 |    0 |  2,709 |    4,019 |     5.1 |
-| pydantic           | infer-trace        |  1,610 |   1,196 |    142 |    272 |      0 |    0 |  2,512 |    4,019 |     6.4 |
-| pandas             | certain            | 17,171 |  17,171 |        |        |      0 |    0 | 18,440 |   79,062 |    49.3 |
-| pandas             | likely             | 41,540 |  17,366 | 24,174 |        |      0 |    0 | 42,809 |   79,062 |   163.0 |
-| pandas             | unsafe             | 42,814 |  17,167 | 24,154 |  1,493 |      0 |    0 | 44,083 |   79,062 |   127.1 |
-| pandas             | infer-basedpyright | 48,430 |  17,158 | 24,135 |  7,137 |      0 |   24 | 49,699 |   79,062 |    99.0 |
-| pandas             | infer-ty           | 48,376 |  17,167 | 24,145 |  7,064 |      0 |   21 | 49,645 |   79,062 |   106.9 |
-| pandas             | infer-pyrefly      | 50,867 |  17,166 | 24,087 |  9,614 |      0 |   25 | 52,136 |   79,062 |   109.7 |
-| pandas             | infer-trace        | 44,250 |  17,170 | 24,025 |  3,055 |      0 |    0 | 45,519 |   79,062 |    88.2 |
-| twisted            | certain            |  2,435 |   2,435 |        |        |      0 |    0 |  2,435 |   17,874 |     6.0 |
-| twisted            | likely             |  6,176 |   2,453 |  3,723 |        |      0 |    0 |  6,176 |   17,874 |    12.5 |
-| twisted            | unsafe             |  7,264 |   2,434 |  3,723 |  1,107 |      0 |    0 |  7,264 |   17,874 |     7.7 |
-| twisted            | infer-basedpyright |  8,627 |   2,435 |  3,739 |  2,453 |      0 |    0 |  8,627 |   17,874 |    23.0 |
-| twisted            | infer-ty           |  7,630 |   2,434 |  3,734 |  1,462 |      0 |    0 |  7,630 |   17,874 |    17.7 |
-| twisted            | infer-pyrefly      |  7,665 |   2,434 |  3,733 |  1,498 |      0 |    0 |  7,665 |   17,874 |    18.3 |
-| pip                | certain            |  2,271 |   2,271 |        |        |      0 |    0 |  2,408 |    9,064 |     4.2 |
-| pip                | likely             |  2,761 |   2,278 |    483 |        |      0 |    0 |  2,898 |    9,064 |     9.0 |
-| pip                | unsafe             |  3,620 |   2,271 |    481 |    868 |      0 |    0 |  3,757 |    9,064 |     6.0 |
-| pip                | infer-basedpyright |  4,329 |   2,272 |    527 |  1,530 |      0 |    0 |  4,466 |    9,064 |    15.2 |
-| pip                | infer-ty           |  3,911 |   2,272 |    500 |  1,139 |      0 |    0 |  4,048 |    9,064 |    19.4 |
-| pip                | infer-pyrefly      |  4,116 |   2,270 |    511 |  1,335 |      0 |    0 |  4,253 |    9,064 |     8.7 |
-| structlog          | certain            |     98 |      98 |        |        |      0 |    0 |    207 |      425 |     0.5 |
-| structlog          | likely             |    113 |      98 |     15 |        |      0 |    0 |    222 |      425 |     0.5 |
-| structlog          | unsafe             |    126 |      98 |     15 |     13 |      0 |    0 |    235 |      425 |     0.7 |
-| structlog          | infer-basedpyright |    152 |      98 |     16 |     38 |      0 |    0 |    261 |      425 |     2.1 |
-| structlog          | infer-ty           |    137 |      98 |     16 |     23 |      0 |    0 |    246 |      425 |     1.5 |
-| structlog          | infer-pyrefly      |    147 |      98 |     17 |     32 |      0 |    0 |    256 |      425 |     1.6 |
-| structlog          | infer-trace        |    126 |      98 |     15 |     13 |      0 |    0 |    235 |      425 |     0.6 |
-| attrs              | certain            |     93 |      93 |        |        |      0 |    0 |     96 |      396 |     1.4 |
-| attrs              | likely             |    102 |      94 |      8 |        |      0 |    0 |    105 |      396 |     0.7 |
-| attrs              | unsafe             |    107 |      93 |      8 |      6 |      0 |    0 |    110 |      396 |     1.8 |
-| attrs              | infer-basedpyright |    132 |      93 |      8 |     31 |      0 |    0 |    135 |      396 |     1.5 |
-| attrs              | infer-ty           |    118 |      93 |      8 |     17 |      0 |    0 |    121 |      396 |     1.4 |
-| attrs              | infer-pyrefly      |    123 |      93 |      8 |     22 |      0 |    0 |    126 |      396 |     2.3 |
-| attrs              | infer-trace        |    110 |      93 |      9 |      8 |      0 |    0 |    113 |      396 |     1.1 |
-| click              | certain            |    310 |     310 |        |        |      0 |    0 |    589 |      887 |     0.7 |
-| click              | likely             |    336 |     311 |     25 |        |      0 |    0 |    615 |      887 |     1.3 |
-| click              | unsafe             |    373 |     310 |     25 |     38 |      0 |    0 |    652 |      887 |     1.7 |
-| click              | infer-basedpyright |    436 |     310 |     29 |     97 |      0 |    0 |    715 |      887 |     4.1 |
-| click              | infer-ty           |    454 |     310 |     26 |    118 |      0 |    0 |    733 |      887 |     2.5 |
-| click              | infer-pyrefly      |    448 |     310 |     30 |    108 |      0 |    0 |    727 |      887 |     2.5 |
-| click              | infer-trace        |    373 |     310 |     25 |     38 |      0 |    0 |    652 |      887 |     3.6 |
-| hypercorn          | certain            |    137 |     137 |        |        |      0 |    0 |    307 |      525 |     0.6 |
-| hypercorn          | likely             |    157 |     137 |     20 |        |      0 |    0 |    327 |      525 |     0.6 |
-| hypercorn          | unsafe             |    195 |     137 |     20 |     38 |      0 |    0 |    365 |      525 |     1.7 |
-| hypercorn          | infer-basedpyright |    216 |     137 |     21 |     58 |      0 |    0 |    386 |      525 |     3.1 |
-| hypercorn          | infer-ty           |    219 |     137 |     21 |     61 |      0 |    0 |    389 |      525 |     1.0 |
-| hypercorn          | infer-pyrefly      |    204 |     137 |     20 |     47 |      0 |    0 |    374 |      525 |     1.8 |
-| hypercorn          | infer-trace        |    195 |     137 |     20 |     38 |      0 |    0 |    365 |      525 |     3.2 |
-| starlette          | certain            |    321 |     321 |        |        |      0 |    0 |    406 |      829 |     0.6 |
-| starlette          | likely             |    395 |     322 |     73 |        |      0 |    0 |    480 |      829 |     1.6 |
-| starlette          | unsafe             |    436 |     321 |     73 |     42 |      0 |    0 |    521 |      829 |     1.6 |
-| starlette          | infer-basedpyright |    497 |     321 |     72 |    104 |      0 |    0 |    582 |      829 |     3.5 |
-| starlette          | infer-ty           |    483 |     321 |     72 |     90 |      0 |    0 |    568 |      829 |     2.5 |
-| starlette          | infer-pyrefly      |    469 |     321 |     72 |     76 |      0 |    0 |    554 |      829 |     2.5 |
-| starlette          | infer-trace        |    436 |     321 |     73 |     42 |      0 |    0 |    521 |      829 |     3.6 |
-| werkzeug           | certain            |    536 |     536 |        |        |      0 |    0 |    752 |    1,509 |     0.8 |
-| werkzeug           | likely             |    605 |     537 |     68 |        |      0 |    0 |    821 |    1,509 |     1.3 |
-| werkzeug           | unsafe             |    665 |     536 |     68 |     61 |      0 |    0 |    881 |    1,509 |     1.3 |
-| werkzeug           | infer-basedpyright |    784 |     536 |     81 |    167 |      0 |    0 |  1,000 |    1,509 |    13.7 |
-| werkzeug           | infer-ty           |    809 |     536 |     83 |    190 |      0 |    0 |  1,025 |    1,509 |     5.4 |
-| werkzeug           | infer-pyrefly      |    812 |     537 |     72 |    203 |      0 |    0 |  1,028 |    1,509 |     2.6 |
-| werkzeug           | infer-trace        |    665 |     536 |     68 |     61 |      0 |    0 |    881 |    1,509 |     5.2 |
-| mkdocs             | certain            |    826 |     826 |        |        |      0 |    0 |    937 |    2,443 |     1.2 |
-| mkdocs             | likely             |  1,256 |     858 |    398 |        |      0 |    0 |  1,367 |    2,443 |     1.8 |
-| mkdocs             | unsafe             |  1,378 |     826 |    398 |    154 |      0 |    0 |  1,489 |    2,443 |     4.1 |
-| mkdocs             | infer-basedpyright |  1,463 |     826 |    405 |    232 |      0 |    0 |  1,574 |    2,443 |    16.9 |
-| mkdocs             | infer-ty           |  1,492 |     826 |    410 |    256 |      0 |    0 |  1,603 |    2,443 |     6.8 |
-| mkdocs             | infer-pyrefly      |  1,470 |     826 |    406 |    238 |      0 |    0 |  1,581 |    2,443 |     7.3 |
-| mkdocs             | infer-trace        |  1,390 |     827 |    398 |    165 |      0 |    0 |  1,501 |    2,443 |     4.9 |
+| standard library   | certain            | 37,325 |  37,325 |        |        |      0 |    0 | 38,654 |  115,001 |    82.6 |
+| standard library   | likely             | 44,269 |  37,601 |  6,668 |        |      0 |    0 | 45,598 |  115,001 |    64.2 |
+| standard library   | unsafe             | 51,522 |  37,333 |  6,648 |  7,541 |      0 |    0 | 52,851 |  115,001 |   150.6 |
+| standard library   | infer-basedpyright | 59,221 |  37,335 |  7,060 | 14,826 |      0 |    7 | 60,550 |  115,001 |   267.2 |
+| standard library   | infer-ty           | 56,995 |  37,369 |  7,042 | 12,584 |      0 |    4 | 58,324 |  115,001 |   131.8 |
+| standard library   | infer-pyrefly      | 59,355 |  37,324 |  7,097 | 14,934 |      0 |   39 | 60,684 |  115,001 |   140.5 |
+| django             | certain            |  2,622 |   2,622 |        |        |      0 |    0 |  2,627 |   17,181 |    22.5 |
+| django             | likely             |  3,325 |   2,627 |    698 |        |      0 |    0 |  3,330 |   17,181 |    33.4 |
+| django             | unsafe             |  5,482 |   2,622 |    696 |  2,164 |      0 |    0 |  5,487 |   17,181 |    28.4 |
+| django             | infer-basedpyright |  5,889 |   2,616 |    709 |  2,564 |      0 |    0 |  5,894 |   17,181 |    58.9 |
+| django             | infer-ty           |  5,684 |   2,623 |    704 |  2,357 |      0 |    0 |  5,689 |   17,181 |    41.8 |
+| django             | infer-pyrefly      |  6,163 |   2,611 |    717 |  2,835 |      0 |    0 |  6,168 |   17,181 |    37.8 |
+| django             | infer-trace        |  6,025 |   2,622 |    726 |  2,677 |      0 |    0 |  6,030 |   17,181 |    11.3 |
+| sqlalchemy         | certain            |  2,144 |   2,144 |        |        |      0 |    0 |  4,479 |   15,304 |    14.4 |
+| sqlalchemy         | likely             |  2,589 |   2,152 |    437 |        |      0 |    0 |  4,924 |   15,304 |    27.6 |
+| sqlalchemy         | unsafe             |  3,296 |   2,144 |    437 |    715 |      0 |    0 |  5,631 |   15,304 |    19.5 |
+| sqlalchemy         | infer-basedpyright |  4,015 |   2,146 |    474 |  1,395 |      0 |    0 |  6,350 |   15,304 |    56.6 |
+| sqlalchemy         | infer-ty           |  3,955 |   2,146 |    463 |  1,346 |      0 |    0 |  6,290 |   15,304 |    31.6 |
+| sqlalchemy         | infer-pyrefly      |  3,757 |   2,145 |    456 |  1,156 |      0 |    0 |  6,092 |   15,304 |    33.3 |
+| sqlalchemy         | infer-trace        |  3,449 |   2,144 |    437 |    868 |      0 |    0 |  5,784 |   15,304 |    19.2 |
+| pydantic           | certain            |  1,196 |   1,196 |        |        |      0 |    0 |  2,098 |    4,019 |     3.2 |
+| pydantic           | likely             |  1,346 |   1,203 |    143 |        |      0 |    0 |  2,248 |    4,019 |     3.8 |
+| pydantic           | unsafe             |  1,609 |   1,196 |    142 |    271 |      0 |    0 |  2,511 |    4,019 |     4.6 |
+| pydantic           | infer-basedpyright |  1,824 |   1,197 |    144 |    483 |      0 |    0 |  2,726 |    4,019 |    27.5 |
+| pydantic           | infer-ty           |  1,742 |   1,196 |    140 |    406 |      0 |    0 |  2,644 |    4,019 |     7.1 |
+| pydantic           | infer-pyrefly      |  1,806 |   1,196 |    141 |    469 |      0 |    0 |  2,708 |    4,019 |    10.0 |
+| pydantic           | infer-trace        |  1,610 |   1,196 |    142 |    272 |      0 |    0 |  2,512 |    4,019 |     6.9 |
+| pandas             | certain            | 17,131 |  17,131 |        |        |      0 |    0 | 18,400 |   79,062 |    73.8 |
+| pandas             | likely             | 41,627 |  17,343 | 24,284 |        |      0 |    0 | 42,896 |   79,062 |   173.7 |
+| pandas             | unsafe             | 42,896 |  17,127 | 24,264 |  1,505 |      0 |    0 | 44,165 |   79,062 |   159.8 |
+| pandas             | infer-basedpyright | 46,001 |  17,118 | 24,252 |  4,631 |      0 |   34 | 47,270 |   79,062 |   283.3 |
+| pandas             | infer-ty           | 45,870 |  17,127 | 24,257 |  4,486 |      0 |   33 | 47,139 |   79,062 |   218.6 |
+| pandas             | infer-pyrefly      | 47,480 |  17,126 | 24,169 |  6,185 |      0 |   41 | 48,749 |   79,062 |   158.3 |
+| pandas             | infer-trace        | 43,584 |  17,130 | 24,203 |  2,251 |      0 |    0 | 44,853 |   79,062 |   104.6 |
+| twisted            | certain            |  2,435 |   2,435 |        |        |      0 |    0 |  2,435 |   17,874 |     6.1 |
+| twisted            | likely             |  6,176 |   2,453 |  3,723 |        |      0 |    0 |  6,176 |   17,874 |    11.2 |
+| twisted            | unsafe             |  7,264 |   2,434 |  3,723 |  1,107 |      0 |    0 |  7,264 |   17,874 |    12.7 |
+| twisted            | infer-basedpyright |  8,627 |   2,435 |  3,739 |  2,453 |      0 |    0 |  8,627 |   17,874 |    21.0 |
+| twisted            | infer-ty           |  7,630 |   2,434 |  3,734 |  1,462 |      0 |    0 |  7,630 |   17,874 |    21.9 |
+| twisted            | infer-pyrefly      |  7,665 |   2,434 |  3,733 |  1,498 |      0 |    0 |  7,665 |   17,874 |    17.9 |
+| pip                | certain            |  2,242 |   2,242 |        |        |      0 |    0 |  2,379 |    9,064 |     6.1 |
+| pip                | likely             |  2,732 |   2,249 |    483 |        |      0 |    0 |  2,869 |    9,064 |     8.2 |
+| pip                | unsafe             |  3,584 |   2,242 |    481 |    861 |      0 |    0 |  3,721 |    9,064 |     6.4 |
+| pip                | infer-basedpyright |  4,314 |   2,243 |    526 |  1,545 |      0 |    0 |  4,451 |    9,064 |    41.8 |
+| pip                | infer-ty           |  3,887 |   2,243 |    500 |  1,144 |      0 |    0 |  4,024 |    9,064 |    14.3 |
+| pip                | infer-pyrefly      |  4,098 |   2,241 |    510 |  1,347 |      0 |    0 |  4,235 |    9,064 |    16.1 |
+| structlog          | certain            |     98 |      98 |        |        |      0 |    0 |    207 |      425 |     0.7 |
+| structlog          | likely             |    113 |      98 |     15 |        |      0 |    0 |    222 |      425 |     0.8 |
+| structlog          | unsafe             |    126 |      98 |     15 |     13 |      0 |    0 |    235 |      425 |     3.0 |
+| structlog          | infer-basedpyright |    152 |      98 |     16 |     38 |      0 |    0 |    261 |      425 |     2.4 |
+| structlog          | infer-ty           |    137 |      98 |     16 |     23 |      0 |    0 |    246 |      425 |     1.0 |
+| structlog          | infer-pyrefly      |    147 |      98 |     17 |     32 |      0 |    0 |    256 |      425 |     1.5 |
+| structlog          | infer-trace        |    126 |      98 |     15 |     13 |      0 |    0 |    235 |      425 |     2.2 |
+| attrs              | certain            |     93 |      93 |        |        |      0 |    0 |     96 |      396 |     0.9 |
+| attrs              | likely             |    102 |      94 |      8 |        |      0 |    0 |    105 |      396 |     0.9 |
+| attrs              | unsafe             |    107 |      93 |      8 |      6 |      0 |    0 |    110 |      396 |     1.6 |
+| attrs              | infer-basedpyright |    126 |      93 |      8 |     25 |      0 |    0 |    129 |      396 |     6.9 |
+| attrs              | infer-ty           |    118 |      93 |      8 |     17 |      0 |    0 |    121 |      396 |     1.3 |
+| attrs              | infer-pyrefly      |    122 |      93 |      8 |     21 |      0 |    0 |    125 |      396 |     2.4 |
+| attrs              | infer-trace        |    110 |      93 |      9 |      8 |      0 |    0 |    113 |      396 |     1.0 |
+| click              | certain            |    311 |     311 |        |        |      0 |    0 |    590 |      887 |     0.7 |
+| click              | likely             |    338 |     312 |     26 |        |      0 |    0 |    617 |      887 |     1.5 |
+| click              | unsafe             |    375 |     311 |     26 |     38 |      0 |    0 |    654 |      887 |     2.1 |
+| click              | infer-basedpyright |    437 |     311 |     30 |     96 |      0 |    0 |    716 |      887 |     4.8 |
+| click              | infer-ty           |    455 |     311 |     28 |    116 |      0 |    0 |    734 |      887 |     3.0 |
+| click              | infer-pyrefly      |    449 |     311 |     31 |    107 |      0 |    0 |    728 |      887 |     1.9 |
+| click              | infer-trace        |    375 |     311 |     26 |     38 |      0 |    0 |    654 |      887 |     2.3 |
+| hypercorn          | certain            |    137 |     137 |        |        |      0 |    0 |    307 |      525 |     1.0 |
+| hypercorn          | likely             |    157 |     137 |     20 |        |      0 |    0 |    327 |      525 |     0.7 |
+| hypercorn          | unsafe             |    195 |     137 |     20 |     38 |      0 |    0 |    365 |      525 |     2.6 |
+| hypercorn          | infer-basedpyright |    216 |     137 |     21 |     58 |      0 |    0 |    386 |      525 |     1.1 |
+| hypercorn          | infer-ty           |    219 |     137 |     21 |     61 |      0 |    0 |    389 |      525 |     2.6 |
+| hypercorn          | infer-pyrefly      |    204 |     137 |     20 |     47 |      0 |    0 |    374 |      525 |     2.0 |
+| hypercorn          | infer-trace        |    195 |     137 |     20 |     38 |      0 |    0 |    365 |      525 |     3.4 |
+| starlette          | certain            |    321 |     321 |        |        |      0 |    0 |    406 |      829 |     0.9 |
+| starlette          | likely             |    396 |     322 |     74 |        |      0 |    0 |    481 |      829 |     1.1 |
+| starlette          | unsafe             |    437 |     321 |     74 |     42 |      0 |    0 |    522 |      829 |     2.3 |
+| starlette          | infer-basedpyright |    497 |     321 |     73 |    103 |      0 |    0 |    582 |      829 |     1.6 |
+| starlette          | infer-ty           |    483 |     321 |     73 |     89 |      0 |    0 |    568 |      829 |     1.7 |
+| starlette          | infer-pyrefly      |    465 |     321 |     73 |     71 |      0 |    0 |    550 |      829 |     3.8 |
+| starlette          | infer-trace        |    437 |     321 |     74 |     42 |      0 |    0 |    522 |      829 |     2.1 |
+| werkzeug           | certain            |    545 |     545 |        |        |      0 |    0 |    761 |    1,509 |     1.1 |
+| werkzeug           | likely             |    617 |     546 |     71 |        |      0 |    0 |    833 |    1,509 |     1.4 |
+| werkzeug           | unsafe             |    683 |     545 |     71 |     67 |      0 |    0 |    899 |    1,509 |     3.2 |
+| werkzeug           | infer-basedpyright |    798 |     545 |     82 |    171 |      0 |    0 |  1,014 |    1,509 |     7.9 |
+| werkzeug           | infer-ty           |    823 |     545 |     84 |    194 |      0 |    0 |  1,039 |    1,509 |     4.1 |
+| werkzeug           | infer-pyrefly      |    817 |     546 |     72 |    199 |      0 |    0 |  1,033 |    1,509 |     6.1 |
+| werkzeug           | infer-trace        |    683 |     545 |     71 |     67 |      0 |    0 |    899 |    1,509 |     5.1 |
+| mkdocs             | certain            |    826 |     826 |        |        |      0 |    0 |    937 |    2,443 |     2.2 |
+| mkdocs             | likely             |  1,256 |     858 |    398 |        |      0 |    0 |  1,367 |    2,443 |     2.5 |
+| mkdocs             | unsafe             |  1,378 |     826 |    398 |    154 |      0 |    0 |  1,489 |    2,443 |     3.2 |
+| mkdocs             | infer-basedpyright |  1,463 |     826 |    405 |    232 |      0 |    0 |  1,574 |    2,443 |     8.9 |
+| mkdocs             | infer-ty           |  1,492 |     826 |    410 |    256 |      0 |    0 |  1,603 |    2,443 |     5.5 |
+| mkdocs             | infer-pyrefly      |  1,470 |     826 |    406 |    238 |      0 |    0 |  1,581 |    2,443 |     4.5 |
+| mkdocs             | infer-trace        |  1,390 |     827 |    398 |    165 |      0 |    0 |  1,501 |    2,443 |     5.6 |
 | httpx              | certain            |    240 |     240 |        |        |      0 |    0 |    278 |      607 |     0.7 |
-| httpx              | likely             |    309 |     250 |     59 |        |      0 |    0 |    347 |      607 |     1.0 |
-| httpx              | unsafe             |    324 |     240 |     59 |     25 |      0 |    0 |    362 |      607 |     4.9 |
-| httpx              | infer-basedpyright |    408 |     240 |     64 |    104 |      0 |    0 |    446 |      607 |     2.1 |
-| httpx              | infer-ty           |    392 |     241 |     63 |     88 |      0 |    0 |    430 |      607 |     2.2 |
-| httpx              | infer-pyrefly      |    367 |     240 |     62 |     65 |      0 |    0 |    405 |      607 |     2.3 |
-| httpx              | infer-trace        |    324 |     240 |     59 |     25 |      0 |    0 |    362 |      607 |     1.8 |
-| black              | certain            |    714 |     714 |        |        |      0 |    0 |    954 |    1,513 |     0.7 |
-| black              | likely             |    842 |     727 |    115 |        |      0 |    0 |  1,082 |    1,513 |     0.9 |
-| black              | unsafe             |    883 |     714 |    115 |     54 |      0 |    0 |  1,123 |    1,513 |     1.0 |
-| black              | infer-basedpyright |    939 |     714 |    115 |    110 |      0 |    0 |  1,179 |    1,513 |     1.6 |
-| black              | infer-ty           |    941 |     714 |    115 |    112 |      0 |    0 |  1,181 |    1,513 |     3.9 |
-| black              | infer-pyrefly      |    926 |     714 |    114 |     98 |      0 |    0 |  1,166 |    1,513 |     2.0 |
-| black              | infer-trace        |    883 |     714 |    115 |     54 |      0 |    0 |  1,123 |    1,513 |     1.3 |
-| fastapi            | certain            |    258 |     258 |        |        |      0 |    0 |    795 |    1,279 |     1.2 |
+| httpx              | likely             |    309 |     250 |     59 |        |      0 |    0 |    347 |      607 |     1.4 |
+| httpx              | unsafe             |    324 |     240 |     59 |     25 |      0 |    0 |    362 |      607 |     1.3 |
+| httpx              | infer-basedpyright |    408 |     240 |     64 |    104 |      0 |    0 |    446 |      607 |     2.3 |
+| httpx              | infer-ty           |    392 |     241 |     63 |     88 |      0 |    0 |    430 |      607 |     1.2 |
+| httpx              | infer-pyrefly      |    367 |     240 |     62 |     65 |      0 |    0 |    405 |      607 |     1.5 |
+| httpx              | infer-trace        |    324 |     240 |     59 |     25 |      0 |    0 |    362 |      607 |     1.7 |
+| black              | certain            |    714 |     714 |        |        |      0 |    0 |    954 |    1,513 |     0.8 |
+| black              | likely             |    842 |     727 |    115 |        |      0 |    0 |  1,082 |    1,513 |     1.1 |
+| black              | unsafe             |    883 |     714 |    115 |     54 |      0 |    0 |  1,123 |    1,513 |     1.9 |
+| black              | infer-basedpyright |    938 |     714 |    116 |    108 |      0 |    0 |  1,178 |    1,513 |     5.8 |
+| black              | infer-ty           |    938 |     714 |    116 |    108 |      0 |    0 |  1,178 |    1,513 |     2.4 |
+| black              | infer-pyrefly      |    924 |     714 |    115 |     95 |      0 |    0 |  1,164 |    1,513 |     3.0 |
+| black              | infer-trace        |    883 |     714 |    115 |     54 |      0 |    0 |  1,123 |    1,513 |     2.0 |
+| fastapi            | certain            |    258 |     258 |        |        |      0 |    0 |    795 |    1,279 |     1.8 |
 | fastapi            | likely             |    303 |     264 |     39 |        |      0 |    0 |    840 |    1,279 |     3.0 |
-| fastapi            | unsafe             |    329 |     258 |     39 |     32 |      0 |    0 |    866 |    1,279 |     8.1 |
+| fastapi            | unsafe             |    329 |     258 |     39 |     32 |      0 |    0 |    866 |    1,279 |     2.8 |
 | fastapi            | infer-basedpyright |    355 |     258 |     38 |     59 |      0 |    0 |    892 |    1,279 |     4.4 |
-| fastapi            | infer-ty           |    372 |     258 |     37 |     77 |      0 |    0 |    909 |    1,279 |     4.0 |
-| fastapi            | infer-pyrefly      |    352 |     258 |     39 |     55 |      0 |    0 |    889 |    1,279 |     4.2 |
-| fastapi            | infer-trace        |    329 |     258 |     39 |     32 |      0 |    0 |    866 |    1,279 |     1.8 |
-| cattrs             | certain            |    111 |     111 |        |        |      0 |    0 |    150 |      559 |     0.6 |
-| cattrs             | likely             |    145 |     118 |     27 |        |      0 |    0 |    184 |      559 |     0.7 |
-| cattrs             | unsafe             |    163 |     114 |     26 |     23 |      0 |    0 |    202 |      559 |     2.8 |
-| cattrs             | infer-basedpyright |    197 |     113 |     29 |     55 |      0 |    0 |    236 |      559 |     5.0 |
-| cattrs             | infer-ty           |    205 |     111 |     27 |     67 |      0 |    0 |    244 |      559 |     2.0 |
-| cattrs             | infer-pyrefly      |    191 |     111 |     28 |     52 |      0 |    0 |    230 |      559 |     2.4 |
-| cattrs             | infer-trace        |    163 |     114 |     26 |     23 |      0 |    0 |    202 |      559 |     0.7 |
-| pytest             | certain            |  1,374 |   1,374 |        |        |      0 |    0 |  1,789 |    3,418 |     1.8 |
-| pytest             | likely             |  1,533 |   1,379 |    154 |        |      0 |    0 |  1,948 |    3,418 |     3.0 |
-| pytest             | unsafe             |  1,684 |   1,374 |    154 |    156 |      0 |    0 |  2,099 |    3,418 |     3.9 |
-| pytest             | infer-basedpyright |  2,015 |   1,374 |    172 |    469 |      0 |    0 |  2,430 |    3,418 |     4.9 |
-| pytest             | infer-ty           |  2,025 |   1,374 |    174 |    477 |      0 |    0 |  2,440 |    3,418 |     4.1 |
-| pytest             | infer-pyrefly      |  2,083 |   1,374 |    174 |    535 |      0 |    0 |  2,498 |    3,418 |     4.7 |
-| pytest             | infer-trace        |  1,701 |   1,374 |    154 |    173 |      0 |    0 |  2,116 |    3,418 |     3.4 |
-| botocore           | certain            |    543 |     543 |        |        |      0 |    0 |    561 |    3,806 |     2.2 |
-| botocore           | likely             |    723 |     545 |    178 |        |      0 |    0 |    741 |    3,806 |     3.0 |
-| botocore           | unsafe             |  1,194 |     541 |    176 |    477 |      0 |    0 |  1,212 |    3,806 |     7.0 |
-| botocore           | infer-basedpyright |  1,330 |     536 |    175 |    619 |      0 |    0 |  1,348 |    3,806 |     7.4 |
-| botocore           | infer-ty           |  1,251 |     541 |    177 |    533 |      0 |    0 |  1,269 |    3,806 |     6.1 |
-| botocore           | infer-pyrefly      |  1,316 |     536 |    173 |    607 |      0 |    0 |  1,334 |    3,806 |     5.8 |
-| botocore           | infer-trace        |  1,527 |     541 |    197 |    789 |      0 |    0 |  1,545 |    3,806 |     3.3 |
-| uvicorn            | certain            |    236 |     236 |        |        |      0 |    0 |    387 |      640 |     0.8 |
-| uvicorn            | likely             |    268 |     236 |     32 |        |      0 |    0 |    419 |      640 |     0.8 |
-| uvicorn            | unsafe             |    293 |     236 |     32 |     25 |      0 |    0 |    444 |      640 |     1.5 |
-| uvicorn            | infer-basedpyright |    354 |     236 |     35 |     83 |      0 |    0 |    505 |      640 |     1.8 |
-| uvicorn            | infer-ty           |    334 |     236 |     32 |     66 |      0 |    0 |    485 |      640 |     1.2 |
+| fastapi            | infer-ty           |    372 |     258 |     37 |     77 |      0 |    0 |    909 |    1,279 |     3.3 |
+| fastapi            | infer-pyrefly      |    352 |     258 |     39 |     55 |      0 |    0 |    889 |    1,279 |     2.5 |
+| fastapi            | infer-trace        |    329 |     258 |     39 |     32 |      0 |    0 |    866 |    1,279 |     2.0 |
+| cattrs             | certain            |    112 |     112 |        |        |      0 |    0 |    151 |      559 |     0.7 |
+| cattrs             | likely             |    146 |     119 |     27 |        |      0 |    0 |    185 |      559 |     1.1 |
+| cattrs             | unsafe             |    164 |     115 |     26 |     23 |      0 |    0 |    203 |      559 |     1.4 |
+| cattrs             | infer-basedpyright |    197 |     114 |     29 |     54 |      0 |    0 |    236 |      559 |     2.3 |
+| cattrs             | infer-ty           |    205 |     112 |     27 |     66 |      0 |    0 |    244 |      559 |     2.8 |
+| cattrs             | infer-pyrefly      |    191 |     112 |     28 |     51 |      0 |    0 |    230 |      559 |     1.4 |
+| cattrs             | infer-trace        |    164 |     115 |     26 |     23 |      0 |    0 |    203 |      559 |     1.1 |
+| pytest             | certain            |  1,374 |   1,374 |        |        |      0 |    0 |  1,789 |    3,418 |     1.9 |
+| pytest             | likely             |  1,534 |   1,379 |    155 |        |      0 |    0 |  1,949 |    3,418 |     2.9 |
+| pytest             | unsafe             |  1,687 |   1,374 |    155 |    158 |      0 |    0 |  2,102 |    3,418 |     6.6 |
+| pytest             | infer-basedpyright |  2,010 |   1,374 |    173 |    463 |      0 |    0 |  2,425 |    3,418 |    11.8 |
+| pytest             | infer-ty           |  2,019 |   1,374 |    175 |    470 |      0 |    0 |  2,434 |    3,418 |     7.2 |
+| pytest             | infer-pyrefly      |  2,077 |   1,374 |    175 |    528 |      0 |    0 |  2,492 |    3,418 |     7.9 |
+| pytest             | infer-trace        |  1,699 |   1,374 |    155 |    170 |      0 |    0 |  2,114 |    3,418 |     2.9 |
+| botocore           | certain            |    548 |     548 |        |        |      0 |    0 |    566 |    3,806 |     2.5 |
+| botocore           | likely             |    730 |     550 |    180 |        |      0 |    0 |    748 |    3,806 |     3.6 |
+| botocore           | unsafe             |  1,204 |     546 |    178 |    480 |      0 |    0 |  1,222 |    3,806 |     6.5 |
+| botocore           | infer-basedpyright |  1,339 |     541 |    177 |    621 |      0 |    0 |  1,357 |    3,806 |    15.6 |
+| botocore           | infer-ty           |  1,261 |     546 |    179 |    536 |      0 |    0 |  1,279 |    3,806 |     7.4 |
+| botocore           | infer-pyrefly      |  1,322 |     541 |    175 |    606 |      0 |    0 |  1,340 |    3,806 |     7.2 |
+| botocore           | infer-trace        |  1,536 |     546 |    199 |    791 |      0 |    0 |  1,554 |    3,806 |     3.1 |
+| uvicorn            | certain            |    236 |     236 |        |        |      0 |    0 |    387 |      640 |     1.1 |
+| uvicorn            | likely             |    268 |     236 |     32 |        |      0 |    0 |    419 |      640 |     1.2 |
+| uvicorn            | unsafe             |    293 |     236 |     32 |     25 |      0 |    0 |    444 |      640 |     2.3 |
+| uvicorn            | infer-basedpyright |    354 |     236 |     35 |     83 |      0 |    0 |    505 |      640 |     2.9 |
+| uvicorn            | infer-ty           |    334 |     236 |     32 |     66 |      0 |    0 |    485 |      640 |     1.3 |
 | uvicorn            | infer-pyrefly      |    316 |     236 |     35 |     45 |      0 |    0 |    467 |      640 |     2.2 |
-| uvicorn            | infer-trace        |    293 |     236 |     32 |     25 |      0 |    0 |    444 |      640 |     2.5 |
-| mcp                | certain            |    712 |     712 |        |        |      0 |    0 |  1,475 |    2,483 |     1.9 |
-| mcp                | likely             |    874 |     718 |    156 |        |      0 |    0 |  1,637 |    2,483 |     2.9 |
-| mcp                | unsafe             |    960 |     712 |    156 |     92 |      0 |    0 |  1,723 |    2,483 |     6.9 |
-| mcp                | infer-basedpyright |  1,073 |     712 |    167 |    194 |      0 |    0 |  1,836 |    2,483 |     6.2 |
-| mcp                | infer-ty           |  1,065 |     712 |    164 |    189 |      0 |    0 |  1,828 |    2,483 |     4.6 |
-| mcp                | infer-pyrefly      |  1,042 |     712 |    161 |    169 |      0 |    0 |  1,805 |    2,483 |     5.1 |
-| mcp                | infer-trace        |    960 |     712 |    156 |     92 |      0 |    0 |  1,723 |    2,483 |     2.8 |
-| textual            | certain            |  2,740 |   2,740 |        |        |      0 |    0 |  3,934 |    7,677 |     3.1 |
-| textual            | likely             |  3,229 |   2,764 |    465 |        |      0 |    0 |  4,423 |    7,677 |     3.5 |
-| textual            | unsafe             |  3,489 |   2,740 |    464 |    285 |      0 |    0 |  4,683 |    7,677 |     4.1 |
-| textual            | infer-basedpyright |  4,658 |   2,740 |    540 |  1,378 |      0 |    0 |  5,852 |    7,677 |     8.8 |
-| textual            | infer-ty           |  4,739 |   2,740 |    538 |  1,461 |      0 |    0 |  5,933 |    7,677 |     7.0 |
-| textual            | infer-pyrefly      |  3,887 |   2,740 |    483 |    664 |      0 |    0 |  5,081 |    7,677 |     6.2 |
-| pdm                | certain            |  1,246 |   1,246 |        |        |      0 |    0 |  1,607 |    3,079 |     3.5 |
-| pdm                | likely             |  1,465 |   1,262 |    203 |        |      0 |    0 |  1,826 |    3,079 |     3.5 |
-| pdm                | unsafe             |  1,611 |   1,246 |    202 |    163 |      0 |    0 |  1,972 |    3,079 |     9.3 |
-| pdm                | infer-basedpyright |  1,895 |   1,248 |    221 |    426 |      0 |    2 |  2,256 |    3,079 |     6.9 |
-| pdm                | infer-ty           |  1,903 |   1,248 |    222 |    433 |      0 |    0 |  2,264 |    3,079 |     7.5 |
-| pdm                | infer-pyrefly      |  1,761 |   1,248 |    212 |    301 |      0 |    0 |  2,122 |    3,079 |     5.6 |
-| pdm                | infer-trace        |  1,611 |   1,246 |    202 |    163 |      0 |    0 |  1,972 |    3,079 |     3.5 |
-| strawberry-graphql | certain            |    649 |     649 |        |        |      0 |    0 |  1,425 |    2,582 |     2.8 |
-| strawberry-graphql | likely             |    822 |     651 |    171 |        |      0 |    0 |  1,598 |    2,582 |     4.1 |
-| strawberry-graphql | unsafe             |    888 |     649 |    171 |     68 |      0 |    0 |  1,664 |    2,582 |    10.8 |
-| strawberry-graphql | infer-basedpyright |  1,010 |     649 |    172 |    189 |      0 |    2 |  1,786 |    2,582 |     5.5 |
-| strawberry-graphql | infer-ty           |  1,008 |     649 |    171 |    188 |      0 |    2 |  1,784 |    2,582 |     4.1 |
-| strawberry-graphql | infer-pyrefly      |    944 |     649 |    172 |    123 |      0 |    0 |  1,720 |    2,582 |     5.6 |
-| strawberry-graphql | infer-trace        |    888 |     649 |    171 |     68 |      0 |    0 |  1,664 |    2,582 |     3.2 |
-| pygments           | certain            |    735 |     735 |        |        |      0 |    0 |    735 |    7,666 |     3.0 |
-| pygments           | likely             |    817 |     738 |     79 |        |      0 |    0 |    817 |    7,666 |     4.3 |
-| pygments           | unsafe             |  5,353 |     735 |     79 |  4,539 |      0 |    0 |  5,353 |    7,666 |     6.4 |
-| pygments           | infer-basedpyright |  5,446 |     735 |     86 |  4,625 |      0 |    0 |  5,446 |    7,666 |     7.5 |
-| pygments           | infer-ty           |  5,450 |     735 |     86 |  4,629 |      0 |    0 |  5,450 |    7,666 |     7.0 |
-| pygments           | infer-pyrefly      |  5,518 |     735 |     86 |  4,697 |      0 |    0 |  5,518 |    7,666 |     8.4 |
-| pygments           | infer-trace        |  5,461 |     730 |    102 |  4,629 |      0 |    0 |  5,461 |    7,666 |     6.6 |
-| streamlink         | certain            |    700 |     700 |        |        |      0 |    0 |  2,962 |    5,291 |     1.9 |
-| streamlink         | likely             |    835 |     703 |    132 |        |      0 |    0 |  3,097 |    5,291 |     3.0 |
-| streamlink         | unsafe             |  1,277 |     700 |    132 |    445 |      0 |    0 |  3,539 |    5,291 |     3.9 |
-| streamlink         | infer-basedpyright |  1,607 |     702 |    153 |    752 |      0 |    1 |  3,869 |    5,291 |     5.5 |
-| streamlink         | infer-ty           |  1,774 |     701 |    165 |    908 |      0 |    2 |  4,036 |    5,291 |     5.8 |
-| streamlink         | infer-pyrefly      |  1,422 |     701 |    144 |    577 |      0 |    0 |  3,684 |    5,291 |     5.8 |
-| streamlink         | infer-trace        |  1,285 |     700 |    132 |    453 |      0 |    0 |  3,547 |    5,291 |     7.0 |
-| sphinx             | certain            |  3,392 |   3,392 |        |        |      0 |    0 |  4,320 |    8,901 |     3.7 |
-| sphinx             | likely             |  3,929 |   3,407 |    522 |        |      0 |    0 |  4,857 |    8,901 |     6.2 |
-| sphinx             | unsafe             |  4,333 |   3,392 |    521 |    420 |      0 |    0 |  5,261 |    8,901 |     7.8 |
-| sphinx             | infer-basedpyright |  5,088 |   3,393 |    549 |  1,146 |      0 |    0 |  6,016 |    8,901 |    14.1 |
-| sphinx             | infer-ty           |  5,141 |   3,392 |    543 |  1,206 |      0 |    0 |  6,069 |    8,901 |     8.1 |
-| sphinx             | infer-pyrefly      |  5,325 |   3,393 |    552 |  1,380 |      0 |    0 |  6,253 |    8,901 |    14.4 |
-| sphinx             | infer-trace        |  4,333 |   3,392 |    521 |    420 |      0 |    0 |  5,261 |    8,901 |     6.7 |
-| tox                | certain            |    985 |     985 |        |        |      0 |    0 |  1,321 |    2,098 |     1.4 |
-| tox                | likely             |  1,087 |     986 |    101 |        |      0 |    0 |  1,423 |    2,098 |     1.8 |
-| tox                | unsafe             |  1,142 |     985 |    101 |     56 |      0 |    0 |  1,478 |    2,098 |     4.7 |
-| tox                | infer-basedpyright |  1,360 |     987 |    117 |    256 |      0 |    0 |  1,696 |    2,098 |     3.4 |
-| tox                | infer-ty           |  1,392 |     987 |    116 |    289 |      0 |    0 |  1,728 |    2,098 |     3.7 |
-| tox                | infer-pyrefly      |  1,433 |     987 |    116 |    330 |      0 |    0 |  1,769 |    2,098 |     4.5 |
-| tox                | infer-trace        |  1,142 |     985 |    101 |     56 |      0 |    0 |  1,478 |    2,098 |     2.0 |
-| pint               | certain            |    648 |     648 |        |        |      0 |    0 |    813 |    3,243 |     2.2 |
-| pint               | likely             |    923 |     649 |    274 |        |      0 |    0 |  1,088 |    3,243 |     6.9 |
-| pint               | unsafe             |    975 |     648 |    274 |     53 |      0 |    0 |  1,140 |    3,243 |     7.3 |
-| pint               | infer-basedpyright |  1,203 |     649 |    282 |    272 |      0 |   15 |  1,368 |    3,243 |     6.8 |
-| pint               | infer-ty           |  1,112 |     649 |    277 |    186 |      0 |   19 |  1,277 |    3,243 |     5.9 |
-| pint               | infer-pyrefly      |  1,039 |     649 |    274 |    116 |      0 |    0 |  1,204 |    3,243 |     5.4 |
-| pint               | infer-trace        |    982 |     648 |    274 |     60 |      0 |    0 |  1,147 |    3,243 |     9.9 |
-| altair             | certain            |    388 |     388 |        |        |      0 |    0 |  2,070 |    3,383 |    14.6 |
-| altair             | likely             |    437 |     388 |     49 |        |      0 |    0 |  2,119 |    3,383 |    10.9 |
-| altair             | unsafe             |    450 |     388 |     49 |     13 |      0 |    0 |  2,132 |    3,383 |    21.3 |
-| altair             | infer-basedpyright |    521 |     388 |     52 |     81 |      0 |    0 |  2,203 |    3,383 |    11.8 |
-| altair             | infer-ty           |    515 |     388 |     50 |     77 |      0 |    0 |  2,197 |    3,383 |    12.6 |
-| altair             | infer-pyrefly      |    512 |     388 |     50 |     74 |      0 |    0 |  2,194 |    3,383 |    15.0 |
-| altair             | infer-trace        |    457 |     388 |     50 |     19 |      0 |    0 |  2,139 |    3,383 |    15.8 |
-| seaborn            | certain            |    657 |     657 |        |        |      0 |    0 |    872 |    3,110 |    10.0 |
-| seaborn            | likely             |    821 |     664 |    157 |        |      0 |    0 |  1,036 |    3,110 |    13.1 |
-| seaborn            | unsafe             |    899 |     657 |    156 |     86 |      0 |    0 |  1,114 |    3,110 |    14.9 |
-| seaborn            | infer-basedpyright |  1,009 |     657 |    159 |    193 |      0 |    0 |  1,224 |    3,110 |    17.5 |
-| seaborn            | infer-ty           |    985 |     656 |    158 |    171 |      0 |    0 |  1,200 |    3,110 |    13.8 |
-| seaborn            | infer-pyrefly      |  1,094 |     657 |    149 |    288 |      0 |    0 |  1,309 |    3,110 |    15.3 |
-| seaborn            | infer-trace        |    944 |     661 |    158 |    125 |      0 |    0 |  1,159 |    3,110 |     6.4 |
-| aiohttp            | certain            |    717 |     717 |        |        |      0 |    0 |  1,293 |    2,433 |     2.6 |
-| aiohttp            | likely             |    869 |     724 |    145 |        |      0 |    0 |  1,445 |    2,433 |     3.7 |
-| aiohttp            | unsafe             |    991 |     717 |    145 |    129 |      0 |    0 |  1,567 |    2,433 |     6.2 |
-| aiohttp            | infer-basedpyright |  1,176 |     719 |    152 |    305 |      0 |    0 |  1,752 |    2,433 |     4.6 |
-| aiohttp            | infer-ty           |  1,200 |     719 |    152 |    329 |      0 |    0 |  1,776 |    2,433 |     3.6 |
-| aiohttp            | infer-pyrefly      |  1,301 |     719 |    157 |    425 |      0 |    0 |  1,877 |    2,433 |     6.0 |
-| aiohttp            | infer-trace        |    991 |     717 |    145 |    129 |      0 |    0 |  1,567 |    2,433 |     4.2 |
-| websockets         | certain            |    362 |     362 |        |        |      0 |    0 |    489 |      918 |     0.9 |
-| websockets         | likely             |    439 |     363 |     76 |        |      0 |    0 |    566 |      918 |     1.2 |
-| websockets         | unsafe             |    492 |     362 |     76 |     54 |      0 |    0 |    619 |      918 |     2.0 |
-| websockets         | infer-basedpyright |    597 |     364 |     74 |    159 |      0 |    0 |    724 |      918 |     2.1 |
-| websockets         | infer-ty           |    606 |     364 |     76 |    166 |      0 |    0 |    733 |      918 |     2.8 |
-| websockets         | infer-pyrefly      |    605 |     364 |     76 |    165 |      0 |    0 |    732 |      918 |     2.4 |
-| websockets         | infer-trace        |    492 |     362 |     76 |     54 |      0 |    0 |    619 |      918 |     3.5 |
-| anyio              | certain            |    217 |     217 |        |        |      0 |    0 |    492 |      990 |     2.1 |
-| anyio              | likely             |    253 |     217 |     36 |        |      0 |    0 |    528 |      990 |     3.9 |
-| anyio              | unsafe             |    286 |     217 |     36 |     33 |      0 |    0 |    561 |      990 |     4.2 |
-| anyio              | infer-basedpyright |    378 |     217 |     44 |    117 |      0 |    0 |    653 |      990 |     2.3 |
-| anyio              | infer-ty           |    405 |     217 |     46 |    142 |      0 |    0 |    680 |      990 |     4.0 |
-| anyio              | infer-pyrefly      |    382 |     217 |     42 |    123 |      0 |    0 |    657 |      990 |     2.9 |
-| anyio              | infer-trace        |    286 |     217 |     36 |     33 |      0 |    0 |    561 |      990 |     5.1 |
-| zarr               | certain            |  1,168 |   1,168 |        |        |      0 |    0 |  1,836 |    3,079 |     2.8 |
-| zarr               | likely             |  1,247 |   1,169 |     78 |        |      0 |    0 |  1,915 |    3,079 |     6.0 |
-| zarr               | unsafe             |  1,286 |   1,168 |     78 |     40 |      0 |    0 |  1,954 |    3,079 |     7.4 |
-| zarr               | infer-basedpyright |  1,666 |   1,168 |     99 |    399 |      0 |    0 |  2,334 |    3,079 |     9.7 |
-| zarr               | infer-ty           |  1,634 |   1,168 |     98 |    368 |      0 |    0 |  2,302 |    3,079 |     4.7 |
-| zarr               | infer-pyrefly      |  1,476 |   1,168 |     86 |    222 |      0 |    0 |  2,144 |    3,079 |     7.7 |
-| zarr               | infer-trace        |  1,286 |   1,168 |     78 |     40 |      0 |    0 |  1,954 |    3,079 |     5.9 |
-| joblib             | certain            |    525 |     525 |        |        |      0 |    0 |    526 |    2,241 |     3.9 |
-| joblib             | likely             |    704 |     526 |    178 |        |      0 |    0 |    705 |    2,241 |     4.4 |
+| uvicorn            | infer-trace        |    293 |     236 |     32 |     25 |      0 |    0 |    444 |      640 |     2.3 |
+| mcp                | certain            |    718 |     718 |        |        |      0 |    0 |  1,481 |    2,483 |     1.9 |
+| mcp                | likely             |    880 |     724 |    156 |        |      0 |    0 |  1,643 |    2,483 |     3.5 |
+| mcp                | unsafe             |    966 |     718 |    156 |     92 |      0 |    0 |  1,729 |    2,483 |     5.9 |
+| mcp                | infer-basedpyright |  1,079 |     718 |    167 |    194 |      0 |    0 |  1,842 |    2,483 |    16.1 |
+| mcp                | infer-ty           |  1,069 |     718 |    164 |    187 |      0 |    0 |  1,832 |    2,483 |     5.1 |
+| mcp                | infer-pyrefly      |  1,048 |     718 |    161 |    169 |      0 |    0 |  1,811 |    2,483 |     8.1 |
+| mcp                | infer-trace        |    966 |     718 |    156 |     92 |      0 |    0 |  1,729 |    2,483 |     6.5 |
+| textual            | certain            |  2,795 |   2,795 |        |        |      0 |    0 |  3,989 |    7,677 |     2.5 |
+| textual            | likely             |  3,303 |   2,819 |    484 |        |      0 |    0 |  4,497 |    7,677 |     4.0 |
+| textual            | unsafe             |  3,569 |   2,795 |    483 |    291 |      0 |    0 |  4,763 |    7,677 |     4.0 |
+| textual            | infer-basedpyright |  4,679 |   2,795 |    555 |  1,329 |      0 |    0 |  5,873 |    7,677 |    20.9 |
+| textual            | infer-ty           |  4,751 |   2,795 |    553 |  1,403 |      0 |    0 |  5,945 |    7,677 |    11.1 |
+| textual            | infer-pyrefly      |  3,922 |   2,795 |    500 |    627 |      0 |    0 |  5,116 |    7,677 |     9.8 |
+| pdm                | certain            |  1,246 |   1,246 |        |        |      0 |    0 |  1,607 |    3,079 |     3.9 |
+| pdm                | likely             |  1,464 |   1,262 |    202 |        |      0 |    0 |  1,825 |    3,079 |     5.1 |
+| pdm                | unsafe             |  1,610 |   1,246 |    201 |    163 |      0 |    0 |  1,971 |    3,079 |     6.3 |
+| pdm                | infer-basedpyright |  1,895 |   1,248 |    220 |    427 |      0 |    2 |  2,256 |    3,079 |    17.3 |
+| pdm                | infer-ty           |  1,902 |   1,248 |    221 |    433 |      0 |    0 |  2,263 |    3,079 |     8.2 |
+| pdm                | infer-pyrefly      |  1,760 |   1,248 |    211 |    301 |      0 |    0 |  2,121 |    3,079 |    12.0 |
+| pdm                | infer-trace        |  1,610 |   1,246 |    201 |    163 |      0 |    0 |  1,971 |    3,079 |     3.1 |
+| strawberry-graphql | certain            |    656 |     656 |        |        |      0 |    0 |  1,432 |    2,582 |     2.9 |
+| strawberry-graphql | likely             |    830 |     658 |    172 |        |      0 |    0 |  1,606 |    2,582 |     4.9 |
+| strawberry-graphql | unsafe             |    897 |     656 |    172 |     69 |      0 |    0 |  1,673 |    2,582 |     5.7 |
+| strawberry-graphql | infer-basedpyright |  1,014 |     656 |    172 |    186 |      0 |    2 |  1,790 |    2,582 |    19.4 |
+| strawberry-graphql | infer-ty           |  1,011 |     656 |    171 |    184 |      0 |    2 |  1,787 |    2,582 |     7.5 |
+| strawberry-graphql | infer-pyrefly      |    948 |     656 |    172 |    120 |      0 |    0 |  1,724 |    2,582 |    10.8 |
+| strawberry-graphql | infer-trace        |    897 |     656 |    172 |     69 |      0 |    0 |  1,673 |    2,582 |     3.8 |
+| pygments           | certain            |    735 |     735 |        |        |      0 |    0 |    735 |    7,666 |     3.3 |
+| pygments           | likely             |    816 |     738 |     78 |        |      0 |    0 |    816 |    7,666 |     4.1 |
+| pygments           | unsafe             |  5,352 |     735 |     78 |  4,539 |      0 |    0 |  5,352 |    7,666 |     6.0 |
+| pygments           | infer-basedpyright |  5,445 |     735 |     85 |  4,625 |      0 |    0 |  5,445 |    7,666 |    41.6 |
+| pygments           | infer-ty           |  5,449 |     735 |     85 |  4,629 |      0 |    0 |  5,449 |    7,666 |    15.4 |
+| pygments           | infer-pyrefly      |  5,517 |     735 |     85 |  4,697 |      0 |    0 |  5,517 |    7,666 |    16.3 |
+| pygments           | infer-trace        |  5,462 |     730 |    103 |  4,629 |      0 |    0 |  5,462 |    7,666 |    10.6 |
+| streamlink         | certain            |    701 |     701 |        |        |      0 |    0 |  2,963 |    5,291 |     2.4 |
+| streamlink         | likely             |    837 |     704 |    133 |        |      0 |    0 |  3,099 |    5,291 |     3.2 |
+| streamlink         | unsafe             |  1,279 |     701 |    133 |    445 |      0 |    0 |  3,541 |    5,291 |     5.5 |
+| streamlink         | infer-basedpyright |  1,608 |     703 |    154 |    751 |      0 |    1 |  3,870 |    5,291 |    20.9 |
+| streamlink         | infer-ty           |  1,775 |     702 |    166 |    907 |      0 |    2 |  4,037 |    5,291 |     6.8 |
+| streamlink         | infer-pyrefly      |  1,423 |     702 |    145 |    576 |      0 |    0 |  3,685 |    5,291 |    14.6 |
+| streamlink         | infer-trace        |  1,287 |     701 |    133 |    453 |      0 |    0 |  3,549 |    5,291 |     8.2 |
+| sphinx             | certain            |  3,392 |   3,392 |        |        |      0 |    0 |  4,320 |    8,901 |     5.9 |
+| sphinx             | likely             |  3,930 |   3,407 |    523 |        |      0 |    0 |  4,858 |    8,901 |     8.3 |
+| sphinx             | unsafe             |  4,334 |   3,392 |    522 |    420 |      0 |    0 |  5,262 |    8,901 |     8.3 |
+| sphinx             | infer-basedpyright |  5,079 |   3,393 |    550 |  1,136 |      0 |    0 |  6,007 |    8,901 |    33.0 |
+| sphinx             | infer-ty           |  5,134 |   3,392 |    544 |  1,198 |      0 |    0 |  6,062 |    8,901 |    15.4 |
+| sphinx             | infer-pyrefly      |  5,318 |   3,393 |    553 |  1,372 |      0 |    0 |  6,246 |    8,901 |    17.7 |
+| sphinx             | infer-trace        |  4,334 |   3,392 |    522 |    420 |      0 |    0 |  5,262 |    8,901 |     5.8 |
+| tox                | certain            |    985 |     985 |        |        |      0 |    0 |  1,321 |    2,098 |     1.5 |
+| tox                | likely             |  1,088 |     986 |    102 |        |      0 |    0 |  1,424 |    2,098 |     2.1 |
+| tox                | unsafe             |  1,143 |     985 |    102 |     56 |      0 |    0 |  1,479 |    2,098 |     3.8 |
+| tox                | infer-basedpyright |  1,361 |     987 |    118 |    256 |      0 |    0 |  1,697 |    2,098 |    14.6 |
+| tox                | infer-ty           |  1,392 |     987 |    117 |    288 |      0 |    0 |  1,728 |    2,098 |     4.0 |
+| tox                | infer-pyrefly      |  1,433 |     987 |    117 |    329 |      0 |    0 |  1,769 |    2,098 |     5.2 |
+| tox                | infer-trace        |  1,143 |     985 |    102 |     56 |      0 |    0 |  1,479 |    2,098 |     2.0 |
+| pint               | certain            |    649 |     649 |        |        |      0 |    0 |    814 |    3,243 |     3.5 |
+| pint               | likely             |    924 |     650 |    274 |        |      0 |    0 |  1,089 |    3,243 |     8.7 |
+| pint               | unsafe             |    976 |     649 |    274 |     53 |      0 |    0 |  1,141 |    3,243 |     7.8 |
+| pint               | infer-basedpyright |  1,204 |     650 |    282 |    272 |      0 |   15 |  1,369 |    3,243 |    47.1 |
+| pint               | infer-ty           |  1,115 |     650 |    277 |    188 |      0 |   19 |  1,280 |    3,243 |    11.3 |
+| pint               | infer-pyrefly      |  1,040 |     650 |    274 |    116 |      0 |    0 |  1,205 |    3,243 |     8.5 |
+| pint               | infer-trace        |    983 |     649 |    274 |     60 |      0 |    0 |  1,148 |    3,243 |     6.2 |
+| altair             | certain            |    389 |     389 |        |        |      0 |    0 |  2,071 |    3,383 |    14.2 |
+| altair             | likely             |    441 |     389 |     52 |        |      0 |    0 |  2,123 |    3,383 |    14.6 |
+| altair             | unsafe             |    454 |     389 |     52 |     13 |      0 |    0 |  2,136 |    3,383 |    22.4 |
+| altair             | infer-basedpyright |    523 |     389 |     55 |     79 |      0 |    0 |  2,205 |    3,383 |    33.0 |
+| altair             | infer-ty           |    517 |     389 |     53 |     75 |      0 |    0 |  2,199 |    3,383 |    20.8 |
+| altair             | infer-pyrefly      |    515 |     389 |     53 |     73 |      0 |    0 |  2,197 |    3,383 |    29.7 |
+| altair             | infer-trace        |    461 |     389 |     53 |     19 |      0 |    0 |  2,143 |    3,383 |     8.1 |
+| seaborn            | certain            |    657 |     657 |        |        |      0 |    0 |    872 |    3,110 |    10.4 |
+| seaborn            | likely             |    821 |     664 |    157 |        |      0 |    0 |  1,036 |    3,110 |    16.0 |
+| seaborn            | unsafe             |    899 |     657 |    156 |     86 |      0 |    0 |  1,114 |    3,110 |    11.2 |
+| seaborn            | infer-basedpyright |  1,009 |     657 |    159 |    193 |      0 |    0 |  1,224 |    3,110 |    15.9 |
+| seaborn            | infer-ty           |    983 |     656 |    158 |    169 |      0 |    0 |  1,198 |    3,110 |    20.1 |
+| seaborn            | infer-pyrefly      |  1,091 |     657 |    149 |    285 |      0 |    0 |  1,306 |    3,110 |    25.9 |
+| seaborn            | infer-trace        |    944 |     661 |    158 |    125 |      0 |    0 |  1,159 |    3,110 |     8.9 |
+| aiohttp            | certain            |    722 |     722 |        |        |      0 |    0 |  1,298 |    2,433 |     3.2 |
+| aiohttp            | likely             |    874 |     729 |    145 |        |      0 |    0 |  1,450 |    2,433 |     3.9 |
+| aiohttp            | unsafe             |    996 |     722 |    145 |    129 |      0 |    0 |  1,572 |    2,433 |     4.3 |
+| aiohttp            | infer-basedpyright |  1,177 |     724 |    152 |    301 |      0 |    0 |  1,753 |    2,433 |    22.0 |
+| aiohttp            | infer-ty           |  1,197 |     724 |    152 |    321 |      0 |    0 |  1,773 |    2,433 |     8.0 |
+| aiohttp            | infer-pyrefly      |  1,298 |     724 |    157 |    417 |      0 |    0 |  1,874 |    2,433 |     5.9 |
+| aiohttp            | infer-trace        |    996 |     722 |    145 |    129 |      0 |    0 |  1,572 |    2,433 |     3.5 |
+| websockets         | certain            |    362 |     362 |        |        |      0 |    0 |    489 |      918 |     2.1 |
+| websockets         | likely             |    439 |     363 |     76 |        |      0 |    0 |    566 |      918 |     2.0 |
+| websockets         | unsafe             |    492 |     362 |     76 |     54 |      0 |    0 |    619 |      918 |     2.6 |
+| websockets         | infer-basedpyright |    597 |     364 |     74 |    159 |      0 |    0 |    724 |      918 |     4.7 |
+| websockets         | infer-ty           |    606 |     364 |     76 |    166 |      0 |    0 |    733 |      918 |     3.0 |
+| websockets         | infer-pyrefly      |    605 |     364 |     76 |    165 |      0 |    0 |    732 |      918 |     2.7 |
+| websockets         | infer-trace        |    492 |     362 |     76 |     54 |      0 |    0 |    619 |      918 |     2.7 |
+| anyio              | certain            |    230 |     230 |        |        |      0 |    0 |    505 |      990 |     2.9 |
+| anyio              | likely             |    266 |     230 |     36 |        |      0 |    0 |    541 |      990 |     4.7 |
+| anyio              | unsafe             |    299 |     230 |     36 |     33 |      0 |    0 |    574 |      990 |     1.9 |
+| anyio              | infer-basedpyright |    382 |     230 |     42 |    110 |      0 |    0 |    657 |      990 |    12.0 |
+| anyio              | infer-ty           |    397 |     230 |     44 |    123 |      0 |    0 |    672 |      990 |     4.9 |
+| anyio              | infer-pyrefly      |    387 |     230 |     42 |    115 |      0 |    0 |    662 |      990 |     3.5 |
+| anyio              | infer-trace        |    299 |     230 |     36 |     33 |      0 |    0 |    574 |      990 |     4.4 |
+| zarr               | certain            |  1,169 |   1,169 |        |        |      0 |    0 |  1,837 |    3,079 |     4.1 |
+| zarr               | likely             |  1,248 |   1,170 |     78 |        |      0 |    0 |  1,916 |    3,079 |     6.9 |
+| zarr               | unsafe             |  1,287 |   1,169 |     78 |     40 |      0 |    0 |  1,955 |    3,079 |     5.4 |
+| zarr               | infer-basedpyright |  1,653 |   1,169 |     99 |    385 |      0 |    0 |  2,321 |    3,079 |    16.3 |
+| zarr               | infer-ty           |  1,624 |   1,169 |     98 |    357 |      0 |    0 |  2,292 |    3,079 |     5.5 |
+| zarr               | infer-pyrefly      |  1,474 |   1,169 |     86 |    219 |      0 |    0 |  2,142 |    3,079 |     5.9 |
+| zarr               | infer-trace        |  1,287 |   1,169 |     78 |     40 |      0 |    0 |  1,955 |    3,079 |     6.8 |
+| joblib             | certain            |    525 |     525 |        |        |      0 |    0 |    526 |    2,241 |     5.6 |
+| joblib             | likely             |    704 |     526 |    178 |        |      0 |    0 |    705 |    2,241 |     6.5 |
 | joblib             | unsafe             |    826 |     524 |    176 |    126 |      0 |    0 |    827 |    2,241 |     4.9 |
-| joblib             | infer-basedpyright |    943 |     524 |    179 |    240 |      0 |    0 |    944 |    2,241 |     7.5 |
-| joblib             | infer-ty           |    890 |     524 |    177 |    189 |      0 |    0 |    891 |    2,241 |     5.5 |
-| joblib             | infer-pyrefly      |    938 |     522 |    179 |    237 |      0 |    0 |    939 |    2,241 |     4.8 |
-| joblib             | infer-trace        |    838 |     524 |    178 |    136 |      0 |    0 |    839 |    2,241 |     4.6 |
-| networkx           | certain            |  3,971 |   3,971 |        |        |      0 |    0 |  4,033 |   22,518 |    13.5 |
-| networkx           | likely             |  6,177 |   3,985 |  2,192 |        |      0 |    0 |  6,239 |   22,518 |    31.9 |
-| networkx           | unsafe             |  6,493 |   3,976 |  2,189 |    328 |      0 |    0 |  6,555 |   22,518 |    71.9 |
-| networkx           | infer-basedpyright |  7,501 |   3,976 |  2,243 |  1,282 |      0 |    0 |  7,563 |   22,518 |    43.7 |
-| networkx           | infer-ty           |  6,939 |   3,976 |  2,203 |    760 |      0 |    0 |  7,001 |   22,518 |    39.3 |
-| networkx           | infer-pyrefly      |  7,052 |   3,978 |  2,211 |    863 |      0 |    1 |  7,114 |   22,518 |    37.3 |
-| networkx           | infer-trace        |  6,909 |   3,976 |  2,213 |    720 |      0 |    0 |  6,971 |   22,518 |    22.7 |
-| nibabel            | certain            |  1,870 |   1,870 |        |        |      0 |    0 |  1,952 |    8,550 |     9.6 |
-| nibabel            | likely             |  2,711 |   1,887 |    824 |        |      0 |    0 |  2,793 |    8,550 |    13.8 |
-| nibabel            | unsafe             |  3,042 |   1,870 |    820 |    352 |      0 |    0 |  3,124 |    8,550 |    10.5 |
-| nibabel            | infer-basedpyright |  3,597 |   1,870 |    855 |    872 |      0 |    3 |  3,679 |    8,550 |    13.1 |
-| nibabel            | infer-ty           |  3,587 |   1,870 |    875 |    842 |      0 |    3 |  3,669 |    8,550 |    19.2 |
-| nibabel            | infer-pyrefly      |  3,623 |   1,868 |    835 |    920 |      0 |    0 |  3,705 |    8,550 |    12.2 |
-| nibabel            | infer-trace        |  3,120 |   1,871 |    826 |    423 |      0 |    0 |  3,202 |    8,550 |     6.9 |
-| narwhals           | certain            |  1,075 |   1,075 |        |        |      0 |    0 |  1,940 |    3,985 |     3.1 |
-| narwhals           | likely             |  1,145 |   1,076 |     69 |        |      0 |    0 |  2,010 |    3,985 |    13.3 |
-| narwhals           | unsafe             |  1,199 |   1,075 |     69 |     55 |      0 |    0 |  2,064 |    3,985 |    19.3 |
-| narwhals           | infer-basedpyright |  1,508 |   1,075 |     81 |    352 |      0 |    2 |  2,373 |    3,985 |    15.3 |
-| narwhals           | infer-ty           |  1,491 |   1,075 |     91 |    325 |      0 |    1 |  2,356 |    3,985 |    20.2 |
-| narwhals           | infer-pyrefly      |  1,720 |   1,075 |     86 |    559 |      0 |    2 |  2,585 |    3,985 |    15.9 |
-| narwhals           | infer-trace        |  1,199 |   1,075 |     69 |     55 |      0 |    0 |  2,064 |    3,985 |    12.5 |
-| xarray             | certain            |  4,605 |   4,605 |        |        |      0 |    0 |  5,634 |   22,373 |    35.2 |
-| xarray             | likely             |  9,754 |   4,661 |  5,093 |        |      0 |    0 | 10,783 |   22,373 |    42.9 |
-| xarray             | unsafe             | 10,099 |   4,605 |  5,086 |    408 |      0 |    0 | 11,128 |   22,373 |    91.2 |
-| xarray             | infer-basedpyright | 12,650 |   4,605 |  5,133 |  2,912 |      0 |    1 | 13,679 |   22,373 |    52.8 |
-| xarray             | infer-ty           | 12,696 |   4,605 |  5,122 |  2,969 |      0 |    0 | 13,725 |   22,373 |    54.0 |
-| xarray             | infer-pyrefly      | 10,799 |   4,606 |  5,071 |  1,122 |      0 |    0 | 11,828 |   22,373 |    59.5 |
-| xarray             | infer-trace        | 10,118 |   4,605 |  5,085 |    428 |      0 |    0 | 11,147 |   22,373 |    30.1 |
-| litestar           | certain            |    646 |     646 |        |        |      0 |    0 |  2,200 |    3,459 |     4.2 |
-| litestar           | likely             |    756 |     648 |    108 |        |      0 |    0 |  2,310 |    3,459 |    10.5 |
-| litestar           | unsafe             |    828 |     646 |    108 |     74 |      0 |    0 |  2,382 |    3,459 |     6.4 |
-| litestar           | infer-basedpyright |  1,031 |     646 |    118 |    267 |      0 |    1 |  2,585 |    3,459 |    12.1 |
-| litestar           | infer-ty           |  1,041 |     646 |    121 |    274 |      0 |    0 |  2,595 |    3,459 |    17.0 |
-| litestar           | infer-pyrefly      |    926 |     646 |    114 |    166 |      0 |    0 |  2,480 |    3,459 |    11.9 |
-| litestar           | infer-trace        |    828 |     646 |    108 |     74 |      0 |    0 |  2,382 |    3,459 |     3.8 |
-| stripe             | certain            |    779 |     779 |        |        |      0 |    0 | 29,529 |   32,107 |     8.1 |
-| stripe             | likely             |    943 |     779 |    164 |        |      0 |    0 | 29,693 |   32,107 |     9.5 |
-| stripe             | unsafe             |  1,448 |     779 |    164 |    505 |      0 |    0 | 30,198 |   32,107 |    11.1 |
-| stripe             | infer-basedpyright |  2,156 |     779 |    161 |  1,216 |      0 |    0 | 30,906 |   32,107 |    15.7 |
-| stripe             | infer-ty           |  1,497 |     779 |    161 |    557 |      0 |    0 | 30,247 |   32,107 |    22.6 |
-| stripe             | infer-pyrefly      |  1,486 |     779 |    164 |    543 |      0 |    0 | 30,236 |   32,107 |    20.4 |
-| celery             | certain            |    508 |     508 |        |        |      0 |    0 |    524 |    3,764 |    11.1 |
-| celery             | likely             |    638 |     510 |    128 |        |      0 |    0 |    654 |    3,764 |    37.1 |
-| celery             | unsafe             |    880 |     508 |    128 |    244 |      0 |    0 |    896 |    3,764 |    25.9 |
-| celery             | infer-basedpyright |  1,047 |     508 |    137 |    402 |      0 |    0 |  1,063 |    3,764 |    41.8 |
-| celery             | infer-ty           |    950 |     508 |    129 |    313 |      0 |    0 |    966 |    3,764 |    35.2 |
-| celery             | infer-pyrefly      |    988 |     508 |    129 |    351 |      0 |    0 |  1,004 |    3,764 |    25.4 |
-| celery             | infer-trace        |    946 |     508 |    127 |    311 |      0 |    0 |    962 |    3,764 |    22.1 |
-| optuna             | certain            |  1,581 |   1,581 |        |        |      0 |    0 |  1,872 |    3,889 |    15.7 |
-| optuna             | likely             |  1,799 |   1,589 |    210 |        |      0 |    0 |  2,090 |    3,889 |    20.2 |
-| optuna             | unsafe             |  1,908 |   1,581 |    210 |    117 |      0 |    0 |  2,199 |    3,889 |    35.7 |
-| optuna             | infer-basedpyright |  2,197 |   1,581 |    221 |    395 |      0 |   11 |  2,488 |    3,889 |    22.0 |
-| optuna             | infer-ty           |  2,231 |   1,581 |    239 |    411 |      0 |    6 |  2,522 |    3,889 |    40.1 |
-| optuna             | infer-pyrefly      |  2,193 |   1,581 |    226 |    386 |      0 |    6 |  2,484 |    3,889 |    22.6 |
-| optuna             | infer-trace        |  1,908 |   1,581 |    210 |    117 |      0 |    0 |  2,199 |    3,889 |     8.0 |
-| dask               | certain            |  3,157 |   3,157 |        |        |      0 |    0 |  3,415 |   24,430 |    39.1 |
-| dask               | likely             |  5,137 |   3,200 |  1,937 |        |      0 |    0 |  5,395 |   24,430 |    47.9 |
-| dask               | unsafe             |  6,058 |   3,165 |  1,934 |    959 |      0 |    0 |  6,316 |   24,430 |    64.5 |
-| dask               | infer-basedpyright |  6,986 |   3,165 |  1,957 |  1,864 |      0 |    0 |  7,244 |   24,430 |    58.2 |
-| dask               | infer-ty           |  6,539 |   3,165 |  1,926 |  1,448 |      0 |    0 |  6,797 |   24,430 |    53.3 |
-| dask               | infer-pyrefly      |  7,004 |   3,169 |  1,944 |  1,891 |      0 |    2 |  7,262 |   24,430 |    85.1 |
-| dask               | infer-trace        |  6,223 |   3,162 |  1,937 |  1,124 |      0 |    0 |  6,481 |   24,430 |    30.5 |
-| mypy               | certain            |  5,139 |   5,139 |        |        |      0 |    0 |  7,439 |   13,701 |     5.0 |
-| mypy               | likely             |  6,348 |   5,169 |  1,179 |        |      0 |    0 |  8,648 |   13,701 |     9.9 |
-| mypy               | unsafe             |  6,753 |   5,139 |  1,177 |    437 |      0 |    0 |  9,052 |   13,701 |     9.3 |
-| mypy               | infer-basedpyright |  8,391 |   5,140 |  1,291 |  1,960 |      0 |    4 | 10,689 |   13,701 |    10.8 |
-| mypy               | infer-ty           |  8,695 |   5,139 |  1,293 |  2,263 |      0 |    3 | 10,993 |   13,701 |    13.2 |
-| mypy               | infer-pyrefly      |  8,914 |   5,136 |  1,299 |  2,479 |      0 |    4 | 11,212 |   13,701 |    14.4 |
-| mypy               | infer-trace        |  6,753 |   5,139 |  1,177 |    437 |      0 |    0 |  9,052 |   13,701 |     8.4 |
+| joblib             | infer-basedpyright |    942 |     524 |    179 |    239 |      0 |    0 |    943 |    2,241 |    27.7 |
+| joblib             | infer-ty           |    890 |     524 |    177 |    189 |      0 |    0 |    891 |    2,241 |     6.0 |
+| joblib             | infer-pyrefly      |    938 |     522 |    179 |    237 |      0 |    0 |    939 |    2,241 |    10.5 |
+| joblib             | infer-trace        |    838 |     524 |    178 |    136 |      0 |    0 |    839 |    2,241 |     3.8 |
+| networkx           | certain            |  3,971 |   3,971 |        |        |      0 |    0 |  4,033 |   22,518 |    19.6 |
+| networkx           | likely             |  6,177 |   3,985 |  2,192 |        |      0 |    0 |  6,239 |   22,518 |    42.4 |
+| networkx           | unsafe             |  6,493 |   3,976 |  2,189 |    328 |      0 |    0 |  6,555 |   22,518 |    51.6 |
+| networkx           | infer-basedpyright |  7,491 |   3,976 |  2,239 |  1,276 |      0 |    0 |  7,553 |   22,518 |   112.9 |
+| networkx           | infer-ty           |  6,939 |   3,976 |  2,203 |    760 |      0 |    0 |  7,001 |   22,518 |    39.4 |
+| networkx           | infer-pyrefly      |  7,048 |   3,978 |  2,209 |    861 |      0 |    1 |  7,110 |   22,518 |    45.5 |
+| networkx           | infer-trace        |  6,917 |   3,976 |  2,213 |    728 |      0 |    0 |  6,979 |   22,518 |    18.7 |
+| nibabel            | certain            |  1,870 |   1,870 |        |        |      0 |    0 |  1,952 |    8,550 |     7.8 |
+| nibabel            | likely             |  2,711 |   1,887 |    824 |        |      0 |    0 |  2,793 |    8,550 |    15.7 |
+| nibabel            | unsafe             |  3,042 |   1,870 |    820 |    352 |      0 |    0 |  3,124 |    8,550 |    11.0 |
+| nibabel            | infer-basedpyright |  3,595 |   1,870 |    855 |    870 |      0 |    3 |  3,677 |    8,550 |    39.8 |
+| nibabel            | infer-ty           |  3,587 |   1,870 |    875 |    842 |      0 |    3 |  3,669 |    8,550 |    17.1 |
+| nibabel            | infer-pyrefly      |  3,623 |   1,868 |    835 |    920 |      0 |    0 |  3,705 |    8,550 |    16.6 |
+| nibabel            | infer-trace        |  3,120 |   1,871 |    826 |    423 |      0 |    0 |  3,202 |    8,550 |     8.5 |
+| narwhals           | certain            |  1,082 |   1,082 |        |        |      0 |    0 |  1,947 |    3,985 |     5.0 |
+| narwhals           | likely             |  1,158 |   1,083 |     75 |        |      0 |    0 |  2,023 |    3,985 |    15.1 |
+| narwhals           | unsafe             |  1,213 |   1,082 |     75 |     56 |      0 |    0 |  2,078 |    3,985 |    14.8 |
+| narwhals           | infer-basedpyright |  1,519 |   1,082 |     87 |    350 |      0 |    2 |  2,384 |    3,985 |    34.9 |
+| narwhals           | infer-ty           |  1,490 |   1,082 |     97 |    311 |      0 |    1 |  2,355 |    3,985 |    16.4 |
+| narwhals           | infer-pyrefly      |  1,719 |   1,082 |     92 |    545 |      0 |    2 |  2,584 |    3,985 |    14.8 |
+| narwhals           | infer-trace        |  1,213 |   1,082 |     75 |     56 |      0 |    0 |  2,078 |    3,985 |     8.9 |
+| xarray             | certain            |  4,622 |   4,622 |        |        |      0 |    0 |  5,651 |   22,373 |    23.7 |
+| xarray             | likely             |  9,773 |   4,678 |  5,095 |        |      0 |    0 | 10,802 |   22,373 |    89.8 |
+| xarray             | unsafe             | 10,121 |   4,622 |  5,088 |    411 |      0 |    0 | 11,150 |   22,373 |    82.7 |
+| xarray             | infer-basedpyright | 12,597 |   4,622 |  5,141 |  2,834 |      0 |    0 | 13,626 |   22,373 |   127.2 |
+| xarray             | infer-ty           | 12,631 |   4,622 |  5,132 |  2,877 |      0 |    0 | 13,660 |   22,373 |    59.6 |
+| xarray             | infer-pyrefly      | 10,808 |   4,623 |  5,073 |  1,112 |      0 |    0 | 11,837 |   22,373 |    52.8 |
+| xarray             | infer-trace        | 10,140 |   4,622 |  5,087 |    431 |      0 |    0 | 11,169 |   22,373 |    28.1 |
+| litestar           | certain            |    648 |     648 |        |        |      0 |    0 |  2,202 |    3,459 |     4.8 |
+| litestar           | likely             |    772 |     650 |    122 |        |      0 |    0 |  2,326 |    3,459 |    11.3 |
+| litestar           | unsafe             |    846 |     648 |    122 |     76 |      0 |    0 |  2,400 |    3,459 |     7.4 |
+| litestar           | infer-basedpyright |  1,038 |     648 |    130 |    260 |      0 |    1 |  2,592 |    3,459 |    27.9 |
+| litestar           | infer-ty           |  1,050 |     648 |    133 |    269 |      0 |    0 |  2,604 |    3,459 |    10.0 |
+| litestar           | infer-pyrefly      |    930 |     648 |    126 |    156 |      0 |    0 |  2,484 |    3,459 |    16.0 |
+| litestar           | infer-trace        |    846 |     648 |    122 |     76 |      0 |    0 |  2,400 |    3,459 |     4.8 |
+| stripe             | certain            |    781 |     781 |        |        |      0 |    0 | 29,531 |   32,107 |     7.1 |
+| stripe             | likely             |    947 |     781 |    166 |        |      0 |    0 | 29,697 |   32,107 |     9.6 |
+| stripe             | unsafe             |  1,452 |     781 |    166 |    505 |      0 |    0 | 30,202 |   32,107 |     9.7 |
+| stripe             | infer-basedpyright |  2,156 |     781 |    161 |  1,214 |      0 |    0 | 30,906 |   32,107 |   340.2 |
+| stripe             | infer-ty           |  1,496 |     781 |    161 |    554 |      0 |    0 | 30,246 |   32,107 |    13.0 |
+| stripe             | infer-pyrefly      |  1,487 |     781 |    164 |    542 |      0 |    0 | 30,237 |   32,107 |    21.5 |
+| celery             | certain            |    508 |     508 |        |        |      0 |    0 |    524 |    3,764 |    17.5 |
+| celery             | likely             |    638 |     510 |    128 |        |      0 |    0 |    654 |    3,764 |    12.1 |
+| celery             | unsafe             |    879 |     508 |    128 |    243 |      0 |    0 |    895 |    3,764 |    13.2 |
+| celery             | infer-basedpyright |  1,045 |     508 |    137 |    400 |      0 |    0 |  1,061 |    3,764 |    31.1 |
+| celery             | infer-ty           |    949 |     508 |    129 |    312 |      0 |    0 |    965 |    3,764 |    19.4 |
+| celery             | infer-pyrefly      |    987 |     508 |    129 |    350 |      0 |    0 |  1,003 |    3,764 |    23.2 |
+| celery             | infer-trace        |    945 |     508 |    127 |    310 |      0 |    0 |    961 |    3,764 |    16.8 |
+| optuna             | certain            |  1,583 |   1,583 |        |        |      0 |    0 |  1,874 |    3,889 |    13.9 |
+| optuna             | likely             |  1,802 |   1,591 |    211 |        |      0 |    0 |  2,093 |    3,889 |    31.0 |
+| optuna             | unsafe             |  1,910 |   1,583 |    211 |    116 |      0 |    0 |  2,201 |    3,889 |    10.5 |
+| optuna             | infer-basedpyright |  2,196 |   1,583 |    222 |    391 |      0 |   11 |  2,487 |    3,889 |    38.3 |
+| optuna             | infer-ty           |  2,233 |   1,583 |    240 |    410 |      0 |    6 |  2,524 |    3,889 |    19.3 |
+| optuna             | infer-pyrefly      |  2,194 |   1,583 |    227 |    384 |      0 |    6 |  2,485 |    3,889 |    29.3 |
+| optuna             | infer-trace        |  1,910 |   1,583 |    211 |    116 |      0 |    0 |  2,201 |    3,889 |     6.9 |
+| dask               | certain            |  3,158 |   3,158 |        |        |      0 |    0 |  3,416 |   24,430 |    39.8 |
+| dask               | likely             |  5,138 |   3,201 |  1,937 |        |      0 |    0 |  5,396 |   24,430 |    50.0 |
+| dask               | unsafe             |  6,056 |   3,166 |  1,934 |    956 |      0 |    0 |  6,314 |   24,430 |    60.6 |
+| dask               | infer-basedpyright |  6,717 |   3,166 |  1,955 |  1,596 |      0 |    0 |  6,975 |   24,430 |   108.0 |
+| dask               | infer-ty           |  6,529 |   3,166 |  1,926 |  1,437 |      0 |    0 |  6,787 |   24,430 |    82.6 |
+| dask               | infer-pyrefly      |  6,990 |   3,170 |  1,944 |  1,876 |      0 |    2 |  7,248 |   24,430 |    70.3 |
+| dask               | infer-trace        |  6,220 |   3,163 |  1,939 |  1,118 |      0 |    0 |  6,478 |   24,430 |    27.1 |
+| mypy               | certain            |  5,142 |   5,142 |        |        |      0 |    0 |  7,442 |   13,701 |     4.4 |
+| mypy               | likely             |  6,351 |   5,172 |  1,179 |        |      0 |    0 |  8,651 |   13,701 |    19.2 |
+| mypy               | unsafe             |  6,758 |   5,142 |  1,177 |    439 |      0 |    0 |  9,057 |   13,701 |    12.4 |
+| mypy               | infer-basedpyright |  8,392 |   5,143 |  1,291 |  1,958 |      0 |    4 | 10,690 |   13,701 |    59.1 |
+| mypy               | infer-ty           |  8,696 |   5,142 |  1,293 |  2,261 |      0 |    3 | 10,994 |   13,701 |    14.3 |
+| mypy               | infer-pyrefly      |  8,915 |   5,139 |  1,299 |  2,477 |      0 |    4 | 11,213 |   13,701 |    22.8 |
+| mypy               | infer-trace        |  6,758 |   5,142 |  1,177 |    439 |      0 |    0 |  9,057 |   13,701 |     9.8 |
 
 Each fix's 12 sets of mechanisms that made the most fixes, the corpora together, by tier (a guess is
 likely by its whole set: every set is in `tables/mechanisms.csv`):
 
 | fix                | mechanisms               |  fixed | certain | likely |  guess |
 | ------------------ | ------------------------ | -----: | ------: | -----: | -----: |
-| certain            | literal                  | 24,006 |  24,006 |        |        |
-| certain            | stdlib                   | 16,081 |  16,081 |        |        |
-| certain            | call                     | 10,776 |  10,776 |        |        |
-| certain            | container+literal        |  6,851 |   6,851 |        |        |
-| certain            | builtin                  |  4,403 |   4,403 |        |        |
-| certain            | method                   |  4,354 |   4,354 |        |        |
+| certain            | literal                  | 23,998 |  23,998 |        |        |
+| certain            | stdlib                   | 16,072 |  16,072 |        |        |
+| certain            | call                     | 10,793 |  10,793 |        |        |
+| certain            | container+literal        |  6,846 |   6,846 |        |        |
+| certain            | builtin                  |  4,402 |   4,402 |        |        |
+| certain            | method                   |  4,356 |   4,356 |        |        |
 | certain            | loop                     |  3,942 |   3,942 |        |        |
-| certain            | copy+loop                |  3,686 |   3,686 |        |        |
+| certain            | copy+loop                |  3,690 |   3,690 |        |        |
 | certain            | container+literal+loop   |  2,079 |   2,079 |        |        |
-| certain            | literal+method           |  1,617 |   1,617 |        |        |
+| certain            | literal+method           |  1,616 |   1,616 |        |        |
 | certain            | call+unpack              |  1,601 |   1,601 |        |        |
 | certain            | open                     |  1,493 |   1,493 |        |        |
-| likely             | constructor              | 38,130 |     257 | 37,873 |        |
-| likely             | literal                  | 24,014 |  24,014 |        |        |
-| likely             | stdlib                   | 16,181 |  16,181 |        |        |
-| likely             | call                     | 11,290 |  10,789 |    501 |        |
-| likely             | container+literal        |  6,851 |   6,851 |        |        |
-| likely             | method                   |  6,147 |   4,391 |  1,756 |        |
-| likely             | builtin                  |  4,404 |   4,404 |        |        |
-| likely             | copy+loop                |  4,276 |   3,713 |    563 |        |
+| likely             | constructor              | 38,122 |     257 | 37,865 |        |
+| likely             | literal                  | 24,006 |  24,006 |        |        |
+| likely             | stdlib                   | 16,172 |  16,172 |        |        |
+| likely             | call                     | 11,380 |  10,806 |    574 |        |
+| likely             | container+literal        |  6,846 |   6,846 |        |        |
+| likely             | method                   |  6,191 |   4,393 |  1,798 |        |
+| likely             | builtin                  |  4,403 |   4,403 |        |        |
+| likely             | copy+loop                |  4,282 |   3,717 |    565 |        |
 | likely             | loop                     |  3,946 |   3,946 |        |        |
 | likely             | container+literal+loop   |  2,079 |   2,079 |        |        |
-| likely             | literal+method           |  1,617 |   1,617 |        |        |
+| likely             | literal+method           |  1,616 |   1,616 |        |        |
 | likely             | call+unpack              |  1,601 |   1,601 |        |        |
-| unsafe             | constructor              | 38,123 |     257 | 37,866 |        |
-| unsafe             | literal                  | 24,009 |  24,004 |        |      5 |
-| unsafe             | stdlib                   | 16,640 |  16,083 |        |    557 |
-| unsafe             | call                     | 11,276 |  10,776 |    500 |        |
-| unsafe             | literal+member           |  7,935 |         |        |  7,935 |
-| unsafe             | container+literal        |  6,851 |   6,851 |        |        |
-| unsafe             | method                   |  6,111 |   4,355 |  1,756 |        |
-| unsafe             | builtin                  |  4,405 |   4,403 |        |      2 |
-| unsafe             | copy+loop                |  4,246 |   3,686 |    560 |        |
+| unsafe             | constructor              | 38,115 |     257 | 37,858 |        |
+| unsafe             | literal                  | 24,001 |  23,996 |        |      5 |
+| unsafe             | stdlib                   | 16,631 |  16,074 |        |    557 |
+| unsafe             | call                     | 11,366 |  10,793 |    573 |        |
+| unsafe             | literal+member           |  7,834 |         |        |  7,834 |
+| unsafe             | container+literal        |  6,846 |   6,846 |        |        |
+| unsafe             | method                   |  6,155 |   4,357 |  1,798 |        |
+| unsafe             | builtin                  |  4,404 |   4,402 |        |      2 |
+| unsafe             | copy+loop                |  4,252 |   3,690 |    562 |        |
 | unsafe             | loop                     |  3,942 |   3,942 |        |        |
-| unsafe             | returned                 |  3,857 |   1,190 |        |  2,667 |
-| unsafe             | container+literal+member |  3,047 |         |        |  3,047 |
-| infer-basedpyright | constructor              | 38,053 |     256 | 37,797 |        |
-| infer-basedpyright | checker                  | 26,277 |         |        | 26,277 |
-| infer-basedpyright | literal                  | 24,011 |  24,006 |        |      5 |
-| infer-basedpyright | stdlib                   | 16,753 |  16,025 |        |    728 |
-| infer-basedpyright | call                     | 11,401 |  10,773 |    628 |        |
-| infer-basedpyright | literal+member           |  7,934 |         |        |  7,934 |
-| infer-basedpyright | container+literal        |  6,853 |   6,853 |        |        |
-| infer-basedpyright | method                   |  6,361 |   4,354 |  2,007 |        |
-| infer-basedpyright | copy+loop                |  4,824 |   3,687 |  1,137 |        |
-| infer-basedpyright | builtin                  |  4,405 |   4,403 |        |      2 |
-| infer-basedpyright | returned                 |  4,058 |   1,168 |        |  2,890 |
+| unsafe             | returned                 |  3,855 |   1,190 |        |  2,665 |
+| unsafe             | container+literal+member |  3,044 |         |        |  3,044 |
+| infer-basedpyright | constructor              | 38,055 |     256 | 37,799 |        |
+| infer-basedpyright | literal                  | 24,003 |  23,998 |        |      5 |
+| infer-basedpyright | checker                  | 23,491 |         |        | 23,491 |
+| infer-basedpyright | stdlib                   | 16,744 |  16,016 |        |    728 |
+| infer-basedpyright | call                     | 11,476 |  10,790 |    686 |        |
+| infer-basedpyright | literal+member           |  7,833 |         |        |  7,833 |
+| infer-basedpyright | container+literal        |  6,848 |   6,848 |        |        |
+| infer-basedpyright | method                   |  6,390 |   4,356 |  2,034 |        |
+| infer-basedpyright | copy+loop                |  4,818 |   3,691 |  1,127 |        |
+| infer-basedpyright | builtin                  |  4,404 |   4,402 |        |      2 |
+| infer-basedpyright | returned                 |  4,055 |   1,169 |        |  2,886 |
 | infer-basedpyright | loop                     |  3,942 |   3,942 |        |        |
-| infer-ty           | constructor              | 38,052 |     257 | 37,795 |        |
-| infer-ty           | literal                  | 24,010 |  24,005 |        |      5 |
-| infer-ty           | checker                  | 21,498 |         |        | 21,498 |
-| infer-ty           | stdlib                   | 16,752 |  16,046 |        |    706 |
-| infer-ty           | call                     | 11,351 |  10,774 |    577 |        |
-| infer-ty           | literal+member           |  7,935 |         |        |  7,935 |
-| infer-ty           | container+literal        |  6,852 |   6,852 |        |        |
-| infer-ty           | method                   |  6,323 |   4,354 |  1,969 |        |
-| infer-ty           | copy+loop                |  4,739 |   3,687 |  1,052 |        |
-| infer-ty           | builtin                  |  4,405 |   4,403 |        |      2 |
-| infer-ty           | returned                 |  4,006 |   1,190 |        |  2,816 |
+| infer-ty           | constructor              | 38,054 |     257 | 37,797 |        |
+| infer-ty           | literal                  | 24,002 |  23,997 |        |      5 |
+| infer-ty           | checker                  | 18,832 |         |        | 18,832 |
+| infer-ty           | stdlib                   | 16,743 |  16,037 |        |    706 |
+| infer-ty           | call                     | 11,431 |  10,791 |    640 |        |
+| infer-ty           | literal+member           |  7,834 |         |        |  7,834 |
+| infer-ty           | container+literal        |  6,847 |   6,847 |        |        |
+| infer-ty           | method                   |  6,352 |   4,356 |  1,996 |        |
+| infer-ty           | copy+loop                |  4,733 |   3,691 |  1,042 |        |
+| infer-ty           | builtin                  |  4,404 |   4,402 |        |      2 |
+| infer-ty           | returned                 |  4,002 |   1,190 |        |  2,812 |
 | infer-ty           | loop                     |  3,942 |   3,942 |        |        |
-| infer-pyrefly      | constructor              | 37,995 |     256 | 37,739 |        |
-| infer-pyrefly      | checker                  | 24,802 |         |        | 24,802 |
-| infer-pyrefly      | literal                  | 24,010 |  24,005 |        |      5 |
-| infer-pyrefly      | stdlib                   | 16,773 |  16,037 |        |    736 |
-| infer-pyrefly      | call                     | 11,328 |  10,774 |    554 |        |
-| infer-pyrefly      | literal+member           |  7,934 |         |        |  7,934 |
-| infer-pyrefly      | container+literal        |  6,858 |   6,858 |        |        |
-| infer-pyrefly      | method                   |  6,266 |   4,354 |  1,912 |        |
-| infer-pyrefly      | copy+loop                |  4,748 |   3,686 |  1,062 |        |
-| infer-pyrefly      | builtin                  |  4,405 |   4,403 |        |      2 |
-| infer-pyrefly      | returned                 |  4,028 |   1,187 |        |  2,841 |
+| infer-pyrefly      | constructor              | 37,996 |     256 | 37,740 |        |
+| infer-pyrefly      | literal                  | 24,002 |  23,997 |        |      5 |
+| infer-pyrefly      | checker                  | 21,413 |         |        | 21,413 |
+| infer-pyrefly      | stdlib                   | 16,764 |  16,028 |        |    736 |
+| infer-pyrefly      | call                     | 11,402 |  10,791 |    611 |        |
+| infer-pyrefly      | literal+member           |  7,833 |         |        |  7,833 |
+| infer-pyrefly      | container+literal        |  6,853 |   6,853 |        |        |
+| infer-pyrefly      | method                   |  6,290 |   4,356 |  1,934 |        |
+| infer-pyrefly      | copy+loop                |  4,743 |   3,690 |  1,053 |        |
+| infer-pyrefly      | builtin                  |  4,404 |   4,402 |        |      2 |
+| infer-pyrefly      | returned                 |  4,025 |   1,187 |        |  2,838 |
 | infer-pyrefly      | loop                     |  3,942 |   3,942 |        |        |
-| infer-trace        | constructor              | 30,587 |      25 | 30,562 |        |
+| infer-trace        | constructor              | 30,581 |      25 | 30,556 |        |
 | infer-trace        | literal                  | 13,903 |  13,901 |        |      2 |
-| infer-trace        | call                     | 10,575 |  10,080 |    495 |        |
-| infer-trace        | literal+member           |  5,656 |         |        |  5,656 |
-| infer-trace        | method                   |  5,443 |   3,762 |  1,681 |        |
+| infer-trace        | call                     | 10,654 |  10,089 |    565 |        |
+| infer-trace        | literal+member           |  5,572 |         |        |  5,572 |
+| infer-trace        | method                   |  5,484 |   3,763 |  1,721 |        |
 | infer-trace        | container+literal        |  4,351 |   4,351 |        |        |
 | infer-trace        | stdlib                   |  4,113 |   3,897 |        |    216 |
-| infer-trace        | traced                   |  3,197 |         |        |  3,197 |
-| infer-trace        | copy+loop                |  2,731 |   2,370 |    361 |        |
-| infer-trace        | container+literal+member |  2,646 |         |        |  2,646 |
+| infer-trace        | copy+loop                |  2,734 |   2,373 |    361 |        |
+| infer-trace        | container+literal+member |  2,643 |         |        |  2,643 |
 | infer-trace        | builtin                  |  2,617 |   2,615 |        |      2 |
+| infer-trace        | traced                   |  2,402 |         |        |  2,402 |
 | infer-trace        | loop                     |  2,024 |   2,024 |        |        |
-| infer-union        | constructor              | 30,443 |      25 | 30,418 |        |
-| infer-union        | agreed+checker           | 14,712 |         |        | 14,712 |
+| infer-union        | constructor              | 30,447 |      25 | 30,422 |        |
 | infer-union        | literal                  | 13,904 |  13,902 |        |      2 |
-| infer-union        | checker                  | 11,860 |         |        | 11,860 |
-| infer-union        | call                     | 10,661 |  10,077 |    584 |        |
-| infer-union        | method                   |  5,677 |   3,756 |  1,921 |        |
-| infer-union        | literal+member           |  5,656 |         |        |  5,656 |
+| infer-union        | agreed+checker           | 12,060 |         |        | 12,060 |
+| infer-union        | call                     | 10,725 |  10,086 |    639 |        |
+| infer-union        | checker                  | 10,566 |         |        | 10,566 |
+| infer-union        | method                   |  5,697 |   3,757 |  1,940 |        |
+| infer-union        | literal+member           |  5,572 |         |        |  5,572 |
 | infer-union        | container+literal        |  4,358 |   4,358 |        |        |
 | infer-union        | stdlib                   |  4,104 |   3,880 |        |    224 |
-| infer-union        | traced                   |  3,143 |         |        |  3,143 |
-| infer-union        | copy+loop                |  3,137 |   2,370 |    767 |        |
-| infer-union        | container+literal+member |  2,646 |         |        |  2,646 |
+| infer-union        | copy+loop                |  3,125 |   2,373 |    752 |        |
+| infer-union        | container+literal+member |  2,643 |         |        |  2,643 |
+| infer-union        | builtin                  |  2,617 |   2,615 |        |      2 |
 
 The untyped bindings: with only a guess, with no fix, and in files that don't parse:
 
 | corpus             | untyped | guessed | unfixed | unparsed |
 | ------------------ | ------: | ------: | ------: | -------: |
-| standard library   | 113,671 |  14,204 |  62,138 |        0 |
-| django             |  17,176 |   2,945 |  11,609 |        0 |
-| sqlalchemy         |  12,932 |   1,152 |   9,663 |        0 |
+| standard library   | 113,671 |  14,188 |  62,159 |        0 |
+| django             |  17,176 |   2,860 |  11,694 |        0 |
+| sqlalchemy         |  12,932 |   1,152 |   9,636 |        0 |
 | pydantic           |   3,117 |     413 |   1,508 |        0 |
-| pandas             |  77,793 |  25,388 |  35,234 |        0 |
+| pandas             |  77,793 |  25,512 |  35,150 |        0 |
 | twisted            |  17,874 |   4,826 |  10,613 |        0 |
-| pip                |   8,923 |   1,349 |   5,303 |        0 |
+| pip                |   8,923 |   1,342 |   5,339 |        0 |
 | structlog          |     316 |      28 |     190 |        0 |
 | attrs              |     393 |      14 |     286 |        0 |
-| click              |     607 |      63 |     234 |        0 |
+| click              |     607 |      64 |     232 |        0 |
 | hypercorn          |     355 |      58 |     160 |        0 |
-| starlette          |     744 |     115 |     308 |        0 |
-| werkzeug           |   1,293 |     129 |     628 |        0 |
+| starlette          |     744 |     116 |     307 |        0 |
+| werkzeug           |   1,293 |     138 |     610 |        0 |
 | mkdocs             |   2,331 |     552 |     953 |        0 |
 | httpx              |     569 |      84 |     245 |        0 |
 | black              |   1,273 |     169 |     390 |        0 |
 | fastapi            |     742 |      71 |     413 |        0 |
-| cattrs             |     520 |      43 |     368 |        0 |
-| pytest             |   3,000 |     310 |   1,316 |        0 |
-| botocore           |   3,786 |     651 |   2,592 |        0 |
+| cattrs             |     520 |      43 |     367 |        0 |
+| pytest             |   3,000 |     313 |   1,313 |        0 |
+| botocore           |   3,786 |     656 |   2,582 |        0 |
 | uvicorn            |     489 |      57 |     196 |        0 |
-| mcp                |   1,720 |     248 |     760 |        0 |
-| textual            |   6,483 |     749 |   2,994 |        0 |
-| pdm                |   2,713 |     365 |   1,102 |        0 |
-| strawberry-graphql |   1,806 |     239 |     918 |        0 |
-| pygments           |   7,666 |   4,618 |   2,313 |        0 |
-| streamlink         |   3,029 |     577 |   1,752 |        0 |
-| sphinx             |   7,972 |     941 |   3,640 |        0 |
-| tox                |   1,762 |     157 |     620 |        0 |
-| pint               |   3,078 |     322 |   2,108 |        0 |
-| altair             |   1,700 |      62 |   1,250 |        0 |
+| mcp                |   1,720 |     248 |     754 |        0 |
+| textual            |   6,483 |     774 |   2,914 |        0 |
+| pdm                |   2,713 |     364 |   1,103 |        0 |
+| strawberry-graphql |   1,806 |     241 |     909 |        0 |
+| pygments           |   7,666 |   4,617 |   2,314 |        0 |
+| streamlink         |   3,029 |     578 |   1,750 |        0 |
+| sphinx             |   7,972 |     942 |   3,639 |        0 |
+| tox                |   1,762 |     158 |     619 |        0 |
+| pint               |   3,078 |     322 |   2,107 |        0 |
+| altair             |   1,700 |      65 |   1,246 |        0 |
 | seaborn            |   2,895 |     242 |   1,996 |        0 |
-| aiohttp            |   1,857 |     274 |     866 |        0 |
+| aiohttp            |   1,857 |     274 |     861 |        0 |
 | websockets         |     791 |     130 |     299 |        0 |
-| anyio              |     715 |      69 |     429 |        0 |
-| zarr               |   2,411 |     118 |   1,125 |        0 |
+| anyio              |     715 |      69 |     416 |        0 |
+| zarr               |   2,411 |     118 |   1,124 |        0 |
 | joblib             |   2,239 |     301 |   1,413 |        0 |
 | networkx           |  22,456 |   2,463 |  16,022 |        0 |
 | nibabel            |   8,466 |   1,172 |   5,424 |        0 |
-| narwhals           |   3,112 |     123 |   1,914 |        0 |
-| xarray             |  21,344 |   5,492 |  11,247 |        0 |
-| litestar           |   1,905 |     182 |   1,077 |        0 |
-| stripe             |   3,357 |     669 |   1,909 |        0 |
-| celery             |   3,747 |     372 |   2,867 |        0 |
-| optuna             |   3,595 |     327 |   1,687 |        0 |
-| dask               |  24,171 |   2,766 |  18,248 |        0 |
-| mypy               |  11,401 |   1,613 |   4,650 |        0 |
+| narwhals           |   3,112 |     130 |   1,900 |        0 |
+| xarray             |  21,344 |   5,497 |  11,225 |        0 |
+| litestar           |   1,905 |     198 |   1,059 |        0 |
+| stripe             |   3,357 |     671 |   1,905 |        0 |
+| celery             |   3,747 |     371 |   2,868 |        0 |
+| optuna             |   3,595 |     327 |   1,685 |        0 |
+| dask               |  24,171 |   2,763 |  18,250 |        0 |
+| mypy               |  11,401 |   1,615 |   4,645 |        0 |
 
 A check at `suffocate`: the median seconds of its runs, in one process and with `jobs`, and the
 billions of instructions they took, where `hyperfine` counted them:
 
 | corpus             | jobs | one process | with jobs | runs | G instructions, one process | with jobs |  timed by | beside other steps |
 | ------------------ | ---: | ----------: | --------: | ---: | --------------------------: | --------: | --------: | -----------------: |
-| standard library   |    4 |      117.69 |     47.28 |    1 |                       792.5 |     835.2 | hyperfine |                yes |
-| django             |    4 |       18.98 |      8.31 |    1 |                       158.1 |     168.5 | hyperfine |                yes |
-| sqlalchemy         |    4 |        11.9 |      7.44 |    1 |                       143.1 |     150.5 | hyperfine |                yes |
-| pydantic           |    4 |        3.05 |      2.08 |    1 |                        28.2 |      30.6 | hyperfine |                yes |
-| pandas             |    4 |      142.55 |     58.53 |    1 |                       882.6 |     915.8 | hyperfine |                yes |
-| twisted            |    4 |       14.03 |      7.98 |    1 |                       113.9 |     122.6 | hyperfine |                yes |
-| pip                |    4 |        7.95 |      4.42 |    1 |                        81.6 |      86.5 | hyperfine |                yes |
-| structlog          |    4 |         0.7 |      0.54 |    1 |                         3.7 |       4.9 | hyperfine |                yes |
-| attrs              |    4 |        0.66 |      0.72 |    1 |                         3.3 |       4.4 | hyperfine |                yes |
-| click              |    4 |        0.87 |      0.87 |    1 |                         6.4 |       7.5 | hyperfine |                yes |
-| hypercorn          |    4 |        0.67 |      0.62 |    1 |                         5.0 |       6.3 | hyperfine |                yes |
-| starlette          |    4 |        0.98 |      0.68 |    1 |                         6.5 |       7.9 | hyperfine |                yes |
-| werkzeug           |    4 |        1.51 |      0.97 |    1 |                        11.6 |      12.9 | hyperfine |                yes |
-| mkdocs             |    4 |        1.67 |      1.22 |    1 |                        14.0 |      16.4 | hyperfine |                yes |
-| httpx              |    4 |        0.69 |      0.81 |    1 |                         5.5 |       6.7 | hyperfine |                yes |
-| black              |    4 |        1.15 |      0.77 |    1 |                         8.5 |       9.8 | hyperfine |                yes |
-| fastapi            |    4 |        1.32 |      1.23 |    1 |                        10.5 |      12.1 | hyperfine |                yes |
-| cattrs             |    4 |        0.71 |      0.83 |    1 |                         5.5 |       7.0 | hyperfine |                yes |
-| pytest             |    4 |        2.97 |       1.5 |    1 |                        23.3 |      25.5 | hyperfine |                yes |
-| botocore           |    4 |        3.09 |      1.59 |    1 |                        32.5 |      35.1 | hyperfine |                yes |
-| uvicorn            |    4 |        0.91 |      0.95 |    1 |                         6.4 |       7.7 | hyperfine |                yes |
-| mcp                |    4 |        1.79 |      1.63 |    1 |                        17.6 |      19.9 | hyperfine |                yes |
-| textual            |    4 |        3.85 |      1.92 |    1 |                        41.9 |      45.8 | hyperfine |                yes |
-| pdm                |    4 |        3.57 |      2.43 |    1 |                        29.6 |      33.0 | hyperfine |                yes |
-| strawberry-graphql |    4 |        2.63 |      1.51 |    1 |                        28.2 |      32.1 | hyperfine |                yes |
-| pygments           |    4 |        4.71 |       3.1 |    1 |                        60.1 |      64.0 | hyperfine |                yes |
-| streamlink         |    4 |        3.86 |      2.62 |    1 |                        35.5 |      38.3 | hyperfine |                yes |
-| sphinx             |    4 |         9.6 |       4.8 |    1 |                        72.8 |      75.4 | hyperfine |                yes |
-| tox                |    4 |        1.97 |      1.36 |    1 |                        16.0 |      17.2 | hyperfine |                yes |
-| pint               |    4 |        2.67 |      2.13 |    1 |                        31.4 |      36.3 | hyperfine |                yes |
-| altair             |    4 |        6.23 |      5.75 |    1 |                        59.8 |      67.8 | hyperfine |                yes |
-| seaborn            |    4 |        6.07 |      5.06 |    1 |                        53.8 |      65.5 | hyperfine |                yes |
-| aiohttp            |    4 |        2.17 |      1.11 |    1 |                        19.9 |      21.4 | hyperfine |                yes |
-| websockets         |    4 |        1.32 |      0.71 |    1 |                         9.5 |      11.1 | hyperfine |                yes |
-| anyio              |    4 |        1.48 |      1.24 |    1 |                        10.7 |      12.1 | hyperfine |                yes |
-| zarr               |    4 |        2.43 |      1.37 |    1 |                        26.5 |      29.5 | hyperfine |                yes |
-| joblib             |    4 |        2.32 |      1.51 |    1 |                        24.1 |      27.8 | hyperfine |                yes |
-| networkx           |    4 |       25.47 |     10.91 |    1 |                       231.8 |     231.7 | hyperfine |                yes |
-| nibabel            |    4 |        8.79 |      4.15 |    1 |                        71.4 |      82.3 | hyperfine |                yes |
-| narwhals           |    4 |        7.99 |      4.32 |    1 |                        58.5 |      67.9 | hyperfine |                yes |
-| xarray             |    4 |       81.47 |     55.49 |    1 |                       293.6 |     288.5 | hyperfine |                yes |
-| litestar           |    4 |        3.27 |      2.49 |    1 |                        36.5 |      40.6 | hyperfine |                yes |
-| stripe             |    4 |        15.2 |      5.36 |    1 |                       142.3 |     149.2 | hyperfine |                yes |
-| celery             |    4 |        7.04 |      5.95 |    1 |                        73.3 |      82.7 | hyperfine |                yes |
-| optuna             |    4 |        6.65 |      4.43 |    1 |                        67.9 |      73.7 | hyperfine |                yes |
-| dask               |    4 |       71.14 |     67.23 |    1 |                       386.6 |     405.5 | hyperfine |                yes |
-| mypy               |    4 |       10.36 |       3.9 |    1 |                        90.8 |      93.3 | hyperfine |                yes |
+| standard library   |    4 |      140.92 |     63.65 |    1 |                       873.9 |     916.8 | hyperfine |                yes |
+| django             |    4 |       20.36 |      9.91 |    1 |                       184.0 |     196.2 | hyperfine |                yes |
+| sqlalchemy         |    4 |       18.66 |      9.05 |    1 |                       160.1 |     168.1 | hyperfine |                yes |
+| pydantic           |    4 |        3.55 |       1.8 |    1 |                        30.1 |      32.5 | hyperfine |                yes |
+| pandas             |    4 |      107.46 |     63.42 |    1 |                      1067.6 |    1102.4 | hyperfine |                yes |
+| twisted            |    4 |       13.29 |      5.88 |    1 |                       125.6 |     134.6 | hyperfine |                yes |
+| pip                |    4 |        9.22 |      4.51 |    1 |                        88.4 |      94.3 | hyperfine |                yes |
+| structlog          |    4 |        1.01 |      1.44 |    1 |                         4.5 |       5.6 | hyperfine |                yes |
+| attrs              |    4 |        0.64 |       0.8 |    1 |                         3.6 |       4.6 | hyperfine |                yes |
+| click              |    4 |        1.49 |      1.24 |    1 |                         7.0 |       8.1 | hyperfine |                yes |
+| hypercorn          |    4 |        1.22 |      0.96 |    1 |                         5.4 |       6.7 | hyperfine |                yes |
+| starlette          |    4 |        0.66 |      0.51 |    1 |                         7.0 |       8.4 | hyperfine |                yes |
+| werkzeug           |    4 |        1.96 |      1.08 |    1 |                        13.3 |      14.7 | hyperfine |                yes |
+| mkdocs             |    4 |        3.19 |      2.54 |    1 |                        15.9 |      18.4 | hyperfine |                yes |
+| httpx              |    4 |        1.53 |      1.44 |    1 |                         6.7 |       8.0 | hyperfine |                yes |
+| black              |    4 |        1.21 |      0.59 |    1 |                         9.8 |      11.1 | hyperfine |                yes |
+| fastapi            |    4 |        1.46 |      1.67 |    1 |                        12.3 |      14.1 | hyperfine |                yes |
+| cattrs             |    4 |        1.77 |      1.59 |    1 |                         6.7 |       8.2 | hyperfine |                yes |
+| pytest             |    4 |        2.82 |      2.37 |    1 |                        25.7 |      28.0 | hyperfine |                yes |
+| botocore           |    4 |        3.44 |      2.29 |    1 |                        35.1 |      37.8 | hyperfine |                yes |
+| uvicorn            |    4 |        0.89 |      0.74 |    1 |                         7.7 |       9.0 | hyperfine |                yes |
+| mcp                |    4 |        2.13 |      1.39 |    1 |                        20.1 |      22.5 | hyperfine |                yes |
+| textual            |    4 |        5.38 |      2.67 |    1 |                        46.5 |      50.3 | hyperfine |                yes |
+| pdm                |    4 |        3.82 |      3.07 |    1 |                        33.1 |      36.6 | hyperfine |                yes |
+| strawberry-graphql |    4 |        3.46 |      2.75 |    1 |                        31.2 |      35.2 | hyperfine |                yes |
+| pygments           |    4 |        6.08 |       2.5 |    1 |                        64.5 |      68.5 | hyperfine |                yes |
+| streamlink         |    4 |        4.02 |      2.14 |    1 |                        38.2 |      41.0 | hyperfine |                yes |
+| sphinx             |    4 |         8.2 |      3.22 |    1 |                        78.6 |      81.3 | hyperfine |                yes |
+| tox                |    4 |        6.02 |       3.1 |    1 |                        18.4 |      19.4 | hyperfine |                yes |
+| pint               |    4 |        3.71 |      3.37 |    1 |                        34.4 |      39.5 | hyperfine |                yes |
+| altair             |    4 |        6.72 |       6.0 |    1 |                        68.8 |      77.8 | hyperfine |                yes |
+| seaborn            |    4 |        8.05 |       6.9 |    1 |                        59.2 |      71.5 | hyperfine |                yes |
+| aiohttp            |    4 |        2.56 |      1.45 |    1 |                        22.0 |      23.6 | hyperfine |                yes |
+| websockets         |    4 |        1.04 |      0.76 |    1 |                        10.2 |      11.8 | hyperfine |                yes |
+| anyio              |    4 |        1.56 |      1.03 |    1 |                        11.6 |      13.0 | hyperfine |                yes |
+| zarr               |    4 |        2.76 |      1.59 |    1 |                        28.3 |      31.3 | hyperfine |                yes |
+| joblib             |    4 |        2.97 |      2.51 |    1 |                        25.7 |      29.4 | hyperfine |                yes |
+| networkx           |    4 |        39.5 |     18.73 |    1 |                       253.9 |     254.0 | hyperfine |                yes |
+| nibabel            |    4 |        8.22 |      4.63 |    1 |                        75.9 |      87.2 | hyperfine |                yes |
+| narwhals           |    4 |        6.57 |      3.82 |    1 |                        62.2 |      71.5 | hyperfine |                yes |
+| xarray             |    4 |       38.38 |     25.51 |    1 |                       288.8 |     307.5 | hyperfine |                yes |
+| litestar           |    4 |        4.29 |      2.83 |    1 |                        39.2 |      43.3 | hyperfine |                yes |
+| stripe             |    4 |       14.29 |      6.61 |    1 |                       151.7 |     158.5 | hyperfine |                yes |
+| celery             |    4 |        9.27 |      9.55 |    1 |                        77.6 |      87.3 | hyperfine |                yes |
+| optuna             |    4 |        9.34 |      6.74 |    1 |                        71.0 |      77.0 | hyperfine |                yes |
+| dask               |    4 |        54.0 |     25.96 |    1 |                       414.3 |     433.7 | hyperfine |                yes |
+| mypy               |    4 |       16.22 |      4.73 |    1 |                        98.3 |     100.8 | hyperfine |                yes |
 
 The fixes a traced test could tell of, those whose every value fit, and those one didn't; and the
 traced tests' seconds, beside the released tests' untraced:
 
 | corpus             | tier    |   told |   held | differed | resting on the trace |                                                                            tests | seconds | untraced |
 | ------------------ | ------- | -----: | -----: | -------: | -------------------: | -------------------------------------------------------------------------------: | ------: | -------: |
-| django             |         |        |        |          |                  482 |          Ran 17585 tests: FAILED (failures=5, skipped=1149, expected failures=5) |    82.9 |     67.1 |
-| django             | certain |    977 |    976 |        1 |                      |                                                                                  |         |          |
-| django             | likely  |    332 |    331 |        1 |                      |                                                                                  |         |          |
-| django             | guess   |    399 |    382 |       17 |                      |                                                                                  |         |          |
-| sqlalchemy         |         |        |        |          |                  152 |                                            29521 passed, 975 skipped, 2 warnings |   121.5 |    105.7 |
-| sqlalchemy         | certain |  1,165 |  1,143 |       22 |                      |                                                                                  |         |          |
-| sqlalchemy         | likely  |    174 |    171 |        3 |                      |                                                                                  |         |          |
-| sqlalchemy         | guess   |    132 |    129 |        3 |                      |                                                                                  |         |          |
-| pydantic           |         |        |        |          |                    1 |                                  65 failed, 6900 passed, 350 skipped, 29 xfailed |    67.3 |     68.4 |
+| django             |         |        |        |          |                  484 |          Ran 17585 tests: FAILED (failures=6, skipped=1149, expected failures=5) |    79.3 |     70.1 |
+| django             | certain |    981 |    980 |        1 |                      |                                                                                  |         |          |
+| django             | likely  |    333 |    332 |        1 |                      |                                                                                  |         |          |
+| django             | guess   |    400 |    383 |       17 |                      |                                                                                  |         |          |
+| sqlalchemy         |         |        |        |          |                  151 |                                             29521 passed, 975 skipped, 1 warning |   140.9 |     96.1 |
+| sqlalchemy         | certain |  1,186 |  1,164 |       22 |                      |                                                                                  |         |          |
+| sqlalchemy         | likely  |    192 |    188 |        4 |                      |                                                                                  |         |          |
+| sqlalchemy         | guess   |    137 |    134 |        3 |                      |                                                                                  |         |          |
+| pydantic           |         |        |        |          |                    1 |                                  65 failed, 6900 passed, 350 skipped, 29 xfailed |   121.9 |     68.4 |
 | pydantic           | certain |    531 |    526 |        5 |                      |                                                                                  |         |          |
 | pydantic           | likely  |     49 |     49 |        0 |                      |                                                                                  |         |          |
 | pydantic           | guess   |     31 |     31 |        0 |                      |                                                                                  |         |          |
-| pandas             |         |        |        |          |                1,561 |                            165411 passed, 24659 skipped, 753 xfailed, 84 xpassed |   137.8 |    110.6 |
-| pandas             | certain | 13,067 | 12,963 |      104 |                      |                                                                                  |         |          |
-| pandas             | likely  | 20,720 | 20,641 |       79 |                      |                                                                                  |         |          |
-| pandas             | guess   |  1,017 |    973 |       44 |                      |                                                                                  |         |          |
-| structlog          |         |        |        |          |                    0 |                                    24 failed, 860 passed, 37 skipped, 2 warnings |     1.4 |      2.7 |
-| structlog          | certain |     63 |     63 |        0 |                      |                                                                                  |         |          |
+| pandas             |         |        |        |          |                  741 |                            165411 passed, 24659 skipped, 753 xfailed, 84 xpassed |   138.3 |    110.6 |
+| pandas             | certain | 13,055 | 12,951 |      104 |                      |                                                                                  |         |          |
+| pandas             | likely  | 20,786 | 20,707 |       79 |                      |                                                                                  |         |          |
+| pandas             | guess   |  1,033 |    989 |       44 |                      |                                                                                  |         |          |
+| structlog          |         |        |        |          |                    0 |                                    24 failed, 860 passed, 37 skipped, 2 warnings |     6.8 |      2.7 |
+| structlog          | certain |     62 |     62 |        0 |                      |                                                                                  |         |          |
 | structlog          | likely  |      6 |      6 |        0 |                      |                                                                                  |         |          |
 | structlog          | guess   |      6 |      6 |        0 |                      |                                                                                  |         |          |
-| attrs              |         |        |        |          |                    2 |                                      1 failed, 1382 passed, 2 skipped, 2 xfailed |     4.6 |      2.5 |
+| attrs              |         |        |        |          |                    2 |                                      1 failed, 1382 passed, 2 skipped, 2 xfailed |     4.8 |      2.5 |
 | attrs              | certain |     72 |     72 |        0 |                      |                                                                                  |         |          |
 | attrs              | likely  |      8 |      8 |        0 |                      |                                                                                  |         |          |
 | attrs              | guess   |      4 |      4 |        0 |                      |                                                                                  |         |          |
-| click              |         |        |        |          |                    0 |                             1991 passed, 24 skipped, 31000 deselected, 1 xfailed |    11.2 |      8.2 |
+| click              |         |        |        |          |                    0 |                             1991 passed, 24 skipped, 31000 deselected, 1 xfailed |    10.2 |      8.2 |
 | click              | certain |    229 |    229 |        0 |                      |                                                                                  |         |          |
 | click              | likely  |     18 |     17 |        1 |                      |                                                                                  |         |          |
 | click              | guess   |     26 |     26 |        0 |                      |                                                                                  |         |          |
-| hypercorn          |         |        |        |          |                    0 |                                                             2 failed, 194 passed |     8.7 |      8.7 |
+| hypercorn          |         |        |        |          |                    0 |                                                             2 failed, 194 passed |    10.4 |      8.7 |
 | hypercorn          | certain |     63 |     63 |        0 |                      |                                                                                  |         |          |
 | hypercorn          | likely  |     12 |     12 |        0 |                      |                                                                                  |         |          |
 | hypercorn          | guess   |     11 |     11 |        0 |                      |                                                                                  |         |          |
-| starlette          |         |        |        |          |                    0 |                                                1271 passed, 2 skipped, 2 xfailed |    19.0 |     19.5 |
+| starlette          |         |        |        |          |                    0 |                                                1271 passed, 2 skipped, 2 xfailed |    19.4 |     19.5 |
 | starlette          | certain |    200 |    199 |        1 |                      |                                                                                  |         |          |
-| starlette          | likely  |     62 |     62 |        0 |                      |                                                                                  |         |          |
+| starlette          | likely  |     63 |     63 |        0 |                      |                                                                                  |         |          |
 | starlette          | guess   |     31 |     31 |        0 |                      |                                                                                  |         |          |
-| werkzeug           |         |        |        |          |                    0 |                                       1 failed, 979 passed, 1 skipped, 1 warning |    14.6 |     10.6 |
-| werkzeug           | certain |    361 |    357 |        4 |                      |                                                                                  |         |          |
-| werkzeug           | likely  |     46 |     46 |        0 |                      |                                                                                  |         |          |
-| werkzeug           | guess   |     32 |     32 |        0 |                      |                                                                                  |         |          |
-| mkdocs             |         |        |        |          |                   12 |                          Ran 724 tests: FAILED (failures=2, errors=2, skipped=4) |    13.4 |     10.5 |
+| werkzeug           |         |        |        |          |                    0 |                                       1 failed, 979 passed, 1 skipped, 1 warning |    17.9 |     10.6 |
+| werkzeug           | certain |    366 |    362 |        4 |                      |                                                                                  |         |          |
+| werkzeug           | likely  |     49 |     49 |        0 |                      |                                                                                  |         |          |
+| werkzeug           | guess   |     34 |     34 |        0 |                      |                                                                                  |         |          |
+| mkdocs             |         |        |        |          |                   12 |                          Ran 724 tests: FAILED (failures=2, errors=2, skipped=4) |    13.1 |     10.5 |
 | mkdocs             | certain |    643 |    642 |        1 |                      |                                                                                  |         |          |
 | mkdocs             | likely  |    378 |    378 |        0 |                      |                                                                                  |         |          |
 | mkdocs             | guess   |    129 |    129 |        0 |                      |                                                                                  |         |          |
-| httpx              |         |        |        |          |                    0 |                                                 1 failed, 1416 passed, 1 skipped |     7.6 |     10.2 |
+| httpx              |         |        |        |          |                    0 |                                                 1 failed, 1416 passed, 1 skipped |     8.0 |     10.2 |
 | httpx              | certain |    187 |    187 |        0 |                      |                                                                                  |         |          |
 | httpx              | likely  |     50 |     50 |        0 |                      |                                                                                  |         |          |
 | httpx              | guess   |     16 |     16 |        0 |                      |                                                                                  |         |          |
-| black              |         |        |        |          |                    0 |                                         519 passed, 1 skipped, 9 subtests passed |    10.8 |      5.8 |
+| black              |         |        |        |          |                    0 |                                         519 passed, 1 skipped, 9 subtests passed |    15.3 |      5.8 |
 | black              | certain |    611 |    611 |        0 |                      |                                                                                  |         |          |
-| black              | likely  |    104 |    104 |        0 |                      |                                                                                  |         |          |
-| black              | guess   |     42 |     42 |        0 |                      |                                                                                  |         |          |
-| fastapi            |         |        |        |          |                    0 |                                               3551 passed, 17 skipped, 4 xfailed |    15.8 |     14.5 |
-| fastapi            | certain |    218 |    218 |        0 |                      |                                                                                  |         |          |
+| black              | likely  |    101 |    101 |        0 |                      |                                                                                  |         |          |
+| black              | guess   |     41 |     41 |        0 |                      |                                                                                  |         |          |
+| fastapi            |         |        |        |          |                    0 |                                               3551 passed, 17 skipped, 4 xfailed |    22.3 |     14.5 |
+| fastapi            | certain |    216 |    216 |        0 |                      |                                                                                  |         |          |
 | fastapi            | likely  |     32 |     32 |        0 |                      |                                                                                  |         |          |
 | fastapi            | guess   |     23 |     23 |        0 |                      |                                                                                  |         |          |
-| cattrs             |         |        |        |          |                    0 |                                                           994 passed, 15 xfailed |    28.4 |     20.6 |
-| cattrs             | certain |    107 |    105 |        2 |                      |                                                                                  |         |          |
+| cattrs             |         |        |        |          |                    0 |                                                           994 passed, 15 xfailed |    20.0 |     20.6 |
+| cattrs             | certain |    105 |    103 |        2 |                      |                                                                                  |         |          |
 | cattrs             | likely  |     23 |     23 |        0 |                      |                                                                                  |         |          |
 | cattrs             | guess   |     19 |     19 |        0 |                      |                                                                                  |         |          |
-| pytest             |         |        |        |          |                   14 |              46 failed, 4059 passed, 110 skipped, 14 xfailed, 1 xpassed, 1 error |    52.3 |     22.3 |
-| pytest             | certain |  1,125 |  1,113 |       12 |                      |                                                                                  |         |          |
-| pytest             | likely  |    123 |    123 |        0 |                      |                                                                                  |         |          |
-| pytest             | guess   |    122 |    122 |        0 |                      |                                                                                  |         |          |
-| botocore           |         |        |        |          |                  290 |                                                7 failed, 4593 passed, 96 skipped |    29.7 |     29.1 |
-| botocore           | certain |    327 |    326 |        1 |                      |                                                                                  |         |          |
-| botocore           | likely  |    145 |    145 |        0 |                      |                                                                                  |         |          |
-| botocore           | guess   |    133 |    125 |        8 |                      |                                                                                  |         |          |
-| uvicorn            |         |        |        |          |                    0 |                                                          1350 passed, 12 skipped |    40.3 |     30.1 |
+| pytest             |         |        |        |          |                    9 |              46 failed, 4059 passed, 110 skipped, 14 xfailed, 1 xpassed, 1 error |    40.0 |     22.3 |
+| pytest             | certain |  1,114 |  1,103 |       11 |                      |                                                                                  |         |          |
+| pytest             | likely  |    122 |    122 |        0 |                      |                                                                                  |         |          |
+| pytest             | guess   |    119 |    119 |        0 |                      |                                                                                  |         |          |
+| botocore           |         |        |        |          |                  289 |                                                7 failed, 4593 passed, 96 skipped |    25.9 |     29.1 |
+| botocore           | certain |    330 |    329 |        1 |                      |                                                                                  |         |          |
+| botocore           | likely  |    146 |    146 |        0 |                      |                                                                                  |         |          |
+| botocore           | guess   |    136 |    128 |        8 |                      |                                                                                  |         |          |
+| uvicorn            |         |        |        |          |                    0 |                                                          1350 passed, 12 skipped |    42.4 |     30.1 |
 | uvicorn            | certain |    171 |    167 |        4 |                      |                                                                                  |         |          |
 | uvicorn            | likely  |     27 |     27 |        0 |                      |                                                                                  |         |          |
 | uvicorn            | guess   |     16 |     16 |        0 |                      |                                                                                  |         |          |
-| mcp                |         |        |        |          |                    0 |                                      3 failed, 6092 passed, 8 skipped, 1 xfailed |    18.2 |     17.4 |
-| mcp                | certain |    525 |    525 |        0 |                      |                                                                                  |         |          |
+| mcp                |         |        |        |          |                    0 |                                      3 failed, 6092 passed, 8 skipped, 1 xfailed |    35.4 |     13.6 |
+| mcp                | certain |    531 |    531 |        0 |                      |                                                                                  |         |          |
 | mcp                | likely  |    136 |    135 |        1 |                      |                                                                                  |         |          |
-| mcp                | guess   |     59 |     59 |        0 |                      |                                                                                  |         |          |
-| pdm                |         |        |        |          |                    0 |                                              1472 passed, 1 skipped, 60 warnings |    17.7 |     20.0 |
-| pdm                | certain |    940 |    937 |        3 |                      |                                                                                  |         |          |
-| pdm                | likely  |    137 |    137 |        0 |                      |                                                                                  |         |          |
-| pdm                | guess   |    102 |    101 |        1 |                      |                                                                                  |         |          |
-| strawberry-graphql |         |        |        |          |                    0 |          51 failed, 2521 passed, 3293 skipped, 7 xfailed, 35 warnings, 25 errors |    14.3 |     20.9 |
-| strawberry-graphql | certain |    412 |    406 |        6 |                      |                                                                                  |         |          |
+| mcp                | guess   |     59 |     58 |        1 |                      |                                                                                  |         |          |
+| pdm                |         |        |        |          |                    0 |                                              1472 passed, 1 skipped, 60 warnings |    17.3 |     20.0 |
+| pdm                | certain |    940 |    936 |        4 |                      |                                                                                  |         |          |
+| pdm                | likely  |    136 |    136 |        0 |                      |                                                                                  |         |          |
+| pdm                | guess   |    101 |    100 |        1 |                      |                                                                                  |         |          |
+| strawberry-graphql |         |        |        |          |                    0 |          51 failed, 2521 passed, 3293 skipped, 7 xfailed, 35 warnings, 25 errors |    22.9 |     15.6 |
+| strawberry-graphql | certain |    416 |    410 |        6 |                      |                                                                                  |         |          |
 | strawberry-graphql | likely  |     99 |     98 |        1 |                      |                                                                                  |         |          |
-| strawberry-graphql | guess   |     41 |     41 |        0 |                      |                                                                                  |         |          |
-| pygments           |         |        |        |          |                   89 |                                                1 failed, 5330 passed, 15 skipped |    21.7 |     23.3 |
+| strawberry-graphql | guess   |     42 |     42 |        0 |                      |                                                                                  |         |          |
+| pygments           |         |        |        |          |                   89 |                                                          5330 passed, 16 skipped |    31.1 |     21.3 |
 | pygments           | certain |    290 |    290 |        0 |                      |                                                                                  |         |          |
 | pygments           | likely  |     61 |     61 |        0 |                      |                                                                                  |         |          |
 | pygments           | guess   |     87 |     87 |        0 |                      |                                                                                  |         |          |
-| streamlink         |         |        |        |          |                    8 |                                     15 failed, 7233 passed, 36 skipped, 9 errors |    18.3 |     21.7 |
-| streamlink         | certain |    286 |    285 |        1 |                      |                                                                                  |         |          |
+| streamlink         |         |        |        |          |                    8 |                                     15 failed, 7233 passed, 36 skipped, 9 errors |    22.0 |     21.7 |
+| streamlink         | certain |    287 |    286 |        1 |                      |                                                                                  |         |          |
 | streamlink         | likely  |     46 |     46 |        0 |                      |                                                                                  |         |          |
 | streamlink         | guess   |     46 |     46 |        0 |                      |                                                                                  |         |          |
-| sphinx             |         |        |        |          |                    0 |                                   9 failed, 2393 passed, 22 skipped, 35 warnings |    17.9 |     14.6 |
-| sphinx             | certain |  2,144 |  2,112 |       32 |                      |                                                                                  |         |          |
-| sphinx             | likely  |    430 |    429 |        1 |                      |                                                                                  |         |          |
+| sphinx             |         |        |        |          |                    0 |                                   8 failed, 2393 passed, 23 skipped, 35 warnings |    19.0 |     16.1 |
+| sphinx             | certain |  2,145 |  2,113 |       32 |                      |                                                                                  |         |          |
+| sphinx             | likely  |    428 |    427 |        1 |                      |                                                                                  |         |          |
 | sphinx             | guess   |    219 |    215 |        4 |                      |                                                                                  |         |          |
-| tox                |         |        |        |          |                    0 |                                     17 failed, 8525 passed, 31 skipped, 6 errors |    22.4 |     17.5 |
-| tox                | certain |    750 |    747 |        3 |                      |                                                                                  |         |          |
+| tox                |         |        |        |          |                    0 |                                     17 failed, 8525 passed, 31 skipped, 6 errors |    35.8 |     17.5 |
+| tox                | certain |    755 |    751 |        4 |                      |                                                                                  |         |          |
 | tox                | likely  |     76 |     76 |        0 |                      |                                                                                  |         |          |
 | tox                | guess   |     28 |     27 |        1 |                      |                                                                                  |         |          |
-| pint               |         |        |        |          |                    5 | 1 failed, 2289 passed, 590 skipped, 11 xfailed, 14 warnings, 298 subtests passed |    39.4 |     63.7 |
+| pint               |         |        |        |          |                    5 | 1 failed, 2289 passed, 590 skipped, 11 xfailed, 14 warnings, 298 subtests passed |    46.5 |     63.7 |
 | pint               | certain |    216 |    213 |        3 |                      |                                                                                  |         |          |
 | pint               | likely  |     12 |     12 |        0 |                      |                                                                                  |         |          |
 | pint               | guess   |     24 |     22 |        2 |                      |                                                                                  |         |          |
-| altair             |         |        |        |          |                    6 |            28 failed, 1866 passed, 12 skipped, 7 xfailed, 3 xpassed, 91 warnings |    30.1 |     26.3 |
-| altair             | certain |    203 |    202 |        1 |                      |                                                                                  |         |          |
-| altair             | likely  |     33 |     33 |        0 |                      |                                                                                  |         |          |
+| altair             |         |        |        |          |                    6 |            28 failed, 1866 passed, 12 skipped, 6 xfailed, 4 xpassed, 88 warnings |    26.9 |     22.2 |
+| altair             | certain |    202 |    201 |        1 |                      |                                                                                  |         |          |
+| altair             | likely  |     35 |     35 |        0 |                      |                                                                                  |         |          |
 | altair             | guess   |      6 |      5 |        1 |                      |                                                                                  |         |          |
-| seaborn            |         |        |        |          |                   37 |            20 failed, 2178 passed, 11 skipped, 6 xfailed, 958 warnings, 8 errors |    54.3 |     37.6 |
-| seaborn            | certain |    497 |    495 |        2 |                      |                                                                                  |         |          |
-| seaborn            | likely  |    132 |    130 |        2 |                      |                                                                                  |         |          |
+| seaborn            |         |        |        |          |                   37 |            20 failed, 2178 passed, 11 skipped, 6 xfailed, 958 warnings, 8 errors |    50.1 |     41.6 |
+| seaborn            | certain |    504 |    502 |        2 |                      |                                                                                  |         |          |
+| seaborn            | likely  |    133 |    131 |        2 |                      |                                                                                  |         |          |
 | seaborn            | guess   |     46 |     44 |        2 |                      |                                                                                  |         |          |
-| aiohttp            |         |        |        |          |                    0 |                 3 failed, 4840 passed, 535 skipped, 2 xfailed, 4 subtests passed |   117.4 |     98.0 |
-| aiohttp            | certain |    532 |    514 |       18 |                      |                                                                                  |         |          |
+| aiohttp            |         |        |        |          |                    0 |                 3 failed, 4840 passed, 535 skipped, 2 xfailed, 4 subtests passed |   122.7 |     98.0 |
+| aiohttp            | certain |    537 |    518 |       19 |                      |                                                                                  |         |          |
 | aiohttp            | likely  |    114 |    113 |        1 |                      |                                                                                  |         |          |
-| aiohttp            | guess   |     84 |     78 |        6 |                      |                                                                                  |         |          |
-| websockets         |         |        |        |          |                    0 |                                                   Ran 2589 tests: OK (skipped=8) |    36.0 |     32.2 |
+| aiohttp            | guess   |     86 |     80 |        6 |                      |                                                                                  |         |          |
+| websockets         |         |        |        |          |                    0 |                                                   Ran 2589 tests: OK (skipped=8) |    33.6 |     32.2 |
 | websockets         | certain |    259 |    258 |        1 |                      |                                                                                  |         |          |
 | websockets         | likely  |     68 |     68 |        0 |                      |                                                                                  |         |          |
 | websockets         | guess   |     36 |     36 |        0 |                      |                                                                                  |         |          |
-| anyio              |         |        |        |          |                    0 |                     2 failed, 3822 passed, 19 skipped, 388 deselected, 5 xfailed |   169.7 |    118.5 |
+| anyio              |         |        |        |          |                    0 |                               3824 passed, 19 skipped, 388 deselected, 5 xfailed |   105.4 |    118.5 |
 | anyio              | certain |      0 |      0 |        0 |                      |                                                                                  |         |          |
 | anyio              | likely  |      0 |      0 |        0 |                      |                                                                                  |         |          |
 | anyio              | guess   |      0 |      0 |        0 |                      |                                                                                  |         |          |
-| zarr               |         |        |        |          |                    0 |                                             8422 passed, 1205 skipped, 4 xfailed |   156.6 |    114.5 |
-| zarr               | certain |    777 |    764 |       13 |                      |                                                                                  |         |          |
+| zarr               |         |        |        |          |                    0 |                                             8422 passed, 1205 skipped, 4 xfailed |   164.0 |    114.5 |
+| zarr               | certain |    779 |    766 |       13 |                      |                                                                                  |         |          |
 | zarr               | likely  |     52 |     52 |        0 |                      |                                                                                  |         |          |
 | zarr               | guess   |     24 |     22 |        2 |                      |                                                                                  |         |          |
-| joblib             |         |        |        |          |                   10 |                       10 failed, 1482 passed, 45 skipped, 4 xpassed, 82 warnings |   248.9 |    160.4 |
+| joblib             |         |        |        |          |                   10 |                       10 failed, 1482 passed, 45 skipped, 4 xpassed, 87 warnings |   203.9 |    225.1 |
 | joblib             | certain |    127 |    127 |        0 |                      |                                                                                  |         |          |
 | joblib             | likely  |     16 |     16 |        0 |                      |                                                                                  |         |          |
 | joblib             | guess   |     29 |     29 |        0 |                      |                                                                                  |         |          |
-| networkx           |         |        |        |          |                  358 |                                            10083 passed, 62 skipped, 741 xfailed |    30.1 |     29.0 |
-| networkx           | certain |    931 |    930 |        1 |                      |                                                                                  |         |          |
+| networkx           |         |        |        |          |                  365 |                                            10083 passed, 62 skipped, 741 xfailed |    22.1 |     29.0 |
+| networkx           | certain |    932 |    931 |        1 |                      |                                                                                  |         |          |
 | networkx           | likely  |    188 |    187 |        1 |                      |                                                                                  |         |          |
 | networkx           | guess   |    156 |    153 |        3 |                      |                                                                                  |         |          |
-| nibabel            |         |        |        |          |                   76 |                      109 failed, 5167 passed, 304 skipped, 40 xfailed, 19 errors |    14.8 |     13.8 |
+| nibabel            |         |        |        |          |                   76 |                      110 failed, 5166 passed, 303 skipped, 40 xfailed, 21 errors |    15.8 |     21.8 |
 | nibabel            | certain |    415 |    412 |        3 |                      |                                                                                  |         |          |
 | nibabel            | likely  |    177 |    177 |        0 |                      |                                                                                  |         |          |
 | nibabel            | guess   |    100 |     99 |        1 |                      |                                                                                  |         |          |
-| narwhals           |         |        |        |          |                    0 |                               972 failed, 11116 passed, 235 skipped, 699 xfailed |    30.2 |     41.9 |
-| narwhals           | certain |    555 |    553 |        2 |                      |                                                                                  |         |          |
+| narwhals           |         |        |        |          |                    0 |                               972 failed, 11116 passed, 235 skipped, 699 xfailed |    33.4 |     41.9 |
+| narwhals           | certain |    549 |    547 |        2 |                      |                                                                                  |         |          |
 | narwhals           | likely  |     41 |     41 |        0 |                      |                                                                                  |         |          |
 | narwhals           | guess   |     24 |     24 |        0 |                      |                                                                                  |         |          |
-| xarray             |         |        |        |          |                   20 |  3 failed, 6333 passed, 9626 skipped, 11 xfailed, 4 xpassed, 1 warning, 3 errors |    14.3 |     14.5 |
-| xarray             | certain |    962 |    951 |       11 |                      |                                                                                  |         |          |
+| xarray             |         |        |        |          |                   20 |  3 failed, 6333 passed, 9626 skipped, 11 xfailed, 4 xpassed, 1 warning, 3 errors |    12.7 |     18.6 |
+| xarray             | certain |    966 |    955 |       11 |                      |                                                                                  |         |          |
 | xarray             | likely  |    144 |    144 |        0 |                      |                                                                                  |         |          |
 | xarray             | guess   |     87 |     86 |        1 |                      |                                                                                  |         |          |
-| litestar           |         |        |        |          |                    0 |  9 failed, 5642 passed, 256 skipped, 13 xfailed, 30 xpassed, 4 warnings, 1 rerun |    26.7 |     27.4 |
-| litestar           | certain |    500 |    499 |        1 |                      |                                                                                  |         |          |
-| litestar           | likely  |     91 |     91 |        0 |                      |                                                                                  |         |          |
-| litestar           | guess   |     51 |     51 |        0 |                      |                                                                                  |         |          |
-| celery             |         |        |        |          |                   66 |                                     4 failed, 3520 passed, 36 skipped, 3 xfailed |    54.2 |     47.6 |
+| litestar           |         |        |        |          |                    0 |           5 failed, 5646 passed, 256 skipped, 13 xfailed, 30 xpassed, 3 warnings |    30.1 |     27.4 |
+| litestar           | certain |    495 |    494 |        1 |                      |                                                                                  |         |          |
+| litestar           | likely  |     94 |     94 |        0 |                      |                                                                                  |         |          |
+| litestar           | guess   |     52 |     52 |        0 |                      |                                                                                  |         |          |
+| celery             |         |        |        |          |                   66 |                                     4 failed, 3520 passed, 36 skipped, 3 xfailed |    52.3 |     57.5 |
 | celery             | certain |    218 |    215 |        3 |                      |                                                                                  |         |          |
 | celery             | likely  |     45 |     44 |        1 |                      |                                                                                  |         |          |
 | celery             | guess   |     29 |     25 |        4 |                      |                                                                                  |         |          |
-| optuna             |         |        |        |          |                    0 |                     263 failed, 4203 passed, 43 skipped, 327 warnings, 16 errors |   156.5 |    144.7 |
-| optuna             | certain |    694 |    694 |        0 |                      |                                                                                  |         |          |
+| optuna             |         |        |        |          |                    0 |                     263 failed, 4203 passed, 43 skipped, 327 warnings, 16 errors |   364.0 |    131.2 |
+| optuna             | certain |    691 |    691 |        0 |                      |                                                                                  |         |          |
 | optuna             | likely  |    122 |    122 |        0 |                      |                                                                                  |         |          |
 | optuna             | guess   |     54 |     54 |        0 |                      |                                                                                  |         |          |
-| dask               |         |        |        |          |                  158 |         5 failed, 16196 passed, 1089 skipped, 513 xfailed, 2 xpassed, 6 warnings |   143.0 |    186.7 |
+| dask               |         |        |        |          |                  155 |         5 failed, 16196 passed, 1089 skipped, 513 xfailed, 2 xpassed, 6 warnings |   150.9 |    168.4 |
 | dask               | certain |  1,066 |  1,059 |        7 |                      |                                                                                  |         |          |
 | dask               | likely  |    180 |    179 |        1 |                      |                                                                                  |         |          |
 | dask               | guess   |    116 |    113 |        3 |                      |                                                                                  |         |          |
-| mypy               |         |        |        |          |                    0 |                        14464 passed, 366 skipped, 12 xfailed, 46 subtests passed |   279.6 |    303.3 |
-| mypy               | certain |  3,350 |  3,350 |        0 |                      |                                                                                  |         |          |
-| mypy               | likely  |    714 |    714 |        0 |                      |                                                                                  |         |          |
-| mypy               | guess   |    265 |    265 |        0 |                      |                                                                                  |         |          |
+| mypy               |         |        |        |          |                    0 |                        14464 passed, 366 skipped, 12 xfailed, 46 subtests passed |   413.4 |    303.3 |
+| mypy               | certain |  3,346 |  3,346 |        0 |                      |                                                                                  |         |          |
+| mypy               | likely  |    713 |    713 |        0 |                      |                                                                                  |         |          |
+| mypy               | guess   |    268 |    268 |        0 |                      |                                                                                  |         |          |
 
 The bindings with neither a fix nor a guess, by shape: those a traced test reached, and those it saw
 hold one type, the most any inference could type (each shape's commonest source is in
@@ -888,64 +888,64 @@ hold one type, the most any inference could type (each shape's commonest source 
 
 | corpus             | shape                                        | no fix | traced | one type |
 | ------------------ | -------------------------------------------- | -----: | -----: | -------: |
-| django             | `call: chained .method()`                    |  1,353 |    955 |      601 |
-| django             | `call: self.method()`                        |    978 |    656 |      418 |
-| django             | `call: param.method()`                       |    654 |    471 |      370 |
-| django             | `call: imported function`                    |    654 |    275 |      200 |
+| django             | `call: chained .method()`                    |  1,353 |    958 |      605 |
+| django             | `call: self.method()`                        |    978 |    653 |      416 |
+| django             | `call: param.method()`                       |    654 |    475 |      374 |
+| django             | `call: imported function`                    |    654 |    274 |      199 |
 | django             | `call: local.method()`                       |    545 |    386 |      263 |
 | django             | `empty list`                                 |    450 |      0 |        0 |
-| django             | `copy: local`                                |    434 |    317 |      221 |
-| django             | `attr: chained`                              |    406 |    278 |      182 |
-| django             | `copy: param (unannotated)`                  |    348 |    236 |      140 |
-| django             | `attr: self.x`                               |    342 |    272 |      145 |
+| django             | `copy: local`                                |    434 |    321 |      223 |
+| django             | `attr: chained`                              |    406 |    280 |      183 |
+| django             | `copy: param (unannotated)`                  |    348 |    240 |      145 |
+| django             | `attr: self.x`                               |    342 |    271 |      142 |
+| django             | `other constant`                             |    330 |     22 |       22 |
 | django             | `None literal`                               |    319 |    104 |      104 |
-| django             | `call: imported.attr()`                      |    301 |    144 |       97 |
-| django             | `other constant`                             |    270 |     22 |       22 |
-| django             | `subscript: other`                           |    265 |    198 |      162 |
-| django             | `dict (mixed/unknown elements)`              |    236 |    104 |       73 |
+| django             | `call: imported.attr()`                      |    301 |    147 |       99 |
+| django             | `subscript: other`                           |    265 |    196 |      159 |
+| django             | `dict (mixed/unknown elements)`              |    237 |    105 |       74 |
 | django             | `empty dict`                                 |    201 |      0 |        0 |
-| django             | `call: module function (unannotated)`        |    185 |    129 |       93 |
-| django             | `tuple (mixed/unknown elements)`             |    176 |     95 |       74 |
+| django             | `call: module function (unannotated)`        |    185 |    133 |       95 |
+| django             | `tuple (mixed/unknown elements)`             |    176 |     95 |       72 |
 | django             | `copy: imported`                             |    175 |      8 |        7 |
-| django             | `call: builtin getattr()`                    |    174 |    154 |       73 |
-| django             | `subscript: local[...]`                      |    173 |    110 |       92 |
+| django             | `call: builtin getattr()`                    |    174 |    154 |       72 |
+| django             | `subscript: local[...]`                      |    173 |    109 |       90 |
 | django             | `attr: local.x`                              |    170 |    129 |       92 |
-| django             | `ListComp (unknown elements)`                |    165 |    119 |       83 |
-| django             | `list (mixed/unknown elements)`              |    159 |     55 |       43 |
-| django             | `conditional`                                |    157 |    127 |       66 |
+| django             | `ListComp (unknown elements)`                |    165 |    119 |       82 |
+| django             | `list (mixed/unknown elements)`              |    159 |     56 |       44 |
+| django             | `conditional`                                |    157 |    125 |       62 |
 | django             | `subscript: param[...]`                      |    136 |    111 |       93 |
 | django             | `binop (unknown operands)`                   |    130 |     85 |       78 |
-| django             | `attr: param.x`                              |    124 |    102 |       74 |
-| django             | `boolop (or)`                                |    112 |     95 |       72 |
+| django             | `attr: param.x`                              |    124 |    102 |       73 |
+| django             | `call: imported class`                       |    118 |     16 |       16 |
+| django             | `boolop (or)`                                |    112 |     96 |       73 |
 | django             | `call: builtin set()`                        |    109 |     16 |       12 |
 | django             | `attr: imported.x`                           |    105 |     21 |       17 |
-| django             | `call: imported class`                       |     95 |     14 |       14 |
-| django             | `call: module.func()`                        |     94 |     69 |       59 |
-| django             | `call: builtin enumerate()`                  |     85 |     66 |       37 |
+| django             | `call: module.func()`                        |     94 |     69 |       60 |
+| django             | `call: builtin enumerate()`                  |     85 |     67 |       39 |
 | django             | `call: builtin sorted()`                     |     77 |     64 |       58 |
 | django             | `call: builtin list()`                       |     62 |     48 |       35 |
 | django             | `subscript: imported[...]`                   |     59 |     40 |       36 |
 | django             | `DictComp (unknown elements)`                |     57 |     37 |       21 |
 | django             | `call: builtin zip()`                        |     56 |     36 |       14 |
 | django             | `call: other name`                           |     52 |     36 |       21 |
-| django             | `call: local name`                           |     51 |     36 |       18 |
+| django             | `call: local name`                           |     51 |     35 |       17 |
 | django             | `call: builtin property()`                   |     49 |      0 |        0 |
-| django             | `boolop (and)`                               |     42 |     29 |       21 |
-| django             | `call: global.method()`                      |     42 |     29 |       16 |
+| django             | `boolop (and)`                               |     42 |     29 |       22 |
+| django             | `call: global.method()`                      |     42 |     29 |       17 |
 | django             | `SetComp (unknown elements)`                 |     40 |     21 |       17 |
-| django             | `copy: other`                                |     40 |      8 |        6 |
+| django             | `copy: other`                                |     40 |      8 |        7 |
 | django             | `empty tuple`                                |     39 |      0 |        0 |
 | django             | `compare`                                    |     35 |     20 |       20 |
 | django             | `call: builtin next()`                       |     32 |     31 |       27 |
 | django             | `call: module class`                         |     31 |      7 |        7 |
-| django             | `GeneratorExp (unknown elements)`            |     29 |     26 |       25 |
+| django             | `GeneratorExp (unknown elements)`            |     29 |     27 |       26 |
 | django             | `binop (one side literal)`                   |     29 |      6 |        6 |
 | django             | `copy: modclass`                             |     27 |      0 |        0 |
 | django             | `copy: moddef`                               |     26 |      0 |        0 |
 | django             | `copy: global`                               |     25 |      4 |        4 |
-| django             | `call: other callee`                         |     24 |     16 |       12 |
+| django             | `call: other callee`                         |     24 |     17 |       12 |
 | django             | `attr: module.x`                             |     21 |      5 |        4 |
-| django             | `call: builtin iter()`                       |     21 |     17 |       15 |
+| django             | `call: builtin iter()`                       |     21 |     17 |       16 |
 | django             | `call: builtin reversed()`                   |     19 |     16 |        6 |
 | django             | `await: call: self.method()`                 |     18 |     14 |        6 |
 | django             | `call: builtin tuple()`                      |     18 |     14 |        8 |
@@ -955,7 +955,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | django             | `call: other.method()`                       |     15 |     11 |        6 |
 | django             | `call: builtin object()`                     |     14 |      2 |        2 |
 | django             | `call: modclass.method()`                    |     14 |      5 |        5 |
-| django             | `binop: literal % formatting`                |     13 |      8 |        8 |
+| django             | `binop: literal % formatting`                |     13 |      7 |        7 |
 | django             | `attr: cls.x`                                |     12 |     12 |       10 |
 | django             | `copy: builtin`                              |     12 |      1 |        1 |
 | django             | `call: builtin staticmethod()`               |     11 |      0 |        0 |
@@ -966,8 +966,8 @@ hold one type, the most any inference could type (each shape's commonest source 
 | django             | `await: call: other name`                    |      9 |      9 |        8 |
 | django             | `call: builtin dict()`                       |      8 |      7 |        3 |
 | django             | `call: builtin.method()`                     |      8 |      6 |        5 |
+| django             | `set (mixed/unknown elements)`               |      7 |      4 |        4 |
 | django             | `call: builtin map()`                        |      7 |      3 |        2 |
-| django             | `set (mixed/unknown elements)`               |      6 |      4 |        4 |
 | django             | `call: builtin min()`                        |      6 |      2 |        2 |
 | django             | `call: builtin frozenset()`                  |      6 |      1 |        1 |
 | django             | `attr: global.x`                             |      6 |      1 |        1 |
@@ -1003,56 +1003,56 @@ hold one type, the most any inference could type (each shape's commonest source 
 | django             | `call: builtin __import__()`                 |      1 |      1 |        1 |
 | django             | `call: builtin repr()`                       |      1 |      1 |        1 |
 | django             | `call: builtin memoryview()`                 |      1 |      1 |        1 |
-| sqlalchemy         | `call: chained .method()`                    |    949 |    457 |      308 |
-| sqlalchemy         | `other constant`                             |    590 |      9 |        9 |
-| sqlalchemy         | `call: self.method()`                        |    578 |    303 |      170 |
-| sqlalchemy         | `attr: chained`                              |    571 |    278 |      213 |
-| sqlalchemy         | `call: local.method()`                       |    521 |    274 |      172 |
-| sqlalchemy         | `call: param.method()`                       |    446 |    270 |      164 |
-| sqlalchemy         | `attr: self.x`                               |    367 |    285 |      161 |
-| sqlalchemy         | `subscript: other`                           |    357 |    215 |      139 |
-| sqlalchemy         | `copy: local`                                |    351 |    216 |      135 |
-| sqlalchemy         | `call: imported function`                    |    334 |    157 |       91 |
-| sqlalchemy         | `call: imported.attr()`                      |    317 |    164 |      110 |
-| sqlalchemy         | `attr: param.x`                              |    312 |    249 |      153 |
-| sqlalchemy         | `attr: local.x`                              |    254 |    199 |      125 |
-| sqlalchemy         | `tuple (mixed/unknown elements)`             |    204 |    135 |       91 |
-| sqlalchemy         | `copy: param (unannotated)`                  |    183 |    135 |       92 |
-| sqlalchemy         | `subscript: local[...]`                      |    174 |     94 |       56 |
-| sqlalchemy         | `None literal`                               |    172 |     74 |       74 |
-| sqlalchemy         | `ListComp (unknown elements)`                |    158 |    118 |       71 |
+| sqlalchemy         | `call: chained .method()`                    |    943 |    456 |      308 |
+| sqlalchemy         | `other constant`                             |    602 |      8 |        8 |
+| sqlalchemy         | `attr: chained`                              |    571 |    285 |      219 |
+| sqlalchemy         | `call: self.method()`                        |    567 |    296 |      160 |
+| sqlalchemy         | `call: local.method()`                       |    521 |    281 |      174 |
+| sqlalchemy         | `call: param.method()`                       |    446 |    272 |      159 |
+| sqlalchemy         | `attr: self.x`                               |    358 |    276 |      153 |
+| sqlalchemy         | `subscript: other`                           |    354 |    216 |      137 |
+| sqlalchemy         | `copy: local`                                |    351 |    219 |      135 |
+| sqlalchemy         | `call: imported function`                    |    334 |    155 |       86 |
+| sqlalchemy         | `call: imported.attr()`                      |    317 |    166 |      109 |
+| sqlalchemy         | `attr: param.x`                              |    312 |    248 |      149 |
+| sqlalchemy         | `attr: local.x`                              |    253 |    202 |      125 |
+| sqlalchemy         | `tuple (mixed/unknown elements)`             |    202 |    135 |       92 |
+| sqlalchemy         | `copy: param (unannotated)`                  |    183 |    136 |       92 |
+| sqlalchemy         | `subscript: local[...]`                      |    173 |     92 |       55 |
+| sqlalchemy         | `None literal`                               |    172 |     73 |       73 |
+| sqlalchemy         | `ListComp (unknown elements)`                |    158 |    118 |       69 |
 | sqlalchemy         | `copy: modclass`                             |    147 |      1 |        1 |
 | sqlalchemy         | `attr: imported.x`                           |    145 |     17 |       17 |
 | sqlalchemy         | `copy: imported`                             |    118 |      1 |        1 |
 | sqlalchemy         | `call: builtin list()`                       |    117 |     74 |       44 |
 | sqlalchemy         | `empty list`                                 |    114 |      0 |        0 |
-| sqlalchemy         | `call: module.func()`                        |    107 |     52 |       43 |
-| sqlalchemy         | `copy: param (annotated)`                    |    107 |     86 |       49 |
-| sqlalchemy         | `dict (mixed/unknown elements)`              |    103 |     15 |       13 |
-| sqlalchemy         | `call: builtin getattr()`                    |    100 |     81 |       38 |
+| sqlalchemy         | `call: module.func()`                        |    107 |     51 |       42 |
+| sqlalchemy         | `copy: param (annotated)`                    |    106 |     87 |       51 |
+| sqlalchemy         | `dict (mixed/unknown elements)`              |    103 |     16 |       14 |
+| sqlalchemy         | `call: builtin getattr()`                    |    100 |     82 |       37 |
 | sqlalchemy         | `call: param name`                           |     90 |     36 |       13 |
 | sqlalchemy         | `empty dict`                                 |     82 |      0 |        0 |
-| sqlalchemy         | `call: builtin set()`                        |     82 |     33 |       22 |
+| sqlalchemy         | `call: builtin set()`                        |     82 |     34 |       23 |
 | sqlalchemy         | `binop (unknown operands)`                   |     81 |     43 |       32 |
-| sqlalchemy         | `call: other name`                           |     76 |     57 |       32 |
-| sqlalchemy         | `boolop (or)`                                |     74 |     60 |       47 |
-| sqlalchemy         | `subscript: param[...]`                      |     74 |     59 |       36 |
-| sqlalchemy         | `conditional`                                |     71 |     40 |       22 |
-| sqlalchemy         | `call: local name`                           |     63 |     50 |       24 |
-| sqlalchemy         | `copy: other`                                |     63 |     20 |       16 |
+| sqlalchemy         | `call: other name`                           |     76 |     57 |       33 |
+| sqlalchemy         | `subscript: param[...]`                      |     74 |     60 |       37 |
+| sqlalchemy         | `boolop (or)`                                |     73 |     59 |       47 |
+| sqlalchemy         | `conditional`                                |     71 |     40 |       21 |
+| sqlalchemy         | `call: local name`                           |     63 |     51 |       23 |
+| sqlalchemy         | `copy: other`                                |     63 |     19 |       14 |
 | sqlalchemy         | `list (mixed/unknown elements)`              |     62 |     18 |       10 |
-| sqlalchemy         | `DictComp (unknown elements)`                |     61 |     34 |       14 |
-| sqlalchemy         | `call: module function (unannotated)`        |     59 |     49 |       38 |
-| sqlalchemy         | `call: builtin zip()`                        |     57 |     37 |       19 |
+| sqlalchemy         | `DictComp (unknown elements)`                |     61 |     35 |       15 |
+| sqlalchemy         | `call: module function (unannotated)`        |     59 |     49 |       37 |
+| sqlalchemy         | `call: builtin zip()`                        |     57 |     37 |       22 |
 | sqlalchemy         | `copy: global`                               |     50 |      6 |        6 |
-| sqlalchemy         | `call: builtin dict()`                       |     49 |     20 |        9 |
-| sqlalchemy         | `call: builtin enumerate()`                  |     41 |     29 |        7 |
-| sqlalchemy         | `call: builtin tuple()`                      |     38 |     15 |        7 |
+| sqlalchemy         | `call: builtin dict()`                       |     49 |     24 |       13 |
+| sqlalchemy         | `call: builtin enumerate()`                  |     39 |     29 |        6 |
+| sqlalchemy         | `call: builtin tuple()`                      |     38 |     15 |        5 |
 | sqlalchemy         | `call: other.method()`                       |     36 |     20 |       10 |
-| sqlalchemy         | `SetComp (unknown elements)`                 |     35 |     20 |       14 |
+| sqlalchemy         | `SetComp (unknown elements)`                 |     35 |     21 |       15 |
 | sqlalchemy         | `call: imported class`                       |     33 |      7 |        7 |
-| sqlalchemy         | `call: module function (annotated)`          |     32 |     29 |       15 |
-| sqlalchemy         | `call: cls.method()`                         |     30 |     24 |       16 |
+| sqlalchemy         | `call: module function (annotated)`          |     32 |     29 |       14 |
+| sqlalchemy         | `call: cls.method()`                         |     30 |     24 |       15 |
 | sqlalchemy         | `boolop (and)`                               |     25 |     25 |       21 |
 | sqlalchemy         | `call: builtin.method()`                     |     24 |     23 |       10 |
 | sqlalchemy         | `call: module class`                         |     23 |     15 |       15 |
@@ -1063,13 +1063,13 @@ hold one type, the most any inference could type (each shape's commonest source 
 | sqlalchemy         | `call: builtin type()`                       |     15 |     10 |        3 |
 | sqlalchemy         | `call: other callee`                         |     15 |     11 |        5 |
 | sqlalchemy         | `await: call: imported function`             |     15 |     13 |        8 |
-| sqlalchemy         | `GeneratorExp (unknown elements)`            |     14 |      7 |        7 |
 | sqlalchemy         | `attr: global.x`                             |     14 |      0 |        0 |
-| sqlalchemy         | `call: builtin sorted()`                     |     13 |      9 |        8 |
+| sqlalchemy         | `GeneratorExp (unknown elements)`            |     13 |      6 |        6 |
 | sqlalchemy         | `call: global.method()`                      |     13 |     11 |       10 |
 | sqlalchemy         | `copy: moddef`                               |     13 |      0 |        0 |
+| sqlalchemy         | `call: builtin sorted()`                     |     12 |      6 |        5 |
 | sqlalchemy         | `subscript: global[...]`                     |     12 |     11 |        9 |
-| sqlalchemy         | `call: global name`                          |     12 |     12 |        5 |
+| sqlalchemy         | `call: global name`                          |     12 |     12 |        4 |
 | sqlalchemy         | `attr: module.x`                             |     11 |      9 |        9 |
 | sqlalchemy         | `copy: builtin`                              |     11 |      0 |        0 |
 | sqlalchemy         | `attr: other.x`                              |     10 |      7 |        7 |
@@ -1100,7 +1100,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | sqlalchemy         | `call: builtin sum()`                        |      2 |      0 |        0 |
 | sqlalchemy         | `await: call: module function (unannotated)` |      2 |      2 |        2 |
 | sqlalchemy         | `await: copy: param (annotated)`             |      1 |      0 |        0 |
-| sqlalchemy         | `JoinedStr`                                  |      1 |      0 |        0 |
+| sqlalchemy         | `JoinedStr`                                  |      1 |      1 |        1 |
 | sqlalchemy         | `call: builtin len()`                        |      1 |      1 |        1 |
 | sqlalchemy         | `await: call: module.func()`                 |      1 |      0 |        0 |
 | sqlalchemy         | `await: call: builtin anext()`               |      1 |      0 |        0 |
@@ -1194,31 +1194,31 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pydantic           | `call: builtin iter()`                       |      1 |      0 |        0 |
 | pydantic           | `call: builtin open()`                       |      1 |      0 |        0 |
 | pydantic           | `copy: self`                                 |      1 |      0 |        0 |
-| pandas             | `call: local.method()`                       |  6,075 |  5,009 |    4,659 |
-| pandas             | `call: chained .method()`                    |  4,678 |  3,608 |    3,284 |
-| pandas             | `call: module.func()`                        |  3,372 |  2,231 |    2,122 |
-| pandas             | `copy: param (unannotated)`                  |  1,960 |  1,740 |      794 |
+| pandas             | `call: local.method()`                       |  5,963 |  4,933 |    4,583 |
+| pandas             | `call: chained .method()`                    |  4,671 |  3,604 |    3,280 |
+| pandas             | `call: module.func()`                        |  3,385 |  2,242 |    2,133 |
+| pandas             | `copy: param (unannotated)`                  |  1,960 |  1,740 |      795 |
 | pandas             | `subscript: other`                           |  1,510 |  1,221 |    1,092 |
-| pandas             | `call: imported function`                    |  1,456 |  1,037 |      882 |
-| pandas             | `call: param.method()`                       |  1,432 |    994 |      785 |
+| pandas             | `call: imported function`                    |  1,505 |  1,067 |      912 |
+| pandas             | `call: param.method()`                       |  1,413 |    987 |      779 |
 | pandas             | `binop (unknown operands)`                   |  1,112 |    955 |      807 |
 | pandas             | `subscript: local[...]`                      |    948 |    755 |      707 |
 | pandas             | `attr: chained`                              |    792 |    529 |      433 |
 | pandas             | `list (mixed/unknown elements)`              |    780 |    534 |      401 |
-| pandas             | `call: param name`                           |    769 |    726 |      268 |
-| pandas             | `call: imported class`                       |    756 |    651 |      646 |
-| pandas             | `call: self.method()`                        |    588 |    397 |      238 |
+| pandas             | `call: param name`                           |    769 |    726 |      269 |
+| pandas             | `call: imported class`                       |    737 |    633 |      628 |
+| pandas             | `call: self.method()`                        |    593 |    402 |      244 |
 | pandas             | `call: other callee`                         |    503 |    418 |      340 |
-| pandas             | `conditional`                                |    470 |    377 |      199 |
+| pandas             | `conditional`                                |    470 |    377 |      200 |
 | pandas             | `attr: local.x`                              |    439 |    331 |      270 |
-| pandas             | `copy: local`                                |    412 |    274 |      194 |
+| pandas             | `copy: local`                                |    412 |    273 |      193 |
 | pandas             | `subscript: param[...]`                      |    384 |    276 |      163 |
 | pandas             | `tuple (mixed/unknown elements)`             |    372 |    225 |      177 |
 | pandas             | `call: imported.attr()`                      |    368 |    267 |      196 |
-| pandas             | `ListComp (unknown elements)`                |    360 |    187 |      136 |
+| pandas             | `ListComp (unknown elements)`                |    360 |    188 |      137 |
 | pandas             | `compare`                                    |    347 |    272 |      251 |
 | pandas             | `dict (mixed/unknown elements)`              |    332 |    208 |      182 |
-| pandas             | `call: builtin getattr()`                    |    307 |    224 |      154 |
+| pandas             | `call: builtin getattr()`                    |    307 |    225 |      155 |
 | pandas             | `call: builtin zip()`                        |    306 |    209 |      152 |
 | pandas             | `call: local name`                           |    296 |    255 |      149 |
 | pandas             | `attr: param.x`                              |    281 |    191 |      105 |
@@ -1227,7 +1227,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pandas             | `attr: self.x`                               |    274 |    192 |      106 |
 | pandas             | `binop (one side literal)`                   |    254 |    201 |      180 |
 | pandas             | `call: builtin enumerate()`                  |    233 |    156 |      108 |
-| pandas             | `other constant`                             |    172 |     48 |       48 |
+| pandas             | `other constant`                             |    178 |     48 |       48 |
 | pandas             | `call: builtin list()`                       |    170 |    124 |       84 |
 | pandas             | `None literal`                               |    157 |    112 |      112 |
 | pandas             | `attr: module.x`                             |    121 |     84 |       82 |
@@ -1236,7 +1236,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pandas             | `call: other name`                           |    113 |     75 |       52 |
 | pandas             | `attr: imported.x`                           |     94 |     23 |       23 |
 | pandas             | `empty dict`                                 |     90 |      0 |        0 |
-| pandas             | `copy: imported`                             |     89 |     50 |       50 |
+| pandas             | `copy: imported`                             |     89 |     51 |       51 |
 | pandas             | `call: module function (annotated)`          |     86 |     48 |       24 |
 | pandas             | `copy: other`                                |     78 |      7 |        4 |
 | pandas             | `copy: param (annotated)`                    |     70 |     47 |       33 |
@@ -1337,7 +1337,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | structlog          | `call: local.method()`                       |      1 |      1 |        1 |
 | structlog          | `other constant`                             |      1 |      1 |        1 |
 | structlog          | `call: builtin type()`                       |      1 |      1 |        1 |
-| structlog          | `binop (unknown operands)`                   |      1 |      1 |        1 |
+| structlog          | `binop (unknown operands)`                   |      1 |      0 |        0 |
 | structlog          | `attr: param.x`                              |      1 |      1 |        0 |
 | structlog          | `subscript: local[...]`                      |      1 |      1 |        0 |
 | attrs              | `call: imported function`                    |     35 |      6 |        3 |
@@ -1351,16 +1351,16 @@ hold one type, the most any inference could type (each shape's commonest source 
 | attrs              | `call: builtin getattr()`                    |     10 |      7 |        2 |
 | attrs              | `call: module.func()`                        |      8 |      6 |        1 |
 | attrs              | `copy: local`                                |      8 |      8 |        8 |
-| attrs              | `ListComp (unknown elements)`                |      8 |      4 |        3 |
+| attrs              | `ListComp (unknown elements)`                |      8 |      5 |        3 |
 | attrs              | `attr: local.x`                              |      8 |      7 |        5 |
-| attrs              | `conditional`                                |      7 |      3 |        3 |
+| attrs              | `conditional`                                |      7 |      4 |        4 |
 | attrs              | `call: self.method()`                        |      6 |      6 |        0 |
 | attrs              | `compare`                                    |      5 |      0 |        0 |
 | attrs              | `call: param.method()`                       |      5 |      3 |        2 |
 | attrs              | `tuple (mixed/unknown elements)`             |      5 |      4 |        4 |
 | attrs              | `copy: imported`                             |      4 |      0 |        0 |
 | attrs              | `dict (mixed/unknown elements)`              |      4 |      3 |        2 |
-| attrs              | `call: builtin type()`                       |      4 |      3 |        0 |
+| attrs              | `call: builtin type()`                       |      4 |      4 |        0 |
 | attrs              | `attr: modclass.x`                           |      4 |      3 |        3 |
 | attrs              | `DictComp (unknown elements)`                |      4 |      0 |        0 |
 | attrs              | `boolop (or)`                                |      4 |      3 |        3 |
@@ -1398,7 +1398,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | click              | `call: chained .method()`                    |     26 |     21 |       15 |
 | click              | `other constant`                             |     17 |      0 |        0 |
 | click              | `call: imported function`                    |     16 |     12 |        8 |
-| click              | `call: self.method()`                        |     13 |     12 |        3 |
+| click              | `call: self.method()`                        |     12 |     11 |        3 |
 | click              | `call: local.method()`                       |     12 |      9 |        7 |
 | click              | `call: builtin getattr()`                    |      9 |      5 |        3 |
 | click              | `empty list`                                 |      9 |      0 |        0 |
@@ -1406,7 +1406,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | click              | `attr: imported.x`                           |      9 |      6 |        6 |
 | click              | `None literal`                               |      9 |      7 |        7 |
 | click              | `conditional`                                |      9 |      7 |        7 |
-| click              | `attr: self.x`                               |      8 |      6 |        4 |
+| click              | `attr: self.x`                               |      7 |      5 |        3 |
 | click              | `call: param.method()`                       |      7 |      5 |        4 |
 | click              | `call: other name`                           |      6 |      4 |        4 |
 | click              | `attr: global.x`                             |      5 |      0 |        0 |
@@ -1490,11 +1490,11 @@ hold one type, the most any inference could type (each shape's commonest source 
 | starlette          | `call: builtin reversed()`                   |     15 |      4 |        2 |
 | starlette          | `subscript: param[...]`                      |     14 |     14 |       13 |
 | starlette          | `attr: self.x`                               |     11 |      8 |        4 |
-| starlette          | `call: self.method()`                        |     10 |      9 |        7 |
 | starlette          | `await: call: self.method()`                 |     10 |      9 |        2 |
 | starlette          | `call: module.func()`                        |      9 |      9 |        7 |
 | starlette          | `other constant`                             |      9 |      0 |        0 |
 | starlette          | `call: imported function`                    |      9 |      9 |        7 |
+| starlette          | `call: self.method()`                        |      9 |      8 |        7 |
 | starlette          | `tuple (mixed/unknown elements)`             |      8 |      7 |        6 |
 | starlette          | `call: other callee`                         |      8 |      8 |        8 |
 | starlette          | `await: call: module.func()`                 |      7 |      7 |        6 |
@@ -1539,25 +1539,25 @@ hold one type, the most any inference could type (each shape's commonest source 
 | starlette          | `attr: other.x`                              |      1 |      1 |        1 |
 | werkzeug           | `other constant`                             |     81 |      4 |        4 |
 | werkzeug           | `call: chained .method()`                    |     63 |     43 |       29 |
-| werkzeug           | `call: local.method()`                       |     34 |     20 |       15 |
 | werkzeug           | `call: param.method()`                       |     32 |     29 |       22 |
 | werkzeug           | `call: imported function`                    |     32 |     17 |       15 |
 | werkzeug           | `copy: local`                                |     31 |     18 |       13 |
+| werkzeug           | `call: local.method()`                       |     30 |     16 |       12 |
 | werkzeug           | `call: module function (annotated)`          |     27 |     12 |        8 |
-| werkzeug           | `attr: self.x`                               |     26 |     22 |       17 |
 | werkzeug           | `empty list`                                 |     23 |      0 |        0 |
 | werkzeug           | `call: other callee`                         |     20 |      0 |        0 |
-| werkzeug           | `call: self.method()`                        |     19 |     13 |       10 |
+| werkzeug           | `attr: self.x`                               |     19 |     15 |       13 |
 | werkzeug           | `call: module.func()`                        |     17 |     10 |        8 |
 | werkzeug           | `call: builtin getattr()`                    |     16 |     16 |        9 |
+| werkzeug           | `call: self.method()`                        |     15 |     11 |        8 |
 | werkzeug           | `copy: self`                                 |     13 |     11 |        6 |
 | werkzeug           | `call: other name`                           |     11 |      9 |        8 |
 | werkzeug           | `None literal`                               |     11 |     10 |       10 |
-| werkzeug           | `call: builtin set()`                        |     10 |      0 |        0 |
 | werkzeug           | `subscript: other`                           |     10 |      3 |        3 |
 | werkzeug           | `copy: param (annotated)`                    |      9 |      4 |        2 |
 | werkzeug           | `list (mixed/unknown elements)`              |      9 |      8 |        7 |
 | werkzeug           | `call: local name`                           |      8 |      8 |        7 |
+| werkzeug           | `call: builtin set()`                        |      7 |      0 |        0 |
 | werkzeug           | `call: builtin enumerate()`                  |      6 |      6 |        2 |
 | werkzeug           | `tuple (mixed/unknown elements)`             |      6 |      4 |        1 |
 | werkzeug           | `subscript: local[...]`                      |      5 |      5 |        4 |
@@ -1698,9 +1698,9 @@ hold one type, the most any inference could type (each shape's commonest source 
 | httpx              | `call: builtin.method()`                     |      1 |      1 |        1 |
 | httpx              | `copy: modclass`                             |      1 |      0 |        0 |
 | httpx              | `await: call: other.method()`                |      1 |      0 |        0 |
-| black              | `attr: param.x`                              |     59 |     56 |       30 |
-| black              | `subscript: other`                           |     36 |     30 |       16 |
-| black              | `attr: local.x`                              |     34 |     30 |       21 |
+| black              | `attr: param.x`                              |     59 |     56 |       31 |
+| black              | `subscript: other`                           |     36 |     31 |       17 |
+| black              | `attr: local.x`                              |     34 |     30 |       22 |
 | black              | `call: local.method()`                       |     32 |     30 |       21 |
 | black              | `attr: chained`                              |     19 |     15 |       12 |
 | black              | `copy: local`                                |     18 |     15 |       12 |
@@ -1708,10 +1708,10 @@ hold one type, the most any inference could type (each shape's commonest source 
 | black              | `copy: builtin`                              |     16 |      0 |        0 |
 | black              | `call: imported function`                    |     13 |      5 |        4 |
 | black              | `subscript: local[...]`                      |     12 |     11 |       11 |
-| black              | `boolop (and)`                               |     11 |      8 |        6 |
+| black              | `boolop (and)`                               |     11 |      9 |        7 |
 | black              | `conditional`                                |     10 |     10 |        6 |
 | black              | `empty list`                                 |     10 |      0 |        0 |
-| black              | `call: builtin enumerate()`                  |      8 |      8 |        4 |
+| black              | `call: builtin enumerate()`                  |      8 |      7 |        3 |
 | black              | `call: module function (annotated)`          |      7 |      5 |        5 |
 | black              | `call: module.func()`                        |      7 |      4 |        4 |
 | black              | `copy: param (annotated)`                    |      7 |      6 |        6 |
@@ -1719,7 +1719,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | black              | `binop (one side literal)`                   |      5 |      5 |        5 |
 | black              | `attr: imported.x`                           |      4 |      4 |        4 |
 | black              | `binop (unknown operands)`                   |      4 |      4 |        4 |
-| black              | `list (mixed/unknown elements)`              |      4 |      4 |        3 |
+| black              | `list (mixed/unknown elements)`              |      4 |      4 |        2 |
 | black              | `tuple (mixed/unknown elements)`             |      4 |      3 |        1 |
 | black              | `call: builtin next()`                       |      4 |      4 |        4 |
 | black              | `call: builtin set()`                        |      3 |      1 |        1 |
@@ -1730,7 +1730,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | black              | `copy: imported`                             |      2 |      1 |        1 |
 | black              | `call: builtin getattr()`                    |      2 |      2 |        0 |
 | black              | `SetComp (unknown elements)`                 |      2 |      2 |        2 |
-| black              | `ListComp (unknown elements)`                |      2 |      0 |        0 |
+| black              | `ListComp (unknown elements)`                |      2 |      1 |        1 |
 | black              | `boolop (or)`                                |      2 |      2 |        2 |
 | black              | `call: other name`                           |      2 |      2 |        2 |
 | black              | `call: builtin min()`                        |      1 |      1 |        1 |
@@ -1749,16 +1749,16 @@ hold one type, the most any inference could type (each shape's commonest source 
 | black              | `other constant`                             |      1 |      0 |        0 |
 | black              | `subscript: global[...]`                     |      1 |      0 |        0 |
 | black              | `attr: other.x`                              |      1 |      1 |        1 |
-| fastapi            | `call: chained .method()`                    |     42 |     40 |       19 |
-| fastapi            | `call: module function (annotated)`          |     41 |     25 |       12 |
+| fastapi            | `call: chained .method()`                    |     42 |     40 |       21 |
+| fastapi            | `call: module function (annotated)`          |     41 |     26 |       12 |
 | fastapi            | `call: imported function`                    |     38 |     31 |        8 |
-| fastapi            | `call: local.method()`                       |     28 |     23 |       19 |
-| fastapi            | `call: param.method()`                       |     27 |     23 |       10 |
+| fastapi            | `call: local.method()`                       |     28 |     20 |       16 |
+| fastapi            | `call: param.method()`                       |     27 |     23 |        9 |
 | fastapi            | `call: builtin getattr()`                    |     25 |     22 |       19 |
 | fastapi            | `copy: local`                                |     18 |     17 |       11 |
 | fastapi            | `attr: local.x`                              |     13 |     13 |        7 |
-| fastapi            | `attr: self.x`                               |     12 |     12 |        7 |
-| fastapi            | `dict (mixed/unknown elements)`              |     11 |      6 |        3 |
+| fastapi            | `attr: self.x`                               |     12 |     11 |        6 |
+| fastapi            | `dict (mixed/unknown elements)`              |     11 |      5 |        2 |
 | fastapi            | `conditional`                                |     11 |     11 |        6 |
 | fastapi            | `empty dict`                                 |      9 |      0 |        0 |
 | fastapi            | `boolop (or)`                                |      9 |      7 |        4 |
@@ -1768,12 +1768,12 @@ hold one type, the most any inference could type (each shape's commonest source 
 | fastapi            | `copy: param (annotated)`                    |      6 |      5 |        2 |
 | fastapi            | `call: module.func()`                        |      6 |      6 |        5 |
 | fastapi            | `call: self.method()`                        |      6 |      6 |        6 |
-| fastapi            | `ListComp (unknown elements)`                |      5 |      4 |        1 |
+| fastapi            | `ListComp (unknown elements)`                |      5 |      4 |        2 |
 | fastapi            | `attr: param.x`                              |      5 |      4 |        4 |
 | fastapi            | `call: other callee`                         |      5 |      5 |        5 |
 | fastapi            | `call: global.method()`                      |      5 |      3 |        2 |
 | fastapi            | `call: builtin dict()`                       |      5 |      2 |        0 |
-| fastapi            | `call: other.method()`                       |      4 |      3 |        2 |
+| fastapi            | `call: other.method()`                       |      4 |      4 |        3 |
 | fastapi            | `await: call: module function (annotated)`   |      4 |      4 |        1 |
 | fastapi            | `attr: modclass.x`                           |      4 |      0 |        0 |
 | fastapi            | `tuple (mixed/unknown elements)`             |      3 |      3 |        0 |
@@ -1799,36 +1799,36 @@ hold one type, the most any inference could type (each shape's commonest source 
 | fastapi            | `boolop (and)`                               |      1 |      1 |        0 |
 | fastapi            | `await: call: param.method()`                |      1 |      1 |        1 |
 | fastapi            | `await: call: other.method()`                |      1 |      1 |        1 |
-| fastapi            | `await: call: local.method()`                |      1 |      0 |        0 |
+| fastapi            | `await: call: local.method()`                |      1 |      1 |        1 |
 | fastapi            | `call: builtin object()`                     |      1 |      0 |        0 |
 | fastapi            | `other constant`                             |      1 |      0 |        0 |
 | fastapi            | `call: imported.attr()`                      |      1 |      1 |        1 |
 | fastapi            | `call: builtin type()`                       |      1 |      1 |        0 |
 | fastapi            | `compare`                                    |      1 |      1 |        1 |
 | fastapi            | `attr: other.x`                              |      1 |      1 |        0 |
-| cattrs             | `call: imported function`                    |     54 |     44 |       15 |
-| cattrs             | `attr: local.x`                              |     20 |     19 |       12 |
+| cattrs             | `call: imported function`                    |     54 |     44 |       17 |
+| cattrs             | `attr: local.x`                              |     20 |     19 |       13 |
 | cattrs             | `empty dict`                                 |     20 |      0 |        0 |
 | cattrs             | `copy: local`                                |     19 |     19 |       10 |
-| cattrs             | `call: builtin getattr()`                    |     18 |     16 |        4 |
+| cattrs             | `call: builtin getattr()`                    |     18 |     15 |        3 |
 | cattrs             | `empty list`                                 |     18 |      0 |        0 |
-| cattrs             | `call: chained .method()`                    |     15 |     13 |        8 |
 | cattrs             | `attr: param.x`                              |     15 |     15 |        7 |
+| cattrs             | `call: chained .method()`                    |     14 |     12 |        7 |
 | cattrs             | `copy: imported`                             |     11 |      3 |        3 |
 | cattrs             | `conditional`                                |     10 |     10 |        5 |
-| cattrs             | `attr: global.x`                             |      9 |      1 |        0 |
+| cattrs             | `attr: global.x`                             |      9 |      1 |        1 |
 | cattrs             | `call: builtin set()`                        |      8 |      3 |        0 |
 | cattrs             | `subscript: local[...]`                      |      8 |      6 |        5 |
 | cattrs             | `call: local.method()`                       |      8 |      8 |        4 |
 | cattrs             | `boolop (or)`                                |      7 |      6 |        2 |
-| cattrs             | `SetComp (unknown elements)`                 |      7 |      7 |        3 |
+| cattrs             | `SetComp (unknown elements)`                 |      7 |      7 |        0 |
 | cattrs             | `copy: builtin`                              |      6 |      4 |        4 |
 | cattrs             | `call: param.method()`                       |      6 |      5 |        4 |
 | cattrs             | `subscript: other`                           |      6 |      5 |        0 |
 | cattrs             | `call: builtin zip()`                        |      6 |      6 |        3 |
 | cattrs             | `subscript: param[...]`                      |      6 |      6 |        4 |
 | cattrs             | `copy: param (annotated)`                    |      6 |      6 |        3 |
-| cattrs             | `None literal`                               |      6 |      5 |        5 |
+| cattrs             | `None literal`                               |      6 |      6 |        6 |
 | cattrs             | `call: module function (annotated)`          |      6 |      6 |        2 |
 | cattrs             | `attr: imported.x`                           |      5 |      4 |        0 |
 | cattrs             | `attr: chained`                              |      5 |      5 |        5 |
@@ -1837,7 +1837,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | cattrs             | `DictComp (unknown elements)`                |      4 |      2 |        1 |
 | cattrs             | `call: builtin enumerate()`                  |      4 |      4 |        2 |
 | cattrs             | `attr: self.x`                               |      4 |      4 |        1 |
-| cattrs             | `ListComp (unknown elements)`                |      4 |      3 |        2 |
+| cattrs             | `ListComp (unknown elements)`                |      4 |      4 |        3 |
 | cattrs             | `call: self.method()`                        |      3 |      2 |        1 |
 | cattrs             | `call: local name`                           |      3 |      3 |        0 |
 | cattrs             | `call: builtin tuple()`                      |      3 |      3 |        0 |
@@ -1861,53 +1861,53 @@ hold one type, the most any inference could type (each shape's commonest source 
 | cattrs             | `call: builtin dict()`                       |      1 |      1 |        0 |
 | cattrs             | `call: param name`                           |      1 |      1 |        0 |
 | cattrs             | `call: other callee`                         |      1 |      1 |        0 |
-| pytest             | `call: chained .method()`                    |    157 |    129 |      101 |
-| pytest             | `call: self.method()`                        |     87 |     79 |       65 |
-| pytest             | `attr: chained`                              |     68 |     55 |       49 |
-| pytest             | `copy: local`                                |     61 |     48 |       38 |
-| pytest             | `call: local.method()`                       |     55 |     45 |       38 |
-| pytest             | `attr: param.x`                              |     55 |     45 |       35 |
-| pytest             | `call: builtin getattr()`                    |     51 |     46 |       30 |
-| pytest             | `call: param.method()`                       |     51 |     45 |       41 |
+| pytest             | `call: chained .method()`                    |    157 |    127 |      100 |
+| pytest             | `call: self.method()`                        |     88 |     74 |       61 |
+| pytest             | `attr: chained`                              |     68 |     56 |       50 |
+| pytest             | `copy: local`                                |     61 |     45 |       37 |
+| pytest             | `call: local.method()`                       |     55 |     41 |       34 |
+| pytest             | `attr: param.x`                              |     55 |     47 |       37 |
+| pytest             | `call: builtin getattr()`                    |     51 |     45 |       29 |
+| pytest             | `call: param.method()`                       |     51 |     38 |       35 |
 | pytest             | `empty list`                                 |     49 |      0 |        0 |
-| pytest             | `call: module.func()`                        |     46 |     32 |       25 |
-| pytest             | `attr: local.x`                              |     45 |     35 |       26 |
-| pytest             | `subscript: other`                           |     43 |     31 |       22 |
-| pytest             | `attr: self.x`                               |     29 |     28 |       17 |
+| pytest             | `call: module.func()`                        |     46 |     31 |       24 |
+| pytest             | `attr: local.x`                              |     45 |     34 |       23 |
+| pytest             | `subscript: other`                           |     42 |     30 |       20 |
+| pytest             | `attr: self.x`                               |     28 |     26 |       16 |
 | pytest             | `None literal`                               |     27 |     22 |       22 |
-| pytest             | `conditional`                                |     27 |     23 |       16 |
-| pytest             | `tuple (mixed/unknown elements)`             |     25 |     23 |       19 |
-| pytest             | `copy: param (annotated)`                    |     23 |     16 |        9 |
+| pytest             | `conditional`                                |     27 |     21 |       15 |
+| pytest             | `tuple (mixed/unknown elements)`             |     23 |     19 |       17 |
+| pytest             | `copy: param (annotated)`                    |     23 |     17 |        9 |
 | pytest             | `call: module function (annotated)`          |     22 |     21 |        7 |
-| pytest             | `binop (unknown operands)`                   |     20 |     17 |       16 |
+| pytest             | `binop (unknown operands)`                   |     20 |     13 |       10 |
 | pytest             | `call: imported class`                       |     19 |      5 |        5 |
 | pytest             | `other constant`                             |     17 |      5 |        5 |
-| pytest             | `boolop (or)`                                |     17 |     12 |       11 |
-| pytest             | `call: other callee`                         |     17 |      4 |        4 |
-| pytest             | `ListComp (unknown elements)`                |     15 |     11 |        9 |
-| pytest             | `call: imported.attr()`                      |     15 |     10 |        9 |
-| pytest             | `call: other name`                           |     14 |     12 |        9 |
+| pytest             | `boolop (or)`                                |     17 |     11 |       10 |
+| pytest             | `call: other callee`                         |     17 |      3 |        3 |
+| pytest             | `ListComp (unknown elements)`                |     15 |     10 |        8 |
+| pytest             | `call: imported.attr()`                      |     15 |      9 |        8 |
+| pytest             | `call: other name`                           |     14 |      8 |        6 |
 | pytest             | `call: builtin list()`                       |     12 |     10 |        9 |
+| pytest             | `call: imported function`                    |     12 |     10 |        8 |
 | pytest             | `call: module class`                         |     12 |     10 |       10 |
-| pytest             | `call: builtin enumerate()`                  |     11 |      8 |        3 |
-| pytest             | `call: imported function`                    |     11 |      9 |        7 |
+| pytest             | `call: builtin enumerate()`                  |     10 |      7 |        3 |
 | pytest             | `Yield`                                      |     10 |      7 |        7 |
 | pytest             | `copy: other`                                |     10 |      1 |        1 |
-| pytest             | `subscript: local[...]`                      |      9 |      7 |        6 |
+| pytest             | `subscript: local[...]`                      |      9 |      6 |        4 |
 | pytest             | `DictComp (unknown elements)`                |      9 |      6 |        3 |
-| pytest             | `list (mixed/unknown elements)`              |      9 |      7 |        6 |
-| pytest             | `call: builtin reversed()`                   |      9 |      7 |        5 |
+| pytest             | `list (mixed/unknown elements)`              |      9 |      6 |        5 |
+| pytest             | `call: builtin reversed()`                   |      9 |      8 |        5 |
 | pytest             | `dict (mixed/unknown elements)`              |      8 |      4 |        4 |
 | pytest             | `call: module function (unannotated)`        |      8 |      5 |        5 |
-| pytest             | `call: builtin sorted()`                     |      8 |      7 |        7 |
+| pytest             | `call: builtin sorted()`                     |      8 |      5 |        5 |
 | pytest             | `compare`                                    |      7 |      7 |        7 |
-| pytest             | `unaryop USub`                               |      7 |      3 |        3 |
-| pytest             | `attr: module.x`                             |      7 |      5 |        2 |
+| pytest             | `unaryop USub`                               |      7 |      2 |        2 |
+| pytest             | `attr: module.x`                             |      7 |      4 |        1 |
 | pytest             | `subscript: global[...]`                     |      7 |      7 |        7 |
 | pytest             | `subscript: param[...]`                      |      6 |      4 |        2 |
-| pytest             | `binop (one side literal)`                   |      6 |      6 |        6 |
+| pytest             | `binop (one side literal)`                   |      6 |      5 |        5 |
 | pytest             | `-`                                          |      6 |      0 |        0 |
-| pytest             | `copy: param (unannotated)`                  |      5 |      5 |        2 |
+| pytest             | `copy: param (unannotated)`                  |      5 |      4 |        1 |
 | pytest             | `empty dict`                                 |      5 |      0 |        0 |
 | pytest             | `GeneratorExp (unknown elements)`            |      4 |      4 |        4 |
 | pytest             | `call: builtin type()`                       |      4 |      3 |        0 |
@@ -1916,7 +1916,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pytest             | `call: modclass.method()`                    |      4 |      4 |        4 |
 | pytest             | `call: builtin.method()`                     |      4 |      2 |        1 |
 | pytest             | `call: builtin dict()`                       |      3 |      3 |        3 |
-| pytest             | `call: builtin max()`                        |      3 |      2 |        2 |
+| pytest             | `call: builtin max()`                        |      3 |      3 |        3 |
 | pytest             | `copy: modclass`                             |      3 |      0 |        0 |
 | pytest             | `call: builtin set()`                        |      3 |      2 |        0 |
 | pytest             | `call: builtin compile()`                    |      3 |      3 |        3 |
@@ -1935,10 +1935,10 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pytest             | `call: builtin ascii()`                      |      1 |      0 |        0 |
 | pytest             | `call: builtin repr()`                       |      1 |      1 |        1 |
 | pytest             | `attr: global.x`                             |      1 |      0 |        0 |
-| pytest             | `call: builtin open()`                       |      1 |      1 |        1 |
-| pytest             | `call: global name`                          |      1 |      1 |        1 |
+| pytest             | `call: builtin open()`                       |      1 |      0 |        0 |
+| pytest             | `call: global name`                          |      1 |      0 |        0 |
 | pytest             | `SetComp (unknown elements)`                 |      1 |      1 |        0 |
-| pytest             | `call: builtin object()`                     |      1 |      1 |        1 |
+| pytest             | `call: builtin object()`                     |      1 |      0 |        0 |
 | pytest             | `copy: builtin`                              |      1 |      0 |        0 |
 | pytest             | `call: builtin staticmethod()`               |      1 |      0 |        0 |
 | pytest             | `call: param name`                           |      1 |      1 |        1 |
@@ -1950,25 +1950,25 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pytest             | `call: builtin len()`                        |      1 |      1 |        1 |
 | pytest             | `call: str-literal.method()`                 |      1 |      1 |        1 |
 | pytest             | `call: builtin hasattr()`                    |      1 |      1 |        1 |
-| pytest             | `call: builtin eval()`                       |      1 |      1 |        1 |
+| pytest             | `call: builtin eval()`                       |      1 |      1 |        0 |
 | pytest             | `call: builtin min()`                        |      1 |      0 |        0 |
 | botocore           | `call: self.method()`                        |    362 |    318 |      206 |
-| botocore           | `call: chained .method()`                    |    346 |    296 |      185 |
-| botocore           | `call: param.method()`                       |    245 |    214 |      141 |
+| botocore           | `call: chained .method()`                    |    345 |    297 |      186 |
+| botocore           | `call: param.method()`                       |    245 |    215 |      142 |
 | botocore           | `call: local.method()`                       |    233 |    197 |      123 |
 | botocore           | `copy: param (unannotated)`                  |    100 |     92 |       66 |
-| botocore           | `subscript: other`                           |     97 |     78 |       63 |
+| botocore           | `subscript: other`                           |     97 |     77 |       62 |
 | botocore           | `call: imported function`                    |     84 |     66 |       56 |
 | botocore           | `attr: param.x`                              |     79 |     74 |       37 |
 | botocore           | `empty dict`                                 |     76 |      0 |        0 |
 | botocore           | `subscript: local[...]`                      |     75 |     69 |       47 |
-| botocore           | `copy: local`                                |     71 |     66 |       50 |
+| botocore           | `copy: local`                                |     71 |     66 |       51 |
 | botocore           | `dict (mixed/unknown elements)`              |     70 |     36 |       27 |
 | botocore           | `subscript: param[...]`                      |     65 |     53 |       32 |
 | botocore           | `attr: self.x`                               |     60 |     56 |       31 |
 | botocore           | `attr: chained`                              |     55 |     38 |       32 |
-| botocore           | `empty list`                                 |     50 |      0 |        0 |
-| botocore           | `call: module.func()`                        |     44 |     33 |       21 |
+| botocore           | `empty list`                                 |     48 |      0 |        0 |
+| botocore           | `call: module.func()`                        |     37 |     26 |       14 |
 | botocore           | `call: module function (unannotated)`        |     33 |     26 |       19 |
 | botocore           | `binop (unknown operands)`                   |     30 |     26 |       22 |
 | botocore           | `tuple (mixed/unknown elements)`             |     25 |     16 |       16 |
@@ -1989,19 +1989,19 @@ hold one type, the most any inference could type (each shape's commonest source 
 | botocore           | `call: builtin sorted()`                     |     10 |     10 |        9 |
 | botocore           | `copy: modclass`                             |     10 |      0 |        0 |
 | botocore           | `call: imported class`                       |     10 |      1 |        1 |
-| botocore           | `copy: global`                               |      9 |      2 |        2 |
+| botocore           | `copy: global`                               |      9 |      1 |        1 |
 | botocore           | `call: modclass.method()`                    |      9 |      9 |        9 |
 | botocore           | `copy: other`                                |      9 |      0 |        0 |
 | botocore           | `call: builtin type()`                       |      8 |      7 |        2 |
 | botocore           | `attr: module.x`                             |      8 |      1 |        1 |
 | botocore           | `copy: imported`                             |      7 |      1 |        1 |
-| botocore           | `conditional`                                |      6 |      4 |        3 |
+| botocore           | `conditional`                                |      6 |      4 |        2 |
 | botocore           | `call: builtin iter()`                       |      6 |      5 |        5 |
 | botocore           | `DictComp (unknown elements)`                |      6 |      3 |        3 |
 | botocore           | `call: builtin list()`                       |      5 |      3 |        3 |
 | botocore           | `call: builtin zip()`                        |      5 |      5 |        2 |
 | botocore           | `copy: builtin`                              |      5 |      0 |        0 |
-| botocore           | `binop (one side literal)`                   |      4 |      4 |        4 |
+| botocore           | `binop (one side literal)`                   |      4 |      3 |        3 |
 | botocore           | `call: builtin next()`                       |      4 |      2 |        2 |
 | botocore           | `call: module class`                         |      3 |      3 |        3 |
 | botocore           | `call: param name`                           |      3 |      2 |        1 |
@@ -2033,12 +2033,12 @@ hold one type, the most any inference could type (each shape's commonest source 
 | uvicorn            | `attr: local.x`                              |      6 |      6 |        6 |
 | uvicorn            | `attr: self.x`                               |      6 |      5 |        4 |
 | uvicorn            | `call: module.func()`                        |      5 |      0 |        0 |
-| uvicorn            | `copy: imported`                             |      4 |      4 |        4 |
+| uvicorn            | `copy: imported`                             |      4 |      3 |        3 |
 | uvicorn            | `await: call: param name`                    |      4 |      4 |        0 |
 | uvicorn            | `ListComp (unknown elements)`                |      4 |      3 |        3 |
 | uvicorn            | `boolop (or)`                                |      4 |      3 |        3 |
 | uvicorn            | `await: call: self.method()`                 |      4 |      2 |        0 |
-| uvicorn            | `call: imported function`                    |      3 |      3 |        3 |
+| uvicorn            | `call: imported function`                    |      3 |      3 |        2 |
 | uvicorn            | `call: module function (annotated)`          |      3 |      3 |        1 |
 | uvicorn            | `empty list`                                 |      3 |      0 |        0 |
 | uvicorn            | `list (mixed/unknown elements)`              |      3 |      3 |        3 |
@@ -2059,19 +2059,19 @@ hold one type, the most any inference could type (each shape's commonest source 
 | uvicorn            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
 | uvicorn            | `copy: self`                                 |      1 |      1 |        0 |
 | uvicorn            | `call: builtin list()`                       |      1 |      1 |        1 |
-| mcp                | `call: chained .method()`                    |     78 |     72 |       42 |
+| mcp                | `call: chained .method()`                    |     73 |     67 |       39 |
 | mcp                | `call: other callee`                         |     50 |     44 |       44 |
-| mcp                | `call: imported function`                    |     46 |     39 |       21 |
-| mcp                | `call: param.method()`                       |     42 |     41 |       15 |
-| mcp                | `call: module.func()`                        |     41 |     36 |       22 |
-| mcp                | `conditional`                                |     41 |     39 |       17 |
+| mcp                | `call: imported function`                    |     46 |     39 |       20 |
+| mcp                | `call: param.method()`                       |     42 |     41 |       13 |
+| mcp                | `call: module.func()`                        |     41 |     35 |       23 |
+| mcp                | `conditional`                                |     41 |     39 |       18 |
 | mcp                | `copy: local`                                |     36 |     30 |       21 |
-| mcp                | `call: local.method()`                       |     35 |     31 |       10 |
+| mcp                | `call: local.method()`                       |     35 |     31 |       11 |
 | mcp                | `call: module function (annotated)`          |     20 |     19 |       10 |
 | mcp                | `attr: param.x`                              |     19 |     19 |        9 |
 | mcp                | `call: imported class`                       |     18 |      6 |        6 |
 | mcp                | `call: imported.attr()`                      |     17 |     17 |       14 |
-| mcp                | `await: call: param.method()`                |     16 |     13 |        9 |
+| mcp                | `await: call: param.method()`                |     16 |     13 |       10 |
 | mcp                | `await: call: self.method()`                 |     16 |     16 |        7 |
 | mcp                | `await: call: local.method()`                |     15 |     13 |       10 |
 | mcp                | `attr: local.x`                              |     14 |     14 |        9 |
@@ -2082,8 +2082,8 @@ hold one type, the most any inference could type (each shape's commonest source 
 | mcp                | `None literal`                               |     11 |      8 |        8 |
 | mcp                | `tuple (mixed/unknown elements)`             |     11 |      8 |        6 |
 | mcp                | `subscript: other`                           |     10 |     10 |        8 |
-| mcp                | `call: builtin getattr()`                    |     10 |      7 |        3 |
-| mcp                | `copy: param (annotated)`                    |     10 |      9 |        7 |
+| mcp                | `call: builtin getattr()`                    |     10 |      7 |        2 |
+| mcp                | `copy: param (annotated)`                    |     10 |      9 |        8 |
 | mcp                | `ListComp (unknown elements)`                |     10 |      9 |        8 |
 | mcp                | `Yield`                                      |     10 |      9 |        9 |
 | mcp                | `dict (mixed/unknown elements)`              |     10 |      9 |        9 |
@@ -2098,7 +2098,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | mcp                | `subscript: local[...]`                      |      4 |      3 |        3 |
 | mcp                | `SetComp (unknown elements)`                 |      4 |      4 |        4 |
 | mcp                | `-`                                          |      4 |      0 |        0 |
-| mcp                | `await: call: module function (annotated)`   |      4 |      4 |        1 |
+| mcp                | `await: call: module function (annotated)`   |      4 |      4 |        0 |
 | mcp                | `call: builtin next()`                       |      4 |      4 |        1 |
 | mcp                | `binop (unknown operands)`                   |      4 |      1 |        0 |
 | mcp                | `call: builtin enumerate()`                  |      4 |      4 |        4 |
@@ -2108,22 +2108,22 @@ hold one type, the most any inference could type (each shape's commonest source 
 | mcp                | `copy: builtin`                              |      3 |      0 |        0 |
 | mcp                | `call: module function (unannotated)`        |      2 |      0 |        0 |
 | mcp                | `other constant`                             |      2 |      0 |        0 |
-| mcp                | `call: builtin tuple()`                      |      2 |      1 |        1 |
+| mcp                | `call: builtin tuple()`                      |      2 |      1 |        0 |
 | mcp                | `subscript: imported[...]`                   |      2 |      2 |        2 |
 | mcp                | `attr: other.x`                              |      2 |      2 |        1 |
 | mcp                | `await: call: module.func()`                 |      2 |      0 |        0 |
 | mcp                | `await: call: imported function`             |      2 |      2 |        0 |
 | mcp                | `call: builtin dict()`                       |      2 |      1 |        1 |
-| mcp                | `call: builtin reversed()`                   |      2 |      2 |        0 |
 | mcp                | `DictComp (unknown elements)`                |      2 |      1 |        1 |
 | mcp                | `call: builtin object()`                     |      2 |      1 |        1 |
 | mcp                | `binop (one side literal)`                   |      1 |      1 |        1 |
 | mcp                | `empty dict`                                 |      1 |      0 |        0 |
 | mcp                | `set (mixed/unknown elements)`               |      1 |      1 |        1 |
 | mcp                | `call: param name`                           |      1 |      1 |        1 |
-| mcp                | `await: copy: param (annotated)`             |      1 |      1 |        0 |
+| mcp                | `await: copy: param (annotated)`             |      1 |      1 |        1 |
 | mcp                | `copy: global`                               |      1 |      0 |        0 |
 | mcp                | `call: builtin set()`                        |      1 |      1 |        1 |
+| mcp                | `call: builtin reversed()`                   |      1 |      1 |        0 |
 | mcp                | `call: other name`                           |      1 |      1 |        0 |
 | mcp                | `call: builtin sorted()`                     |      1 |      0 |        0 |
 | mcp                | `compare`                                    |      1 |      1 |        1 |
@@ -2131,26 +2131,26 @@ hold one type, the most any inference could type (each shape's commonest source 
 | mcp                | `call: builtin frozenset()`                  |      1 |      1 |        1 |
 | mcp                | `subscript: param[...]`                      |      1 |      0 |        0 |
 | pdm                | `call: chained .method()`                    |    144 |    119 |       96 |
-| pdm                | `call: local.method()`                       |    107 |     85 |       75 |
-| pdm                | `attr: chained`                              |     66 |     53 |       37 |
+| pdm                | `call: local.method()`                       |    107 |     86 |       76 |
+| pdm                | `attr: chained`                              |     66 |     53 |       38 |
 | pdm                | `call: module.func()`                        |     60 |     40 |       37 |
 | pdm                | `call: imported function`                    |     56 |     50 |       48 |
 | pdm                | `call: param.method()`                       |     54 |     48 |       37 |
 | pdm                | `conditional`                                |     50 |     44 |       25 |
 | pdm                | `tuple (mixed/unknown elements)`             |     40 |     12 |        8 |
-| pdm                | `call: imported.attr()`                      |     35 |     32 |       26 |
-| pdm                | `copy: local`                                |     33 |     28 |       23 |
-| pdm                | `attr: local.x`                              |     30 |     25 |       10 |
+| pdm                | `call: imported.attr()`                      |     35 |     32 |       27 |
+| pdm                | `copy: local`                                |     33 |     27 |       22 |
+| pdm                | `attr: local.x`                              |     30 |     25 |       11 |
 | pdm                | `boolop (or)`                                |     30 |     27 |       22 |
 | pdm                | `subscript: other`                           |     28 |     22 |       20 |
-| pdm                | `attr: param.x`                              |     26 |     20 |       14 |
+| pdm                | `attr: param.x`                              |     26 |     20 |       15 |
 | pdm                | `dict (mixed/unknown elements)`              |     19 |     11 |       10 |
-| pdm                | `attr: self.x`                               |     19 |     16 |        8 |
+| pdm                | `attr: self.x`                               |     19 |     16 |        7 |
 | pdm                | `ListComp (unknown elements)`                |     18 |     11 |       10 |
 | pdm                | `other constant`                             |     17 |      3 |        3 |
-| pdm                | `binop (unknown operands)`                   |     16 |      9 |        8 |
-| pdm                | `copy: param (annotated)`                    |     16 |     13 |        5 |
-| pdm                | `call: builtin list()`                       |     16 |     10 |        7 |
+| pdm                | `binop (unknown operands)`                   |     16 |     10 |        9 |
+| pdm                | `copy: param (annotated)`                    |     16 |     13 |        4 |
+| pdm                | `call: builtin list()`                       |     16 |     10 |        8 |
 | pdm                | `call: builtin sorted()`                     |     15 |     10 |        9 |
 | pdm                | `list (mixed/unknown elements)`              |     14 |     11 |       11 |
 | pdm                | `call: module function (annotated)`          |     14 |     11 |        9 |
@@ -2168,11 +2168,11 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pdm                | `binop (one side literal)`                   |      5 |      5 |        5 |
 | pdm                | `None literal`                               |      5 |      3 |        3 |
 | pdm                | `compare`                                    |      4 |      3 |        3 |
+| pdm                | `call: imported class`                       |      4 |      4 |        4 |
 | pdm                | `subscript: param[...]`                      |      4 |      2 |        2 |
 | pdm                | `SetComp (unknown elements)`                 |      4 |      4 |        4 |
 | pdm                | `call: moddef.method()`                      |      4 |      0 |        0 |
 | pdm                | `call: builtin set()`                        |      3 |      1 |        0 |
-| pdm                | `call: imported class`                       |      3 |      3 |        3 |
 | pdm                | `boolop (and)`                               |      3 |      3 |        1 |
 | pdm                | `call: module function (unannotated)`        |      3 |      0 |        0 |
 | pdm                | `call: local name`                           |      3 |      3 |        1 |
@@ -2196,26 +2196,26 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pdm                | `set (mixed/unknown elements)`               |      1 |      1 |        1 |
 | pdm                | `call: builtin reversed()`                   |      1 |      1 |        1 |
 | pdm                | `attr: imported.x`                           |      1 |      0 |        0 |
-| pdm                | `call: builtin min()`                        |      1 |      1 |        0 |
-| strawberry-graphql | `call: chained .method()`                    |     69 |     45 |       23 |
+| pdm                | `call: builtin min()`                        |      1 |      1 |        1 |
+| strawberry-graphql | `call: chained .method()`                    |     67 |     44 |       23 |
 | strawberry-graphql | `call: imported function`                    |     64 |     48 |       14 |
-| strawberry-graphql | `attr: chained`                              |     57 |     43 |       31 |
-| strawberry-graphql | `call: self.method()`                        |     44 |     20 |       15 |
+| strawberry-graphql | `attr: chained`                              |     56 |     43 |       31 |
 | strawberry-graphql | `call: builtin getattr()`                    |     43 |     31 |       14 |
 | strawberry-graphql | `attr: param.x`                              |     42 |     34 |       21 |
-| strawberry-graphql | `conditional`                                |     41 |     33 |       11 |
+| strawberry-graphql | `conditional`                                |     41 |     32 |       10 |
+| strawberry-graphql | `call: self.method()`                        |     39 |     20 |       15 |
 | strawberry-graphql | `call: local.method()`                       |     39 |     23 |       11 |
 | strawberry-graphql | `attr: local.x`                              |     39 |     33 |       19 |
 | strawberry-graphql | `subscript: other`                           |     35 |     22 |       18 |
 | strawberry-graphql | `copy: local`                                |     28 |     19 |       14 |
-| strawberry-graphql | `call: module function (annotated)`          |     24 |     19 |        3 |
+| strawberry-graphql | `call: module function (annotated)`          |     24 |     18 |        3 |
 | strawberry-graphql | `call: module.func()`                        |     23 |     18 |       12 |
 | strawberry-graphql | `call: param.method()`                       |     21 |     11 |        4 |
 | strawberry-graphql | `ListComp (unknown elements)`                |     17 |      8 |        4 |
 | strawberry-graphql | `empty list`                                 |     17 |      0 |        0 |
 | strawberry-graphql | `copy: imported`                             |     16 |      1 |        1 |
 | strawberry-graphql | `attr: self.x`                               |     15 |     13 |        5 |
-| strawberry-graphql | `tuple (mixed/unknown elements)`             |     14 |      5 |        3 |
+| strawberry-graphql | `tuple (mixed/unknown elements)`             |     14 |      4 |        2 |
 | strawberry-graphql | `boolop (or)`                                |     14 |     12 |        9 |
 | strawberry-graphql | `copy: param (annotated)`                    |     14 |      8 |        4 |
 | strawberry-graphql | `empty dict`                                 |     13 |      0 |        0 |
@@ -2233,9 +2233,9 @@ hold one type, the most any inference could type (each shape's commonest source 
 | strawberry-graphql | `call: builtin enumerate()`                  |      8 |      8 |        6 |
 | strawberry-graphql | `call: other name`                           |      8 |      6 |        3 |
 | strawberry-graphql | `call: builtin sorted()`                     |      7 |      1 |        0 |
-| strawberry-graphql | `call: builtin list()`                       |      7 |      3 |        1 |
 | strawberry-graphql | `await: call: chained .method()`             |      6 |      0 |        0 |
 | strawberry-graphql | `subscript: param[...]`                      |      6 |      2 |        1 |
+| strawberry-graphql | `call: builtin list()`                       |      6 |      3 |        1 |
 | strawberry-graphql | `attr: module.x`                             |      6 |      0 |        0 |
 | strawberry-graphql | `SetComp (unknown elements)`                 |      6 |      5 |        5 |
 | strawberry-graphql | `call: builtin tuple()`                      |      5 |      5 |        1 |
@@ -2276,15 +2276,15 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pygments           | `empty list`                                 |    159 |      0 |        0 |
 | pygments           | `binop (unknown operands)`                   |    124 |      6 |        6 |
 | pygments           | `call: imported.attr()`                      |    108 |    100 |       98 |
-| pygments           | `binop (one side literal)`                   |    102 |     20 |       20 |
-| pygments           | `copy: param (unannotated)`                  |     97 |     89 |       88 |
+| pygments           | `binop (one side literal)`                   |    102 |     19 |       19 |
+| pygments           | `copy: param (unannotated)`                  |     97 |     89 |       89 |
 | pygments           | `call: imported function`                    |     91 |     24 |       19 |
-| pygments           | `call: local.method()`                       |     90 |     64 |       60 |
-| pygments           | `call: param.method()`                       |     78 |     75 |       70 |
+| pygments           | `call: local.method()`                       |     90 |     66 |       63 |
+| pygments           | `call: param.method()`                       |     78 |     74 |       70 |
 | pygments           | `attr: module.x`                             |     64 |      0 |        0 |
 | pygments           | `call: chained .method()`                    |     63 |     48 |       38 |
 | pygments           | `copy: local`                                |     60 |     46 |       42 |
-| pygments           | `call: self.method()`                        |     52 |     42 |       37 |
+| pygments           | `call: self.method()`                        |     52 |     41 |       36 |
 | pygments           | `tuple (mixed/unknown elements)`             |     51 |     11 |       10 |
 | pygments           | `attr: self.x`                               |     42 |     35 |       24 |
 | pygments           | `empty dict`                                 |     38 |      0 |        0 |
@@ -2296,19 +2296,19 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pygments           | `other constant`                             |     26 |      0 |        0 |
 | pygments           | `list (mixed/unknown elements)`              |     24 |      6 |        6 |
 | pygments           | `call: other name`                           |     23 |      3 |        1 |
-| pygments           | `call: module function (unannotated)`        |     22 |     13 |        8 |
-| pygments           | `subscript: other`                           |     19 |     13 |       13 |
+| pygments           | `call: module function (unannotated)`        |     22 |     14 |       10 |
+| pygments           | `subscript: other`                           |     19 |     12 |       12 |
 | pygments           | `subscript: global[...]`                     |     17 |      5 |        3 |
-| pygments           | `attr: imported.x`                           |     16 |      3 |        3 |
+| pygments           | `attr: imported.x`                           |     16 |      4 |        4 |
 | pygments           | `call: modclass.method()`                    |     16 |     16 |       16 |
 | pygments           | `attr: chained`                              |     15 |      8 |        8 |
-| pygments           | `attr: param.x`                              |     14 |     14 |        9 |
+| pygments           | `attr: param.x`                              |     14 |     14 |       10 |
 | pygments           | `attr: global.x`                             |     14 |      0 |        0 |
 | pygments           | `call: builtin enumerate()`                  |     13 |      9 |        9 |
 | pygments           | `copy: modclass`                             |     13 |      2 |        2 |
 | pygments           | `empty tuple`                                |     13 |      0 |        0 |
 | pygments           | `call: builtin sorted()`                     |     12 |      2 |        2 |
-| pygments           | `boolop (or)`                                |     11 |     10 |        9 |
+| pygments           | `boolop (or)`                                |     11 |      9 |        8 |
 | pygments           | `call: other.method()`                       |     10 |      5 |        5 |
 | pygments           | `attr: local.x`                              |      9 |      4 |        4 |
 | pygments           | `call: global.method()`                      |      9 |      3 |        1 |
@@ -2327,14 +2327,14 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pygments           | `set (mixed/unknown elements)`               |      4 |      0 |        0 |
 | pygments           | `attr: cls.x`                                |      3 |      3 |        2 |
 | pygments           | `call: cls.method()`                         |      3 |      2 |        1 |
-| pygments           | `boolop (and)`                               |      2 |      2 |        0 |
+| pygments           | `boolop (and)`                               |      2 |      2 |        2 |
+| pygments           | `call: imported class`                       |      2 |      0 |        0 |
 | pygments           | `call: builtin dict()`                       |      2 |      1 |        1 |
 | pygments           | `call: builtin next()`                       |      2 |      2 |        2 |
 | pygments           | `call: builtin max()`                        |      2 |      1 |        1 |
 | pygments           | `call: builtin zip()`                        |      2 |      0 |        0 |
 | pygments           | `call: builtin open()`                       |      1 |      1 |        1 |
-| pygments           | `call: imported class`                       |      1 |      0 |        0 |
-| pygments           | `subscript: imported[...]`                   |      1 |      0 |        0 |
+| pygments           | `subscript: imported[...]`                   |      1 |      1 |        1 |
 | pygments           | `call: builtin staticmethod()`               |      1 |      0 |        0 |
 | pygments           | `call: module class`                         |      1 |      1 |        1 |
 | pygments           | `call: builtin sum()`                        |      1 |      0 |        0 |
@@ -2342,7 +2342,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pygments           | `call: builtin.method()`                     |      1 |      1 |        0 |
 | streamlink         | `call: chained .method()`                    |    441 |     59 |       49 |
 | streamlink         | `copy: local`                                |    198 |     27 |       23 |
-| streamlink         | `call: self.method()`                        |    183 |     35 |       31 |
+| streamlink         | `call: self.method()`                        |    182 |     34 |       30 |
 | streamlink         | `Yield`                                      |    118 |      6 |        5 |
 | streamlink         | `call: local.method()`                       |    117 |     31 |       27 |
 | streamlink         | `call: imported function`                    |     73 |     40 |       37 |
@@ -2357,9 +2357,9 @@ hold one type, the most any inference could type (each shape's commonest source 
 | streamlink         | `dict (mixed/unknown elements)`              |     26 |      2 |        2 |
 | streamlink         | `copy: param (unannotated)`                  |     20 |      6 |        5 |
 | streamlink         | `tuple (mixed/unknown elements)`             |     19 |     16 |       14 |
-| streamlink         | `attr: self.x`                               |     16 |     10 |        9 |
 | streamlink         | `attr: param.x`                              |     16 |     13 |        6 |
 | streamlink         | `conditional`                                |     15 |     11 |        5 |
+| streamlink         | `attr: self.x`                               |     15 |      9 |        8 |
 | streamlink         | `empty dict`                                 |     14 |      0 |        0 |
 | streamlink         | `binop (unknown operands)`                   |     14 |     14 |       11 |
 | streamlink         | `None literal`                               |     13 |      3 |        3 |
@@ -2434,7 +2434,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | sphinx             | `tuple (mixed/unknown elements)`             |     66 |     25 |       20 |
 | sphinx             | `dict (mixed/unknown elements)`              |     64 |     19 |       17 |
 | sphinx             | `attr: param.x`                              |     62 |     45 |       32 |
-| sphinx             | `call: self.method()`                        |     61 |     38 |       27 |
+| sphinx             | `call: self.method()`                        |     60 |     37 |       27 |
 | sphinx             | `call: module.func()`                        |     59 |     49 |       46 |
 | sphinx             | `call: builtin list()`                       |     53 |     35 |       33 |
 | sphinx             | `call: builtin getattr()`                    |     42 |     30 |       13 |
@@ -2497,17 +2497,17 @@ hold one type, the most any inference could type (each shape's commonest source 
 | sphinx             | `call: other callee`                         |      1 |      1 |        0 |
 | sphinx             | `call: builtin map()`                        |      1 |      1 |        1 |
 | sphinx             | `call: builtin bool()`                       |      1 |      1 |        1 |
-| tox                | `call: chained .method()`                    |    117 |     99 |       86 |
+| tox                | `call: chained .method()`                    |    117 |     99 |       82 |
 | tox                | `call: local.method()`                       |     40 |     32 |       24 |
 | tox                | `call: param.method()`                       |     30 |     28 |       15 |
 | tox                | `conditional`                                |     30 |     27 |       22 |
 | tox                | `tuple (mixed/unknown elements)`             |     29 |     21 |       17 |
 | tox                | `subscript: other`                           |     27 |     22 |       21 |
-| tox                | `attr: chained`                              |     27 |     23 |       23 |
+| tox                | `attr: chained`                              |     27 |     23 |       22 |
 | tox                | `call: imported function`                    |     24 |     19 |       16 |
 | tox                | `copy: local`                                |     24 |     20 |       18 |
-| tox                | `call: builtin getattr()`                    |     22 |     17 |       13 |
-| tox                | `call: self.method()`                        |     19 |     18 |       12 |
+| tox                | `call: builtin getattr()`                    |     22 |     17 |       12 |
+| tox                | `call: self.method()`                        |     18 |     17 |       13 |
 | tox                | `call: module.func()`                        |     17 |     12 |        6 |
 | tox                | `attr: self.x`                               |     16 |     15 |        6 |
 | tox                | `copy: param (annotated)`                    |     16 |     14 |        8 |
@@ -2538,7 +2538,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | tox                | `Yield`                                      |      3 |      3 |        3 |
 | tox                | `compare`                                    |      3 |      3 |        3 |
 | tox                | `call: module function (annotated)`          |      3 |      3 |        2 |
-| tox                | `call: imported.attr()`                      |      3 |      3 |        3 |
+| tox                | `call: imported.attr()`                      |      3 |      3 |        2 |
 | tox                | `call: builtin object()`                     |      2 |      0 |        0 |
 | tox                | `call: builtin next()`                       |      2 |      0 |        0 |
 | tox                | `call: str-literal.method()`                 |      2 |      1 |        1 |
@@ -2556,7 +2556,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | tox                | `call: local name`                           |      1 |      1 |        1 |
 | tox                | `call: builtin id()`                         |      1 |      1 |        1 |
 | tox                | `JoinedStr`                                  |      1 |      1 |        1 |
-| tox                | `call: builtin vars()`                       |      1 |      0 |        0 |
+| tox                | `call: builtin vars()`                       |      1 |      1 |        0 |
 | tox                | `call: cls.method()`                         |      1 |      1 |        1 |
 | tox                | `call: other.method()`                       |      1 |      1 |        1 |
 | pint               | `call: self.method()`                        |    274 |     40 |       34 |
@@ -2574,7 +2574,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pint               | `call: module function (unannotated)`        |     37 |     28 |       23 |
 | pint               | `call: other callee`                         |     34 |      0 |        0 |
 | pint               | `call: imported class`                       |     33 |      3 |        3 |
-| pint               | `attr: self.x`                               |     30 |     13 |       13 |
+| pint               | `attr: self.x`                               |     29 |     12 |       12 |
 | pint               | `call: builtin zip()`                        |     27 |      6 |        3 |
 | pint               | `attr: param.x`                              |     26 |      6 |        6 |
 | pint               | `call: other name`                           |     26 |     11 |        3 |
@@ -2639,11 +2639,11 @@ hold one type, the most any inference could type (each shape's commonest source 
 | pint               | `call: builtin max()`                        |      1 |      1 |        1 |
 | altair             | `dict (mixed/unknown elements)`              |    472 |      6 |        2 |
 | altair             | `other constant`                             |    203 |      0 |        0 |
-| altair             | `call: self.method()`                        |    103 |     54 |       43 |
-| altair             | `call: chained .method()`                    |     57 |     26 |       14 |
+| altair             | `call: self.method()`                        |    100 |     51 |       42 |
+| altair             | `call: chained .method()`                    |     57 |     26 |       15 |
 | altair             | `call: param.method()`                       |     46 |     42 |       32 |
 | altair             | `call: local.method()`                       |     46 |     38 |       17 |
-| altair             | `call: module function (annotated)`          |     23 |     19 |       13 |
+| altair             | `call: module function (annotated)`          |     23 |     18 |       12 |
 | altair             | `call: module.func()`                        |     22 |     13 |       12 |
 | altair             | `copy: param (annotated)`                    |     21 |     15 |        9 |
 | altair             | `call: imported function`                    |     20 |     14 |       14 |
@@ -2670,7 +2670,6 @@ hold one type, the most any inference could type (each shape's commonest source 
 | altair             | `subscript: param[...]`                      |      4 |      4 |        4 |
 | altair             | `DictComp (unknown elements)`                |      4 |      4 |        1 |
 | altair             | `binop (one side literal)`                   |      3 |      0 |        0 |
-| altair             | `call: builtin list()`                       |      3 |      1 |        1 |
 | altair             | `subscript: imported[...]`                   |      3 |      2 |        2 |
 | altair             | `None literal`                               |      3 |      2 |        2 |
 | altair             | `call: local name`                           |      3 |      2 |        1 |
@@ -2678,6 +2677,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | altair             | `subscript: self[...]`                       |      2 |      2 |        2 |
 | altair             | `copy: self`                                 |      2 |      1 |        0 |
 | altair             | `call: builtin dict()`                       |      2 |      0 |        0 |
+| altair             | `call: builtin list()`                       |      2 |      0 |        0 |
 | altair             | `call: imported class`                       |      2 |      0 |        0 |
 | altair             | `call: builtin next()`                       |      2 |      2 |        0 |
 | altair             | `call: other.method()`                       |      2 |      2 |        2 |
@@ -2701,48 +2701,48 @@ hold one type, the most any inference could type (each shape's commonest source 
 | altair             | `copy: global`                               |      1 |      0 |        0 |
 | altair             | `call: builtin iter()`                       |      1 |      1 |        1 |
 | altair             | `attr: modclass.x`                           |      1 |      0 |        0 |
-| seaborn            | `call: self.method()`                        |    149 |    135 |       96 |
-| seaborn            | `call: module.func()`                        |    140 |    120 |      114 |
+| seaborn            | `call: self.method()`                        |    149 |    136 |       97 |
+| seaborn            | `call: module.func()`                        |    140 |    123 |      117 |
 | seaborn            | `call: local.method()`                       |    125 |    109 |       90 |
-| seaborn            | `call: chained .method()`                    |    124 |    112 |       96 |
-| seaborn            | `call: param.method()`                       |    124 |    116 |       66 |
-| seaborn            | `call: imported function`                    |     89 |     73 |       58 |
-| seaborn            | `tuple (mixed/unknown elements)`             |     81 |     57 |       45 |
-| seaborn            | `binop (unknown operands)`                   |     79 |     70 |       56 |
-| seaborn            | `subscript: other`                           |     70 |     62 |       51 |
-| seaborn            | `copy: param (unannotated)`                  |     68 |     50 |       27 |
-| seaborn            | `copy: local`                                |     59 |     49 |       31 |
+| seaborn            | `call: chained .method()`                    |    124 |    111 |       96 |
+| seaborn            | `call: param.method()`                       |    124 |    117 |       68 |
+| seaborn            | `call: imported function`                    |     89 |     73 |       57 |
+| seaborn            | `tuple (mixed/unknown elements)`             |     81 |     57 |       44 |
+| seaborn            | `binop (unknown operands)`                   |     79 |     71 |       57 |
+| seaborn            | `subscript: other`                           |     70 |     62 |       52 |
+| seaborn            | `copy: param (unannotated)`                  |     68 |     50 |       28 |
+| seaborn            | `copy: local`                                |     59 |     49 |       32 |
 | seaborn            | `empty list`                                 |     55 |      0 |        0 |
-| seaborn            | `attr: self.x`                               |     49 |     44 |       22 |
+| seaborn            | `attr: self.x`                               |     49 |     47 |       20 |
 | seaborn            | `conditional`                                |     48 |     42 |       24 |
 | seaborn            | `ListComp (unknown elements)`                |     45 |     44 |       40 |
-| seaborn            | `subscript: local[...]`                      |     42 |     40 |       30 |
-| seaborn            | `attr: chained`                              |     41 |     33 |       30 |
+| seaborn            | `subscript: local[...]`                      |     42 |     39 |       28 |
+| seaborn            | `attr: chained`                              |     41 |     34 |       31 |
 | seaborn            | `call: local name`                           |     39 |     39 |       36 |
 | seaborn            | `subscript: imported[...]`                   |     33 |      1 |        0 |
-| seaborn            | `dict (mixed/unknown elements)`              |     32 |     29 |       11 |
+| seaborn            | `dict (mixed/unknown elements)`              |     32 |     30 |       12 |
 | seaborn            | `empty dict`                                 |     30 |      0 |        0 |
-| seaborn            | `binop (one side literal)`                   |     30 |     20 |       18 |
-| seaborn            | `call: builtin getattr()`                    |     29 |     23 |        9 |
+| seaborn            | `binop (one side literal)`                   |     30 |     23 |       21 |
+| seaborn            | `call: builtin getattr()`                    |     29 |     24 |       10 |
 | seaborn            | `call: builtin enumerate()`                  |     29 |     25 |       21 |
-| seaborn            | `call: builtin zip()`                        |     29 |     27 |       21 |
+| seaborn            | `call: builtin zip()`                        |     29 |     28 |       23 |
 | seaborn            | `subscript: param[...]`                      |     26 |     25 |       21 |
 | seaborn            | `None literal`                               |     25 |     12 |       12 |
 | seaborn            | `call: param name`                           |     25 |     25 |       18 |
 | seaborn            | `list (mixed/unknown elements)`              |     25 |     21 |       17 |
-| seaborn            | `DictComp (unknown elements)`                |     25 |     22 |       18 |
+| seaborn            | `DictComp (unknown elements)`                |     25 |     24 |       18 |
 | seaborn            | `call: builtin dict()`                       |     24 |     22 |       10 |
 | seaborn            | `other constant`                             |     20 |      9 |        9 |
 | seaborn            | `call: imported.attr()`                      |     19 |     14 |       13 |
-| seaborn            | `call: module function (unannotated)`        |     16 |     15 |        6 |
+| seaborn            | `call: module function (unannotated)`        |     16 |     15 |        5 |
 | seaborn            | `compare`                                    |     14 |     12 |       10 |
 | seaborn            | `attr: local.x`                              |     13 |     13 |       13 |
 | seaborn            | `call: other name`                           |     12 |      7 |        6 |
 | seaborn            | `attr: param.x`                              |     10 |      8 |        7 |
 | seaborn            | `boolop (or)`                                |      9 |      9 |        7 |
-| seaborn            | `call: builtin min()`                        |      8 |      8 |        4 |
+| seaborn            | `call: builtin min()`                        |      8 |      8 |        3 |
 | seaborn            | `boolop (and)`                               |      7 |      6 |        5 |
-| seaborn            | `call: builtin tuple()`                      |      7 |      7 |        1 |
+| seaborn            | `call: builtin tuple()`                      |      7 |      7 |        2 |
 | seaborn            | `subscript: self[...]`                       |      7 |      3 |        3 |
 | seaborn            | `call: builtin list()`                       |      6 |      6 |        5 |
 | seaborn            | `attr: module.x`                             |      6 |      6 |        6 |
@@ -2771,25 +2771,25 @@ hold one type, the most any inference could type (each shape's commonest source 
 | seaborn            | `call: builtin str()`                        |      1 |      0 |        0 |
 | seaborn            | `call: builtin map()`                        |      1 |      1 |        1 |
 | seaborn            | `call: self name`                            |      1 |      1 |        1 |
-| aiohttp            | `call: chained .method()`                    |    109 |    105 |       73 |
-| aiohttp            | `attr: self.x`                               |     81 |     77 |       44 |
+| aiohttp            | `call: chained .method()`                    |    106 |    102 |       70 |
+| aiohttp            | `attr: self.x`                               |     80 |     76 |       41 |
 | aiohttp            | `other constant`                             |     74 |      2 |        2 |
 | aiohttp            | `call: local.method()`                       |     66 |     59 |       43 |
-| aiohttp            | `call: module.func()`                        |     43 |     27 |       26 |
+| aiohttp            | `call: module.func()`                        |     43 |     29 |       28 |
 | aiohttp            | `attr: local.x`                              |     34 |     32 |       21 |
 | aiohttp            | `copy: local`                                |     27 |     27 |       21 |
-| aiohttp            | `conditional`                                |     26 |     24 |       15 |
-| aiohttp            | `attr: chained`                              |     25 |     14 |       11 |
+| aiohttp            | `attr: chained`                              |     25 |     13 |       11 |
+| aiohttp            | `conditional`                                |     25 |     23 |       13 |
 | aiohttp            | `attr: param.x`                              |     25 |     23 |        9 |
 | aiohttp            | `tuple (mixed/unknown elements)`             |     19 |     12 |       10 |
 | aiohttp            | `subscript: other`                           |     18 |     17 |       17 |
 | aiohttp            | `call: self.method()`                        |     16 |     14 |       10 |
 | aiohttp            | `call: param.method()`                       |     16 |     16 |       10 |
-| aiohttp            | `copy: param (annotated)`                    |     15 |     15 |       10 |
+| aiohttp            | `copy: param (annotated)`                    |     15 |     14 |        9 |
 | aiohttp            | `binop (unknown operands)`                   |     15 |      9 |        7 |
 | aiohttp            | `await: call: chained .method()`             |     15 |     10 |        8 |
 | aiohttp            | `None literal`                               |     14 |      8 |        8 |
-| aiohttp            | `await: call: local.method()`                |     14 |      5 |        3 |
+| aiohttp            | `await: call: local.method()`                |     14 |      5 |        2 |
 | aiohttp            | `subscript: imported[...]`                   |     13 |      0 |        0 |
 | aiohttp            | `empty list`                                 |     12 |      0 |        0 |
 | aiohttp            | `call: imported class`                       |     12 |      8 |        7 |
@@ -2814,7 +2814,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | aiohttp            | `binop (one side literal)`                   |      3 |      1 |        1 |
 | aiohttp            | `empty dict`                                 |      3 |      0 |        0 |
 | aiohttp            | `compare`                                    |      3 |      0 |        0 |
-| aiohttp            | `call: local name`                           |      3 |      3 |        2 |
+| aiohttp            | `call: local name`                           |      3 |      3 |        1 |
 | aiohttp            | `call: other name`                           |      3 |      1 |        0 |
 | aiohttp            | `subscript: builtin[...]`                    |      3 |      0 |        0 |
 | aiohttp            | `copy: moddef`                               |      2 |      0 |        0 |
@@ -2828,7 +2828,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | aiohttp            | `call: builtin sorted()`                     |      2 |      2 |        2 |
 | aiohttp            | `attr: builtin.x`                            |      1 |      0 |        0 |
 | aiohttp            | `copy: builtin`                              |      1 |      0 |        0 |
-| aiohttp            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
+| aiohttp            | `call: builtin bytearray()`                  |      1 |      0 |        0 |
 | aiohttp            | `call: builtin.method()`                     |      1 |      0 |        0 |
 | aiohttp            | `await: call: param.method()`                |      1 |      1 |        1 |
 | aiohttp            | `copy: other`                                |      1 |      1 |        0 |
@@ -2911,26 +2911,26 @@ hold one type, the most any inference could type (each shape's commonest source 
 | websockets         | `call: builtin memoryview()`                 |      1 |      1 |        1 |
 | websockets         | `await: call: param.method()`                |      1 |      1 |        1 |
 | websockets         | `compare`                                    |      1 |      1 |        1 |
-| zarr               | `call: imported function`                    |     92 |     80 |       49 |
-| zarr               | `call: chained .method()`                    |     90 |     71 |       57 |
+| zarr               | `call: imported function`                    |     92 |     79 |       48 |
+| zarr               | `call: chained .method()`                    |     90 |     71 |       56 |
 | zarr               | `call: param.method()`                       |     64 |     39 |       27 |
 | zarr               | `call: module.func()`                        |     58 |     44 |       44 |
 | zarr               | `binop (unknown operands)`                   |     57 |     33 |       28 |
-| zarr               | `call: param name`                           |     53 |     52 |       37 |
-| zarr               | `call: local.method()`                       |     52 |     44 |       27 |
-| zarr               | `copy: local`                                |     50 |     36 |       27 |
-| zarr               | `call: self.method()`                        |     43 |     29 |       14 |
+| zarr               | `call: param name`                           |     53 |     52 |       36 |
+| zarr               | `call: local.method()`                       |     52 |     44 |       26 |
+| zarr               | `copy: local`                                |     50 |     37 |       27 |
+| zarr               | `call: self.method()`                        |     42 |     28 |       14 |
 | zarr               | `attr: chained`                              |     41 |     18 |       17 |
-| zarr               | `subscript: param[...]`                      |     31 |     30 |       26 |
-| zarr               | `call: builtin tuple()`                      |     31 |     25 |       23 |
-| zarr               | `subscript: other`                           |     29 |     22 |       21 |
-| zarr               | `subscript: local[...]`                      |     25 |     20 |       12 |
+| zarr               | `subscript: param[...]`                      |     31 |     30 |       27 |
+| zarr               | `call: builtin tuple()`                      |     31 |     25 |       24 |
+| zarr               | `subscript: other`                           |     29 |     21 |       19 |
+| zarr               | `subscript: local[...]`                      |     25 |     20 |       11 |
 | zarr               | `call: module function (annotated)`          |     23 |     18 |        5 |
 | zarr               | `other constant`                             |     22 |      8 |        8 |
 | zarr               | `await: call: chained .method()`             |     22 |     14 |        3 |
-| zarr               | `ListComp (unknown elements)`                |     20 |      8 |        7 |
+| zarr               | `ListComp (unknown elements)`                |     20 |      9 |        8 |
 | zarr               | `copy: param (annotated)`                    |     20 |     14 |        8 |
-| zarr               | `conditional`                                |     17 |      9 |        7 |
+| zarr               | `conditional`                                |     17 |     10 |        7 |
 | zarr               | `attr: param.x`                              |     14 |     11 |        7 |
 | zarr               | `await: call: module.func()`                 |     14 |      0 |        0 |
 | zarr               | `call: builtin sorted()`                     |     13 |     10 |       10 |
@@ -2943,7 +2943,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | zarr               | `call: builtin zip()`                        |     10 |      9 |        5 |
 | zarr               | `None literal`                               |      9 |      8 |        8 |
 | zarr               | `tuple (mixed/unknown elements)`             |      9 |      9 |        6 |
-| zarr               | `attr: self.x`                               |      8 |      8 |        2 |
+| zarr               | `attr: self.x`                               |      8 |      7 |        2 |
 | zarr               | `binop (one side literal)`                   |      8 |      4 |        4 |
 | zarr               | `empty dict`                                 |      6 |      0 |        0 |
 | zarr               | `boolop (or)`                                |      6 |      5 |        3 |
@@ -2956,7 +2956,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | zarr               | `await: copy: local`                         |      5 |      5 |        2 |
 | zarr               | `await: call: local.method()`                |      5 |      2 |        1 |
 | zarr               | `SetComp (unknown elements)`                 |      4 |      4 |        2 |
-| zarr               | `call: other.method()`                       |      4 |      2 |        0 |
+| zarr               | `call: other.method()`                       |      4 |      3 |        0 |
 | zarr               | `call: builtin dict()`                       |      4 |      4 |        2 |
 | zarr               | `call: builtin slice()`                      |      4 |      4 |        4 |
 | zarr               | `call: builtin getattr()`                    |      3 |      3 |        1 |
@@ -2973,7 +2973,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | zarr               | `boolop (and)`                               |      2 |      2 |        2 |
 | zarr               | `call: builtin set()`                        |      2 |      2 |        2 |
 | zarr               | `call: builtin.method()`                     |      2 |      2 |        2 |
-| zarr               | `call: builtin next()`                       |      2 |      0 |        0 |
+| zarr               | `call: builtin next()`                       |      2 |      1 |        1 |
 | zarr               | `call: imported class`                       |      2 |      0 |        0 |
 | zarr               | `call: cls.method()`                         |      2 |      2 |        2 |
 | zarr               | `copy: global`                               |      2 |      0 |        0 |
@@ -3075,51 +3075,51 @@ hold one type, the most any inference could type (each shape's commonest source 
 | joblib             | `attr: imported.x`                           |      1 |      0 |        0 |
 | joblib             | `call: builtin sorted()`                     |      1 |      0 |        0 |
 | joblib             | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
-| networkx           | `call: module.func()`                        |  4,476 |    580 |      501 |
-| networkx           | `call: local.method()`                       |    810 |    402 |      304 |
+| networkx           | `call: module.func()`                        |  4,476 |    582 |      501 |
+| networkx           | `call: local.method()`                       |    810 |    402 |      302 |
 | networkx           | `call: imported function`                    |    725 |    200 |      141 |
-| networkx           | `copy: local`                                |    667 |    467 |      333 |
-| networkx           | `call: param.method()`                       |    609 |    482 |      372 |
-| networkx           | `copy: param (unannotated)`                  |    503 |    373 |      214 |
-| networkx           | `call: module function (unannotated)`        |    474 |    346 |      255 |
-| networkx           | `call: chained .method()`                    |    468 |    217 |      161 |
-| networkx           | `binop (unknown operands)`                   |    383 |    317 |      275 |
-| networkx           | `call: builtin list()`                       |    373 |    150 |      103 |
-| networkx           | `call: self.method()`                        |    334 |    113 |       56 |
-| networkx           | `subscript: other`                           |    326 |    213 |      148 |
-| networkx           | `subscript: local[...]`                      |    307 |    263 |      193 |
+| networkx           | `copy: local`                                |    667 |    468 |      334 |
+| networkx           | `call: param.method()`                       |    609 |    484 |      372 |
+| networkx           | `copy: param (unannotated)`                  |    503 |    370 |      213 |
+| networkx           | `call: module function (unannotated)`        |    474 |    346 |      254 |
+| networkx           | `call: chained .method()`                    |    468 |    217 |      158 |
+| networkx           | `binop (unknown operands)`                   |    383 |    317 |      273 |
+| networkx           | `call: builtin list()`                       |    373 |    150 |      104 |
+| networkx           | `call: self.method()`                        |    334 |    112 |       57 |
+| networkx           | `subscript: other`                           |    326 |    213 |      150 |
+| networkx           | `subscript: local[...]`                      |    307 |    263 |      189 |
 | networkx           | `attr: self.x`                               |    296 |     75 |       34 |
-| networkx           | `list (mixed/unknown elements)`              |    276 |     97 |       59 |
+| networkx           | `list (mixed/unknown elements)`              |    276 |     97 |       58 |
 | networkx           | `call: builtin set()`                        |    274 |    121 |       82 |
-| networkx           | `ListComp (unknown elements)`                |    267 |    159 |      114 |
+| networkx           | `ListComp (unknown elements)`                |    267 |    159 |      112 |
 | networkx           | `call: builtin sorted()`                     |    256 |     42 |       35 |
-| networkx           | `DictComp (unknown elements)`                |    219 |    117 |       54 |
+| networkx           | `DictComp (unknown elements)`                |    219 |    118 |       55 |
 | networkx           | `empty dict`                                 |    219 |      0 |        0 |
 | networkx           | `tuple (mixed/unknown elements)`             |    218 |    126 |       84 |
 | networkx           | `empty list`                                 |    198 |      0 |        0 |
 | networkx           | `call: global.method()`                      |    170 |      0 |        0 |
 | networkx           | `dict (mixed/unknown elements)`              |    169 |     74 |       46 |
-| networkx           | `call: local name`                           |    168 |     73 |       62 |
+| networkx           | `call: local name`                           |    168 |     73 |       63 |
 | networkx           | `call: imported.attr()`                      |    157 |      4 |        4 |
 | networkx           | `call: param name`                           |    157 |     21 |       15 |
-| networkx           | `call: builtin zip()`                        |    144 |     72 |       53 |
-| networkx           | `subscript: param[...]`                      |    142 |    113 |       83 |
-| networkx           | `attr: local.x`                              |    139 |     56 |       51 |
+| networkx           | `call: builtin zip()`                        |    144 |     72 |       50 |
+| networkx           | `subscript: param[...]`                      |    142 |    113 |       88 |
+| networkx           | `attr: local.x`                              |    139 |     55 |       52 |
 | networkx           | `call: builtin dict()`                       |    137 |     71 |       38 |
 | networkx           | `call: builtin sum()`                        |    126 |     80 |       72 |
-| networkx           | `conditional`                                |    126 |     85 |       47 |
-| networkx           | `call: other name`                           |    123 |     93 |       56 |
+| networkx           | `conditional`                                |    126 |     85 |       46 |
+| networkx           | `call: other name`                           |    123 |     93 |       55 |
 | networkx           | `GeneratorExp (unknown elements)`            |    106 |     74 |       73 |
-| networkx           | `attr: param.x`                              |    105 |     91 |       70 |
+| networkx           | `attr: param.x`                              |    105 |     91 |       72 |
 | networkx           | `binop (one side literal)`                   |    102 |     79 |       78 |
 | networkx           | `SetComp (unknown elements)`                 |     95 |     51 |       33 |
 | networkx           | `attr: module.x`                             |     91 |     30 |       30 |
-| networkx           | `call: builtin enumerate()`                  |     87 |     71 |       47 |
+| networkx           | `call: builtin enumerate()`                  |     87 |     71 |       48 |
 | networkx           | `call: builtin next()`                       |     79 |     67 |       45 |
-| networkx           | `attr: chained`                              |     79 |     30 |       25 |
+| networkx           | `attr: chained`                              |     79 |     30 |       26 |
 | networkx           | `other constant`                             |     69 |     53 |       53 |
 | networkx           | `call: builtin.method()`                     |     62 |     41 |       28 |
-| networkx           | `call: builtin min()`                        |     60 |     56 |       43 |
+| networkx           | `call: builtin min()`                        |     60 |     56 |       42 |
 | networkx           | `None literal`                               |     60 |     50 |       50 |
 | networkx           | `copy: global`                               |     58 |      0 |        0 |
 | networkx           | `call: capitalised`                          |     53 |      6 |        5 |
@@ -3127,7 +3127,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | networkx           | `set (mixed/unknown elements)`               |     45 |     29 |       12 |
 | networkx           | `copy: other`                                |     32 |     19 |        9 |
 | networkx           | `call: other.method()`                       |     32 |     25 |       17 |
-| networkx           | `subscript: other[...]`                      |     28 |     28 |        8 |
+| networkx           | `subscript: other[...]`                      |     28 |     28 |        7 |
 | networkx           | `call: other callee`                         |     28 |     13 |       10 |
 | networkx           | `call: builtin iter()`                       |     27 |     17 |       17 |
 | networkx           | `copy: moddef`                               |     25 |     14 |       14 |
@@ -3161,7 +3161,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | networkx           | `call: builtin abs()`                        |      1 |      0 |        0 |
 | networkx           | `empty tuple`                                |      1 |      0 |        0 |
 | networkx           | `attr: cls.x`                                |      1 |      0 |        0 |
-| networkx           | `call: builtin type()`                       |      1 |      1 |        1 |
+| networkx           | `call: builtin type()`                       |      1 |      1 |        0 |
 | networkx           | `copy: cls`                                  |      1 |      1 |        0 |
 | networkx           | `call: builtin compile()`                    |      1 |      1 |        1 |
 | networkx           | `call: builtin getattr()`                    |      1 |      0 |        0 |
@@ -3171,7 +3171,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | nibabel            | `call: imported function`                    |    366 |     48 |       36 |
 | nibabel            | `tuple (mixed/unknown elements)`             |    337 |     67 |       33 |
 | nibabel            | `call: local.method()`                       |    323 |     65 |       60 |
-| nibabel            | `call: self.method()`                        |    257 |     81 |       56 |
+| nibabel            | `call: self.method()`                        |    257 |     81 |       54 |
 | nibabel            | `subscript: other`                           |    217 |    113 |      105 |
 | nibabel            | `call: imported.attr()`                      |    216 |      7 |        6 |
 | nibabel            | `binop (unknown operands)`                   |    208 |     88 |       69 |
@@ -3181,7 +3181,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | nibabel            | `attr: local.x`                              |    114 |     23 |       18 |
 | nibabel            | `call: local name`                           |    105 |      4 |        2 |
 | nibabel            | `copy: imported`                             |    105 |      3 |        1 |
-| nibabel            | `call: param.method()`                       |    103 |     74 |       61 |
+| nibabel            | `call: param.method()`                       |    103 |     74 |       62 |
 | nibabel            | `subscript: local[...]`                      |     95 |     52 |       45 |
 | nibabel            | `list (mixed/unknown elements)`              |     84 |      4 |        4 |
 | nibabel            | `attr: chained`                              |     83 |     15 |       10 |
@@ -3259,32 +3259,32 @@ hold one type, the most any inference could type (each shape's commonest source 
 | nibabel            | `set (mixed/unknown elements)`               |      1 |      0 |        0 |
 | nibabel            | `Lambda`                                     |      1 |      0 |        0 |
 | nibabel            | `call: builtin bytearray()`                  |      1 |      1 |        1 |
-| narwhals           | `call: chained .method()`                    |    215 |    171 |      149 |
-| narwhals           | `call: imported function`                    |    204 |    129 |       91 |
-| narwhals           | `attr: chained`                              |    136 |    114 |       91 |
-| narwhals           | `conditional`                                |    133 |    116 |       73 |
+| narwhals           | `call: chained .method()`                    |    214 |    168 |      148 |
+| narwhals           | `call: imported function`                    |    204 |    128 |       89 |
+| narwhals           | `attr: chained`                              |    135 |    113 |       91 |
+| narwhals           | `conditional`                                |    133 |    117 |       74 |
 | narwhals           | `call: module.func()`                        |    129 |    113 |      108 |
-| narwhals           | `call: local.method()`                       |     98 |     86 |       69 |
-| narwhals           | `attr: self.x`                               |     97 |     89 |       78 |
-| narwhals           | `call: self.method()`                        |     89 |     76 |       62 |
-| narwhals           | `call: param.method()`                       |     80 |     50 |       31 |
-| narwhals           | `ListComp (unknown elements)`                |     65 |     49 |       37 |
-| narwhals           | `tuple (mixed/unknown elements)`             |     61 |     52 |       32 |
-| narwhals           | `call: module function (annotated)`          |     55 |     34 |       32 |
-| narwhals           | `attr: param.x`                              |     45 |     40 |       29 |
+| narwhals           | `call: local.method()`                       |     98 |     87 |       69 |
+| narwhals           | `attr: self.x`                               |     93 |     85 |       77 |
+| narwhals           | `call: self.method()`                        |     84 |     71 |       61 |
+| narwhals           | `call: param.method()`                       |     80 |     53 |       33 |
+| narwhals           | `ListComp (unknown elements)`                |     65 |     48 |       36 |
+| narwhals           | `tuple (mixed/unknown elements)`             |     59 |     50 |       32 |
+| narwhals           | `call: module function (annotated)`          |     55 |     34 |       33 |
+| narwhals           | `attr: param.x`                              |     45 |     41 |       32 |
 | narwhals           | `binop (unknown operands)`                   |     38 |     31 |       31 |
 | narwhals           | `call: imported class`                       |     38 |      7 |        7 |
 | narwhals           | `GeneratorExp (unknown elements)`            |     28 |     22 |       22 |
-| narwhals           | `attr: local.x`                              |     27 |     22 |       21 |
+| narwhals           | `attr: local.x`                              |     27 |     23 |       22 |
 | narwhals           | `attr: imported.x`                           |     24 |      1 |        1 |
-| narwhals           | `call: other.method()`                       |     20 |     18 |       10 |
 | narwhals           | `call: builtin list()`                       |     19 |     15 |       15 |
-| narwhals           | `copy: param (annotated)`                    |     18 |     18 |        8 |
-| narwhals           | `copy: local`                                |     18 |     16 |       12 |
+| narwhals           | `call: other.method()`                       |     19 |     17 |       10 |
+| narwhals           | `copy: param (annotated)`                    |     18 |     18 |       13 |
+| narwhals           | `copy: local`                                |     18 |     16 |       13 |
 | narwhals           | `subscript: other`                           |     17 |     15 |       13 |
 | narwhals           | `call: builtin tuple()`                      |     16 |     16 |       12 |
 | narwhals           | `DictComp (unknown elements)`                |     15 |     13 |        4 |
-| narwhals           | `subscript: local[...]`                      |     12 |     11 |        8 |
+| narwhals           | `subscript: local[...]`                      |     12 |     12 |        9 |
 | narwhals           | `dict (mixed/unknown elements)`              |     12 |      6 |        6 |
 | narwhals           | `binop (one side literal)`                   |     12 |     11 |       11 |
 | narwhals           | `attr: other.x`                              |     12 |     12 |       12 |
@@ -3333,17 +3333,17 @@ hold one type, the most any inference could type (each shape's commonest source 
 | narwhals           | `subscript: imported[...]`                   |      1 |      1 |        1 |
 | narwhals           | `copy: global`                               |      1 |      0 |        0 |
 | narwhals           | `call: builtin.method()`                     |      1 |      1 |        1 |
-| xarray             | `call: chained .method()`                    |  1,410 |    178 |      115 |
-| xarray             | `call: module.func()`                        |  1,405 |    106 |      102 |
-| xarray             | `call: imported function`                    |    939 |    175 |      121 |
-| xarray             | `call: local.method()`                       |    923 |    106 |       70 |
-| xarray             | `binop (unknown operands)`                   |    737 |     96 |       79 |
-| xarray             | `call: self.method()`                        |    459 |    114 |       98 |
-| xarray             | `call: module function (unannotated)`        |    393 |     65 |       44 |
-| xarray             | `call: param.method()`                       |    333 |    153 |      103 |
-| xarray             | `subscript: local[...]`                      |    298 |     32 |       23 |
+| xarray             | `call: module.func()`                        |  1,405 |    107 |      103 |
+| xarray             | `call: chained .method()`                    |  1,404 |    172 |      112 |
+| xarray             | `call: imported function`                    |    939 |    175 |      120 |
+| xarray             | `call: local.method()`                       |    923 |    104 |       71 |
+| xarray             | `binop (unknown operands)`                   |    737 |     95 |       78 |
+| xarray             | `call: self.method()`                        |    449 |    105 |       93 |
+| xarray             | `call: module function (unannotated)`        |    393 |     66 |       46 |
+| xarray             | `call: param.method()`                       |    333 |    152 |      105 |
+| xarray             | `subscript: local[...]`                      |    298 |     31 |       22 |
 | xarray             | `subscript: other`                           |    250 |     41 |       34 |
-| xarray             | `attr: chained`                              |    236 |     44 |       35 |
+| xarray             | `attr: chained`                              |    236 |     45 |       36 |
 | xarray             | `dict (mixed/unknown elements)`              |    204 |     10 |        8 |
 | xarray             | `ListComp (unknown elements)`                |    203 |     73 |       60 |
 | xarray             | `call: imported.attr()`                      |    179 |     51 |       32 |
@@ -3352,37 +3352,37 @@ hold one type, the most any inference could type (each shape's commonest source 
 | xarray             | `conditional`                                |    149 |     56 |       38 |
 | xarray             | `DictComp (unknown elements)`                |    148 |     56 |       41 |
 | xarray             | `copy: local`                                |    148 |     55 |       42 |
-| xarray             | `call: builtin zip()`                        |    144 |     49 |       36 |
+| xarray             | `call: builtin zip()`                        |    144 |     49 |       35 |
 | xarray             | `attr: local.x`                              |    131 |     43 |       33 |
 | xarray             | `empty dict`                                 |    120 |      0 |        0 |
 | xarray             | `copy: param (unannotated)`                  |    116 |     40 |       29 |
 | xarray             | `call: local name`                           |    116 |      6 |        3 |
 | xarray             | `binop (one side literal)`                   |    108 |      9 |        9 |
 | xarray             | `call: imported class`                       |    101 |      5 |        4 |
-| xarray             | `attr: self.x`                               |     89 |     43 |       31 |
+| xarray             | `attr: self.x`                               |     86 |     40 |       31 |
 | xarray             | `call: module function (annotated)`          |     84 |     27 |       17 |
-| xarray             | `call: builtin tuple()`                      |     83 |     44 |       37 |
+| xarray             | `call: builtin tuple()`                      |     83 |     45 |       38 |
 | xarray             | `attr: param.x`                              |     82 |     33 |       25 |
-| xarray             | `empty list`                                 |     81 |      0 |        0 |
-| xarray             | `call: builtin getattr()`                    |     80 |     30 |       17 |
+| xarray             | `call: builtin getattr()`                    |     80 |     31 |       18 |
+| xarray             | `empty list`                                 |     80 |      0 |        0 |
 | xarray             | `call: other name`                           |     80 |     10 |       10 |
-| xarray             | `subscript: param[...]`                      |     76 |     28 |       12 |
+| xarray             | `subscript: param[...]`                      |     76 |     29 |       13 |
 | xarray             | `call: builtin dict()`                       |     73 |     13 |        5 |
 | xarray             | `call: other callee`                         |     65 |      9 |        3 |
 | xarray             | `tuple (mixed/unknown elements)`             |     62 |      9 |        7 |
 | xarray             | `call: builtin set()`                        |     55 |     20 |       15 |
-| xarray             | `compare`                                    |     53 |     17 |       16 |
+| xarray             | `compare`                                    |     53 |     17 |       15 |
 | xarray             | `other constant`                             |     52 |      1 |        1 |
-| xarray             | `copy: param (annotated)`                    |     44 |     26 |       19 |
-| xarray             | `call: builtin list()`                       |     41 |     18 |       14 |
+| xarray             | `copy: param (annotated)`                    |     44 |     26 |       18 |
 | xarray             | `call: global.method()`                      |     41 |      1 |        1 |
-| xarray             | `call: builtin enumerate()`                  |     41 |     18 |        9 |
+| xarray             | `call: builtin list()`                       |     40 |     17 |       14 |
+| xarray             | `call: builtin enumerate()`                  |     40 |     17 |        8 |
 | xarray             | `copy: imported`                             |     39 |      0 |        0 |
 | xarray             | `attr: global.x`                             |     36 |      0 |        0 |
 | xarray             | `Lambda`                                     |     34 |     21 |       21 |
-| xarray             | `None literal`                               |     30 |     16 |       16 |
+| xarray             | `None literal`                               |     30 |     15 |       15 |
 | xarray             | `attr: module.x`                             |     26 |      0 |        0 |
-| xarray             | `SetComp (unknown elements)`                 |     25 |     16 |       13 |
+| xarray             | `SetComp (unknown elements)`                 |     25 |     16 |       12 |
 | xarray             | `subscript: imported[...]`                   |     21 |     13 |       13 |
 | xarray             | `boolop (or)`                                |     18 |      8 |        7 |
 | xarray             | `call: other.method()`                       |     18 |      3 |        3 |
@@ -3434,27 +3434,27 @@ hold one type, the most any inference could type (each shape's commonest source 
 | xarray             | `await: call: module.func()`                 |      1 |      0 |        0 |
 | xarray             | `await: copy: local`                         |      1 |      0 |        0 |
 | xarray             | `attr: other.x`                              |      1 |      1 |        1 |
-| litestar           | `call: imported function`                    |     84 |     63 |       44 |
-| litestar           | `call: chained .method()`                    |     81 |     66 |       43 |
-| litestar           | `conditional`                                |     63 |     59 |       33 |
-| litestar           | `call: local.method()`                       |     57 |     43 |       28 |
+| litestar           | `call: imported function`                    |     84 |     64 |       45 |
+| litestar           | `call: chained .method()`                    |     79 |     64 |       44 |
+| litestar           | `conditional`                                |     63 |     59 |       36 |
+| litestar           | `call: local.method()`                       |     57 |     44 |       29 |
 | litestar           | `subscript: other`                           |     56 |     50 |       33 |
 | litestar           | `call: param.method()`                       |     54 |     36 |       21 |
 | litestar           | `call: builtin getattr()`                    |     47 |     43 |       15 |
-| litestar           | `call: self.method()`                        |     45 |     41 |       25 |
-| litestar           | `attr: chained`                              |     36 |     34 |       21 |
+| litestar           | `attr: chained`                              |     36 |     32 |       20 |
 | litestar           | `attr: self.x`                               |     34 |     32 |       12 |
 | litestar           | `await: call: self.method()`                 |     33 |     31 |       25 |
-| litestar           | `attr: param.x`                              |     28 |     19 |        6 |
-| litestar           | `attr: local.x`                              |     28 |     20 |       12 |
-| litestar           | `copy: local`                                |     27 |     20 |       16 |
-| litestar           | `boolop (or)`                                |     24 |     22 |       17 |
+| litestar           | `call: self.method()`                        |     33 |     29 |       19 |
+| litestar           | `attr: param.x`                              |     28 |     19 |        7 |
+| litestar           | `attr: local.x`                              |     28 |     20 |       13 |
+| litestar           | `copy: local`                                |     25 |     17 |       13 |
+| litestar           | `boolop (or)`                                |     24 |     21 |       17 |
 | litestar           | `call: module function (annotated)`          |     23 |     20 |        4 |
-| litestar           | `ListComp (unknown elements)`                |     23 |     19 |       15 |
 | litestar           | `copy: param (annotated)`                    |     21 |     17 |       11 |
+| litestar           | `ListComp (unknown elements)`                |     21 |     17 |       13 |
 | litestar           | `subscript: imported[...]`                   |     19 |      0 |        0 |
 | litestar           | `dict (mixed/unknown elements)`              |     18 |     10 |        8 |
-| litestar           | `DictComp (unknown elements)`                |     16 |     14 |       12 |
+| litestar           | `DictComp (unknown elements)`                |     16 |     13 |       12 |
 | litestar           | `empty list`                                 |     14 |      0 |        0 |
 | litestar           | `GeneratorExp (unknown elements)`            |     13 |     13 |       12 |
 | litestar           | `copy: imported`                             |     13 |      6 |        6 |
@@ -3471,10 +3471,10 @@ hold one type, the most any inference could type (each shape's commonest source 
 | litestar           | `call: imported class`                       |      9 |      8 |        8 |
 | litestar           | `copy: modclass`                             |      7 |      0 |        0 |
 | litestar           | `SetComp (unknown elements)`                 |      6 |      2 |        2 |
-| litestar           | `binop (unknown operands)`                   |      6 |      5 |        5 |
+| litestar           | `binop (unknown operands)`                   |      6 |      4 |        4 |
 | litestar           | `call: other callee`                         |      6 |      6 |        6 |
-| litestar           | `list (mixed/unknown elements)`              |      6 |      4 |        3 |
-| litestar           | `call: builtin tuple()`                      |      6 |      6 |        0 |
+| litestar           | `list (mixed/unknown elements)`              |      6 |      4 |        4 |
+| litestar           | `call: builtin tuple()`                      |      6 |      6 |        1 |
 | litestar           | `set (mixed/unknown elements)`               |      5 |      2 |        2 |
 | litestar           | `other constant`                             |      5 |      2 |        2 |
 | litestar           | `call: imported.attr()`                      |      4 |      3 |        3 |
@@ -3487,7 +3487,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | litestar           | `await: call: local.method()`                |      3 |      3 |        2 |
 | litestar           | `call: builtin next()`                       |      2 |      2 |        2 |
 | litestar           | `await: call: imported function`             |      2 |      1 |        0 |
-| litestar           | `attr: other.x`                              |      2 |      2 |        1 |
+| litestar           | `attr: other.x`                              |      2 |      1 |        0 |
 | litestar           | `await: call: local name`                    |      2 |      2 |        1 |
 | litestar           | `call: local name`                           |      2 |      2 |        1 |
 | litestar           | `subscript: global[...]`                     |      2 |      2 |        1 |
@@ -3527,7 +3527,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | celery             | `subscript: other`                           |     51 |     34 |       27 |
 | celery             | `copy: param (unannotated)`                  |     49 |     41 |       26 |
 | celery             | `attr: local.x`                              |     44 |     39 |       32 |
-| celery             | `dict (mixed/unknown elements)`              |     42 |     21 |       13 |
+| celery             | `dict (mixed/unknown elements)`              |     43 |     21 |       13 |
 | celery             | `attr: imported.x`                           |     33 |     10 |       10 |
 | celery             | `call: builtin getattr()`                    |     30 |     22 |       10 |
 | celery             | `call: param name`                           |     29 |     21 |       18 |
@@ -3600,40 +3600,40 @@ hold one type, the most any inference could type (each shape's commonest source 
 | celery             | `subscript: imported[...]`                   |      1 |      1 |        1 |
 | celery             | `attr: modclass.x`                           |      1 |      0 |        0 |
 | celery             | `call: cls name`                             |      1 |      1 |        1 |
-| optuna             | `call: module.func()`                        |    279 |    231 |      221 |
-| optuna             | `call: chained .method()`                    |    210 |    155 |      118 |
+| optuna             | `call: module.func()`                        |    278 |    230 |      220 |
+| optuna             | `call: chained .method()`                    |    209 |    156 |      121 |
 | optuna             | `call: imported.attr()`                      |    108 |     41 |       41 |
-| optuna             | `binop (unknown operands)`                   |     87 |     76 |       74 |
+| optuna             | `binop (unknown operands)`                   |     87 |     76 |       72 |
 | optuna             | `call: imported function`                    |     79 |      5 |        3 |
 | optuna             | `empty list`                                 |     71 |      0 |        0 |
-| optuna             | `attr: param.x`                              |     65 |     59 |       51 |
-| optuna             | `call: local.method()`                       |     62 |     34 |       27 |
-| optuna             | `subscript: other`                           |     54 |     43 |       36 |
-| optuna             | `call: module function (annotated)`          |     40 |     35 |       34 |
+| optuna             | `attr: param.x`                              |     65 |     59 |       50 |
+| optuna             | `call: local.method()`                       |     62 |     35 |       29 |
+| optuna             | `subscript: other`                           |     54 |     43 |       37 |
+| optuna             | `call: module function (annotated)`          |     39 |     34 |       33 |
 | optuna             | `subscript: param[...]`                      |     35 |     35 |       33 |
 | optuna             | `call: builtin zip()`                        |     35 |     24 |       18 |
 | optuna             | `call: imported class`                       |     35 |      0 |        0 |
 | optuna             | `call: param.method()`                       |     33 |     16 |       13 |
-| optuna             | `subscript: local[...]`                      |     32 |     28 |       25 |
+| optuna             | `subscript: local[...]`                      |     32 |     28 |       24 |
 | optuna             | `ListComp (unknown elements)`                |     32 |     23 |       23 |
 | optuna             | `attr: chained`                              |     31 |     19 |       14 |
 | optuna             | `binop (one side literal)`                   |     28 |     26 |       26 |
-| optuna             | `conditional`                                |     28 |     20 |       12 |
+| optuna             | `conditional`                                |     28 |     21 |       13 |
 | optuna             | `None literal`                               |     28 |      5 |        5 |
 | optuna             | `attr: local.x`                              |     28 |     16 |       13 |
-| optuna             | `tuple (mixed/unknown elements)`             |     24 |     14 |       11 |
+| optuna             | `tuple (mixed/unknown elements)`             |     24 |     15 |       12 |
 | optuna             | `compare`                                    |     23 |     22 |       22 |
 | optuna             | `empty dict`                                 |     20 |      0 |        0 |
 | optuna             | `call: global.method()`                      |     20 |      0 |        0 |
 | optuna             | `copy: local`                                |     19 |      5 |        5 |
-| optuna             | `call: builtin enumerate()`                  |     15 |      8 |        6 |
+| optuna             | `call: builtin enumerate()`                  |     15 |      8 |        7 |
 | optuna             | `call: other name`                           |     13 |      6 |        6 |
-| optuna             | `DictComp (unknown elements)`                |     11 |      7 |        0 |
+| optuna             | `other constant`                             |     12 |      4 |        4 |
+| optuna             | `DictComp (unknown elements)`                |     11 |      7 |        1 |
 | optuna             | `copy: param (annotated)`                    |     11 |      6 |        4 |
-| optuna             | `other constant`                             |     11 |      4 |        4 |
 | optuna             | `list (mixed/unknown elements)`              |     10 |      5 |        5 |
 | optuna             | `unaryop USub`                               |      9 |      9 |        8 |
-| optuna             | `call: self.method()`                        |      9 |      7 |        4 |
+| optuna             | `call: self.method()`                        |      9 |      6 |        4 |
 | optuna             | `call: builtin max()`                        |      9 |      6 |        3 |
 | optuna             | `attr: self.x`                               |      8 |      8 |        5 |
 | optuna             | `dict (mixed/unknown elements)`              |      7 |      2 |        2 |
@@ -3668,43 +3668,43 @@ hold one type, the most any inference could type (each shape's commonest source 
 | optuna             | `call: builtin property()`                   |      1 |      0 |        0 |
 | optuna             | `call: builtin object()`                     |      1 |      0 |        0 |
 | dask               | `call: module.func()`                        |  3,995 |    196 |      183 |
-| dask               | `call: imported function`                    |  1,744 |    333 |      245 |
-| dask               | `call: chained .method()`                    |  1,448 |    181 |      148 |
-| dask               | `call: local.method()`                       |  1,411 |    162 |      103 |
+| dask               | `call: imported function`                    |  1,744 |    333 |      246 |
+| dask               | `call: chained .method()`                    |  1,448 |    182 |      149 |
+| dask               | `call: local.method()`                       |  1,411 |    162 |      104 |
 | dask               | `call: global.method()`                      |    908 |     11 |        9 |
-| dask               | `call: module function (unannotated)`        |    492 |    217 |      155 |
-| dask               | `call: param.method()`                       |    470 |    212 |      144 |
-| dask               | `dict (mixed/unknown elements)`              |    446 |     56 |       46 |
+| dask               | `call: module function (unannotated)`        |    492 |    216 |      152 |
+| dask               | `call: param.method()`                       |    470 |    214 |      145 |
+| dask               | `dict (mixed/unknown elements)`              |    446 |     56 |       45 |
 | dask               | `binop (unknown operands)`                   |    406 |    214 |      170 |
-| dask               | `copy: param (unannotated)`                  |    390 |    159 |      105 |
-| dask               | `list (mixed/unknown elements)`              |    366 |     59 |       33 |
-| dask               | `ListComp (unknown elements)`                |    350 |    193 |      140 |
-| dask               | `subscript: other`                           |    335 |     91 |       69 |
+| dask               | `copy: param (unannotated)`                  |    390 |    159 |      107 |
+| dask               | `list (mixed/unknown elements)`              |    366 |     58 |       32 |
+| dask               | `ListComp (unknown elements)`                |    350 |    195 |      142 |
+| dask               | `subscript: other`                           |    334 |     90 |       69 |
 | dask               | `empty list`                                 |    296 |      0 |        0 |
 | dask               | `tuple (mixed/unknown elements)`             |    269 |     83 |       73 |
-| dask               | `subscript: local[...]`                      |    247 |     95 |       69 |
-| dask               | `call: builtin zip()`                        |    235 |    119 |       93 |
-| dask               | `copy: local`                                |    232 |    105 |       74 |
-| dask               | `call: builtin list()`                       |    211 |    109 |       84 |
-| dask               | `binop (one side literal)`                   |    195 |     30 |       30 |
+| dask               | `subscript: local[...]`                      |    247 |     95 |       68 |
+| dask               | `call: builtin zip()`                        |    235 |    119 |       92 |
+| dask               | `copy: local`                                |    232 |    107 |       78 |
+| dask               | `call: builtin list()`                       |    211 |    109 |       83 |
+| dask               | `binop (one side literal)`                   |    195 |     27 |       27 |
 | dask               | `empty dict`                                 |    193 |      0 |        0 |
-| dask               | `subscript: param[...]`                      |    180 |    113 |       87 |
+| dask               | `subscript: param[...]`                      |    180 |    112 |       85 |
 | dask               | `attr: chained`                              |    178 |     75 |       55 |
 | dask               | `call: module class`                         |    173 |      6 |        5 |
-| dask               | `DictComp (unknown elements)`                |    168 |     89 |       68 |
-| dask               | `attr: self.x`                               |    166 |    130 |       63 |
+| dask               | `DictComp (unknown elements)`                |    168 |     88 |       66 |
+| dask               | `attr: self.x`                               |    166 |    129 |       62 |
 | dask               | `call: other callee`                         |    152 |     22 |       14 |
-| dask               | `conditional`                                |    149 |     81 |       46 |
+| dask               | `conditional`                                |    149 |     80 |       44 |
 | dask               | `call: builtin getattr()`                    |    146 |     33 |       19 |
-| dask               | `attr: local.x`                              |    144 |     70 |       55 |
+| dask               | `attr: local.x`                              |    144 |     70 |       54 |
 | dask               | `call: local name`                           |    143 |     24 |       10 |
-| dask               | `call: builtin enumerate()`                  |    135 |     91 |       68 |
+| dask               | `call: builtin enumerate()`                  |    135 |     91 |       69 |
 | dask               | `call: param name`                           |    131 |     25 |       10 |
-| dask               | `call: self.method()`                        |    130 |    112 |       62 |
+| dask               | `call: self.method()`                        |    129 |    111 |       61 |
 | dask               | `attr: imported.x`                           |    112 |      1 |        1 |
+| dask               | `other constant`                             |    100 |     26 |       26 |
 | dask               | `attr: param.x`                              |     98 |     64 |       46 |
 | dask               | `call: builtin tuple()`                      |     96 |     58 |       44 |
-| dask               | `other constant`                             |     95 |     26 |       26 |
 | dask               | `call: builtin set()`                        |     83 |     21 |       15 |
 | dask               | `call: builtin staticmethod()`               |     79 |      0 |        0 |
 | dask               | `call: builtin dict()`                       |     72 |     19 |        9 |
@@ -3712,11 +3712,11 @@ hold one type, the most any inference could type (each shape's commonest source 
 | dask               | `None literal`                               |     67 |     36 |       36 |
 | dask               | `call: imported class`                       |     64 |     10 |       10 |
 | dask               | `attr: module.x`                             |     59 |      1 |        1 |
-| dask               | `boolop (or)`                                |     56 |     46 |       38 |
+| dask               | `boolop (or)`                                |     56 |     46 |       39 |
 | dask               | `Lambda`                                     |     53 |      3 |        3 |
 | dask               | `call: other name`                           |     51 |     20 |       14 |
 | dask               | `compare`                                    |     48 |     18 |       17 |
-| dask               | `call: module function (annotated)`          |     36 |     28 |        8 |
+| dask               | `call: module function (annotated)`          |     36 |     28 |       10 |
 | dask               | `call: builtin sorted()`                     |     31 |     18 |        9 |
 | dask               | `GeneratorExp (unknown elements)`            |     31 |     14 |       14 |
 | dask               | `call: builtin max()`                        |     30 |     23 |       17 |
@@ -3727,7 +3727,7 @@ hold one type, the most any inference could type (each shape's commonest source 
 | dask               | `await: call: param.method()`                |     17 |      0 |        0 |
 | dask               | `call: builtin sum()`                        |     16 |      5 |        5 |
 | dask               | `copy: builtin`                              |     15 |      1 |        0 |
-| dask               | `copy: param (annotated)`                    |     14 |     13 |        6 |
+| dask               | `copy: param (annotated)`                    |     14 |     12 |        6 |
 | dask               | `copy: imported`                             |     14 |      5 |        5 |
 | dask               | `call: builtin next()`                       |     14 |     12 |        5 |
 | dask               | `call: global name`                          |     13 |      4 |        3 |
@@ -3735,8 +3735,8 @@ hold one type, the most any inference could type (each shape's commonest source 
 | dask               | `call: builtin min()`                        |     12 |      8 |        7 |
 | dask               | `call: builtin slice()`                      |     11 |      5 |        5 |
 | dask               | `copy: global`                               |     11 |      0 |        0 |
-| dask               | `call: other.method()`                       |     11 |      7 |        4 |
 | dask               | `call: cls.method()`                         |     10 |      9 |        7 |
+| dask               | `call: other.method()`                       |     10 |      6 |        4 |
 | dask               | `copy: self`                                 |     10 |      8 |        5 |
 | dask               | `subscript: global[...]`                     |      9 |      4 |        4 |
 | dask               | `set (mixed/unknown elements)`               |      8 |      4 |        3 |
@@ -3762,47 +3762,47 @@ hold one type, the most any inference could type (each shape's commonest source 
 | dask               | `call: cls name`                             |      1 |      0 |        0 |
 | dask               | `call: builtin property()`                   |      1 |      0 |        0 |
 | dask               | `attr: builtin.x`                            |      1 |      1 |        1 |
-| dask               | `call: builtin any()`                        |      1 |      1 |        1 |
+| dask               | `call: builtin any()`                        |      1 |      0 |        0 |
 | dask               | `await: call: chained .method()`             |      1 |      0 |        0 |
 | dask               | `call: builtin reversed()`                   |      1 |      1 |        1 |
 | dask               | `call: builtin len()`                        |      1 |      1 |        1 |
 | dask               | `call: builtin frozenset()`                  |      1 |      1 |        0 |
 | dask               | `await: call: local.method()`                |      1 |      0 |        0 |
-| mypy               | `call: imported function`                    |    515 |    338 |      120 |
-| mypy               | `call: chained .method()`                    |    370 |    258 |      148 |
-| mypy               | `call: self.method()`                        |    339 |    262 |       87 |
-| mypy               | `copy: local`                                |    256 |    170 |      103 |
-| mypy               | `attr: chained`                              |    253 |    174 |      137 |
-| mypy               | `attr: param.x`                              |    236 |    201 |      103 |
-| mypy               | `empty list`                                 |    230 |      0 |        0 |
-| mypy               | `subscript: other`                           |    226 |    144 |       82 |
-| mypy               | `attr: local.x`                              |    224 |    133 |       94 |
-| mypy               | `call: local.method()`                       |    193 |    131 |       83 |
-| mypy               | `call: module function (annotated)`          |    124 |     89 |       33 |
+| mypy               | `call: imported function`                    |    515 |    334 |      118 |
+| mypy               | `call: chained .method()`                    |    370 |    258 |      149 |
+| mypy               | `call: self.method()`                        |    339 |    261 |       86 |
+| mypy               | `copy: local`                                |    256 |    169 |      102 |
+| mypy               | `attr: chained`                              |    253 |    172 |      135 |
+| mypy               | `attr: param.x`                              |    236 |    199 |      101 |
+| mypy               | `empty list`                                 |    229 |      0 |        0 |
+| mypy               | `subscript: other`                           |    224 |    143 |       81 |
+| mypy               | `attr: local.x`                              |    224 |    132 |       93 |
+| mypy               | `call: local.method()`                       |    193 |    129 |       81 |
+| mypy               | `call: module function (annotated)`          |    124 |     89 |       30 |
 | mypy               | `call: param.method()`                       |    106 |     87 |       46 |
-| mypy               | `ListComp (unknown elements)`                |    102 |     64 |       41 |
+| mypy               | `ListComp (unknown elements)`                |    102 |     62 |       40 |
 | mypy               | `copy: param (annotated)`                    |    101 |     87 |       42 |
 | mypy               | `call: builtin zip()`                        |     99 |     73 |       29 |
 | mypy               | `conditional`                                |     99 |     66 |       36 |
 | mypy               | `None literal`                               |     92 |     67 |       67 |
-| mypy               | `call: module.func()`                        |     86 |     36 |       20 |
+| mypy               | `call: module.func()`                        |     86 |     35 |       19 |
 | mypy               | `binop (unknown operands)`                   |     75 |     34 |       27 |
-| mypy               | `attr: self.x`                               |     72 |     61 |       39 |
-| mypy               | `subscript: local[...]`                      |     67 |     49 |       31 |
+| mypy               | `attr: self.x`                               |     71 |     60 |       39 |
+| mypy               | `subscript: local[...]`                      |     67 |     47 |       28 |
 | mypy               | `subscript: param[...]`                      |     66 |     42 |       29 |
 | mypy               | `call: builtin enumerate()`                  |     64 |     58 |       25 |
 | mypy               | `boolop (or)`                                |     51 |     35 |       29 |
 | mypy               | `tuple (mixed/unknown elements)`             |     48 |     31 |       24 |
 | mypy               | `other constant`                             |     42 |     11 |       11 |
 | mypy               | `call: builtin set()`                        |     40 |      8 |        7 |
-| mypy               | `call: builtin sorted()`                     |     34 |     13 |       12 |
-| mypy               | `boolop (and)`                               |     33 |     28 |       26 |
+| mypy               | `boolop (and)`                               |     33 |     28 |       27 |
+| mypy               | `call: builtin sorted()`                     |     33 |     12 |       11 |
 | mypy               | `list (mixed/unknown elements)`              |     33 |     13 |        8 |
 | mypy               | `call: imported.attr()`                      |     29 |     21 |       14 |
 | mypy               | `empty dict`                                 |     28 |      0 |        0 |
 | mypy               | `SetComp (unknown elements)`                 |     27 |     15 |       14 |
 | mypy               | `call: builtin list()`                       |     24 |     13 |        9 |
-| mypy               | `DictComp (unknown elements)`                |     22 |     13 |        9 |
+| mypy               | `DictComp (unknown elements)`                |     22 |     12 |        8 |
 | mypy               | `call: builtin getattr()`                    |     21 |     15 |        8 |
 | mypy               | `call: global.method()`                      |     17 |      1 |        1 |
 | mypy               | `binop (one side literal)`                   |     16 |      4 |        4 |
@@ -3815,9 +3815,9 @@ hold one type, the most any inference could type (each shape's commonest source 
 | mypy               | `compare`                                    |      8 |      7 |        7 |
 | mypy               | `copy: global`                               |      8 |      2 |        2 |
 | mypy               | `call: imported class`                       |      8 |      7 |        7 |
-| mypy               | `subscript: imported[...]`                   |      7 |      6 |        5 |
+| mypy               | `subscript: imported[...]`                   |      7 |      6 |        6 |
 | mypy               | `call: local name`                           |      7 |      2 |        0 |
-| mypy               | `call: builtin next()`                       |      6 |      5 |        4 |
+| mypy               | `call: builtin next()`                       |      6 |      4 |        3 |
 | mypy               | `call: builtin dict()`                       |      6 |      2 |        2 |
 | mypy               | `call: other.method()`                       |      6 |      6 |        3 |
 | mypy               | `call: builtin open()`                       |      4 |      1 |        1 |
@@ -3854,15 +3854,15 @@ released run, those gone, and the differences in tests its catalog entry names:
 | corpus             | run                                   | same as released | summary                                                               | new failures | gone | named | skipped anew | skipped no more |
 | ------------------ | ------------------------------------- | ---------------- | --------------------------------------------------------------------- | -----------: | ---: | ----: | -----------: | --------------: |
 | django             | released                              |                  | 5 expected failures, 2 failures, 17,585 ran, 1,149 skipped            |              |      |       |              |                 |
-| django             | fix-certain                           | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
+| django             | fix-certain                           | True             | as infer-trace's (implied)                                            |            0 |    0 |     0 |              |                 |
 | django             | fix-likely                            | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
 | django             | fix-unsafe                            | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
 | django             | infer-basedpyright                    | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
 | django             | infer-pyrefly                         | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
-| django             | infer-trace                           | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
+| django             | infer-trace                           | True             | 5 expected failures, 2 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
 | django             | infer-ty                              | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
-| django             | infer-union                           | True             | 5 expected failures, 1 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
-| sqlalchemy         | released (from mega-10-28-2026-0057)  |                  | 29,521 passed, 975 skipped                                            |              |      |       |              |                 |
+| django             | infer-union                           | True             | 5 expected failures, 2 failures, 17,585 ran, 1,149 skipped            |            0 |    0 |     0 |              |                 |
+| sqlalchemy         | released (from basic-11-03-2026-2103) |                  | 29,521 passed, 975 skipped                                            |              |      |       |              |                 |
 | sqlalchemy         | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | sqlalchemy         | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | sqlalchemy         | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4042,7 +4042,7 @@ released run, those gone, and the differences in tests its catalog entry names:
 | strawberry-graphql | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | strawberry-graphql | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | strawberry-graphql | infer-union                           | True             | 25 error, 51 failed, 2,521 passed, 3,293 skipped, 7 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| pygments           | released (from super-10-26-2026-0545) |                  | 1 failed, 5,330 passed, 15 skipped                                    |              |      |       |              |                 |
+| pygments           | released                              |                  | 5,330 passed, 16 skipped                                              |              |      |       |              |                 |
 | pygments           | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pygments           | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pygments           | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4050,7 +4050,7 @@ released run, those gone, and the differences in tests its catalog entry names:
 | pygments           | infer-pyrefly                         | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pygments           | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pygments           | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
-| pygments           | infer-union                           | True             | 1 failed, 5,330 passed, 15 skipped                                    |            0 |    0 |     0 |            0 |               0 |
+| pygments           | infer-union                           | True             | 5,330 passed, 16 skipped                                              |            0 |    0 |     0 |            0 |               0 |
 | streamlink         | released (from super-10-26-2026-0545) |                  | 9 error, 15 failed, 7,233 passed, 36 skipped                          |              |      |       |              |                 |
 | streamlink         | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | streamlink         | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4060,15 +4060,15 @@ released run, those gone, and the differences in tests its catalog entry names:
 | streamlink         | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | streamlink         | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | streamlink         | infer-union                           | True             | 9 error, 15 failed, 7,233 passed, 36 skipped                          |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | released (from mega-10-29-2026-1920)  |                  | 9 failed, 2,393 passed, 22 skipped                                    |              |      |       |              |                 |
-| sphinx             | fix-certain                           | True             | as infer-basedpyright's (implied)                                     |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | fix-likely                            | True             | 10 failed, 2,392 passed, 22 skipped                                   |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | fix-unsafe                            | True             | as infer-trace's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | infer-basedpyright                    | True             | 9 failed, 2,393 passed, 22 skipped                                    |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | infer-pyrefly                         | True             | 9 failed, 2,393 passed, 22 skipped                                    |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | infer-trace                           | True             | 10 failed, 2,392 passed, 22 skipped                                   |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | infer-ty                              | True             | 10 failed, 2,392 passed, 22 skipped                                   |            0 |    0 |     0 |            0 |               0 |
-| sphinx             | infer-union                           | False            | 10 failed, 2,392 passed, 22 skipped                                   |            1 |    0 |     0 |            0 |               0 |
+| sphinx             | released                              |                  | 7 failed, 2,394 passed, 23 skipped                                    |              |      |       |              |                 |
+| sphinx             | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | infer-basedpyright                    | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | infer-pyrefly                         | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| sphinx             | infer-union                           | True             | 7 failed, 2,394 passed, 23 skipped                                    |            0 |    0 |     0 |            0 |               0 |
 | tox                | released (from super-10-26-2026-0545) |                  | 6 error, 17 failed, 8,525 passed, 31 skipped                          |              |      |       |              |                 |
 | tox                | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | tox                | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4087,15 +4087,15 @@ released run, those gone, and the differences in tests its catalog entry names:
 | pint               | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pint               | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | pint               | infer-union                           | True             | 1 failed, 2,289 passed, 590 skipped, 11 xfailed                       |            0 |    0 |     0 |            0 |               0 |
-| altair             | released                              |                  | 28 failed, 1,866 passed, 12 skipped, 7 xfailed, 3 xpassed             |              |      |       |              |                 |
-| altair             | fix-certain                           | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
-| altair             | fix-likely                            | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
-| altair             | fix-unsafe                            | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
+| altair             | released                              |                  | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |              |      |       |              |                 |
+| altair             | fix-certain                           | True             | as infer-pyrefly's (implied)                                          |            0 |    0 |     0 |            0 |               0 |
+| altair             | fix-likely                            | True             | as infer-pyrefly's (implied)                                          |            0 |    0 |     0 |            0 |               0 |
+| altair             | fix-unsafe                            | True             | as infer-pyrefly's (implied)                                          |            0 |    0 |     0 |            0 |               0 |
 | altair             | infer-basedpyright                    | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
 | altair             | infer-pyrefly                         | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
 | altair             | infer-trace                           | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
-| altair             | infer-ty                              | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
-| altair             | infer-union                           | True             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             |            0 |    0 |     0 |            0 |               0 |
+| altair             | infer-ty                              | True             | 28 failed, 1,866 passed, 12 skipped, 7 xfailed, 3 xpassed             |            0 |    0 |     0 |            0 |               0 |
+| altair             | infer-union                           | True             | 28 failed, 1,866 passed, 12 skipped, 7 xfailed, 3 xpassed             |            0 |    0 |     0 |            0 |               0 |
 | seaborn            | released                              |                  | 8 error, 20 failed, 2,178 passed, 11 skipped, 6 xfailed               |              |      |       |              |                 |
 | seaborn            | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | seaborn            | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4114,7 +4114,7 @@ released run, those gone, and the differences in tests its catalog entry names:
 | aiohttp            | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | aiohttp            | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | aiohttp            | infer-union                           | True             | 3 failed, 4,840 passed, 535 skipped, 2 xfailed                        |            0 |    0 |     0 |            0 |               0 |
-| websockets         | released                              |                  | 2,589 ran, 8 skipped                                                  |              |      |       |              |                 |
+| websockets         | released (from mega-10-30-2026-0857)  |                  | 2,589 ran, 8 skipped                                                  |              |      |       |              |                 |
 | websockets         | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |              |                 |
 | websockets         | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |              |                 |
 | websockets         | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |              |                 |
@@ -4123,7 +4123,7 @@ released run, those gone, and the differences in tests its catalog entry names:
 | websockets         | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |              |                 |
 | websockets         | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |              |                 |
 | websockets         | infer-union                           | True             | 2,589 ran, 8 skipped                                                  |            0 |    0 |     0 |              |                 |
-| anyio              | released                              |                  | 3,824 passed, 19 skipped, 5 xfailed                                   |              |      |       |              |                 |
+| anyio              | released (from mega-10-30-2026-0857)  |                  | 3,824 passed, 19 skipped, 5 xfailed                                   |              |      |       |              |                 |
 | anyio              | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | anyio              | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | anyio              | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4159,15 +4159,15 @@ released run, those gone, and the differences in tests its catalog entry names:
 | networkx           | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | networkx           | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | networkx           | infer-union                           | True             | 10,083 passed, 62 skipped, 741 xfailed                                |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | released                              |                  | 20 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |              |      |       |              |                 |
-| nibabel            | fix-certain                           | True             | 19 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | fix-likely                            | True             | 20 error, 109 failed, 5,167 passed, 304 skipped, 40 xfailed           |            0 |    0 |     1 |            0 |               0 |
-| nibabel            | fix-unsafe                            | True             | 19 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | infer-basedpyright                    | True             | 20 error, 108 failed, 5,167 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | infer-pyrefly                         | True             | 19 error, 112 failed, 5,164 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | infer-trace                           | True             | 19 error, 109 failed, 5,167 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
-| nibabel            | infer-ty                              | True             | 19 error, 107 failed, 5,169 passed, 304 skipped, 40 xfailed           |            0 |    0 |     1 |            0 |               0 |
-| nibabel            | infer-union                           | False            | 19 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |            2 |    0 |     0 |            0 |               0 |
+| nibabel            | released                              |                  | 20 error, 108 failed, 5,167 passed, 304 skipped, 40 xfailed           |              |      |       |              |                 |
+| nibabel            | fix-certain                           | True             | 20 error, 110 failed, 5,165 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
+| nibabel            | fix-likely                            | True             | 19 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |            0 |    0 |     1 |            0 |               0 |
+| nibabel            | fix-unsafe                            | True             | 18 error, 111 failed, 5,166 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
+| nibabel            | infer-basedpyright                    | True             | 19 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           |            0 |    0 |     1 |            0 |               0 |
+| nibabel            | infer-pyrefly                         | True             | 19 error, 109 failed, 5,167 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
+| nibabel            | infer-trace                           | True             | 20 error, 107 failed, 5,169 passed, 304 skipped, 40 xfailed           |            0 |    0 |     0 |            0 |               0 |
+| nibabel            | infer-ty                              | True             | 20 error, 107 failed, 5,169 passed, 304 skipped, 40 xfailed           |            0 |    0 |     1 |            0 |               0 |
+| nibabel            | infer-union                           | False            | 19 error, 107 failed, 5,169 passed, 304 skipped, 40 xfailed           |            1 |    0 |     0 |            0 |               0 |
 | narwhals           | released (from mega-10-26-2026-2120)  |                  | 972 failed, 11,116 passed, 235 skipped, 699 xfailed                   |              |      |       |              |                 |
 | narwhals           | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | narwhals           | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4186,15 +4186,15 @@ released run, those gone, and the differences in tests its catalog entry names:
 | xarray             | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | xarray             | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | xarray             | infer-union                           | True             | 3 error, 2 failed, 6,334 passed, 9,626 skipped, 11 xfailed, 4 xpassed |            0 |    0 |     0 |            0 |               0 |
-| litestar           | released                              |                  | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |              |      |       |              |                 |
-| litestar           | fix-certain                           | True             | as infer-trace's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
-| litestar           | fix-likely                            | True             | as infer-trace's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
-| litestar           | fix-unsafe                            | True             | as infer-trace's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
-| litestar           | infer-basedpyright                    | True             | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |            0 |    0 |     0 |            0 |               0 |
-| litestar           | infer-pyrefly                         | True             | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |            0 |    0 |     0 |            0 |               0 |
-| litestar           | infer-trace                           | True             | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |            0 |    0 |     0 |            0 |               0 |
-| litestar           | infer-ty                              | True             | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |            0 |    0 |     0 |            0 |               0 |
-| litestar           | infer-union                           | False            | 6 failed, 5,645 passed, 256 skipped, 13 xfailed, 30 xpassed           |            1 |    0 |     0 |            0 |               0 |
+| litestar           | released (from mega-10-30-2026-0857)  |                  | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |              |      |       |              |                 |
+| litestar           | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | fix-unsafe                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | infer-basedpyright                    | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | infer-pyrefly                         | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | infer-trace                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | infer-ty                              | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
+| litestar           | infer-union                           | True             | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           |            0 |    0 |     0 |            0 |               0 |
 | celery             | released                              |                  | 3 failed, 3,521 passed, 36 skipped, 3 xfailed                         |              |      |       |              |                 |
 | celery             | fix-certain                           | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
 | celery             | fix-likely                            | True             | as infer-union's (implied)                                            |            0 |    0 |     0 |            0 |               0 |
@@ -4237,29 +4237,29 @@ Each package's own type checks: its errors as released, then those new and gone:
 | corpus             | run                | errors | new | gone |                                                      change |
 | ------------------ | ------------------ | -----: | --: | ---: | ----------------------------------------------------------: |
 | sqlalchemy         | released           |      0 |     |      |                                                             |
-| sqlalchemy         | fix-certain        |      0 |   0 |    0 |    203 files changed, 3414 insertions(+), 2799 deletions(-) |
-| sqlalchemy         | fix-likely         |      0 |   0 |    0 |    189 files changed, 2688 insertions(+), 2111 deletions(-) |
-| sqlalchemy         | fix-unsafe         |      0 |   0 |    0 |    203 files changed, 3414 insertions(+), 2799 deletions(-) |
-| sqlalchemy         | infer-basedpyright |      8 |   8 |    0 |    208 files changed, 4173 insertions(+), 3512 deletions(-) |
-| sqlalchemy         | infer-pyrefly      |      6 |   6 |    0 |    208 files changed, 3918 insertions(+), 3138 deletions(-) |
-| sqlalchemy         | infer-trace        |      6 |   6 |    0 |    205 files changed, 3616 insertions(+), 2939 deletions(-) |
-| sqlalchemy         | infer-ty           |      4 |   4 |    0 |    208 files changed, 4125 insertions(+), 3363 deletions(-) |
+| sqlalchemy         | fix-certain        |      1 |   1 |    0 |    183 files changed, 2263 insertions(+), 1721 deletions(-) |
+| sqlalchemy         | fix-likely         |      1 |   1 |    0 |    193 files changed, 2727 insertions(+), 2140 deletions(-) |
+| sqlalchemy         | fix-unsafe         |      1 |   1 |    0 |    206 files changed, 3441 insertions(+), 2816 deletions(-) |
+| sqlalchemy         | infer-basedpyright |      4 |   4 |    0 |    210 files changed, 4184 insertions(+), 3514 deletions(-) |
+| sqlalchemy         | infer-pyrefly      |      2 |   2 |    0 |    209 files changed, 3920 insertions(+), 3138 deletions(-) |
+| sqlalchemy         | infer-trace        |      7 |   7 |    0 |    208 files changed, 3642 insertions(+), 2955 deletions(-) |
+| sqlalchemy         | infer-ty           |      3 |   3 |    0 |    208 files changed, 4129 insertions(+), 3359 deletions(-) |
 | pydantic           | released           |      0 |     |      |                                                             |
 | pydantic           | fix-certain        |      0 |   0 |    0 |     79 files changed, 1691 insertions(+), 1280 deletions(-) |
 | pydantic           | fix-likely         |      0 |   0 |    0 |     79 files changed, 1691 insertions(+), 1280 deletions(-) |
 | pydantic           | fix-unsafe         |      0 |   0 |    0 |     79 files changed, 1691 insertions(+), 1280 deletions(-) |
-| pydantic           | infer-basedpyright |      0 |   0 |    0 |     79 files changed, 1921 insertions(+), 1497 deletions(-) |
-| pydantic           | infer-pyrefly      |      0 |   0 |    0 |     79 files changed, 1953 insertions(+), 1413 deletions(-) |
+| pydantic           | infer-basedpyright |      0 |   0 |    0 |     79 files changed, 1917 insertions(+), 1493 deletions(-) |
+| pydantic           | infer-pyrefly      |      0 |   0 |    0 |     79 files changed, 1952 insertions(+), 1412 deletions(-) |
 | pydantic           | infer-trace        |      0 |   0 |    0 |     79 files changed, 1691 insertions(+), 1280 deletions(-) |
-| pydantic           | infer-ty           |      3 |   3 |    0 |     79 files changed, 1827 insertions(+), 1406 deletions(-) |
+| pydantic           | infer-ty           |      3 |   3 |    0 |     79 files changed, 1826 insertions(+), 1405 deletions(-) |
 | pandas             | released           |    259 |     |      |                                                             |
-| pandas             | fix-certain        |    261 |   3 |    1 | 1072 files changed, 18499 insertions(+), 15411 deletions(-) |
-| pandas             | fix-likely         |    262 |   4 |    1 | 1204 files changed, 43199 insertions(+), 39305 deletions(-) |
-| pandas             | fix-unsafe         |    267 |   9 |    1 | 1208 files changed, 44544 insertions(+), 40448 deletions(-) |
-| pandas             | infer-basedpyright |    301 |  43 |    1 | 1216 files changed, 50709 insertions(+), 45980 deletions(-) |
-| pandas             | infer-pyrefly      |    319 |  61 |    1 | 1217 files changed, 53106 insertions(+), 48047 deletions(-) |
-| pandas             | infer-trace        |    267 |   9 |    1 | 1212 files changed, 46067 insertions(+), 41847 deletions(-) |
-| pandas             | infer-ty           |    274 |  16 |    1 | 1218 files changed, 50484 insertions(+), 45758 deletions(-) |
+| pandas             | fix-certain        |    261 |   3 |    1 | 1072 files changed, 18458 insertions(+), 15370 deletions(-) |
+| pandas             | fix-likely         |    262 |   4 |    1 | 1204 files changed, 43290 insertions(+), 39375 deletions(-) |
+| pandas             | fix-unsafe         |    267 |   9 |    1 | 1208 files changed, 44624 insertions(+), 40510 deletions(-) |
+| pandas             | infer-basedpyright |    296 |  38 |    1 | 1216 files changed, 48265 insertions(+), 43548 deletions(-) |
+| pandas             | infer-pyrefly      |    313 |  55 |    1 | 1217 files changed, 49705 insertions(+), 44776 deletions(-) |
+| pandas             | infer-trace        |    267 |   9 |    1 | 1210 files changed, 45398 insertions(+), 41166 deletions(-) |
+| pandas             | infer-ty           |    273 |  15 |    1 | 1218 files changed, 47967 insertions(+), 43332 deletions(-) |
 | structlog          | released           |      8 |     |      |                                                             |
 | structlog          | fix-certain        |      8 |   0 |    0 |       16 files changed, 167 insertions(+), 131 deletions(-) |
 | structlog          | fix-likely         |      8 |   0 |    0 |       16 files changed, 167 insertions(+), 131 deletions(-) |
@@ -4267,39 +4267,39 @@ Each package's own type checks: its errors as released, then those new and gone:
 | structlog          | infer-basedpyright |      8 |   0 |    0 |       16 files changed, 167 insertions(+), 131 deletions(-) |
 | structlog          | infer-pyrefly      |      8 |   0 |    0 |       16 files changed, 161 insertions(+), 118 deletions(-) |
 | structlog          | infer-trace        |      8 |   0 |    0 |       16 files changed, 167 insertions(+), 131 deletions(-) |
-| structlog          | infer-ty           |      8 |   0 |    0 |       16 files changed, 151 insertions(+), 116 deletions(-) |
+| structlog          | infer-ty           |      8 |   0 |    0 |       16 files changed, 167 insertions(+), 131 deletions(-) |
 | click              | released           |      0 |     |      |                                                             |
-| click              | fix-certain        |      0 |   0 |    0 |       15 files changed, 378 insertions(+), 293 deletions(-) |
-| click              | fix-likely         |      0 |   0 |    0 |       15 files changed, 378 insertions(+), 293 deletions(-) |
-| click              | fix-unsafe         |      0 |   0 |    0 |       15 files changed, 378 insertions(+), 293 deletions(-) |
-| click              | infer-basedpyright |      0 |   0 |    0 |       15 files changed, 444 insertions(+), 350 deletions(-) |
-| click              | infer-pyrefly      |      0 |   0 |    0 |       15 files changed, 455 insertions(+), 356 deletions(-) |
-| click              | infer-trace        |      0 |   0 |    0 |       15 files changed, 378 insertions(+), 293 deletions(-) |
-| click              | infer-ty           |      0 |   0 |    0 |       15 files changed, 462 insertions(+), 362 deletions(-) |
+| click              | fix-certain        |      0 |   0 |    0 |       15 files changed, 445 insertions(+), 350 deletions(-) |
+| click              | fix-likely         |      0 |   0 |    0 |       15 files changed, 445 insertions(+), 350 deletions(-) |
+| click              | fix-unsafe         |      0 |   0 |    0 |       15 files changed, 445 insertions(+), 350 deletions(-) |
+| click              | infer-basedpyright |      0 |   0 |    0 |       15 files changed, 445 insertions(+), 350 deletions(-) |
+| click              | infer-pyrefly      |      0 |   0 |    0 |       15 files changed, 456 insertions(+), 356 deletions(-) |
+| click              | infer-trace        |      0 |   0 |    0 |       15 files changed, 445 insertions(+), 350 deletions(-) |
+| click              | infer-ty           |      0 |   0 |    0 |       15 files changed, 463 insertions(+), 362 deletions(-) |
 | hypercorn          | released           |     12 |     |      |                                                             |
-| hypercorn          | fix-certain        |     12 |   0 |    0 |       25 files changed, 212 insertions(+), 146 deletions(-) |
-| hypercorn          | fix-likely         |     12 |   0 |    0 |       25 files changed, 212 insertions(+), 146 deletions(-) |
-| hypercorn          | fix-unsafe         |     12 |   0 |    0 |       25 files changed, 212 insertions(+), 146 deletions(-) |
+| hypercorn          | fix-certain        |     12 |   0 |    0 |       25 files changed, 238 insertions(+), 166 deletions(-) |
+| hypercorn          | fix-likely         |     12 |   0 |    0 |       25 files changed, 238 insertions(+), 166 deletions(-) |
+| hypercorn          | fix-unsafe         |     12 |   0 |    0 |       25 files changed, 238 insertions(+), 166 deletions(-) |
 | hypercorn          | infer-basedpyright |     12 |   0 |    0 |       25 files changed, 238 insertions(+), 166 deletions(-) |
 | hypercorn          | infer-pyrefly      |     12 |   0 |    0 |       25 files changed, 222 insertions(+), 151 deletions(-) |
-| hypercorn          | infer-trace        |     12 |   0 |    0 |       25 files changed, 212 insertions(+), 146 deletions(-) |
+| hypercorn          | infer-trace        |     12 |   0 |    0 |       25 files changed, 238 insertions(+), 166 deletions(-) |
 | hypercorn          | infer-ty           |     12 |   0 |    0 |       25 files changed, 240 insertions(+), 162 deletions(-) |
 | starlette          | released           |      0 |     |      |                                                             |
-| starlette          | fix-certain        |      0 |   0 |    0 |       33 files changed, 457 insertions(+), 355 deletions(-) |
-| starlette          | fix-likely         |      0 |   0 |    0 |       33 files changed, 457 insertions(+), 355 deletions(-) |
-| starlette          | fix-unsafe         |      0 |   0 |    0 |       33 files changed, 457 insertions(+), 355 deletions(-) |
+| starlette          | fix-certain        |      0 |   0 |    0 |       33 files changed, 526 insertions(+), 414 deletions(-) |
+| starlette          | fix-likely         |      0 |   0 |    0 |       33 files changed, 526 insertions(+), 414 deletions(-) |
+| starlette          | fix-unsafe         |      0 |   0 |    0 |       33 files changed, 526 insertions(+), 414 deletions(-) |
 | starlette          | infer-basedpyright |      0 |   0 |    0 |       33 files changed, 526 insertions(+), 414 deletions(-) |
-| starlette          | infer-pyrefly      |      0 |   0 |    0 |       33 files changed, 493 insertions(+), 381 deletions(-) |
-| starlette          | infer-trace        |      0 |   0 |    0 |       33 files changed, 457 insertions(+), 355 deletions(-) |
+| starlette          | infer-pyrefly      |      0 |   0 |    0 |       33 files changed, 489 insertions(+), 377 deletions(-) |
+| starlette          | infer-trace        |      0 |   0 |    0 |       33 files changed, 526 insertions(+), 414 deletions(-) |
 | starlette          | infer-ty           |      0 |   0 |    0 |       33 files changed, 509 insertions(+), 398 deletions(-) |
 | werkzeug           | released           |      0 |     |      |                                                             |
-| werkzeug           | fix-certain        |      0 |   0 |    0 |       43 files changed, 683 insertions(+), 472 deletions(-) |
-| werkzeug           | fix-likely         |      0 |   0 |    0 |       43 files changed, 683 insertions(+), 472 deletions(-) |
-| werkzeug           | fix-unsafe         |      0 |   0 |    0 |       43 files changed, 683 insertions(+), 472 deletions(-) |
-| werkzeug           | infer-basedpyright |      0 |   0 |    0 |       45 files changed, 810 insertions(+), 574 deletions(-) |
-| werkzeug           | infer-pyrefly      |      0 |   0 |    0 |       45 files changed, 838 insertions(+), 566 deletions(-) |
-| werkzeug           | infer-trace        |      0 |   0 |    0 |       43 files changed, 683 insertions(+), 472 deletions(-) |
-| werkzeug           | infer-ty           |      0 |   0 |    0 |       45 files changed, 834 insertions(+), 580 deletions(-) |
+| werkzeug           | fix-certain        |      0 |   0 |    0 |       45 files changed, 843 insertions(+), 566 deletions(-) |
+| werkzeug           | fix-likely         |      0 |   0 |    0 |       45 files changed, 843 insertions(+), 566 deletions(-) |
+| werkzeug           | fix-unsafe         |      0 |   0 |    0 |       45 files changed, 843 insertions(+), 566 deletions(-) |
+| werkzeug           | infer-basedpyright |      0 |   0 |    0 |       45 files changed, 824 insertions(+), 575 deletions(-) |
+| werkzeug           | infer-pyrefly      |      0 |   0 |    0 |       45 files changed, 843 insertions(+), 566 deletions(-) |
+| werkzeug           | infer-trace        |      0 |   0 |    0 |       45 files changed, 843 insertions(+), 566 deletions(-) |
+| werkzeug           | infer-ty           |      0 |   0 |    0 |       45 files changed, 848 insertions(+), 581 deletions(-) |
 | httpx              | released           |      0 |     |      |                                                             |
 | httpx              | fix-certain        |      0 |   0 |    0 |       16 files changed, 325 insertions(+), 268 deletions(-) |
 | httpx              | fix-likely         |      0 |   0 |    0 |       16 files changed, 325 insertions(+), 268 deletions(-) |
@@ -4317,61 +4317,61 @@ Each package's own type checks: its errors as released, then those new and gone:
 | uvicorn            | infer-trace        |      0 |   0 |    0 |       27 files changed, 313 insertions(+), 232 deletions(-) |
 | uvicorn            | infer-ty           |      0 |   0 |    0 |       29 files changed, 360 insertions(+), 273 deletions(-) |
 | mcp                | released           |      0 |     |      |                                                             |
-| mcp                | fix-certain        |      0 |   0 |    0 |       80 files changed, 798 insertions(+), 538 deletions(-) |
-| mcp                | fix-likely         |      0 |   0 |    0 |       80 files changed, 964 insertions(+), 691 deletions(-) |
-| mcp                | fix-unsafe         |      1 |   1 |    0 |      81 files changed, 1061 insertions(+), 766 deletions(-) |
-| mcp                | infer-basedpyright |      3 |   3 |    0 |      82 files changed, 1177 insertions(+), 875 deletions(-) |
-| mcp                | infer-pyrefly      |      1 |   1 |    0 |      82 files changed, 1143 insertions(+), 830 deletions(-) |
-| mcp                | infer-trace        |      1 |   1 |    0 |      81 files changed, 1061 insertions(+), 766 deletions(-) |
-| mcp                | infer-ty           |      1 |   1 |    0 |      82 files changed, 1183 insertions(+), 850 deletions(-) |
+| mcp                | fix-certain        |      0 |   0 |    0 |       80 files changed, 806 insertions(+), 540 deletions(-) |
+| mcp                | fix-likely         |      0 |   0 |    0 |       80 files changed, 972 insertions(+), 693 deletions(-) |
+| mcp                | fix-unsafe         |      1 |   1 |    0 |      81 files changed, 1069 insertions(+), 768 deletions(-) |
+| mcp                | infer-basedpyright |      3 |   3 |    0 |      82 files changed, 1185 insertions(+), 877 deletions(-) |
+| mcp                | infer-pyrefly      |      1 |   1 |    0 |      82 files changed, 1151 insertions(+), 832 deletions(-) |
+| mcp                | infer-trace        |      1 |   1 |    0 |      81 files changed, 1069 insertions(+), 768 deletions(-) |
+| mcp                | infer-ty           |      1 |   1 |    0 |      82 files changed, 1188 insertions(+), 850 deletions(-) |
 | strawberry-graphql | released           |     10 |     |      |                                                             |
-| strawberry-graphql | fix-certain        |     10 |   0 |    0 |      153 files changed, 992 insertions(+), 735 deletions(-) |
-| strawberry-graphql | fix-likely         |     10 |   0 |    0 |      153 files changed, 992 insertions(+), 735 deletions(-) |
-| strawberry-graphql | fix-unsafe         |     10 |   0 |    0 |      153 files changed, 992 insertions(+), 735 deletions(-) |
-| strawberry-graphql | infer-basedpyright |     13 |   3 |    0 |     157 files changed, 1132 insertions(+), 854 deletions(-) |
-| strawberry-graphql | infer-pyrefly      |     12 |   2 |    0 |     155 files changed, 1049 insertions(+), 784 deletions(-) |
-| strawberry-graphql | infer-trace        |     10 |   0 |    0 |      153 files changed, 992 insertions(+), 735 deletions(-) |
-| strawberry-graphql | infer-ty           |     11 |   1 |    0 |     157 files changed, 1131 insertions(+), 848 deletions(-) |
+| strawberry-graphql | fix-certain        |     10 |   0 |    0 |     154 files changed, 1052 insertions(+), 787 deletions(-) |
+| strawberry-graphql | fix-likely         |     10 |   0 |    0 |     154 files changed, 1052 insertions(+), 787 deletions(-) |
+| strawberry-graphql | fix-unsafe         |     10 |   0 |    0 |     154 files changed, 1052 insertions(+), 787 deletions(-) |
+| strawberry-graphql | infer-basedpyright |     12 |   2 |    0 |     156 files changed, 1135 insertions(+), 857 deletions(-) |
+| strawberry-graphql | infer-pyrefly      |     10 |   0 |    0 |     154 files changed, 1052 insertions(+), 787 deletions(-) |
+| strawberry-graphql | infer-trace        |     10 |   0 |    0 |     154 files changed, 1052 insertions(+), 787 deletions(-) |
+| strawberry-graphql | infer-ty           |     10 |   0 |    0 |     156 files changed, 1133 insertions(+), 850 deletions(-) |
 | streamlink         | released           |      0 |     |      |                                                             |
-| streamlink         | fix-certain        |      0 |   0 |    0 |    176 files changed, 1666 insertions(+), 1101 deletions(-) |
-| streamlink         | fix-likely         |      0 |   0 |    0 |    176 files changed, 1666 insertions(+), 1101 deletions(-) |
-| streamlink         | fix-unsafe         |      0 |   0 |    0 |    176 files changed, 1666 insertions(+), 1101 deletions(-) |
-| streamlink         | infer-basedpyright |      0 |   0 |    0 |    189 files changed, 2037 insertions(+), 1412 deletions(-) |
-| streamlink         | infer-pyrefly      |      0 |   0 |    0 |    177 files changed, 1802 insertions(+), 1197 deletions(-) |
-| streamlink         | infer-trace        |      0 |   0 |    0 |    176 files changed, 1666 insertions(+), 1101 deletions(-) |
-| streamlink         | infer-ty           |     24 |  24 |    0 |    186 files changed, 2302 insertions(+), 1418 deletions(-) |
+| streamlink         | fix-certain        |      0 |   0 |    0 |    176 files changed, 1668 insertions(+), 1102 deletions(-) |
+| streamlink         | fix-likely         |      0 |   0 |    0 |    176 files changed, 1668 insertions(+), 1102 deletions(-) |
+| streamlink         | fix-unsafe         |      0 |   0 |    0 |    176 files changed, 1668 insertions(+), 1102 deletions(-) |
+| streamlink         | infer-basedpyright |      0 |   0 |    0 |    189 files changed, 2038 insertions(+), 1412 deletions(-) |
+| streamlink         | infer-pyrefly      |      0 |   0 |    0 |    177 files changed, 1803 insertions(+), 1197 deletions(-) |
+| streamlink         | infer-trace        |      0 |   0 |    0 |    176 files changed, 1668 insertions(+), 1102 deletions(-) |
+| streamlink         | infer-ty           |     24 |  24 |    0 |    186 files changed, 2303 insertions(+), 1418 deletions(-) |
 | sphinx             | released           |      3 |     |      |                                                             |
 | sphinx             | fix-certain        |      4 |   1 |    0 |    196 files changed, 3475 insertions(+), 2361 deletions(-) |
-| sphinx             | fix-likely         |      4 |   1 |    0 |    198 files changed, 4016 insertions(+), 2790 deletions(-) |
-| sphinx             | fix-unsafe         |      4 |   1 |    0 |    213 files changed, 4438 insertions(+), 3141 deletions(-) |
-| sphinx             | infer-basedpyright |      6 |   3 |    0 |    216 files changed, 5226 insertions(+), 3849 deletions(-) |
-| sphinx             | infer-pyrefly      |     11 |   8 |    0 |    217 files changed, 5467 insertions(+), 3902 deletions(-) |
-| sphinx             | infer-trace        |      4 |   1 |    0 |    213 files changed, 4438 insertions(+), 3141 deletions(-) |
-| sphinx             | infer-ty           |      4 |   1 |    0 |    215 files changed, 5271 insertions(+), 3822 deletions(-) |
+| sphinx             | fix-likely         |      4 |   1 |    0 |    198 files changed, 4017 insertions(+), 2791 deletions(-) |
+| sphinx             | fix-unsafe         |      4 |   1 |    0 |    213 files changed, 4439 insertions(+), 3142 deletions(-) |
+| sphinx             | infer-basedpyright |      6 |   3 |    0 |    216 files changed, 5217 insertions(+), 3840 deletions(-) |
+| sphinx             | infer-pyrefly      |     11 |   8 |    0 |    217 files changed, 5460 insertions(+), 3895 deletions(-) |
+| sphinx             | infer-trace        |      4 |   1 |    0 |    213 files changed, 4439 insertions(+), 3142 deletions(-) |
+| sphinx             | infer-ty           |      4 |   1 |    0 |    215 files changed, 5264 insertions(+), 3815 deletions(-) |
 | pint               | released           |    659 |     |      |                                                             |
-| pint               | fix-certain        |    659 |   0 |    0 |      78 files changed, 1022 insertions(+), 756 deletions(-) |
-| pint               | fix-likely         |    659 |   0 |    0 |      78 files changed, 1022 insertions(+), 756 deletions(-) |
-| pint               | fix-unsafe         |    659 |   0 |    0 |      78 files changed, 1022 insertions(+), 756 deletions(-) |
-| pint               | infer-basedpyright |    660 |   1 |    0 |      81 files changed, 1301 insertions(+), 964 deletions(-) |
-| pint               | infer-pyrefly      |    664 |   5 |    0 |      79 files changed, 1092 insertions(+), 800 deletions(-) |
-| pint               | infer-trace        |    662 |   3 |    0 |      78 files changed, 1035 insertions(+), 761 deletions(-) |
-| pint               | infer-ty           |    660 |   2 |    1 |      79 files changed, 1179 insertions(+), 877 deletions(-) |
+| pint               | fix-certain        |    659 |   0 |    0 |      78 files changed, 1023 insertions(+), 757 deletions(-) |
+| pint               | fix-likely         |    659 |   0 |    0 |      78 files changed, 1023 insertions(+), 757 deletions(-) |
+| pint               | fix-unsafe         |    659 |   0 |    0 |      78 files changed, 1023 insertions(+), 757 deletions(-) |
+| pint               | infer-basedpyright |    660 |   1 |    0 |      81 files changed, 1302 insertions(+), 965 deletions(-) |
+| pint               | infer-pyrefly      |    664 |   5 |    0 |      79 files changed, 1093 insertions(+), 801 deletions(-) |
+| pint               | infer-trace        |    662 |   3 |    0 |      78 files changed, 1036 insertions(+), 762 deletions(-) |
+| pint               | infer-ty           |    660 |   2 |    1 |      79 files changed, 1183 insertions(+), 880 deletions(-) |
 | altair             | released           |      1 |     |      |                                                             |
-| altair             | fix-certain        |      1 |   0 |    0 |       40 files changed, 475 insertions(+), 377 deletions(-) |
-| altair             | fix-likely         |      1 |   0 |    0 |       40 files changed, 475 insertions(+), 377 deletions(-) |
-| altair             | fix-unsafe         |      1 |   0 |    0 |       40 files changed, 475 insertions(+), 377 deletions(-) |
-| altair             | infer-basedpyright |      4 |   3 |    0 |       40 files changed, 563 insertions(+), 444 deletions(-) |
-| altair             | infer-pyrefly      |      4 |   3 |    0 |       40 files changed, 544 insertions(+), 423 deletions(-) |
-| altair             | infer-trace        |      2 |   1 |    0 |       40 files changed, 485 insertions(+), 384 deletions(-) |
-| altair             | infer-ty           |      4 |   3 |    0 |       40 files changed, 559 insertions(+), 438 deletions(-) |
+| altair             | fix-certain        |      1 |   0 |    0 |       40 files changed, 479 insertions(+), 381 deletions(-) |
+| altair             | fix-likely         |      1 |   0 |    0 |       40 files changed, 479 insertions(+), 381 deletions(-) |
+| altair             | fix-unsafe         |      1 |   0 |    0 |       40 files changed, 479 insertions(+), 381 deletions(-) |
+| altair             | infer-basedpyright |      4 |   3 |    0 |       40 files changed, 565 insertions(+), 446 deletions(-) |
+| altair             | infer-pyrefly      |      4 |   3 |    0 |       40 files changed, 547 insertions(+), 426 deletions(-) |
+| altair             | infer-trace        |      2 |   1 |    0 |       40 files changed, 489 insertions(+), 388 deletions(-) |
+| altair             | infer-ty           |      4 |   3 |    0 |       40 files changed, 561 insertions(+), 440 deletions(-) |
 | seaborn            | released           |     39 |     |      |                                                             |
-| seaborn            | fix-certain        |     39 |   0 |    0 |       46 files changed, 865 insertions(+), 653 deletions(-) |
+| seaborn            | fix-certain        |     39 |   0 |    0 |      46 files changed, 1071 insertions(+), 832 deletions(-) |
 | seaborn            | fix-likely         |     39 |   0 |    0 |       46 files changed, 865 insertions(+), 653 deletions(-) |
 | seaborn            | fix-unsafe         |     39 |   0 |    0 |      46 files changed, 1071 insertions(+), 832 deletions(-) |
 | seaborn            | infer-basedpyright |     39 |   0 |    0 |      46 files changed, 1071 insertions(+), 832 deletions(-) |
-| seaborn            | infer-pyrefly      |     39 |   0 |    0 |      47 files changed, 1160 insertions(+), 882 deletions(-) |
+| seaborn            | infer-pyrefly      |     39 |   0 |    0 |      47 files changed, 1157 insertions(+), 879 deletions(-) |
 | seaborn            | infer-trace        |     39 |   0 |    0 |      47 files changed, 1007 insertions(+), 762 deletions(-) |
-| seaborn            | infer-ty           |     39 |   0 |    0 |      46 files changed, 1037 insertions(+), 806 deletions(-) |
+| seaborn            | infer-ty           |     39 |   0 |    0 |      46 files changed, 1035 insertions(+), 804 deletions(-) |
 | websockets         | released           |      0 |     |      |                                                             |
 | websockets         | fix-certain        |      0 |   0 |    0 |       39 files changed, 378 insertions(+), 250 deletions(-) |
 | websockets         | fix-likely         |      1 |   1 |    0 |       39 files changed, 467 insertions(+), 323 deletions(-) |
@@ -4381,1249 +4381,1249 @@ Each package's own type checks: its errors as released, then those new and gone:
 | websockets         | infer-trace        |      1 |   1 |    0 |       39 files changed, 526 insertions(+), 360 deletions(-) |
 | websockets         | infer-ty           |      4 |   4 |    0 |       40 files changed, 643 insertions(+), 459 deletions(-) |
 | networkx           | released           |      0 |     |      |                                                             |
-| networkx           | fix-certain        |      0 |   0 |    0 |    475 files changed, 7084 insertions(+), 5865 deletions(-) |
-| networkx           | fix-likely         |      0 |   0 |    0 |    475 files changed, 7084 insertions(+), 5865 deletions(-) |
-| networkx           | fix-unsafe         |      0 |   0 |    0 |    475 files changed, 7084 insertions(+), 5865 deletions(-) |
-| networkx           | infer-basedpyright |      0 |   0 |    0 |    475 files changed, 7890 insertions(+), 6554 deletions(-) |
-| networkx           | infer-pyrefly      |      0 |   0 |    0 |    472 files changed, 7201 insertions(+), 5994 deletions(-) |
-| networkx           | infer-trace        |      0 |   0 |    0 |    475 files changed, 7084 insertions(+), 5865 deletions(-) |
+| networkx           | fix-certain        |      0 |   0 |    0 |    475 files changed, 7092 insertions(+), 5869 deletions(-) |
+| networkx           | fix-likely         |      0 |   0 |    0 |    475 files changed, 7092 insertions(+), 5869 deletions(-) |
+| networkx           | fix-unsafe         |      0 |   0 |    0 |    475 files changed, 7092 insertions(+), 5869 deletions(-) |
+| networkx           | infer-basedpyright |      0 |   0 |    0 |    475 files changed, 7880 insertions(+), 6544 deletions(-) |
+| networkx           | infer-pyrefly      |      0 |   0 |    0 |    472 files changed, 7197 insertions(+), 5990 deletions(-) |
+| networkx           | infer-trace        |      0 |   0 |    0 |    475 files changed, 7092 insertions(+), 5869 deletions(-) |
 | networkx           | infer-ty           |      0 |   0 |    0 |    465 files changed, 7104 insertions(+), 5978 deletions(-) |
 | nibabel            | released           |     12 |     |      |                                                             |
 | nibabel            | fix-certain        |     12 |   0 |    0 |    182 files changed, 2078 insertions(+), 1389 deletions(-) |
 | nibabel            | fix-likely         |     13 |   1 |    0 |    193 files changed, 2934 insertions(+), 2149 deletions(-) |
 | nibabel            | fix-unsafe         |     13 |   1 |    0 |    198 files changed, 3297 insertions(+), 2453 deletions(-) |
-| nibabel            | infer-basedpyright |     15 |   3 |    0 |    203 files changed, 3958 insertions(+), 2992 deletions(-) |
+| nibabel            | infer-basedpyright |     15 |   3 |    0 |    203 files changed, 3956 insertions(+), 2990 deletions(-) |
 | nibabel            | infer-pyrefly      |     16 |   4 |    0 |    203 files changed, 3901 insertions(+), 2880 deletions(-) |
 | nibabel            | infer-trace        |     14 |   2 |    0 |    198 files changed, 3395 insertions(+), 2519 deletions(-) |
 | nibabel            | infer-ty           |     14 |   2 |    0 |    200 files changed, 3918 insertions(+), 2948 deletions(-) |
 | narwhals           | released           |     19 |     |      |                                                             |
-| narwhals           | fix-certain        |     20 |   1 |    0 |     100 files changed, 1125 insertions(+), 922 deletions(-) |
-| narwhals           | fix-likely         |     20 |   1 |    0 |     100 files changed, 1199 insertions(+), 990 deletions(-) |
-| narwhals           | fix-unsafe         |     21 |   2 |    0 |    101 files changed, 1263 insertions(+), 1034 deletions(-) |
-| narwhals           | infer-basedpyright |     31 |  12 |    0 |    101 files changed, 1636 insertions(+), 1332 deletions(-) |
-| narwhals           | infer-pyrefly      |     34 |  15 |    0 |    102 files changed, 1864 insertions(+), 1489 deletions(-) |
-| narwhals           | infer-trace        |     21 |   2 |    0 |    101 files changed, 1263 insertions(+), 1034 deletions(-) |
-| narwhals           | infer-ty           |     34 |  15 |    0 |    102 files changed, 1571 insertions(+), 1284 deletions(-) |
+| narwhals           | fix-certain        |     20 |   1 |    0 |     100 files changed, 1132 insertions(+), 929 deletions(-) |
+| narwhals           | fix-likely         |     20 |   1 |    0 |    100 files changed, 1212 insertions(+), 1001 deletions(-) |
+| narwhals           | fix-unsafe         |     21 |   2 |    0 |    101 files changed, 1277 insertions(+), 1045 deletions(-) |
+| narwhals           | infer-basedpyright |     31 |  12 |    0 |    101 files changed, 1647 insertions(+), 1340 deletions(-) |
+| narwhals           | infer-pyrefly      |     34 |  15 |    0 |    102 files changed, 1863 insertions(+), 1487 deletions(-) |
+| narwhals           | infer-trace        |     21 |   2 |    0 |    101 files changed, 1277 insertions(+), 1045 deletions(-) |
+| narwhals           | infer-ty           |     34 |  15 |    0 |    102 files changed, 1570 insertions(+), 1282 deletions(-) |
 | litestar           | released           |     86 |     |      |                                                             |
-| litestar           | fix-certain        |     86 |   0 |    0 |      172 files changed, 879 insertions(+), 616 deletions(-) |
-| litestar           | fix-likely         |     86 |   0 |    0 |      172 files changed, 879 insertions(+), 616 deletions(-) |
-| litestar           | fix-unsafe         |     86 |   0 |    0 |      172 files changed, 879 insertions(+), 616 deletions(-) |
-| litestar           | infer-basedpyright |     88 |   2 |    0 |     178 files changed, 1115 insertions(+), 809 deletions(-) |
-| litestar           | infer-pyrefly      |     87 |   1 |    0 |      176 files changed, 982 insertions(+), 690 deletions(-) |
-| litestar           | infer-trace        |     86 |   0 |    0 |      172 files changed, 879 insertions(+), 616 deletions(-) |
-| litestar           | infer-ty           |     91 |   5 |    0 |     179 files changed, 1118 insertions(+), 803 deletions(-) |
+| litestar           | fix-certain        |     86 |   0 |    0 |      172 files changed, 897 insertions(+), 626 deletions(-) |
+| litestar           | fix-likely         |     86 |   0 |    0 |      172 files changed, 897 insertions(+), 626 deletions(-) |
+| litestar           | fix-unsafe         |     86 |   0 |    0 |      172 files changed, 897 insertions(+), 626 deletions(-) |
+| litestar           | infer-basedpyright |     88 |   2 |    0 |     177 files changed, 1122 insertions(+), 810 deletions(-) |
+| litestar           | infer-pyrefly      |     87 |   1 |    0 |      175 files changed, 986 insertions(+), 689 deletions(-) |
+| litestar           | infer-trace        |     86 |   0 |    0 |      172 files changed, 897 insertions(+), 626 deletions(-) |
+| litestar           | infer-ty           |     91 |   5 |    0 |     179 files changed, 1127 insertions(+), 807 deletions(-) |
 | optuna             | released           |     52 |     |      |                                                             |
-| optuna             | fix-certain        |     52 |   0 |    0 |    141 files changed, 1689 insertions(+), 1164 deletions(-) |
-| optuna             | fix-likely         |     53 |   1 |    0 |    144 files changed, 1911 insertions(+), 1352 deletions(-) |
-| optuna             | fix-unsafe         |     54 |   2 |    0 |    144 files changed, 2040 insertions(+), 1448 deletions(-) |
-| optuna             | infer-basedpyright |     54 |   2 |    0 |    164 files changed, 2384 insertions(+), 1728 deletions(-) |
-| optuna             | infer-pyrefly      |     56 |   4 |    0 |    147 files changed, 2336 insertions(+), 1689 deletions(-) |
-| optuna             | infer-trace        |     54 |   2 |    0 |    144 files changed, 2040 insertions(+), 1448 deletions(-) |
-| optuna             | infer-ty           |     57 |   5 |    0 |    162 files changed, 2392 insertions(+), 1725 deletions(-) |
+| optuna             | fix-certain        |     52 |   0 |    0 |    141 files changed, 1691 insertions(+), 1165 deletions(-) |
+| optuna             | fix-likely         |     53 |   1 |    0 |    144 files changed, 1914 insertions(+), 1354 deletions(-) |
+| optuna             | fix-unsafe         |     54 |   2 |    0 |    144 files changed, 2042 insertions(+), 1449 deletions(-) |
+| optuna             | infer-basedpyright |     54 |   2 |    0 |    164 files changed, 2383 insertions(+), 1726 deletions(-) |
+| optuna             | infer-pyrefly      |     56 |   4 |    0 |    147 files changed, 2337 insertions(+), 1689 deletions(-) |
+| optuna             | infer-trace        |     54 |   2 |    0 |    144 files changed, 2042 insertions(+), 1449 deletions(-) |
+| optuna             | infer-ty           |     57 |   5 |    0 |    162 files changed, 2394 insertions(+), 1726 deletions(-) |
 | mypy               | released           |      0 |     |      |                                                             |
-| mypy               | fix-certain        |      0 |   0 |    0 |    160 files changed, 5397 insertions(+), 3337 deletions(-) |
-| mypy               | fix-likely         |     14 |  14 |    0 |    166 files changed, 6636 insertions(+), 4415 deletions(-) |
-| mypy               | fix-unsafe         |     14 |  14 |    0 |    167 files changed, 7052 insertions(+), 4764 deletions(-) |
-| mypy               | infer-basedpyright |     20 |  20 |    0 |    170 files changed, 8788 insertions(+), 6312 deletions(-) |
-| mypy               | infer-pyrefly      |     20 |  20 |    0 |    170 files changed, 9328 insertions(+), 6467 deletions(-) |
-| mypy               | infer-trace        |     14 |  14 |    0 |    167 files changed, 7052 insertions(+), 4764 deletions(-) |
-| mypy               | infer-ty           |     26 |  26 |    0 |    170 files changed, 9095 insertions(+), 6485 deletions(-) |
+| mypy               | fix-certain        |      0 |   0 |    0 |    160 files changed, 5400 insertions(+), 3339 deletions(-) |
+| mypy               | fix-likely         |     14 |  14 |    0 |    166 files changed, 6639 insertions(+), 4417 deletions(-) |
+| mypy               | fix-unsafe         |     14 |  14 |    0 |    167 files changed, 7057 insertions(+), 4768 deletions(-) |
+| mypy               | infer-basedpyright |     20 |  20 |    0 |    170 files changed, 8789 insertions(+), 6312 deletions(-) |
+| mypy               | infer-pyrefly      |     20 |  20 |    0 |    170 files changed, 9329 insertions(+), 6467 deletions(-) |
+| mypy               | infer-trace        |     14 |  14 |    0 |    167 files changed, 7057 insertions(+), 4768 deletions(-) |
+| mypy               | infer-ty           |     26 |  26 |    0 |    170 files changed, 9096 insertions(+), 6485 deletions(-) |
 
 Each step's process tree: its seconds, its CPU seconds and the CPUs they kept busy, the most memory
 it held at once, and what it was given (`sizing`):
 
 | corpus             | step                     | seconds | CPU seconds | CPUs | GB held | CPUs given | GB given | alone |
 | ------------------ | ------------------------ | ------: | ----------: | ---: | ------: | ---------: | -------: | ----: |
-| standard library   | check                    |    46.5 |       109.4 |  2.4 |    3.65 |          3 |     4.56 | False |
-| standard library   | fix-certain              |   121.4 |       306.9 |  2.5 |    4.86 |          3 |     6.07 | False |
-| standard library   | fix-likely               |   149.4 |       387.5 |  2.6 |    6.86 |          3 |     8.57 | False |
-| standard library   | fix-unsafe               |   140.6 |       372.5 |  2.6 |    6.81 |          3 |     8.51 | False |
-| standard library   | infer-basedpyright       |   203.0 |       436.2 |  2.1 |    6.81 |          2 |     5.67 | False |
-| standard library   | infer-ty                 |   170.7 |       421.3 |  2.5 |    8.24 |          1 |     4.15 | False |
-| standard library   | infer-pyrefly            |   174.9 |       434.7 |  2.5 |    9.39 |          2 |    10.46 | False |
-| standard library   | census                   |    29.4 |        28.6 |  1.0 |    0.53 |          3 |     4.56 | False |
-| standard library   | coverage                 |    10.0 |        36.0 |  3.6 |    0.75 |          4 |     0.94 | False |
-| standard library   | timing                   |   166.7 |       212.4 |  1.3 |    3.61 |          2 |      4.5 | False |
-| django             | check                    |     4.4 |         0.3 |  0.1 |    0.06 |          3 |     1.19 | False |
-| django             | fix-certain              |    33.7 |        60.8 |  1.8 |    1.23 |          2 |     1.55 | False |
-| django             | fix-likely               |    37.3 |        70.7 |  1.9 |    1.63 |          2 |     2.01 | False |
-| django             | fix-unsafe               |    59.9 |        73.8 |  1.2 |    1.53 |          3 |     1.95 | False |
-| django             | infer-basedpyright       |    50.1 |        83.4 |  1.7 |    1.76 |          1 |      1.1 | False |
-| django             | infer-ty                 |    48.5 |        79.9 |  1.6 |     1.7 |          1 |     0.71 | False |
-| django             | infer-pyrefly            |    54.9 |        86.8 |  1.6 |    1.77 |          1 |     2.25 | False |
-| django             | census                   |    11.8 |        24.8 |  2.1 |    0.95 |          3 |     1.19 | False |
-| django             | coverage                 |     2.4 |         6.1 |  2.5 |    0.33 |          3 |     0.41 | False |
-| django             | timing                   |    27.6 |        41.0 |  1.5 |    0.95 |          2 |     1.19 | False |
-| django             | traced                   |   105.8 |       608.1 |  5.7 |    7.35 |          8 |     9.19 | False |
-| django             | tests-released           |    67.5 |       428.1 |  6.3 |    5.44 |          8 |     7.62 | False |
-| django             | tests-fix-certain        |    51.8 |       322.4 |  6.2 |    3.85 |          8 |     4.12 | False |
-| django             | tests-fix-likely         |    41.5 |       408.6 |  9.8 |     5.4 |          9 |     7.67 | False |
-| django             | tests-fix-unsafe         |    45.7 |       418.1 |  9.1 |    5.38 |          9 |     7.55 | False |
-| django             | tests-infer-basedpyright |    60.5 |       438.1 |  7.2 |    4.85 |          8 |     6.13 | False |
-| django             | tests-infer-ty           |    53.9 |       435.5 |  8.1 |    5.44 |          8 |     8.49 | False |
-| django             | tests-infer-pyrefly      |    65.9 |       433.6 |  6.6 |     4.0 |          8 |     4.61 | False |
-| django             | tests-infer-trace        |    63.7 |       458.2 |  7.2 |    4.94 |          9 |     5.41 | False |
-| django             | infer-union              |    68.5 |       286.6 |  4.2 |    5.06 |          4 |     6.32 | False |
-| django             | tests-infer-union        |    61.3 |       430.2 |  7.0 |     4.7 |          8 |     5.68 | False |
-| django             | tests                    |     1.0 |         0.8 |  0.8 |    0.28 |          1 |     0.35 | False |
-| sqlalchemy         | check                    |     7.6 |         0.4 |  0.1 |    0.06 |          2 |     1.07 | False |
-| sqlalchemy         | fix-certain              |    29.8 |        50.7 |  1.7 |    0.99 |          2 |     1.24 | False |
-| sqlalchemy         | fix-likely               |    36.0 |        67.1 |  1.9 |    1.31 |          2 |     1.62 | False |
-| sqlalchemy         | fix-unsafe               |    40.9 |        64.7 |  1.6 |    1.25 |          2 |     1.56 | False |
-| sqlalchemy         | infer-basedpyright       |    50.2 |        70.0 |  1.4 |    1.29 |          1 |     2.38 | False |
-| sqlalchemy         | infer-ty                 |    43.9 |        68.8 |  1.6 |    1.29 |          1 |     1.95 | False |
-| sqlalchemy         | infer-pyrefly            |    43.2 |        68.2 |  1.6 |    1.32 |          1 |     1.94 | False |
-| sqlalchemy         | census                   |    12.8 |        22.1 |  1.7 |    0.86 |          2 |     1.07 | False |
-| sqlalchemy         | coverage                 |     1.9 |         5.1 |  2.7 |    0.36 |          4 |     0.45 | False |
-| sqlalchemy         | timing                   |    19.7 |        27.7 |  1.4 |    0.87 |          2 |     1.09 | False |
-| sqlalchemy         | traced                   |   144.6 |       966.6 |  6.7 |    5.05 |          8 |     6.35 | False |
-| sqlalchemy         | tests-released           |   106.1 |      1002.5 |  9.4 |    5.86 |          9 |     7.68 | False |
-| sqlalchemy         | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     8.11 | False |
+| standard library   | check                    |    61.8 |       128.9 |  2.1 |    3.62 |          3 |     4.56 | False |
+| standard library   | fix-certain              |   148.1 |       349.7 |  2.4 |    4.96 |          3 |     6.07 | False |
+| standard library   | fix-likely               |   124.1 |       330.2 |  2.7 |    6.88 |          3 |     8.57 | False |
+| standard library   | fix-unsafe               |   243.5 |       462.6 |  1.9 |    6.83 |          3 |     8.51 | False |
+| standard library   | infer-basedpyright       |   652.1 |      1101.5 |  1.7 |   14.23 |          2 |     5.67 | False |
+| standard library   | infer-ty                 |   222.3 |       571.2 |  2.6 |    9.95 |          3 |     10.3 | False |
+| standard library   | infer-pyrefly            |   226.3 |       607.6 |  2.7 |   12.55 |          3 |    11.74 | False |
+| standard library   | census                   |    23.0 |        22.8 |  1.0 |    0.54 |          3 |     4.56 | False |
+| standard library   | coverage                 |    10.2 |        34.3 |  3.4 |    0.76 |          4 |     0.94 | False |
+| standard library   | timing                   |   205.2 |       250.1 |  1.2 |    3.62 |          2 |     4.51 | False |
+| django             | check                    |    18.2 |        28.6 |  1.6 |    1.06 |          3 |     1.19 | False |
+| django             | fix-certain              |    51.3 |        73.0 |  1.4 |    1.38 |          2 |     1.54 | False |
+| django             | fix-likely               |    50.3 |        82.1 |  1.6 |    1.77 |          2 |     2.04 | False |
+| django             | fix-unsafe               |    48.5 |        81.0 |  1.7 |    1.67 |          2 |     1.91 | False |
+| django             | infer-basedpyright       |    99.7 |       268.1 |  2.7 |    4.73 |          1 |      1.1 | False |
+| django             | infer-ty                 |    62.6 |       117.2 |  1.9 |    3.34 |          1 |     1.06 | False |
+| django             | infer-pyrefly            |    60.0 |       120.4 |  2.0 |    3.71 |          1 |     1.11 | False |
+| django             | census                   |     2.8 |         2.7 |  1.0 |     0.1 |          3 |     1.19 | False |
+| django             | coverage                 |     2.0 |         5.3 |  2.6 |    0.33 |          3 |     0.41 | False |
+| django             | timing                   |    30.6 |        44.9 |  1.5 |    1.06 |          2 |     1.19 | False |
+| django             | traced                   |    97.3 |       590.8 |  6.1 |    7.31 |          8 |     9.19 | False |
+| django             | tests-released           |    70.4 |       488.0 |  6.9 |    5.49 |          8 |      6.8 | False |
+| django             | tests-fix-certain        |     0.2 |         0.2 |  1.0 |    0.05 |          8 |     8.56 | False |
+| django             | tests-fix-likely         |    40.4 |       411.5 | 10.2 |    5.46 |         13 |     6.75 | False |
+| django             | tests-fix-unsafe         |    60.6 |       400.7 |  6.6 |    4.07 |          8 |     4.48 | False |
+| django             | tests-infer-basedpyright |    46.6 |       377.0 |  8.1 |    4.75 |          8 |     6.47 | False |
+| django             | tests-infer-ty           |    40.8 |       412.5 | 10.1 |    5.45 |         11 |      6.8 | False |
+| django             | tests-infer-pyrefly      |    53.2 |       439.4 |  8.3 |    4.97 |          8 |     7.11 | False |
+| django             | tests-infer-trace        |    64.6 |       457.8 |  7.1 |    5.14 |          8 |     7.32 | False |
+| django             | infer-union              |    98.2 |       356.9 |  3.6 |    5.08 |          5 |     6.32 | False |
+| django             | tests-infer-union        |    61.4 |       463.5 |  7.5 |     5.3 |          8 |     6.96 | False |
+| django             | tests                    |     0.8 |         0.7 |  0.9 |    0.16 |          1 |     0.35 | False |
+| sqlalchemy         | check                    |    15.6 |        23.0 |  1.5 |    0.88 |          2 |     1.07 | False |
+| sqlalchemy         | fix-certain              |    33.3 |        58.8 |  1.8 |     1.0 |          2 |     1.24 | False |
+| sqlalchemy         | fix-likely               |    49.0 |        83.0 |  1.7 |    1.32 |          2 |     1.64 | False |
+| sqlalchemy         | fix-unsafe               |    32.4 |        65.7 |  2.0 |    1.22 |          2 |     1.56 | False |
+| sqlalchemy         | infer-basedpyright       |   110.3 |       232.3 |  2.1 |    4.25 |          1 |     0.81 | False |
+| sqlalchemy         | infer-ty                 |    50.6 |        99.4 |  2.0 |    3.15 |          1 |     0.81 | False |
+| sqlalchemy         | infer-pyrefly            |    53.1 |       109.6 |  2.1 |    3.63 |          1 |     0.82 | False |
+| sqlalchemy         | census                   |     4.4 |         3.9 |  0.9 |    0.09 |          2 |     1.07 | False |
+| sqlalchemy         | coverage                 |     2.0 |         5.9 |  3.0 |    0.37 |          3 |     0.45 | False |
+| sqlalchemy         | timing                   |    28.2 |        37.7 |  1.3 |    0.87 |          2 |     1.09 | False |
+| sqlalchemy         | traced                   |   171.0 |      1310.2 |  7.7 |    6.39 |          9 |     8.42 | False |
+| sqlalchemy         | tests-released           |    96.5 |       628.6 |  6.5 |    3.97 |          8 |     4.88 | False |
+| sqlalchemy         | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     8.11 | False |
 | sqlalchemy         | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     4.82 | False |
-| sqlalchemy         | tests-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          2 |     0.27 | False |
-| sqlalchemy         | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.78 | False |
-| sqlalchemy         | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          9 |     6.55 | False |
-| sqlalchemy         | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     4.82 | False |
-| sqlalchemy         | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          9 |     5.92 | False |
-| sqlalchemy         | infer-union              |    75.0 |       285.6 |  3.8 |    5.09 |          2 |      3.5 | False |
-| sqlalchemy         | tests-infer-union        |   124.8 |      1023.8 |  8.2 |    5.76 |          9 |     7.63 | False |
-| sqlalchemy         | tests                    |     1.8 |         1.6 |  0.9 |    0.28 |          2 |     0.34 | False |
-| sqlalchemy         | types-released           |    25.1 |         7.1 |  0.3 |    0.32 |          1 |      0.4 | False |
-| sqlalchemy         | types-fix-certain        |     0.4 |         0.3 |  0.7 |    0.04 |          1 |      0.4 | False |
-| sqlalchemy         | types-fix-likely         |     6.8 |         6.3 |  0.9 |    0.32 |          1 |      0.4 | False |
-| sqlalchemy         | types-fix-unsafe         |     7.6 |         6.6 |  0.9 |     0.3 |          1 |     0.39 | False |
-| sqlalchemy         | types-infer-basedpyright |     6.8 |         6.0 |  0.9 |    0.33 |          1 |      0.4 | False |
-| sqlalchemy         | types-infer-ty           |     8.6 |         7.0 |  0.8 |    0.32 |          1 |     0.44 | False |
-| sqlalchemy         | types-infer-pyrefly      |     9.8 |         6.9 |  0.7 |    0.32 |          1 |     0.39 | False |
-| sqlalchemy         | types-infer-trace        |     7.0 |         6.6 |  0.9 |    0.32 |          1 |     0.41 | False |
-| sqlalchemy         | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
-| pydantic           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          3 |     0.37 | False |
-| pydantic           | fix-certain              |     5.2 |        11.7 |  2.2 |     0.4 |          3 |      0.5 | False |
-| pydantic           | fix-likely               |     5.0 |        12.6 |  2.5 |    0.49 |          3 |     0.61 | False |
-| pydantic           | fix-unsafe               |     9.7 |        16.4 |  1.7 |    0.56 |          2 |      0.7 | False |
-| pydantic           | infer-basedpyright       |     9.0 |        16.4 |  1.8 |    0.49 |          1 |     0.31 | False |
-| pydantic           | infer-ty                 |    11.6 |        17.1 |  1.5 |    0.49 |          1 |     0.78 | False |
-| pydantic           | infer-pyrefly            |     9.2 |        16.9 |  1.8 |    0.49 |          1 |     0.72 | False |
-| pydantic           | census                   |     3.2 |         5.2 |  1.6 |     0.3 |          3 |     0.37 | False |
-| pydantic           | coverage                 |     1.4 |         2.1 |  1.5 |    0.21 |          2 |     0.26 | False |
-| pydantic           | timing                   |     5.4 |         6.9 |  1.3 |     0.3 |          2 |     0.37 | False |
-| pydantic           | traced                   |    78.2 |        61.1 |  0.8 |    0.49 |          1 |     0.65 | False |
+| sqlalchemy         | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.27 | False |
+| sqlalchemy         | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |         10 |     7.22 | False |
+| sqlalchemy         | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.82 | False |
+| sqlalchemy         | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     4.82 | False |
+| sqlalchemy         | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.26 | False |
+| sqlalchemy         | infer-union              |   145.8 |       333.7 |  2.3 |    3.58 |          2 |     3.18 | False |
+| sqlalchemy         | tests-infer-union        |   102.5 |       843.4 |  8.2 |    4.88 |          9 |     5.89 | False |
+| sqlalchemy         | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          2 |     0.35 | False |
+| sqlalchemy         | types-released           |     8.4 |         6.4 |  0.8 |    0.32 |          1 |      0.4 | False |
+| sqlalchemy         | types-fix-certain        |     8.0 |         7.1 |  0.9 |    0.33 |          1 |      0.4 | False |
+| sqlalchemy         | types-fix-likely         |     7.2 |         6.8 |  0.9 |    0.31 |          1 |      0.4 | False |
+| sqlalchemy         | types-fix-unsafe         |     8.4 |         7.3 |  0.9 |     0.3 |          1 |     0.37 | False |
+| sqlalchemy         | types-infer-basedpyright |     8.8 |         7.7 |  0.9 |    0.31 |          1 |     0.41 | False |
+| sqlalchemy         | types-infer-ty           |     8.8 |         6.8 |  0.8 |    0.33 |          1 |      0.4 | False |
+| sqlalchemy         | types-infer-pyrefly      |     7.4 |         6.7 |  0.9 |    0.31 |          1 |      0.4 | False |
+| sqlalchemy         | types-infer-trace        |     8.0 |         7.4 |  0.9 |    0.32 |          1 |      0.4 | False |
+| sqlalchemy         | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| pydantic           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.37 | False |
+| pydantic           | fix-certain              |     7.0 |        14.0 |  2.0 |    0.42 |          3 |      0.5 | False |
+| pydantic           | fix-likely               |     7.2 |        15.5 |  2.2 |    0.49 |          3 |     0.61 | False |
+| pydantic           | fix-unsafe               |     8.0 |        15.5 |  1.9 |    0.44 |          2 |      0.7 | False |
+| pydantic           | infer-basedpyright       |    67.1 |       116.2 |  1.7 |     2.3 |          1 |     0.31 | False |
+| pydantic           | infer-ty                 |    14.2 |        26.1 |  1.8 |     1.4 |          1 |     0.31 | False |
+| pydantic           | infer-pyrefly            |    17.6 |        46.8 |  2.7 |    2.19 |          1 |     0.31 | False |
+| pydantic           | census                   |     5.2 |         5.8 |  1.1 |    0.31 |          2 |     0.37 | False |
+| pydantic           | coverage                 |     1.0 |         2.0 |  2.0 |    0.22 |          2 |     0.26 | False |
+| pydantic           | timing                   |     5.8 |         7.8 |  1.3 |    0.31 |          2 |     0.37 | False |
+| pydantic           | traced                   |   133.1 |        73.8 |  0.6 |    0.54 |          1 |     0.61 | False |
 | pydantic           | tests-released           |    69.1 |        44.1 |  0.6 |    0.29 |          1 |      0.4 | False |
-| pydantic           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.35 | False |
-| pydantic           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.4 | False |
-| pydantic           | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.35 | False |
-| pydantic           | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.35 | False |
-| pydantic           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.35 | False |
-| pydantic           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.37 | False |
-| pydantic           | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.4 | False |
-| pydantic           | infer-union              |     9.1 |        17.6 |  1.9 |     0.5 |          1 |     0.31 | False |
-| pydantic           | tests-infer-union        |    56.0 |        37.3 |  0.7 |    0.32 |          1 |      0.4 | False |
-| pydantic           | tests                    |     1.6 |         1.3 |  0.8 |    0.28 |          1 |     0.35 | False |
-| pydantic           | types-released           |    15.0 |        17.8 |  1.2 |    0.53 |          2 |     0.67 | False |
-| pydantic           | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.67 | False |
-| pydantic           | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.66 | False |
-| pydantic           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.67 | False |
-| pydantic           | types-infer-basedpyright |    14.0 |        18.8 |  1.3 |    0.53 |          2 |     0.67 | False |
-| pydantic           | types-infer-ty           |    10.6 |        15.3 |  1.4 |    0.53 |          2 |     0.67 | False |
-| pydantic           | types-infer-pyrefly      |     9.6 |        14.6 |  1.5 |    0.54 |          2 |     0.67 | False |
-| pydantic           | types-infer-trace        |    21.1 |        20.0 |  0.9 |    0.54 |          1 |     0.67 | False |
-| pydantic           | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| pandas             | check                    |    15.5 |         0.8 |  0.1 |     0.2 |          3 |      4.4 | False |
-| pandas             | fix-certain              |   107.2 |       291.1 |  2.7 |    4.19 |          3 |     5.21 | False |
-| pandas             | fix-likely               |   223.2 |       495.7 |  2.2 |    6.69 |          2 |     8.44 | False |
-| pandas             | fix-unsafe               |   243.8 |       500.8 |  2.1 |    6.66 |          2 |     8.24 | False |
-| pandas             | infer-basedpyright       |   167.0 |       418.7 |  2.5 |    5.97 |          2 |     4.98 | False |
-| pandas             | infer-ty                 |   176.3 |       423.3 |  2.4 |     6.2 |          1 |     3.69 | False |
-| pandas             | infer-pyrefly            |   175.6 |       433.8 |  2.5 |    6.26 |          2 |     5.21 | False |
-| pandas             | census                   |    52.3 |       127.3 |  2.4 |    3.52 |          3 |      4.4 | False |
-| pandas             | coverage                 |    10.7 |        24.9 |  2.3 |    0.79 |          4 |     0.99 | False |
-| pandas             | timing                   |   201.8 |       256.6 |  1.3 |    3.54 |          2 |     4.42 | False |
-| pandas             | traced                   |   267.2 |      1380.4 |  5.2 |   14.23 |          7 |    17.74 | False |
+| pydantic           | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-infer-basedpyright |     1.2 |         0.3 |  0.2 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pydantic           | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.37 | False |
+| pydantic           | infer-union              |    70.7 |       151.1 |  2.1 |    1.98 |          1 |     0.31 | False |
+| pydantic           | tests-infer-union        |    62.6 |        44.0 |  0.7 |    0.33 |          1 |      0.4 | False |
+| pydantic           | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          1 |     0.35 | False |
+| pydantic           | types-released           |    19.2 |        19.1 |  1.0 |    0.55 |          2 |     0.66 | False |
+| pydantic           | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.67 | False |
+| pydantic           | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.67 | False |
+| pydantic           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.66 | False |
+| pydantic           | types-infer-basedpyright |    13.4 |        18.9 |  1.4 |    0.56 |          2 |     0.66 | False |
+| pydantic           | types-infer-ty           |    29.2 |        22.6 |  0.8 |    0.55 |          2 |     0.66 | False |
+| pydantic           | types-infer-pyrefly      |    11.2 |        16.7 |  1.5 |    0.54 |          2 |     0.67 | False |
+| pydantic           | types-infer-trace        |    26.4 |        21.8 |  0.8 |    0.53 |          1 |     0.67 | False |
+| pydantic           | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
+| pandas             | check                    |    61.4 |       159.1 |  2.6 |    3.62 |          3 |      4.4 | False |
+| pandas             | fix-certain              |   146.6 |       367.4 |  2.5 |    4.26 |          3 |     5.24 | False |
+| pandas             | fix-likely               |   246.7 |       634.3 |  2.6 |     6.8 |          3 |     8.36 | False |
+| pandas             | fix-unsafe               |   234.0 |       625.3 |  2.7 |     6.7 |          3 |     8.32 | False |
+| pandas             | infer-basedpyright       |   500.3 |      1072.1 |  2.1 |   12.04 |          3 |     7.46 | False |
+| pandas             | infer-ty                 |   324.6 |       737.5 |  2.3 |    9.41 |          2 |     5.17 | False |
+| pandas             | infer-pyrefly            |   244.2 |       646.9 |  2.6 |    13.9 |          2 |     5.22 | False |
+| pandas             | census                   |    13.8 |        13.7 |  1.0 |    0.34 |          3 |      4.4 | False |
+| pandas             | coverage                 |     7.6 |        24.5 |  3.2 |    0.79 |          3 |     0.99 | False |
+| pandas             | timing                   |   171.1 |       260.8 |  1.5 |    3.62 |          2 |     4.42 | False |
+| pandas             | traced                   |   297.1 |      1439.9 |  4.8 |   14.24 |          7 |    17.79 | False |
 | pandas             | tests-released           |   111.0 |       673.0 |  6.1 |   11.49 |          9 |    14.08 | False |
-| pandas             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |    16.96 | False |
-| pandas             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |    16.93 | False |
-| pandas             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     17.0 | False |
-| pandas             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |    16.22 | False |
-| pandas             | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          9 |    16.19 | False |
-| pandas             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          9 |    16.27 | False |
-| pandas             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     17.8 | False |
-| pandas             | infer-union              |   160.5 |       450.4 |  2.8 |    6.55 |          3 |     8.19 | False |
-| pandas             | tests-infer-union        |   116.1 |       742.1 |  6.4 |   12.98 |          8 |    16.32 | False |
-| pandas             | tests                    |     1.6 |         1.3 |  0.8 |    0.28 |          2 |     0.35 | False |
-| pandas             | types-released           |    70.8 |        99.7 |  1.4 |    2.11 |          2 |     2.57 | False |
-| pandas             | types-fix-certain        |    52.4 |        80.4 |  1.5 |    2.34 |          2 |     2.84 | False |
-| pandas             | types-fix-likely         |    68.3 |       101.1 |  1.5 |     2.3 |          2 |     2.99 | False |
-| pandas             | types-fix-unsafe         |    58.9 |        95.8 |  1.6 |    2.24 |          2 |     2.81 | False |
-| pandas             | types-infer-basedpyright |    91.7 |       111.1 |  1.2 |    2.11 |          2 |     2.71 | False |
-| pandas             | types-infer-ty           |    80.1 |       102.6 |  1.3 |    2.27 |          2 |     2.84 | False |
-| pandas             | types-infer-pyrefly      |    97.0 |       113.3 |  1.2 |    2.21 |          2 |     2.74 | False |
-| pandas             | types-infer-trace        |    60.5 |        95.0 |  1.6 |    2.27 |          2 |     2.79 | False |
+| pandas             | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |    12.93 | False |
+| pandas             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |    13.33 | False |
+| pandas             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |    13.26 | False |
+| pandas             | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          8 |    13.26 | False |
+| pandas             | tests-infer-ty           |     0.2 |         0.2 |  1.0 |    0.03 |          8 |    13.26 | False |
+| pandas             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |    13.26 | False |
+| pandas             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |    14.47 | False |
+| pandas             | infer-union              |   740.9 |      2085.7 |  2.8 |   11.53 |          3 |     8.19 | False |
+| pandas             | tests-infer-union        |   129.0 |       753.8 |  5.8 |   13.02 |          8 |    16.22 | False |
+| pandas             | tests                    |     1.4 |         1.2 |  0.9 |    0.15 |          2 |     0.35 | False |
+| pandas             | types-released           |   138.2 |       117.8 |  0.9 |    1.96 |          2 |     2.64 | False |
+| pandas             | types-fix-certain        |    68.1 |       100.3 |  1.5 |    2.27 |          2 |     2.92 | False |
+| pandas             | types-fix-likely         |    71.6 |       105.2 |  1.5 |    2.18 |          2 |     2.87 | False |
+| pandas             | types-fix-unsafe         |    67.8 |        99.5 |  1.5 |    2.23 |          2 |      2.8 | False |
+| pandas             | types-infer-basedpyright |   127.3 |       127.7 |  1.0 |    2.16 |          2 |     2.64 | False |
+| pandas             | types-infer-ty           |    99.2 |       115.0 |  1.2 |     2.3 |          2 |     2.84 | False |
+| pandas             | types-infer-pyrefly      |   111.5 |       123.1 |  1.1 |    2.24 |          2 |     2.76 | False |
+| pandas             | types-infer-trace        |    62.2 |        96.1 |  1.5 |    2.21 |          2 |     2.84 | False |
 | pandas             | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| twisted            | check                    |     5.9 |        14.9 |  2.5 |    0.81 |          3 |     1.02 | False |
-| twisted            | fix-certain              |    14.6 |        39.2 |  2.7 |    0.94 |          3 |     1.17 | False |
-| twisted            | fix-likely               |    21.4 |        56.7 |  2.6 |    1.27 |          3 |     1.59 | False |
-| twisted            | fix-unsafe               |    16.5 |        46.2 |  2.8 |    1.21 |          3 |     1.51 | False |
-| twisted            | infer-basedpyright       |    34.1 |        64.8 |  1.9 |    1.34 |          1 |     0.84 | False |
-| twisted            | infer-ty                 |    33.7 |        63.1 |  1.9 |     1.3 |          1 |     1.07 | False |
-| twisted            | infer-pyrefly            |    33.2 |        62.2 |  1.9 |    1.29 |          1 |     1.35 | False |
-| twisted            | census                   |     3.4 |         3.3 |  1.0 |    0.11 |          3 |     1.02 | False |
-| twisted            | coverage                 |     1.8 |         5.1 |  2.8 |    0.36 |          3 |     0.45 | False |
-| twisted            | timing                   |    22.9 |        30.3 |  1.3 |    0.81 |          2 |     1.01 | False |
-| pip                | check                    |     3.6 |         9.3 |  2.6 |    0.56 |          2 |      0.7 | False |
-| pip                | fix-certain              |     9.8 |        26.4 |  2.7 |    0.72 |          3 |      0.9 | False |
-| pip                | fix-likely               |    14.4 |        35.1 |  2.4 |    0.91 |          3 |     1.17 | False |
-| pip                | fix-unsafe               |    10.4 |        28.8 |  2.8 |    0.86 |          3 |     1.07 | False |
-| pip                | infer-basedpyright       |    30.8 |        56.0 |  1.8 |    0.93 |          2 |     1.16 | False |
-| pip                | infer-ty                 |    34.7 |        50.0 |  1.4 |     0.9 |          1 |     0.56 | False |
-| pip                | infer-pyrefly            |    17.5 |        39.5 |  2.3 |    0.93 |          2 |     1.79 | False |
-| pip                | census                   |     4.6 |         2.3 |  0.5 |     0.1 |          2 |      0.7 | False |
-| pip                | coverage                 |     1.8 |         4.6 |  2.6 |     0.3 |          3 |     0.37 | False |
-| pip                | timing                   |    12.8 |        19.7 |  1.5 |    0.56 |          2 |     0.69 | False |
-| structlog          | check                    |     0.6 |         0.7 |  1.2 |    0.17 |          2 |     0.21 | False |
-| structlog          | fix-certain              |     1.6 |         2.5 |  1.6 |    0.22 |          2 |     0.32 | False |
-| structlog          | fix-likely               |     1.4 |         2.4 |  1.7 |    0.25 |          2 |     0.31 | False |
-| structlog          | fix-unsafe               |     1.6 |         2.8 |  1.7 |    0.25 |          2 |     0.31 | False |
-| structlog          | infer-basedpyright       |     4.2 |         4.0 |  1.0 |    0.25 |          1 |     0.13 | False |
-| structlog          | infer-ty                 |     3.0 |         3.4 |  1.1 |    0.26 |          1 |     0.16 | False |
-| structlog          | infer-pyrefly            |     3.4 |         3.4 |  1.0 |    0.26 |          1 |     0.16 | False |
-| structlog          | census                   |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.21 | False |
-| structlog          | coverage                 |     1.8 |         0.8 |  0.4 |    0.15 |          1 |     0.19 | False |
-| structlog          | timing                   |     1.8 |         1.5 |  0.8 |    0.17 |          1 |     0.21 | False |
-| structlog          | traced                   |     2.8 |         3.9 |  1.4 |    0.25 |          1 |     0.32 | False |
+| twisted            | check                    |     7.1 |        17.1 |  2.4 |    0.81 |          3 |     1.01 | False |
+| twisted            | fix-certain              |    12.8 |        38.3 |  3.0 |    0.95 |          3 |     1.17 | False |
+| twisted            | fix-likely               |    19.2 |        55.7 |  2.9 |    1.28 |          3 |     1.59 | False |
+| twisted            | fix-unsafe               |    26.9 |        58.4 |  2.2 |    1.22 |          3 |     1.51 | False |
+| twisted            | infer-basedpyright       |    37.6 |        71.4 |  1.9 |    1.35 |          1 |     0.84 | False |
+| twisted            | infer-ty                 |    37.0 |        67.5 |  1.8 |    1.31 |          1 |     0.81 | False |
+| twisted            | infer-pyrefly            |    30.6 |        63.5 |  2.1 |     1.3 |          1 |     0.81 | False |
+| twisted            | census                   |     3.4 |         3.1 |  0.9 |    0.12 |          3 |     1.01 | False |
+| twisted            | coverage                 |     1.8 |         5.4 |  3.0 |    0.37 |          3 |     0.45 | False |
+| twisted            | timing                   |    19.6 |        29.7 |  1.5 |    0.81 |          2 |     1.01 | False |
+| pip                | check                    |     4.7 |        11.6 |  2.5 |    0.62 |          3 |      0.7 | False |
+| pip                | fix-certain              |    15.9 |        32.7 |  2.1 |    0.77 |          3 |      0.9 | False |
+| pip                | fix-likely               |    13.8 |        37.3 |  2.7 |    0.99 |          3 |     1.14 | False |
+| pip                | fix-unsafe               |    11.2 |        31.3 |  2.8 |    0.93 |          3 |     1.07 | False |
+| pip                | infer-basedpyright       |    71.5 |       174.4 |  2.4 |    3.36 |          1 |     0.58 | False |
+| pip                | infer-ty                 |    24.5 |        64.0 |  2.6 |    1.89 |          2 |     1.12 | False |
+| pip                | infer-pyrefly            |    28.9 |        74.4 |  2.6 |    3.07 |          1 |     0.39 | False |
+| pip                | census                   |     2.4 |         2.2 |  0.9 |     0.1 |          3 |      0.7 | False |
+| pip                | coverage                 |     1.2 |         2.9 |  2.4 |    0.31 |          3 |     0.37 | False |
+| pip                | timing                   |    14.0 |        20.6 |  1.5 |    0.62 |          2 |      0.7 | False |
+| structlog          | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.21 | False |
+| structlog          | fix-certain              |     2.0 |         2.9 |  1.4 |    0.26 |          2 |     0.27 | False |
+| structlog          | fix-likely               |     2.0 |         3.1 |  1.6 |    0.26 |          2 |     0.31 | False |
+| structlog          | fix-unsafe               |     5.0 |         3.6 |  0.7 |    0.27 |          2 |     0.31 | False |
+| structlog          | infer-basedpyright       |     4.6 |         4.2 |  0.9 |    0.26 |          1 |     0.31 | False |
+| structlog          | infer-ty                 |     2.0 |         3.3 |  1.6 |    0.26 |          1 |     0.16 | False |
+| structlog          | infer-pyrefly            |     3.4 |         3.7 |  1.1 |    0.24 |          1 |     0.32 | False |
+| structlog          | census                   |     1.0 |         1.0 |  1.0 |    0.17 |          2 |     0.21 | False |
+| structlog          | coverage                 |     1.2 |         0.9 |  0.8 |    0.15 |          1 |     0.19 | False |
+| structlog          | timing                   |     3.0 |         2.0 |  0.7 |    0.17 |          1 |     0.21 | False |
+| structlog          | traced                   |    11.4 |         7.1 |  0.6 |    0.26 |          1 |     0.31 | False |
 | structlog          | tests-released           |     3.6 |         2.0 |  0.6 |    0.08 |          1 |      0.1 | False |
-| structlog          | tests-fix-certain        |     0.3 |         0.1 |  0.3 |    0.03 |          1 |     0.09 | False |
-| structlog          | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.09 | False |
-| structlog          | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          1 |      0.1 | False |
-| structlog          | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | infer-union              |     2.2 |         3.7 |  1.7 |    0.25 |          1 |     0.16 | False |
-| structlog          | tests-infer-union        |     2.0 |         1.8 |  0.9 |    0.07 |          1 |      0.1 | False |
-| structlog          | tests                    |     2.0 |         1.5 |  0.8 |    0.28 |          1 |     0.35 | False |
-| structlog          | types-released           |     1.0 |         0.4 |  0.4 |    0.08 |          1 |      0.1 | False |
-| structlog          | types-fix-certain        |     0.3 |         0.1 |  0.3 |    0.03 |          1 |     0.09 | False |
-| structlog          | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.09 | False |
-| structlog          | types-infer-basedpyright |     0.6 |         0.4 |  0.7 |    0.08 |          1 |      0.1 | False |
-| structlog          | types-infer-ty           |     0.8 |         0.5 |  0.6 |    0.08 |          1 |     0.09 | False |
+| structlog          | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.1 | False |
+| structlog          | infer-union              |     6.0 |         4.7 |  0.8 |    0.25 |          1 |     0.16 | False |
+| structlog          | tests-infer-union        |     5.6 |         2.5 |  0.4 |    0.08 |          1 |     0.09 | False |
+| structlog          | tests                    |     1.6 |         1.5 |  0.9 |    0.15 |          1 |     0.35 | False |
+| structlog          | types-released           |     1.4 |         0.5 |  0.4 |    0.08 |          1 |      0.1 | False |
+| structlog          | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| structlog          | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.1 | False |
+| structlog          | types-infer-basedpyright |     1.0 |         0.5 |  0.5 |    0.08 |          1 |      0.1 | False |
+| structlog          | types-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
 | structlog          | types-infer-pyrefly      |     0.8 |         0.5 |  0.6 |    0.08 |          1 |      0.1 | False |
-| structlog          | types-infer-trace        |     0.4 |         0.1 |  0.2 |    0.03 |          1 |      0.1 | False |
-| structlog          | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
-| attrs              | check                    |     7.4 |         1.0 |  0.1 |    0.16 |          1 |      0.2 | False |
-| attrs              | fix-certain              |     6.8 |         2.6 |  0.4 |    0.26 |          1 |     0.36 | False |
-| attrs              | fix-likely               |     1.4 |         2.1 |  1.5 |    0.28 |          2 |     0.34 | False |
-| attrs              | fix-unsafe               |     5.9 |         2.9 |  0.5 |    0.28 |          1 |     0.34 | False |
-| attrs              | infer-basedpyright       |     3.0 |         3.2 |  1.1 |    0.21 |          1 |      0.3 | False |
-| attrs              | infer-ty                 |     2.8 |         3.1 |  1.1 |    0.27 |          1 |     0.16 | False |
-| attrs              | infer-pyrefly            |     4.2 |         3.5 |  0.8 |    0.28 |          1 |     0.17 | False |
-| attrs              | census                   |     0.8 |         0.3 |  0.4 |    0.04 |          1 |      0.2 | False |
-| attrs              | coverage                 |     1.6 |         0.8 |  0.5 |    0.15 |          1 |     0.19 | False |
-| attrs              | timing                   |     2.0 |         1.4 |  0.7 |    0.16 |          1 |      0.2 | False |
-| attrs              | traced                   |     6.8 |        24.5 |  3.6 |    0.74 |          6 |     0.94 | False |
+| structlog          | types-infer-trace        |     0.9 |         0.2 |  0.2 |    0.03 |          1 |      0.1 | False |
+| structlog          | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| attrs              | check                    |     1.8 |         1.1 |  0.6 |    0.16 |          1 |      0.2 | False |
+| attrs              | fix-certain              |     2.4 |         2.8 |  1.2 |    0.26 |          1 |     0.32 | False |
+| attrs              | fix-likely               |     2.0 |         2.7 |  1.4 |    0.26 |          2 |     0.35 | False |
+| attrs              | fix-unsafe               |     3.2 |         3.1 |  1.0 |    0.28 |          1 |     0.35 | False |
+| attrs              | infer-basedpyright       |    16.6 |        12.6 |  0.8 |    0.51 |          1 |     0.13 | False |
+| attrs              | infer-ty                 |     2.8 |         3.2 |  1.1 |    0.27 |          1 |     0.17 | False |
+| attrs              | infer-pyrefly            |     5.0 |         8.3 |  1.7 |    0.56 |          1 |     0.35 | False |
+| attrs              | census                   |     0.4 |         0.2 |  0.5 |    0.04 |          1 |      0.2 | False |
+| attrs              | coverage                 |     1.4 |         0.9 |  0.6 |    0.15 |          1 |     0.19 | False |
+| attrs              | timing                   |     2.2 |         1.6 |  0.7 |    0.16 |          1 |      0.2 | False |
+| attrs              | traced                   |     6.6 |        26.4 |  4.0 |    0.75 |          5 |     0.92 | False |
 | attrs              | tests-released           |     2.8 |        13.6 |  4.9 |     0.6 |          6 |     0.77 | False |
-| attrs              | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     0.75 | False |
-| attrs              | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          6 |     0.74 | False |
-| attrs              | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     0.75 | False |
-| attrs              | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          4 |     0.74 | False |
-| attrs              | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
-| attrs              | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     0.75 | False |
-| attrs              | tests-infer-trace        |     0.4 |         0.1 |  0.2 |    0.03 |          5 |     0.76 | False |
-| attrs              | infer-union              |     2.4 |         3.1 |  1.3 |    0.24 |          2 |     0.32 | False |
-| attrs              | tests-infer-union        |     3.8 |        17.0 |  4.5 |     0.6 |          6 |     0.77 | False |
-| attrs              | tests                    |     1.6 |         1.4 |  0.9 |    0.28 |          2 |     0.34 | False |
-| click              | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
-| click              | fix-certain              |     1.8 |         3.2 |  1.8 |    0.28 |          2 |     0.39 | False |
-| click              | fix-likely               |     2.6 |         4.0 |  1.5 |    0.29 |          2 |     0.37 | False |
-| click              | fix-unsafe               |     4.0 |         4.6 |  1.1 |    0.31 |          2 |     0.36 | False |
-| click              | infer-basedpyright       |     7.0 |         5.8 |  0.8 |    0.23 |          1 |     0.14 | False |
-| click              | infer-ty                 |     5.2 |         5.1 |  1.0 |    0.29 |          1 |     0.19 | False |
-| click              | infer-pyrefly            |     5.0 |         5.0 |  1.0 |    0.31 |          1 |      0.2 | False |
-| click              | census                   |     1.8 |         1.6 |  0.9 |    0.18 |          1 |     0.22 | False |
-| click              | coverage                 |     0.6 |         0.7 |  1.2 |    0.16 |          2 |      0.2 | False |
-| click              | timing                   |     2.2 |         2.1 |  1.0 |    0.18 |          2 |     0.22 | False |
-| click              | traced                   |    17.9 |        12.6 |  0.7 |    0.31 |          1 |      0.4 | False |
+| attrs              | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          5 |     0.76 | False |
+| attrs              | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          5 |     0.76 | False |
+| attrs              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     0.76 | False |
+| attrs              | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     0.74 | False |
+| attrs              | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
+| attrs              | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     0.75 | False |
+| attrs              | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     0.76 | False |
+| attrs              | infer-union              |    13.8 |        21.7 |  1.6 |    0.56 |          2 |      0.3 | False |
+| attrs              | tests-infer-union        |     5.6 |        18.1 |  3.2 |     0.6 |          6 |     0.75 | False |
+| attrs              | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          2 |     0.35 | False |
+| click              | check                    |     1.6 |         1.5 |  0.9 |    0.18 |          1 |     0.22 | False |
+| click              | fix-certain              |     2.0 |         3.6 |  1.8 |    0.31 |          2 |     0.35 | False |
+| click              | fix-likely               |     2.8 |         4.7 |  1.7 |    0.31 |          2 |     0.36 | False |
+| click              | fix-unsafe               |     4.0 |         5.0 |  1.2 |    0.31 |          2 |     0.39 | False |
+| click              | infer-basedpyright       |    10.8 |        15.3 |  1.4 |     0.6 |          1 |     0.29 | False |
+| click              | infer-ty                 |     5.4 |         6.3 |  1.2 |    0.44 |          1 |     0.36 | False |
+| click              | infer-pyrefly            |     4.2 |         9.5 |  2.3 |    0.61 |          1 |     0.39 | False |
+| click              | census                   |     0.8 |         0.4 |  0.5 |    0.04 |          1 |     0.22 | False |
+| click              | coverage                 |     0.8 |         0.9 |  1.1 |    0.17 |          2 |      0.2 | False |
+| click              | timing                   |     3.2 |         2.6 |  0.8 |    0.18 |          1 |     0.22 | False |
+| click              | traced                   |    14.0 |        12.9 |  0.9 |    0.31 |          1 |     0.39 | False |
 | click              | tests-released           |     8.6 |         6.2 |  0.7 |    0.17 |          1 |     0.21 | False |
 | click              | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
 | click              | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
-| click              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.2 | False |
-| click              | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.2 | False |
-| click              | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.2 | False |
-| click              | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.2 | False |
-| click              | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.21 | False |
-| click              | infer-union              |     9.1 |         6.3 |  0.7 |    0.25 |          1 |     0.34 | False |
-| click              | tests-infer-union        |    12.6 |         7.0 |  0.6 |    0.17 |          1 |     0.21 | False |
-| click              | tests                    |     2.3 |         1.9 |  0.8 |    0.28 |          1 |     0.35 | False |
-| click              | types-released           |     1.0 |         0.6 |  0.6 |     0.1 |          1 |     0.14 | False |
+| click              | tests-fix-unsafe         |     0.5 |         0.2 |  0.4 |    0.03 |          1 |     0.21 | False |
+| click              | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.21 | False |
+| click              | tests-infer-ty           |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.21 | False |
+| click              | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.21 | False |
+| click              | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
+| click              | infer-union              |    16.6 |        23.0 |  1.4 |     0.6 |          1 |     0.31 | False |
+| click              | tests-infer-union        |     8.2 |         6.2 |  0.8 |    0.17 |          1 |     0.21 | False |
+| click              | tests                    |     1.8 |         1.6 |  0.9 |    0.15 |          1 |     0.35 | False |
+| click              | types-released           |     2.8 |         0.8 |  0.3 |     0.1 |          1 |     0.12 | False |
 | click              | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
 | click              | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
 | click              | types-fix-unsafe         |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.12 | False |
-| click              | types-infer-basedpyright |     1.0 |         0.7 |  0.7 |     0.1 |          1 |     0.12 | False |
-| click              | types-infer-ty           |     1.0 |         0.7 |  0.7 |     0.1 |          1 |     0.12 | False |
-| click              | types-infer-pyrefly      |     0.8 |         0.5 |  0.6 |     0.1 |          1 |     0.12 | False |
-| click              | types-infer-trace        |     2.2 |         0.8 |  0.4 |     0.1 |          1 |     0.12 | False |
+| click              | types-infer-basedpyright |     1.2 |         0.7 |  0.6 |     0.1 |          1 |     0.12 | False |
+| click              | types-infer-ty           |     1.2 |         0.7 |  0.6 |     0.1 |          1 |     0.12 | False |
+| click              | types-infer-pyrefly      |     1.4 |         0.7 |  0.5 |     0.1 |          1 |     0.12 | False |
+| click              | types-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.12 | False |
 | click              | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
 | hypercorn          | check                    |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.22 | False |
-| hypercorn          | fix-certain              |     1.6 |         2.9 |  1.8 |    0.26 |          2 |     0.32 | False |
-| hypercorn          | fix-likely               |     1.4 |         2.9 |  2.1 |    0.26 |          2 |     0.32 | False |
-| hypercorn          | fix-unsafe               |     3.7 |         4.1 |  1.1 |    0.26 |          1 |     0.32 | False |
-| hypercorn          | infer-basedpyright       |     5.8 |         4.6 |  0.8 |    0.22 |          1 |     0.14 | False |
-| hypercorn          | infer-ty                 |     2.3 |         3.5 |  1.5 |    0.26 |          1 |     0.39 | False |
-| hypercorn          | infer-pyrefly            |     3.8 |         4.1 |  1.1 |    0.28 |          1 |     0.16 | False |
-| hypercorn          | census                   |     0.8 |         0.9 |  1.1 |    0.18 |          2 |     0.22 | False |
-| hypercorn          | coverage                 |     0.8 |         0.8 |  1.0 |    0.15 |          1 |     0.19 | False |
-| hypercorn          | timing                   |     1.8 |         1.8 |  1.0 |    0.18 |          2 |     0.22 | False |
-| hypercorn          | traced                   |    14.5 |         5.8 |  0.4 |    0.25 |          1 |     0.34 | False |
+| hypercorn          | fix-certain              |     2.4 |         3.3 |  1.4 |    0.26 |          2 |     0.32 | False |
+| hypercorn          | fix-likely               |     1.8 |         3.5 |  1.9 |    0.26 |          3 |     0.32 | False |
+| hypercorn          | fix-unsafe               |     5.2 |         5.0 |  1.0 |    0.26 |          2 |     0.32 | False |
+| hypercorn          | infer-basedpyright       |     2.6 |         4.1 |  1.6 |    0.23 |          1 |     0.27 | False |
+| hypercorn          | infer-ty                 |     4.6 |         4.2 |  0.9 |    0.26 |          1 |     0.16 | False |
+| hypercorn          | infer-pyrefly            |     4.0 |         4.3 |  1.1 |    0.26 |          1 |     0.17 | False |
+| hypercorn          | census                   |     1.0 |         1.2 |  1.2 |    0.18 |          2 |     0.22 | False |
+| hypercorn          | coverage                 |     1.4 |         0.9 |  0.6 |    0.15 |          1 |     0.19 | False |
+| hypercorn          | timing                   |     2.6 |         2.3 |  0.9 |    0.18 |          1 |     0.22 | False |
+| hypercorn          | traced                   |    16.6 |         7.2 |  0.4 |    0.27 |          1 |     0.31 | False |
 | hypercorn          | tests-released           |     9.2 |         1.6 |  0.2 |     0.1 |          1 |     0.12 | False |
-| hypercorn          | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.12 | False |
+| hypercorn          | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.11 | False |
 | hypercorn          | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.11 | False |
 | hypercorn          | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.11 | False |
-| hypercorn          | tests-infer-basedpyright |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.12 | False |
-| hypercorn          | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
-| hypercorn          | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.11 | False |
-| hypercorn          | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.12 | False |
-| hypercorn          | infer-union              |     3.6 |         4.6 |  1.3 |    0.24 |          1 |      0.5 | False |
-| hypercorn          | tests-infer-union        |     8.0 |         1.6 |  0.2 |    0.09 |          1 |     0.12 | False |
-| hypercorn          | tests                    |     2.1 |         1.8 |  0.9 |    0.28 |          1 |     0.35 | False |
-| hypercorn          | types-released           |     1.6 |         0.9 |  0.6 |    0.11 |          1 |     0.15 | False |
-| hypercorn          | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| hypercorn          | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.11 | False |
+| hypercorn          | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.11 | False |
+| hypercorn          | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.11 | False |
+| hypercorn          | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.11 | False |
+| hypercorn          | infer-union              |     4.0 |         4.8 |  1.2 |    0.26 |          1 |     0.15 | False |
+| hypercorn          | tests-infer-union        |     7.8 |         1.6 |  0.2 |     0.1 |          1 |     0.11 | False |
+| hypercorn          | tests                    |     1.8 |         1.5 |  0.8 |    0.15 |          1 |     0.35 | False |
+| hypercorn          | types-released           |     2.6 |         1.1 |  0.4 |    0.11 |          1 |     0.14 | False |
+| hypercorn          | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
 | hypercorn          | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
-| hypercorn          | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
-| hypercorn          | types-infer-basedpyright |     1.2 |         0.8 |  0.7 |    0.11 |          1 |     0.14 | False |
-| hypercorn          | types-infer-ty           |     0.8 |         0.6 |  0.7 |     0.1 |          1 |     0.15 | False |
-| hypercorn          | types-infer-pyrefly      |     1.0 |         0.7 |  0.7 |     0.1 |          1 |     0.12 | False |
-| hypercorn          | types-infer-trace        |     2.0 |         1.0 |  0.5 |    0.11 |          1 |     0.14 | False |
+| hypercorn          | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.14 | False |
+| hypercorn          | types-infer-basedpyright |     1.6 |         1.1 |  0.7 |    0.11 |          1 |     0.14 | False |
+| hypercorn          | types-infer-ty           |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.12 | False |
+| hypercorn          | types-infer-pyrefly      |     1.2 |         0.7 |  0.6 |     0.1 |          1 |     0.12 | False |
+| hypercorn          | types-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
 | hypercorn          | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| starlette          | check                    |     0.8 |         1.1 |  1.4 |    0.19 |          2 |     0.24 | False |
-| starlette          | fix-certain              |     2.0 |         3.4 |  1.7 |     0.3 |          2 |     0.34 | False |
-| starlette          | fix-likely               |     3.0 |         4.5 |  1.5 |    0.26 |          2 |     0.34 | False |
-| starlette          | fix-unsafe               |     3.8 |         4.6 |  1.2 |     0.3 |          1 |     0.36 | False |
-| starlette          | infer-basedpyright       |     8.3 |         5.8 |  0.7 |    0.23 |          1 |     0.15 | False |
-| starlette          | infer-ty                 |     5.4 |         5.3 |  1.0 |    0.27 |          1 |     0.17 | False |
-| starlette          | infer-pyrefly            |     5.0 |         5.2 |  1.0 |    0.27 |          1 |     0.17 | False |
-| starlette          | census                   |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.24 | False |
-| starlette          | coverage                 |     0.8 |         0.8 |  1.0 |    0.15 |          1 |     0.19 | False |
-| starlette          | timing                   |     2.0 |         2.3 |  1.1 |    0.19 |          2 |     0.24 | False |
-| starlette          | traced                   |    26.8 |        13.1 |  0.5 |    0.27 |          1 |     0.35 | False |
+| starlette          | check                    |     0.4 |         0.1 |  0.2 |    0.03 |          2 |     0.24 | False |
+| starlette          | fix-certain              |     2.2 |         4.0 |  1.8 |    0.27 |          2 |     0.37 | False |
+| starlette          | fix-likely               |     2.4 |         4.7 |  2.0 |    0.27 |          2 |     0.32 | False |
+| starlette          | fix-unsafe               |     4.8 |         5.3 |  1.1 |    0.27 |          2 |     0.37 | False |
+| starlette          | infer-basedpyright       |     4.4 |         5.3 |  1.2 |    0.24 |          1 |     0.29 | False |
+| starlette          | infer-ty                 |     4.0 |         5.4 |  1.4 |    0.31 |          1 |     0.34 | False |
+| starlette          | infer-pyrefly            |     7.2 |        14.8 |  2.1 |    0.95 |          1 |     0.17 | False |
+| starlette          | census                   |     1.2 |         1.4 |  1.2 |    0.19 |          2 |     0.24 | False |
+| starlette          | coverage                 |     1.6 |         1.1 |  0.7 |    0.16 |          1 |     0.19 | False |
+| starlette          | timing                   |     1.4 |         1.7 |  1.2 |    0.19 |          2 |     0.24 | False |
+| starlette          | traced                   |    23.9 |        15.2 |  0.6 |    0.29 |          1 |     0.34 | False |
 | starlette          | tests-released           |    19.9 |         7.6 |  0.4 |    0.22 |          1 |     0.29 | False |
-| starlette          | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.27 | False |
-| starlette          | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
-| starlette          | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.26 | False |
-| starlette          | tests-infer-basedpyright |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.26 | False |
-| starlette          | tests-infer-ty           |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.26 | False |
-| starlette          | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.27 | False |
-| starlette          | tests-infer-trace        |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.29 | False |
-| starlette          | infer-union              |    10.9 |         6.0 |  0.6 |    0.25 |          1 |     0.32 | False |
-| starlette          | tests-infer-union        |    24.2 |         8.0 |  0.3 |    0.22 |          1 |     0.29 | False |
-| starlette          | tests                    |     2.2 |         1.7 |  0.8 |    0.28 |          1 |     0.34 | False |
-| starlette          | types-released           |     2.0 |         1.5 |  0.8 |    0.13 |          1 |     0.17 | False |
-| starlette          | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.15 | False |
+| starlette          | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
+| starlette          | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
+| starlette          | infer-union              |    24.4 |        33.8 |  1.4 |    0.92 |          1 |     0.31 | False |
+| starlette          | tests-infer-union        |    11.1 |         6.4 |  0.6 |    0.23 |          1 |     0.27 | False |
+| starlette          | tests                    |     2.0 |         1.8 |  0.9 |    0.15 |          1 |     0.35 | False |
+| starlette          | types-released           |     3.4 |         1.7 |  0.5 |    0.13 |          1 |     0.16 | False |
+| starlette          | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
 | starlette          | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
-| starlette          | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
-| starlette          | types-infer-basedpyright |     1.0 |         0.7 |  0.7 |    0.11 |          1 |     0.16 | False |
-| starlette          | types-infer-ty           |     2.4 |         1.5 |  0.6 |    0.13 |          1 |     0.16 | False |
-| starlette          | types-infer-pyrefly      |     1.4 |         1.2 |  0.9 |    0.13 |          1 |     0.16 | False |
-| starlette          | types-infer-trace        |     1.8 |         1.3 |  0.7 |    0.13 |          1 |     0.17 | False |
+| starlette          | types-fix-unsafe         |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.16 | False |
+| starlette          | types-infer-basedpyright |     1.2 |         0.7 |  0.6 |    0.11 |          1 |     0.14 | False |
+| starlette          | types-infer-ty           |     2.8 |         1.7 |  0.6 |    0.13 |          1 |     0.16 | False |
+| starlette          | types-infer-pyrefly      |     1.4 |         1.3 |  0.9 |    0.13 |          1 |     0.16 | False |
+| starlette          | types-infer-trace        |     0.8 |         0.3 |  0.4 |    0.03 |          1 |     0.16 | False |
 | starlette          | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| werkzeug           | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.26 | False |
-| werkzeug           | fix-certain              |     2.2 |         4.9 |  2.2 |    0.33 |          3 |     0.39 | False |
-| werkzeug           | fix-likely               |     2.6 |         6.0 |  2.3 |    0.33 |          2 |     0.39 | False |
-| werkzeug           | fix-unsafe               |     4.0 |         6.6 |  1.6 |    0.32 |          1 |     0.44 | False |
-| werkzeug           | infer-basedpyright       |    23.2 |        32.8 |  1.4 |    1.12 |          1 |     0.16 | False |
-| werkzeug           | infer-ty                 |     9.4 |        11.0 |  1.2 |    0.45 |          1 |     0.19 | False |
-| werkzeug           | infer-pyrefly            |     5.6 |        16.8 |  3.0 |    0.97 |          1 |     0.21 | False |
-| werkzeug           | census                   |     1.8 |         2.5 |  1.4 |    0.21 |          2 |     0.26 | False |
-| werkzeug           | coverage                 |     0.8 |         1.1 |  1.4 |    0.17 |          2 |     0.21 | False |
-| werkzeug           | timing                   |     3.0 |         3.5 |  1.2 |    0.21 |          2 |     0.26 | False |
-| werkzeug           | traced                   |    23.9 |        16.2 |  0.7 |    0.35 |          1 |     0.41 | False |
+| werkzeug           | check                    |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.26 | False |
+| werkzeug           | fix-certain              |     2.6 |         5.9 |  2.3 |    0.31 |          3 |     0.41 | False |
+| werkzeug           | fix-likely               |     3.0 |         7.0 |  2.3 |    0.31 |          3 |     0.41 | False |
+| werkzeug           | fix-unsafe               |     6.7 |         8.3 |  1.2 |    0.31 |          2 |      0.4 | False |
+| werkzeug           | infer-basedpyright       |    18.0 |        32.2 |  1.8 |    1.15 |          1 |      0.7 | False |
+| werkzeug           | infer-ty                 |     8.2 |        11.5 |  1.4 |    0.73 |          1 |     0.28 | False |
+| werkzeug           | infer-pyrefly            |    12.6 |        19.3 |  1.5 |    1.05 |          1 |      0.3 | False |
+| werkzeug           | census                   |     1.2 |         1.8 |  1.5 |    0.21 |          2 |     0.26 | False |
+| werkzeug           | coverage                 |     0.8 |         1.1 |  1.4 |    0.18 |          2 |     0.21 | False |
+| werkzeug           | timing                   |     3.4 |         4.0 |  1.2 |    0.21 |          2 |     0.26 | False |
+| werkzeug           | traced                   |    25.6 |        18.9 |  0.7 |    0.33 |          1 |     0.44 | False |
 | werkzeug           | tests-released           |    11.0 |         7.2 |  0.7 |    0.17 |          1 |     0.21 | False |
 | werkzeug           | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
-| werkzeug           | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          1 |      0.2 | False |
-| werkzeug           | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.2 | False |
-| werkzeug           | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.2 | False |
-| werkzeug           | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.21 | False |
-| werkzeug           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.2 | False |
-| werkzeug           | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
-| werkzeug           | infer-union              |    18.4 |        43.2 |  2.3 |    1.11 |          1 |     0.19 | False |
-| werkzeug           | tests-infer-union        |     9.8 |         7.1 |  0.7 |    0.16 |          1 |     0.21 | False |
-| werkzeug           | tests                    |     1.8 |         1.6 |  0.9 |    0.28 |          1 |     0.34 | False |
-| werkzeug           | types-released           |     1.6 |         1.0 |  0.6 |     0.1 |          1 |     0.14 | False |
+| werkzeug           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | tests-infer-pyrefly      |     1.0 |         0.3 |  0.3 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | tests-infer-trace        |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.21 | False |
+| werkzeug           | infer-union              |    21.8 |        46.5 |  2.1 |    1.09 |          1 |     0.46 | False |
+| werkzeug           | tests-infer-union        |    16.9 |         8.5 |  0.5 |    0.18 |          1 |      0.2 | False |
+| werkzeug           | tests                    |     1.4 |         1.1 |  0.8 |    0.15 |          1 |     0.35 | False |
+| werkzeug           | types-released           |     2.8 |         1.2 |  0.4 |     0.1 |          1 |     0.12 | False |
 | werkzeug           | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
-| werkzeug           | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
-| werkzeug           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
-| werkzeug           | types-infer-basedpyright |     1.4 |         1.0 |  0.7 |    0.11 |          1 |     0.14 | False |
-| werkzeug           | types-infer-ty           |     1.4 |         1.0 |  0.7 |    0.11 |          1 |     0.14 | False |
-| werkzeug           | types-infer-pyrefly      |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.14 | False |
-| werkzeug           | types-infer-trace        |     1.8 |         1.0 |  0.6 |     0.1 |          1 |     0.14 | False |
-| werkzeug           | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
-| mkdocs             | check                    |     1.8 |         2.5 |  1.4 |    0.27 |          2 |     0.34 | False |
-| mkdocs             | fix-certain              |     3.8 |         6.6 |  1.7 |    0.36 |          3 |     0.42 | False |
-| mkdocs             | fix-likely               |     4.2 |         8.3 |  2.0 |    0.38 |          3 |     0.47 | False |
-| mkdocs             | fix-unsafe               |     7.6 |         9.3 |  1.2 |    0.39 |          2 |     0.49 | False |
-| mkdocs             | infer-basedpyright       |    28.3 |        37.3 |  1.3 |    1.19 |          1 |      0.2 | False |
-| mkdocs             | infer-ty                 |    13.6 |        13.2 |  1.0 |    0.55 |          1 |     0.22 | False |
-| mkdocs             | infer-pyrefly            |    14.3 |        20.6 |  1.4 |     1.0 |          1 |     0.24 | False |
-| mkdocs             | census                   |     1.2 |         0.8 |  0.7 |    0.05 |          2 |     0.34 | False |
-| mkdocs             | coverage                 |     1.4 |         1.5 |  1.1 |    0.19 |          2 |     0.24 | False |
-| mkdocs             | timing                   |     3.2 |         4.1 |  1.3 |    0.27 |          2 |     0.34 | False |
-| mkdocs             | traced                   |    21.4 |        13.4 |  0.6 |    0.41 |          1 |     0.44 | False |
+| werkzeug           | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
+| werkzeug           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
+| werkzeug           | types-infer-basedpyright |     1.4 |         1.1 |  0.8 |    0.11 |          1 |     0.14 | False |
+| werkzeug           | types-infer-ty           |     1.2 |         1.0 |  0.8 |    0.11 |          1 |     0.14 | False |
+| werkzeug           | types-infer-pyrefly      |     1.8 |         1.1 |  0.6 |    0.11 |          1 |     0.14 | False |
+| werkzeug           | types-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.12 | False |
+| werkzeug           | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| mkdocs             | check                    |     0.2 |         0.1 |  0.5 |    0.04 |          2 |     0.34 | False |
+| mkdocs             | fix-certain              |     4.4 |         7.4 |  1.7 |    0.34 |          2 |     0.45 | False |
+| mkdocs             | fix-likely               |     4.8 |        10.1 |  2.1 |    0.35 |          2 |     0.47 | False |
+| mkdocs             | fix-unsafe               |     7.6 |        10.3 |  1.4 |    0.35 |          2 |     0.49 | False |
+| mkdocs             | infer-basedpyright       |    22.4 |        37.1 |  1.7 |    1.22 |          1 |     0.74 | False |
+| mkdocs             | infer-ty                 |     9.0 |        12.3 |  1.4 |    0.68 |          1 |     0.69 | False |
+| mkdocs             | infer-pyrefly            |     8.6 |        20.4 |  2.4 |    1.14 |          1 |     0.62 | False |
+| mkdocs             | census                   |     2.0 |         2.8 |  1.4 |    0.28 |          2 |     0.34 | False |
+| mkdocs             | coverage                 |     1.0 |         1.5 |  1.5 |    0.19 |          2 |     0.24 | False |
+| mkdocs             | timing                   |     6.2 |         5.3 |  0.9 |    0.28 |          2 |     0.34 | False |
+| mkdocs             | traced                   |    23.2 |        15.8 |  0.7 |    0.36 |          1 |     0.51 | False |
 | mkdocs             | tests-released           |    11.2 |         2.7 |  0.2 |    0.08 |          1 |      0.1 | False |
-| mkdocs             | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          1 |      0.1 | False |
+| mkdocs             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
 | mkdocs             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
-| mkdocs             | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.09 | False |
-| mkdocs             | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.09 | False |
-| mkdocs             | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.09 | False |
-| mkdocs             | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.09 | False |
+| mkdocs             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
+| mkdocs             | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.1 | False |
+| mkdocs             | tests-infer-ty           |     0.8 |         0.2 |  0.2 |    0.03 |          1 |      0.1 | False |
+| mkdocs             | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |      0.1 | False |
 | mkdocs             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.1 | False |
-| mkdocs             | infer-union              |    29.7 |        49.5 |  1.7 |    1.18 |          1 |     0.21 | False |
-| mkdocs             | tests-infer-union        |    10.8 |         2.6 |  0.2 |    0.08 |          1 |      0.1 | False |
-| mkdocs             | tests                    |     2.2 |         1.7 |  0.8 |    0.28 |          1 |     0.34 | False |
-| httpx              | check                    |     1.4 |         1.3 |  0.9 |    0.18 |          1 |     0.22 | False |
-| httpx              | fix-certain              |     1.6 |         2.7 |  1.7 |    0.27 |          2 |     0.34 | False |
-| httpx              | fix-likely               |     2.2 |         3.9 |  1.8 |    0.27 |          2 |     0.32 | False |
-| httpx              | fix-unsafe               |     6.0 |         4.6 |  0.8 |    0.28 |          1 |     0.36 | False |
-| httpx              | infer-basedpyright       |     4.0 |         4.6 |  1.1 |    0.24 |          1 |      0.3 | False |
-| httpx              | infer-ty                 |     4.8 |         4.6 |  1.0 |    0.27 |          1 |     0.18 | False |
-| httpx              | infer-pyrefly            |     4.6 |         4.6 |  1.0 |    0.25 |          1 |     0.17 | False |
-| httpx              | census                   |     0.4 |         0.3 |  0.7 |    0.04 |          1 |     0.22 | False |
-| httpx              | coverage                 |     0.6 |         0.6 |  1.0 |    0.15 |          2 |     0.19 | False |
-| httpx              | timing                   |     2.0 |         1.9 |  0.9 |    0.18 |          2 |     0.22 | False |
-| httpx              | traced                   |    10.8 |         9.5 |  0.9 |    0.28 |          1 |     0.35 | False |
+| mkdocs             | infer-union              |    33.6 |        55.4 |  1.6 |    1.15 |          1 |     0.74 | False |
+| mkdocs             | tests-infer-union        |    11.2 |         2.7 |  0.2 |    0.08 |          1 |      0.1 | False |
+| mkdocs             | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          1 |     0.35 | False |
+| httpx              | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
+| httpx              | fix-certain              |     2.0 |         3.5 |  1.8 |    0.27 |          2 |     0.34 | False |
+| httpx              | fix-likely               |     2.8 |         4.5 |  1.6 |    0.27 |          2 |     0.34 | False |
+| httpx              | fix-unsafe               |     2.4 |         3.9 |  1.6 |    0.27 |          1 |     0.35 | False |
+| httpx              | infer-basedpyright       |     4.2 |         5.0 |  1.2 |    0.24 |          1 |     0.15 | False |
+| httpx              | infer-ty                 |     2.6 |         4.3 |  1.7 |    0.27 |          1 |     0.34 | False |
+| httpx              | infer-pyrefly            |     3.4 |         4.7 |  1.4 |    0.27 |          1 |     0.31 | False |
+| httpx              | census                   |     2.6 |         1.9 |  0.7 |    0.19 |          1 |     0.22 | False |
+| httpx              | coverage                 |     1.2 |         0.9 |  0.8 |    0.15 |          1 |     0.19 | False |
+| httpx              | timing                   |     3.6 |         2.6 |  0.7 |    0.19 |          1 |     0.22 | False |
+| httpx              | traced                   |    11.4 |         9.8 |  0.9 |    0.29 |          1 |     0.35 | False |
 | httpx              | tests-released           |    11.0 |         6.4 |  0.6 |    0.23 |          1 |     0.27 | False |
-| httpx              | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
-| httpx              | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.26 | False |
-| httpx              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
-| httpx              | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.26 | False |
-| httpx              | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.26 | False |
-| httpx              | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
-| httpx              | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.27 | False |
-| httpx              | infer-union              |     4.2 |         4.9 |  1.2 |    0.26 |          1 |     0.32 | False |
-| httpx              | tests-infer-union        |     8.0 |         5.5 |  0.7 |    0.21 |          1 |     0.27 | False |
-| httpx              | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          1 |     0.34 | False |
-| httpx              | types-released           |    15.8 |         6.6 |  0.4 |     0.2 |          1 |      0.3 | False |
+| httpx              | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.29 | False |
+| httpx              | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.29 | False |
+| httpx              | infer-union              |     3.8 |         5.3 |  1.4 |    0.26 |          1 |     0.16 | False |
+| httpx              | tests-infer-union        |    10.8 |         5.6 |  0.5 |    0.22 |          1 |     0.26 | False |
+| httpx              | tests                    |     1.8 |         1.6 |  0.9 |    0.15 |          1 |     0.35 | False |
+| httpx              | types-released           |     9.6 |         6.5 |  0.7 |    0.22 |          1 |     0.25 | False |
 | httpx              | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
-| httpx              | types-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.24 | False |
-| httpx              | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.24 | False |
-| httpx              | types-infer-basedpyright |     7.7 |         5.6 |  0.7 |     0.2 |          1 |     0.26 | False |
-| httpx              | types-infer-ty           |     8.8 |         6.3 |  0.7 |     0.2 |          1 |      0.3 | False |
-| httpx              | types-infer-pyrefly      |     6.0 |         5.5 |  0.9 |     0.2 |          1 |     0.25 | False |
-| httpx              | types-infer-trace        |     7.3 |         5.8 |  0.8 |     0.2 |          1 |     0.29 | False |
+| httpx              | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
+| httpx              | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |      0.3 | False |
+| httpx              | types-infer-basedpyright |     9.6 |         6.6 |  0.7 |     0.2 |          1 |     0.25 | False |
+| httpx              | types-infer-ty           |     8.8 |         6.5 |  0.7 |     0.2 |          1 |     0.25 | False |
+| httpx              | types-infer-pyrefly      |     8.2 |         6.4 |  0.8 |     0.2 |          1 |     0.25 | False |
+| httpx              | types-infer-trace        |    12.2 |         6.5 |  0.5 |     0.2 |          1 |     0.25 | False |
 | httpx              | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| black              | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.25 | False |
-| black              | fix-certain              |     1.6 |         3.7 |  2.3 |    0.32 |          3 |     0.39 | False |
-| black              | fix-likely               |     1.8 |         4.4 |  2.4 |    0.32 |          2 |     0.41 | False |
-| black              | fix-unsafe               |     2.2 |         5.0 |  2.3 |    0.32 |          2 |     0.41 | False |
-| black              | infer-basedpyright       |     3.2 |         5.9 |  1.8 |    0.29 |          1 |      0.1 | False |
-| black              | infer-ty                 |     7.7 |         6.7 |  0.9 |    0.33 |          1 |     0.31 | False |
-| black              | infer-pyrefly            |     4.2 |         5.9 |  1.4 |    0.31 |          1 |     0.27 | False |
-| black              | census                   |     1.6 |         2.0 |  1.2 |     0.2 |          2 |     0.25 | False |
-| black              | coverage                 |     0.6 |         0.8 |  1.3 |    0.17 |          2 |     0.21 | False |
-| black              | timing                   |     2.2 |         2.8 |  1.3 |     0.2 |          2 |     0.25 | False |
-| black              | traced                   |    13.2 |        62.1 |  4.7 |    0.87 |          8 |      1.1 | False |
+| black              | check                    |     0.8 |         0.2 |  0.2 |    0.03 |          2 |     0.25 | False |
+| black              | fix-certain              |     1.8 |         4.2 |  2.3 |    0.31 |          3 |      0.4 | False |
+| black              | fix-likely               |     2.2 |         5.0 |  2.3 |     0.3 |          3 |      0.4 | False |
+| black              | fix-unsafe               |     4.2 |         6.1 |  1.5 |    0.31 |          3 |      0.4 | False |
+| black              | infer-basedpyright       |    14.0 |        19.9 |  1.4 |    0.66 |          1 |     0.18 | False |
+| black              | infer-ty                 |     5.4 |         7.7 |  1.4 |    0.47 |          1 |     0.41 | False |
+| black              | infer-pyrefly            |     6.8 |        11.6 |  1.7 |    0.65 |          1 |     0.19 | False |
+| black              | census                   |     1.2 |         1.8 |  1.5 |     0.2 |          2 |     0.25 | False |
+| black              | coverage                 |     0.8 |         1.0 |  1.2 |    0.17 |          2 |     0.21 | False |
+| black              | timing                   |     2.2 |         2.7 |  1.2 |     0.2 |          2 |     0.25 | False |
+| black              | traced                   |    18.8 |        67.2 |  3.6 |    0.91 |          6 |     1.09 | False |
 | black              | tests-released           |     6.2 |        37.8 |  6.1 |     0.8 |          8 |     0.94 | False |
-| black              | tests-fix-certain        |     5.0 |        33.7 |  6.7 |    0.77 |          8 |     0.96 | False |
-| black              | tests-fix-likely         |     8.0 |        47.6 |  6.0 |    0.79 |          8 |     0.95 | False |
-| black              | tests-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     0.94 | False |
-| black              | tests-infer-basedpyright |     5.0 |        32.9 |  6.6 |    0.74 |          8 |     0.95 | False |
-| black              | tests-infer-ty           |     7.4 |        47.6 |  6.4 |    0.77 |          7 |     0.94 | False |
-| black              | tests-infer-pyrefly      |     5.4 |        36.3 |  6.7 |    0.75 |          8 |     0.94 | False |
-| black              | tests-infer-trace        |     7.2 |        47.2 |  6.6 |    0.78 |          6 |     0.92 | False |
-| black              | infer-union              |     4.0 |         6.7 |  1.7 |    0.28 |          1 |     0.19 | False |
-| black              | tests-infer-union        |     6.8 |        41.5 |  6.1 |    0.78 |          8 |     0.96 | False |
-| black              | tests                    |     1.0 |         0.9 |  0.9 |    0.28 |          1 |     0.34 | False |
-| fastapi            | check                    |     1.6 |         1.8 |  1.1 |    0.22 |          2 |     0.27 | False |
-| fastapi            | fix-certain              |     2.8 |         4.5 |  1.6 |    0.31 |          2 |     0.39 | False |
-| fastapi            | fix-likely               |     4.2 |         6.4 |  1.5 |    0.45 |          2 |     0.56 | False |
-| fastapi            | fix-unsafe               |    12.6 |         8.3 |  0.7 |     0.4 |          1 |      0.5 | False |
-| fastapi            | infer-basedpyright       |     9.1 |         7.5 |  0.8 |    0.31 |          1 |     0.19 | False |
-| fastapi            | infer-ty                 |     7.6 |         7.1 |  0.9 |    0.36 |          1 |      0.2 | False |
-| fastapi            | infer-pyrefly            |     7.5 |         6.8 |  0.9 |    0.31 |          1 |     0.19 | False |
-| fastapi            | census                   |     0.6 |         0.4 |  0.7 |    0.05 |          2 |     0.27 | False |
-| fastapi            | coverage                 |     0.6 |         0.8 |  1.3 |    0.17 |          2 |     0.21 | False |
-| fastapi            | timing                   |     3.0 |         3.1 |  1.0 |    0.22 |          2 |     0.27 | False |
-| fastapi            | traced                   |    18.9 |       105.0 |  5.6 |    2.33 |          8 |     2.87 | False |
+| black              | tests-fix-certain        |     8.2 |        46.0 |  5.6 |    0.76 |          8 |     0.96 | False |
+| black              | tests-fix-likely         |     7.6 |        47.7 |  6.3 |    0.76 |          8 |     0.99 | False |
+| black              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     0.99 | False |
+| black              | tests-infer-basedpyright |     7.6 |        46.1 |  6.1 |    0.75 |          8 |     0.92 | False |
+| black              | tests-infer-ty           |     5.0 |        34.5 |  6.9 |    0.74 |          8 |     0.96 | False |
+| black              | tests-infer-pyrefly      |     5.8 |        39.5 |  6.8 |    0.76 |          8 |     0.94 | False |
+| black              | tests-infer-trace        |     5.6 |        34.9 |  6.2 |    0.74 |          8 |     0.97 | False |
+| black              | infer-union              |    10.0 |        22.8 |  2.3 |    0.64 |          2 |     0.35 | False |
+| black              | tests-infer-union        |     5.0 |        34.4 |  6.9 |    0.77 |          8 |     0.97 | False |
+| black              | tests                    |     1.2 |         1.0 |  0.8 |    0.15 |          2 |     0.35 | False |
+| fastapi            | check                    |     0.6 |         0.1 |  0.2 |    0.03 |          2 |     0.27 | False |
+| fastapi            | fix-certain              |     3.4 |         5.5 |  1.6 |    0.32 |          2 |     0.39 | False |
+| fastapi            | fix-likely               |     4.8 |         7.7 |  1.6 |    0.43 |          2 |     0.56 | False |
+| fastapi            | fix-unsafe               |     5.8 |         7.1 |  1.2 |    0.35 |          1 |      0.5 | False |
+| fastapi            | infer-basedpyright       |     8.2 |         8.0 |  1.0 |    0.35 |          1 |     0.39 | False |
+| fastapi            | infer-ty                 |     6.0 |         7.6 |  1.3 |    0.36 |          1 |     0.45 | False |
+| fastapi            | infer-pyrefly            |     5.0 |         7.0 |  1.4 |    0.35 |          1 |     0.39 | False |
+| fastapi            | census                   |     1.6 |         2.0 |  1.2 |    0.24 |          2 |     0.27 | False |
+| fastapi            | coverage                 |     0.8 |         1.0 |  1.2 |    0.18 |          2 |     0.21 | False |
+| fastapi            | timing                   |     3.6 |         3.7 |  1.0 |    0.24 |          2 |     0.27 | False |
+| fastapi            | traced                   |    25.6 |       124.3 |  4.9 |    2.42 |          7 |     2.91 | False |
 | fastapi            | tests-released           |    14.8 |        92.6 |  6.3 |    2.11 |          8 |     2.62 | False |
-| fastapi            | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     2.55 | False |
-| fastapi            | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.55 | False |
-| fastapi            | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.56 | False |
-| fastapi            | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      2.6 | False |
-| fastapi            | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     2.55 | False |
-| fastapi            | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.52 | False |
-| fastapi            | tests-infer-trace        |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     2.62 | False |
-| fastapi            | infer-union              |     6.1 |         6.9 |  1.1 |    0.32 |          2 |      0.4 | False |
-| fastapi            | tests-infer-union        |    12.0 |        82.7 |  6.9 |    2.04 |          5 |     2.61 | False |
-| fastapi            | tests                    |     1.2 |         1.0 |  0.8 |    0.28 |          2 |     0.35 | False |
-| cattrs             | check                    |     1.6 |         1.3 |  0.8 |    0.19 |          1 |     0.24 | False |
-| cattrs             | fix-certain              |     1.8 |         2.8 |  1.6 |    0.26 |          2 |     0.31 | False |
-| cattrs             | fix-likely               |     1.8 |         3.0 |  1.7 |    0.26 |          2 |     0.32 | False |
-| cattrs             | fix-unsafe               |     6.2 |         4.1 |  0.7 |    0.26 |          2 |     0.32 | False |
-| cattrs             | infer-basedpyright       |     8.4 |         5.3 |  0.6 |    0.23 |          1 |     0.27 | False |
-| cattrs             | infer-ty                 |     4.2 |         4.3 |  1.0 |    0.26 |          1 |     0.16 | False |
-| cattrs             | infer-pyrefly            |     5.2 |         4.4 |  0.8 |    0.26 |          1 |     0.16 | False |
-| cattrs             | census                   |     0.4 |         0.3 |  0.7 |    0.04 |          1 |     0.24 | False |
-| cattrs             | coverage                 |     1.6 |         0.9 |  0.6 |    0.15 |          1 |     0.19 | False |
-| cattrs             | timing                   |     2.0 |         2.0 |  1.0 |    0.19 |          2 |     0.24 | False |
-| cattrs             | traced                   |    29.9 |       148.4 |  5.0 |     1.3 |          5 |     1.59 | False |
+| fastapi            | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.64 | False |
+| fastapi            | infer-union              |     5.0 |         7.5 |  1.5 |    0.35 |          2 |      0.4 | False |
+| fastapi            | tests-infer-union        |    14.4 |        93.1 |  6.5 |    2.12 |          8 |     2.55 | False |
+| fastapi            | tests                    |     1.2 |         1.0 |  0.8 |    0.15 |          2 |     0.35 | False |
+| cattrs             | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.24 | False |
+| cattrs             | fix-certain              |     2.0 |         3.4 |  1.7 |    0.26 |          2 |     0.32 | False |
+| cattrs             | fix-likely               |     2.4 |         4.0 |  1.7 |    0.26 |          2 |     0.32 | False |
+| cattrs             | fix-unsafe               |     2.6 |         4.0 |  1.5 |    0.26 |          1 |     0.32 | False |
+| cattrs             | infer-basedpyright       |     5.0 |         5.5 |  1.1 |    0.26 |          1 |     0.29 | False |
+| cattrs             | infer-ty                 |     5.0 |         4.8 |  1.0 |    0.26 |          1 |     0.16 | False |
+| cattrs             | infer-pyrefly            |     3.2 |         4.4 |  1.4 |    0.27 |          1 |     0.32 | False |
+| cattrs             | census                   |     2.0 |         1.7 |  0.8 |     0.2 |          1 |     0.24 | False |
+| cattrs             | coverage                 |     2.4 |         1.1 |  0.5 |    0.15 |          1 |     0.19 | False |
+| cattrs             | timing                   |     4.0 |         2.7 |  0.7 |     0.2 |          1 |     0.24 | False |
+| cattrs             | traced                   |    22.6 |       142.7 |  6.3 |    1.37 |          7 |     1.62 | False |
 | cattrs             | tests-released           |    20.8 |       126.5 |  6.1 |    1.01 |          8 |     1.26 | False |
-| cattrs             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.27 | False |
-| cattrs             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.27 | False |
-| cattrs             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     1.25 | False |
-| cattrs             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.21 | False |
-| cattrs             | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.27 | False |
-| cattrs             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.21 | False |
-| cattrs             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.22 | False |
-| cattrs             | infer-union              |     2.5 |         4.1 |  1.6 |    0.24 |          1 |     0.15 | False |
-| cattrs             | tests-infer-union        |    18.0 |       119.0 |  6.6 |     1.0 |          6 |     1.24 | False |
-| cattrs             | tests                    |     1.2 |         1.0 |  0.8 |    0.28 |          2 |     0.34 | False |
-| pytest             | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.36 | False |
-| pytest             | fix-certain              |     3.8 |         8.7 |  2.3 |    0.39 |          3 |     0.49 | False |
-| pytest             | fix-likely               |     5.4 |        11.7 |  2.2 |    0.43 |          3 |     0.54 | False |
-| pytest             | fix-unsafe               |     7.0 |        12.3 |  1.8 |    0.39 |          2 |      0.5 | False |
-| pytest             | infer-basedpyright       |     9.4 |        14.5 |  1.5 |    0.42 |          1 |     0.26 | False |
-| pytest             | infer-ty                 |     7.4 |        13.2 |  1.8 |     0.4 |          1 |     0.27 | False |
-| pytest             | infer-pyrefly            |     9.1 |        14.0 |  1.5 |    0.43 |          1 |     0.27 | False |
-| pytest             | census                   |     2.2 |         3.2 |  1.5 |    0.29 |          2 |     0.36 | False |
-| pytest             | coverage                 |     1.6 |         2.0 |  1.2 |    0.21 |          2 |     0.26 | False |
-| pytest             | timing                   |     4.8 |         6.0 |  1.2 |    0.29 |          2 |     0.36 | False |
-| pytest             | traced                   |    57.9 |       303.9 |  5.2 |    1.76 |          8 |     2.29 | False |
+| cattrs             | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.26 | False |
+| cattrs             | infer-union              |     6.2 |         5.7 |  0.9 |    0.23 |          1 |     0.15 | False |
+| cattrs             | tests-infer-union        |    17.0 |       104.9 |  6.2 |    1.01 |          8 |     1.25 | False |
+| cattrs             | tests                    |     1.2 |         0.9 |  0.8 |    0.15 |          2 |     0.35 | False |
+| pytest             | check                    |     2.0 |         3.5 |  1.8 |     0.3 |          2 |     0.36 | False |
+| pytest             | fix-certain              |     4.4 |         9.5 |  2.2 |     0.4 |          3 |     0.49 | False |
+| pytest             | fix-likely               |     5.2 |        11.3 |  2.2 |    0.45 |          3 |     0.54 | False |
+| pytest             | fix-unsafe               |    10.8 |        14.8 |  1.4 |     0.4 |          2 |     0.49 | False |
+| pytest             | infer-basedpyright       |    25.2 |        59.6 |  2.4 |    1.85 |          1 |     0.26 | False |
+| pytest             | infer-ty                 |    12.6 |        20.1 |  1.6 |     1.2 |          1 |     0.25 | False |
+| pytest             | infer-pyrefly            |    12.2 |        30.7 |  2.5 |    1.66 |          1 |     0.27 | False |
+| pytest             | census                   |     0.8 |         0.6 |  0.7 |    0.05 |          2 |     0.36 | False |
+| pytest             | coverage                 |     1.0 |         1.8 |  1.8 |    0.22 |          2 |     0.26 | False |
+| pytest             | timing                   |     5.6 |         6.8 |  1.2 |     0.3 |          2 |     0.36 | False |
+| pytest             | traced                   |    44.8 |       319.2 |  7.1 |    1.79 |          7 |      2.2 | False |
 | pytest             | tests-released           |    22.6 |       160.2 |  7.1 |    1.41 |          8 |     1.71 | False |
-| pytest             | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.67 | False |
-| pytest             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.69 | False |
-| pytest             | tests-fix-unsafe         |     0.5 |         0.1 |  0.2 |    0.03 |          5 |      1.7 | False |
-| pytest             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          7 |      1.7 | False |
-| pytest             | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          6 |      1.7 | False |
-| pytest             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.7 | False |
-| pytest             | tests-infer-trace        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.71 | False |
-| pytest             | infer-union              |    11.1 |        16.7 |  1.5 |    0.42 |          1 |     0.26 | False |
-| pytest             | tests-infer-union        |    25.7 |       165.4 |  6.4 |    1.35 |          8 |      1.7 | False |
-| pytest             | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          1 |     0.35 | False |
+| pytest             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.69 | False |
+| pytest             | infer-union              |    24.9 |        82.4 |  3.3 |    1.87 |          2 |     0.52 | False |
+| pytest             | tests-infer-union        |    20.4 |       145.4 |  7.1 |     1.4 |          8 |     1.69 | False |
+| pytest             | tests                    |     1.2 |         1.0 |  0.8 |    0.15 |          2 |     0.35 | False |
 | botocore           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.41 | False |
-| botocore           | fix-certain              |     4.4 |        11.0 |  2.5 |    0.42 |          3 |     0.52 | False |
-| botocore           | fix-likely               |     5.4 |        13.7 |  2.5 |    0.51 |          3 |     0.64 | False |
-| botocore           | fix-unsafe               |    11.7 |        16.3 |  1.4 |    0.51 |          2 |     0.64 | False |
-| botocore           | infer-basedpyright       |    12.6 |        19.2 |  1.5 |    0.53 |          1 |     0.33 | False |
-| botocore           | infer-ty                 |    11.0 |        17.7 |  1.6 |    0.52 |          1 |     0.32 | False |
-| botocore           | infer-pyrefly            |    10.2 |        17.7 |  1.7 |    0.52 |          1 |     0.79 | False |
-| botocore           | census                   |     3.0 |         5.2 |  1.7 |    0.33 |          2 |     0.41 | False |
-| botocore           | coverage                 |     1.2 |         1.6 |  1.3 |     0.2 |          2 |     0.25 | False |
-| botocore           | timing                   |     5.0 |         7.3 |  1.5 |    0.33 |          2 |     0.41 | False |
-| botocore           | traced                   |    35.3 |       117.7 |  3.3 |    5.07 |          4 |     6.36 | False |
+| botocore           | fix-certain              |     5.2 |        12.3 |  2.4 |    0.42 |          3 |     0.52 | False |
+| botocore           | fix-likely               |     6.2 |        15.3 |  2.5 |    0.52 |          3 |     0.64 | False |
+| botocore           | fix-unsafe               |    11.0 |        18.0 |  1.6 |     0.5 |          2 |     0.64 | False |
+| botocore           | infer-basedpyright       |    27.2 |        59.3 |  2.2 |    1.96 |          1 |     0.33 | False |
+| botocore           | infer-ty                 |    13.0 |        24.0 |  1.8 |    1.27 |          1 |     0.32 | False |
+| botocore           | infer-pyrefly            |    14.0 |        23.5 |  1.7 |    1.28 |          1 |     0.32 | False |
+| botocore           | census                   |     4.6 |         6.5 |  1.4 |    0.33 |          2 |     0.41 | False |
+| botocore           | coverage                 |     1.0 |         1.7 |  1.7 |    0.21 |          2 |     0.25 | False |
+| botocore           | timing                   |     6.0 |         8.4 |  1.4 |    0.33 |          2 |     0.41 | False |
+| botocore           | traced                   |    31.0 |       104.6 |  3.4 |    5.14 |          5 |     6.34 | False |
 | botocore           | tests-released           |    29.7 |        93.5 |  3.1 |    4.92 |          4 |     6.15 | False |
-| botocore           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     6.05 | False |
-| botocore           | tests-fix-likely         |     0.5 |         0.2 |  0.4 |    0.03 |          5 |     6.05 | False |
-| botocore           | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     5.97 | False |
-| botocore           | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     6.06 | False |
-| botocore           | tests-infer-ty           |     0.2 |         0.2 |  1.0 |    0.03 |          4 |     6.11 | False |
-| botocore           | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          5 |      6.0 | False |
-| botocore           | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     6.12 | False |
-| botocore           | infer-union              |    29.4 |        74.1 |  2.5 |    1.81 |          3 |     2.26 | False |
-| botocore           | tests-infer-union        |    27.7 |        82.9 |  3.0 |     4.8 |          4 |     6.15 | False |
-| botocore           | tests                    |     2.0 |         1.8 |  0.9 |    0.28 |          2 |     0.35 | False |
-| uvicorn            | check                    |     0.8 |         0.9 |  1.1 |    0.19 |          2 |     0.24 | False |
-| uvicorn            | fix-certain              |     1.8 |         3.4 |  1.9 |    0.27 |          2 |     0.37 | False |
-| uvicorn            | fix-likely               |     2.4 |         3.9 |  1.6 |    0.27 |          2 |     0.34 | False |
-| uvicorn            | fix-unsafe               |     3.3 |         4.5 |  1.4 |    0.28 |          2 |     0.34 | False |
-| uvicorn            | infer-basedpyright       |     4.0 |         5.1 |  1.3 |    0.24 |          1 |     0.14 | False |
-| uvicorn            | infer-ty                 |     2.8 |         4.5 |  1.6 |    0.23 |          1 |     0.17 | False |
-| uvicorn            | infer-pyrefly            |     4.4 |         4.9 |  1.1 |    0.27 |          1 |     0.39 | False |
-| uvicorn            | census                   |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.24 | False |
-| uvicorn            | coverage                 |     1.8 |         1.0 |  0.6 |    0.15 |          1 |     0.19 | False |
-| uvicorn            | timing                   |     2.2 |         2.3 |  1.0 |    0.19 |          1 |     0.24 | False |
-| uvicorn            | traced                   |    44.7 |        29.1 |  0.7 |    0.95 |          1 |     1.25 | False |
+| botocore           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     6.15 | False |
+| botocore           | infer-union              |    30.8 |        77.7 |  2.5 |    1.78 |          1 |     0.75 | False |
+| botocore           | tests-infer-union        |    30.3 |        89.2 |  2.9 |    4.94 |          4 |      6.0 | False |
+| botocore           | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          2 |     0.35 | False |
+| uvicorn            | check                    |     1.0 |         1.3 |  1.3 |    0.19 |          2 |     0.24 | False |
+| uvicorn            | fix-certain              |     2.4 |         4.0 |  1.7 |    0.27 |          2 |     0.34 | False |
+| uvicorn            | fix-likely               |     2.4 |         4.6 |  1.9 |    0.27 |          2 |     0.34 | False |
+| uvicorn            | fix-unsafe               |     4.8 |         5.3 |  1.1 |    0.27 |          2 |     0.35 | False |
+| uvicorn            | infer-basedpyright       |     6.2 |         6.1 |  1.0 |    0.23 |          1 |     0.15 | False |
+| uvicorn            | infer-ty                 |     2.6 |         4.9 |  1.9 |    0.27 |          1 |     0.14 | False |
+| uvicorn            | infer-pyrefly            |     3.8 |         5.1 |  1.3 |    0.27 |          1 |     0.17 | False |
+| uvicorn            | census                   |     0.4 |         0.3 |  0.7 |    0.04 |          2 |     0.24 | False |
+| uvicorn            | coverage                 |     1.6 |         1.2 |  0.7 |    0.16 |          1 |     0.19 | False |
+| uvicorn            | timing                   |     2.0 |         2.4 |  1.2 |    0.19 |          2 |     0.24 | False |
+| uvicorn            | traced                   |    46.6 |        31.8 |  0.7 |    0.95 |          1 |     1.19 | False |
 | uvicorn            | tests-released           |    30.9 |        21.3 |  0.7 |    0.83 |          1 |     1.05 | False |
-| uvicorn            | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.01 | False |
-| uvicorn            | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.01 | False |
-| uvicorn            | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.02 | False |
-| uvicorn            | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.97 | False |
-| uvicorn            | tests-infer-ty           |     0.7 |         0.2 |  0.3 |    0.03 |          1 |     0.99 | False |
-| uvicorn            | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.01 | False |
-| uvicorn            | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.02 | False |
-| uvicorn            | infer-union              |     4.1 |         5.6 |  1.4 |    0.27 |          2 |      1.0 | False |
-| uvicorn            | tests-infer-union        |    41.2 |        21.1 |  0.5 |    0.81 |          1 |     1.05 | False |
-| uvicorn            | tests                    |     1.9 |         1.6 |  0.8 |    0.28 |          1 |     0.34 | False |
-| uvicorn            | types-released           |     2.5 |         1.6 |  0.6 |    0.13 |          1 |     0.17 | False |
+| uvicorn            | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.04 | False |
+| uvicorn            | infer-union              |     5.3 |         6.4 |  1.2 |    0.25 |          1 |     0.17 | False |
+| uvicorn            | tests-infer-union        |    40.5 |        21.7 |  0.5 |    0.81 |          1 |     1.01 | False |
+| uvicorn            | tests                    |     1.6 |         1.5 |  0.9 |    0.15 |          1 |     0.35 | False |
+| uvicorn            | types-released           |     2.4 |         1.6 |  0.7 |    0.12 |          1 |     0.16 | False |
 | uvicorn            | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.15 | False |
-| uvicorn            | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.15 | False |
+| uvicorn            | types-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.15 | False |
 | uvicorn            | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.15 | False |
-| uvicorn            | types-infer-basedpyright |     3.2 |         1.6 |  0.5 |    0.12 |          1 |     0.16 | False |
-| uvicorn            | types-infer-ty           |     2.8 |         1.7 |  0.6 |    0.12 |          1 |     0.15 | False |
-| uvicorn            | types-infer-pyrefly      |     3.0 |         1.7 |  0.6 |    0.12 |          1 |     0.15 | False |
-| uvicorn            | types-infer-trace        |     1.9 |         1.5 |  0.8 |    0.12 |          1 |     0.15 | False |
+| uvicorn            | types-infer-basedpyright |     1.6 |         1.4 |  0.9 |    0.12 |          1 |     0.15 | False |
+| uvicorn            | types-infer-ty           |     1.8 |         1.5 |  0.8 |    0.12 |          1 |     0.15 | False |
+| uvicorn            | types-infer-pyrefly      |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.15 | False |
+| uvicorn            | types-infer-trace        |     2.2 |         1.6 |  0.7 |    0.12 |          1 |     0.15 | False |
 | uvicorn            | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| mcp                | check                    |     1.6 |         0.2 |  0.1 |    0.03 |          2 |     0.32 | False |
-| mcp                | fix-certain              |     4.1 |         8.6 |  2.1 |    0.33 |          3 |     0.41 | False |
-| mcp                | fix-likely               |     5.0 |        10.8 |  2.2 |    0.43 |          3 |     0.52 | False |
-| mcp                | fix-unsafe               |     9.4 |        11.6 |  1.2 |    0.44 |          1 |     0.55 | False |
-| mcp                | infer-basedpyright       |    11.3 |        12.4 |  1.1 |    0.41 |          1 |     0.26 | False |
-| mcp                | infer-ty                 |     8.4 |        11.3 |  1.3 |    0.41 |          1 |     0.26 | False |
-| mcp                | infer-pyrefly            |     9.5 |        11.7 |  1.2 |    0.41 |          1 |     0.26 | False |
-| mcp                | census                   |     2.6 |         3.6 |  1.4 |    0.26 |          2 |     0.32 | False |
-| mcp                | coverage                 |     0.6 |         1.0 |  1.7 |    0.18 |          2 |     0.22 | False |
-| mcp                | timing                   |     3.8 |         4.8 |  1.3 |    0.26 |          2 |     0.32 | False |
-| mcp                | traced                   |    22.9 |        99.1 |  4.3 |    2.02 |          6 |     2.54 | False |
-| mcp                | tests-released           |    17.9 |        74.6 |  4.2 |    1.79 |          6 |     2.25 | False |
-| mcp                | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          6 |     2.24 | False |
-| mcp                | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     2.24 | False |
-| mcp                | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.52 | False |
-| mcp                | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     2.24 | False |
-| mcp                | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          3 |     2.24 | False |
-| mcp                | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     2.24 | False |
-| mcp                | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     2.29 | False |
-| mcp                | infer-union              |     6.3 |        12.4 |  2.0 |    0.42 |          2 |     0.51 | False |
-| mcp                | tests-infer-union        |    15.4 |        71.9 |  4.7 |    1.79 |          4 |     2.24 | False |
-| mcp                | tests                    |     1.8 |         1.6 |  0.9 |    0.28 |          2 |     0.35 | False |
-| mcp                | types-released           |    28.7 |        26.4 |  0.9 |    1.25 |          1 |     1.54 | False |
-| mcp                | types-fix-certain        |    15.8 |        24.4 |  1.5 |    1.25 |          2 |     1.59 | False |
-| mcp                | types-fix-likely         |    18.4 |        26.5 |  1.4 |    1.26 |          2 |     1.59 | False |
+| mcp                | check                    |     0.4 |         0.1 |  0.2 |    0.03 |          2 |     0.32 | False |
+| mcp                | fix-certain              |     3.8 |         8.4 |  2.2 |    0.34 |          3 |     0.41 | False |
+| mcp                | fix-likely               |     6.0 |        11.5 |  1.9 |    0.43 |          3 |     0.54 | False |
+| mcp                | fix-unsafe               |     9.8 |        12.9 |  1.3 |    0.38 |          2 |     0.55 | False |
+| mcp                | infer-basedpyright       |    28.2 |        60.8 |  2.2 |    1.92 |          1 |     0.26 | False |
+| mcp                | infer-ty                 |     9.2 |        16.5 |  1.8 |    1.19 |          1 |     0.26 | False |
+| mcp                | infer-pyrefly            |    14.7 |        31.6 |  2.1 |    1.89 |          1 |     0.26 | False |
+| mcp                | census                   |     1.8 |         3.1 |  1.7 |    0.27 |          2 |     0.32 | False |
+| mcp                | coverage                 |     0.8 |         1.4 |  1.7 |    0.19 |          2 |     0.22 | False |
+| mcp                | timing                   |     3.8 |         5.3 |  1.4 |    0.27 |          2 |     0.32 | False |
+| mcp                | traced                   |    45.0 |       108.6 |  2.4 |    2.07 |          6 |     2.52 | False |
+| mcp                | tests-released           |    14.0 |        60.9 |  4.3 |    1.83 |          6 |     2.24 | False |
+| mcp                | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     2.24 | False |
+| mcp                | infer-union              |    14.8 |        66.3 |  4.5 |    1.71 |          2 |     0.52 | False |
+| mcp                | tests-infer-union        |    19.6 |        77.6 |  4.0 |    1.79 |          6 |     2.24 | False |
+| mcp                | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          2 |     0.35 | False |
+| mcp                | types-released           |    26.5 |        28.5 |  1.1 |    1.26 |          1 |     1.56 | False |
+| mcp                | types-fix-certain        |    24.2 |        27.1 |  1.1 |    1.23 |          2 |     1.56 | False |
+| mcp                | types-fix-likely         |    10.6 |        17.2 |  1.6 |    1.26 |          2 |     1.57 | False |
 | mcp                | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      1.6 | False |
-| mcp                | types-infer-basedpyright |    13.4 |        21.2 |  1.6 |    1.21 |          2 |     1.59 | False |
-| mcp                | types-infer-ty           |    14.8 |        22.3 |  1.5 |    1.24 |          2 |     1.57 | False |
-| mcp                | types-infer-pyrefly      |    15.4 |        23.2 |  1.5 |    1.28 |          2 |     1.57 | False |
-| mcp                | types-infer-trace        |    13.8 |        22.3 |  1.6 |    1.28 |          2 |      1.6 | False |
-| mcp                | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| textual            | check                    |     2.0 |         4.7 |  2.4 |    0.42 |          2 |     0.52 | False |
-| textual            | fix-certain              |     7.2 |        17.3 |  2.4 |    0.53 |          3 |     0.69 | False |
-| textual            | fix-likely               |     7.0 |        19.3 |  2.8 |    0.56 |          3 |      0.7 | False |
-| textual            | fix-unsafe               |     7.4 |        20.3 |  2.7 |    0.55 |          3 |     0.67 | False |
-| textual            | infer-basedpyright       |    14.8 |        25.4 |  1.7 |    0.54 |          1 |     0.22 | False |
-| textual            | infer-ty                 |    15.2 |        25.3 |  1.7 |     0.6 |          1 |     0.36 | False |
-| textual            | infer-pyrefly            |    12.7 |        23.7 |  1.9 |    0.54 |          1 |     0.34 | False |
-| textual            | census                   |     1.2 |         1.0 |  0.8 |    0.07 |          2 |     0.52 | False |
-| textual            | coverage                 |     1.4 |         3.2 |  2.3 |    0.25 |          3 |      0.3 | False |
-| textual            | timing                   |     6.2 |         9.2 |  1.5 |    0.42 |          2 |     0.52 | False |
-| pdm                | check                    |     0.8 |         0.2 |  0.2 |    0.04 |          2 |     0.55 | False |
-| pdm                | fix-certain              |     6.6 |        12.0 |  1.8 |    0.48 |          2 |      0.6 | False |
-| pdm                | fix-likely               |     6.4 |        13.8 |  2.2 |    0.53 |          3 |     0.66 | False |
-| pdm                | fix-unsafe               |    15.5 |        17.7 |  1.1 |    0.58 |          2 |     0.74 | False |
-| pdm                | infer-basedpyright       |    12.2 |        17.0 |  1.4 |    0.49 |          1 |     0.31 | False |
-| pdm                | infer-ty                 |    12.8 |        17.4 |  1.4 |    0.54 |          1 |     0.34 | False |
-| pdm                | infer-pyrefly            |     9.2 |        16.3 |  1.8 |    0.53 |          1 |     0.34 | False |
-| pdm                | census                   |     3.4 |         5.1 |  1.5 |    0.44 |          2 |     0.55 | False |
-| pdm                | coverage                 |     1.2 |         1.8 |  1.5 |    0.19 |          2 |     0.24 | False |
-| pdm                | timing                   |     6.4 |         7.9 |  1.2 |    0.44 |          2 |     0.55 | False |
-| pdm                | traced                   |    23.6 |       109.2 |  4.6 |    1.38 |          7 |     1.89 | False |
+| mcp                | types-infer-basedpyright |    16.6 |        24.7 |  1.5 |     1.3 |          2 |     1.51 | False |
+| mcp                | types-infer-ty           |    16.2 |        24.9 |  1.5 |    1.27 |          2 |     1.55 | False |
+| mcp                | types-infer-pyrefly      |    17.2 |        26.2 |  1.5 |    1.27 |          2 |      1.6 | False |
+| mcp                | types-infer-trace        |    22.2 |        25.7 |  1.2 |    1.14 |          2 |      1.6 | False |
+| mcp                | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
+| textual            | check                    |     0.4 |         0.2 |  0.5 |    0.05 |          3 |     0.52 | False |
+| textual            | fix-certain              |     6.2 |        16.5 |  2.7 |     0.5 |          3 |     0.66 | False |
+| textual            | fix-likely               |     7.4 |        22.0 |  3.0 |    0.56 |          3 |      0.7 | False |
+| textual            | fix-unsafe               |     7.2 |        20.6 |  2.9 |    0.54 |          3 |     0.69 | False |
+| textual            | infer-basedpyright       |    39.2 |       117.3 |  3.0 |    2.77 |          1 |     0.34 | False |
+| textual            | infer-ty                 |    21.0 |        40.8 |  1.9 |    1.78 |          1 |     0.37 | False |
+| textual            | infer-pyrefly            |    16.6 |        49.4 |  3.0 |    2.26 |          1 |     0.34 | False |
+| textual            | census                   |     3.2 |         6.9 |  2.2 |    0.42 |          3 |     0.52 | False |
+| textual            | coverage                 |     1.0 |         2.3 |  2.3 |    0.25 |          3 |     0.31 | False |
+| textual            | timing                   |     8.4 |        12.2 |  1.5 |    0.42 |          2 |     0.52 | False |
+| pdm                | check                    |     2.9 |         4.6 |  1.6 |    0.47 |          2 |     0.55 | False |
+| pdm                | fix-certain              |     7.0 |        13.0 |  1.9 |    0.51 |          2 |      0.6 | False |
+| pdm                | fix-likely               |     8.2 |        16.0 |  2.0 |    0.57 |          3 |     0.66 | False |
+| pdm                | fix-unsafe               |    12.2 |        18.5 |  1.5 |    0.55 |          2 |     0.72 | False |
+| pdm                | infer-basedpyright       |    36.8 |        76.7 |  2.1 |    2.33 |          1 |     0.31 | False |
+| pdm                | infer-ty                 |    13.2 |        23.9 |  1.8 |    1.54 |          1 |     0.34 | False |
+| pdm                | infer-pyrefly            |    21.4 |        40.8 |  1.9 |    2.14 |          1 |     0.33 | False |
+| pdm                | census                   |     1.0 |         0.8 |  0.8 |    0.05 |          2 |     0.55 | False |
+| pdm                | coverage                 |     1.0 |         1.6 |  1.6 |     0.2 |          2 |     0.24 | False |
+| pdm                | timing                   |     7.2 |         8.9 |  1.2 |    0.47 |          2 |     0.55 | False |
+| pdm                | traced                   |    22.7 |       120.7 |  5.3 |    1.61 |          6 |     1.72 | False |
 | pdm                | tests-released           |    20.4 |       101.5 |  5.0 |    1.22 |          8 |     1.51 | False |
-| pdm                | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     1.61 | False |
-| pdm                | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.5 | False |
-| pdm                | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.49 | False |
-| pdm                | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.49 | False |
-| pdm                | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.47 | False |
-| pdm                | tests-infer-pyrefly      |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.49 | False |
-| pdm                | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.61 | False |
-| pdm                | infer-union              |     9.0 |        16.7 |  1.9 |     0.5 |          1 |     0.31 | False |
-| pdm                | tests-infer-union        |    15.3 |        86.9 |  5.7 |     1.3 |          6 |     1.52 | False |
-| pdm                | tests                    |     1.4 |         1.2 |  0.9 |    0.28 |          2 |     0.35 | False |
-| strawberry-graphql | check                    |     2.4 |         4.5 |  1.9 |    0.36 |          2 |     0.45 | False |
-| strawberry-graphql | fix-certain              |     5.4 |        11.3 |  2.1 |    0.48 |          3 |      0.6 | False |
-| strawberry-graphql | fix-likely               |     7.0 |        15.9 |  2.3 |    0.62 |          2 |     0.77 | False |
-| strawberry-graphql | fix-unsafe               |    15.9 |        18.6 |  1.2 |    0.61 |          2 |     0.76 | False |
-| strawberry-graphql | infer-basedpyright       |     9.4 |        15.9 |  1.7 |    0.51 |          1 |     0.32 | False |
-| strawberry-graphql | infer-ty                 |     8.0 |        15.7 |  2.0 |    0.51 |          1 |     0.32 | False |
-| strawberry-graphql | infer-pyrefly            |    10.4 |        16.2 |  1.6 |    0.51 |          1 |     0.21 | False |
-| strawberry-graphql | census                   |     1.0 |         0.7 |  0.7 |    0.04 |          2 |     0.45 | False |
-| strawberry-graphql | coverage                 |     1.0 |         1.5 |  1.5 |    0.18 |          2 |     0.22 | False |
-| strawberry-graphql | timing                   |     4.4 |         6.2 |  1.4 |    0.37 |          2 |     0.46 | False |
-| strawberry-graphql | traced                   |    19.7 |       101.6 |  5.2 |    1.45 |          7 |     1.85 | False |
-| strawberry-graphql | tests-released           |    21.4 |        87.6 |  4.1 |    1.22 |          7 |     1.59 | False |
-| strawberry-graphql | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          6 |     1.56 | False |
-| strawberry-graphql | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          5 |     1.54 | False |
-| strawberry-graphql | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.52 | False |
-| strawberry-graphql | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     1.54 | False |
-| strawberry-graphql | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     1.55 | False |
-| strawberry-graphql | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     1.54 | False |
-| strawberry-graphql | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.59 | False |
-| strawberry-graphql | infer-union              |     7.1 |        15.6 |  2.2 |    0.52 |          1 |     0.22 | False |
-| strawberry-graphql | tests-infer-union        |    19.2 |        91.2 |  4.8 |    1.27 |          6 |     1.55 | False |
-| strawberry-graphql | tests                    |     1.4 |         1.2 |  0.9 |    0.28 |          1 |     0.34 | False |
-| strawberry-graphql | types-released           |     2.4 |         1.8 |  0.8 |     0.2 |          1 |     0.27 | False |
-| strawberry-graphql | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
+| pdm                | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.52 | False |
+| pdm                | infer-union              |    43.1 |        99.4 |  2.3 |    2.26 |          1 |     0.31 | False |
+| pdm                | tests-infer-union        |    15.8 |        89.3 |  5.7 |    1.22 |          8 |     1.62 | False |
+| pdm                | tests                    |     1.4 |         1.1 |  0.8 |    0.15 |          2 |     0.35 | False |
+| strawberry-graphql | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.45 | False |
+| strawberry-graphql | fix-certain              |     5.6 |        12.3 |  2.2 |     0.5 |          3 |      0.6 | False |
+| strawberry-graphql | fix-likely               |     7.8 |        17.1 |  2.2 |    0.64 |          3 |     0.77 | False |
+| strawberry-graphql | fix-unsafe               |    11.4 |        17.9 |  1.6 |    0.54 |          2 |     0.76 | False |
+| strawberry-graphql | infer-basedpyright       |    38.2 |        94.1 |  2.5 |    2.47 |          1 |     0.32 | False |
+| strawberry-graphql | infer-ty                 |    13.2 |        23.9 |  1.8 |    1.54 |          1 |     0.32 | False |
+| strawberry-graphql | infer-pyrefly            |    21.0 |        43.1 |  2.1 |    2.27 |          1 |     0.32 | False |
+| strawberry-graphql | census                   |     4.0 |         5.8 |  1.4 |    0.38 |          2 |     0.45 | False |
+| strawberry-graphql | coverage                 |     0.8 |         1.6 |  2.0 |    0.19 |          2 |     0.22 | False |
+| strawberry-graphql | timing                   |     6.6 |         8.5 |  1.3 |    0.38 |          2 |     0.46 | False |
+| strawberry-graphql | traced                   |    30.1 |       127.7 |  4.2 |    1.49 |          7 |     1.81 | False |
+| strawberry-graphql | tests-released           |    16.1 |        85.2 |  5.3 |    1.29 |          6 |     1.52 | False |
+| strawberry-graphql | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     1.59 | False |
+| strawberry-graphql | infer-union              |    31.9 |       112.9 |  3.5 |    2.29 |          3 |     0.65 | False |
+| strawberry-graphql | tests-infer-union        |    17.0 |        91.4 |  5.4 |    1.24 |          6 |     1.59 | False |
+| strawberry-graphql | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          2 |     0.35 | False |
+| strawberry-graphql | types-released           |     2.4 |         1.9 |  0.8 |     0.2 |          1 |     0.25 | False |
+| strawberry-graphql | types-fix-certain        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.25 | False |
 | strawberry-graphql | types-fix-likely         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.25 | False |
-| strawberry-graphql | types-fix-unsafe         |     0.5 |         0.2 |  0.4 |    0.03 |          1 |     0.25 | False |
-| strawberry-graphql | types-infer-basedpyright |     3.0 |         2.1 |  0.7 |     0.2 |          1 |     0.29 | False |
-| strawberry-graphql | types-infer-ty           |     3.6 |         2.0 |  0.6 |    0.19 |          1 |     0.24 | False |
-| strawberry-graphql | types-infer-pyrefly      |     3.4 |         1.9 |  0.6 |    0.19 |          1 |     0.24 | False |
-| strawberry-graphql | types-infer-trace        |     1.6 |         1.4 |  0.9 |    0.22 |          1 |     0.25 | False |
-| strawberry-graphql | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| pygments           | check                    |     3.2 |         7.0 |  2.2 |    0.41 |          3 |     0.51 | False |
-| pygments           | fix-certain              |     7.4 |        19.7 |  2.7 |    0.52 |          3 |     0.65 | False |
-| pygments           | fix-likely               |     8.2 |        22.8 |  2.8 |    0.62 |          3 |     0.77 | False |
-| pygments           | fix-unsafe               |    11.6 |        25.7 |  2.2 |    0.61 |          3 |     0.76 | False |
-| pygments           | infer-basedpyright       |    13.8 |        30.7 |  2.2 |     0.6 |          1 |     0.37 | False |
-| pygments           | infer-ty                 |    12.0 |        27.3 |  2.3 |    0.62 |          1 |     0.39 | False |
-| pygments           | infer-pyrefly            |    14.9 |        30.2 |  2.0 |    0.63 |          1 |     0.39 | False |
-| pygments           | census                   |     1.8 |         1.5 |  0.8 |    0.07 |          3 |     0.51 | False |
-| pygments           | coverage                 |     1.6 |         3.7 |  2.3 |    0.21 |          3 |     0.26 | False |
-| pygments           | timing                   |     8.2 |        12.0 |  1.5 |    0.41 |          2 |      0.5 | False |
-| pygments           | traced                   |    32.7 |        45.9 |  1.4 |    0.69 |          1 |     0.87 | False |
-| pygments           | tests-released           |    23.8 |        15.7 |  0.7 |    0.28 |          1 |     0.36 | False |
-| pygments           | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.3 | False |
-| pygments           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      0.3 | False |
+| strawberry-graphql | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.25 | False |
+| strawberry-graphql | types-infer-basedpyright |     2.2 |         1.6 |  0.7 |    0.19 |          1 |     0.25 | False |
+| strawberry-graphql | types-infer-ty           |     2.4 |         1.9 |  0.8 |    0.19 |          1 |     0.24 | False |
+| strawberry-graphql | types-infer-pyrefly      |     2.2 |         1.9 |  0.9 |     0.2 |          1 |     0.24 | False |
+| strawberry-graphql | types-infer-trace        |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.27 | False |
+| strawberry-graphql | types                    |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.04 | False |
+| pygments           | check                    |     3.0 |         6.4 |  2.1 |    0.42 |          3 |     0.51 | False |
+| pygments           | fix-certain              |     7.6 |        20.2 |  2.7 |     0.5 |          3 |     0.65 | False |
+| pygments           | fix-likely               |     8.2 |        22.9 |  2.8 |    0.63 |          3 |     0.77 | False |
+| pygments           | fix-unsafe               |    11.2 |        27.8 |  2.5 |    0.62 |          3 |     0.76 | False |
+| pygments           | infer-basedpyright       |    77.5 |       114.0 |  1.5 |    1.77 |          1 |     0.25 | False |
+| pygments           | infer-ty                 |    26.8 |        39.3 |  1.5 |    1.58 |          1 |     0.26 | False |
+| pygments           | infer-pyrefly            |    28.6 |        44.2 |  1.5 |    1.77 |          1 |     0.26 | False |
+| pygments           | census                   |     1.6 |         1.4 |  0.9 |    0.07 |          3 |     0.51 | False |
+| pygments           | coverage                 |     1.2 |         2.9 |  2.4 |    0.21 |          3 |     0.26 | False |
+| pygments           | timing                   |     9.0 |        12.6 |  1.4 |    0.42 |          2 |     0.51 | False |
+| pygments           | traced                   |    46.8 |        52.7 |  1.1 |    0.71 |          1 |     0.86 | False |
+| pygments           | tests-released           |    21.8 |        15.8 |  0.7 |     0.3 |          1 |     0.35 | False |
+| pygments           | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.35 | False |
+| pygments           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.35 | False |
 | pygments           | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.36 | False |
-| pygments           | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.36 | False |
-| pygments           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
-| pygments           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
-| pygments           | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.05 | False |
-| pygments           | infer-union              |    84.6 |       152.3 |  1.8 |    2.35 |          2 |      2.2 | False |
-| pygments           | tests-infer-union        |    24.4 |        16.4 |  0.7 |    0.28 |          1 |     0.36 | False |
-| pygments           | tests                    |     2.0 |         1.6 |  0.8 |    0.28 |          1 |     0.34 | False |
-| streamlink         | check                    |     1.8 |         4.4 |  2.4 |    0.33 |          3 |     0.41 | False |
-| streamlink         | fix-certain              |     4.6 |        12.6 |  2.7 |    0.43 |          3 |     0.55 | False |
-| streamlink         | fix-likely               |     5.6 |        15.1 |  2.7 |    0.49 |          3 |     0.61 | False |
-| streamlink         | fix-unsafe               |     7.4 |        16.8 |  2.3 |    0.48 |          2 |      0.6 | False |
-| streamlink         | infer-basedpyright       |    10.0 |        19.6 |  2.0 |    0.51 |          1 |     0.32 | False |
-| streamlink         | infer-ty                 |    10.6 |        19.2 |  1.8 |    0.49 |          1 |     0.31 | False |
-| streamlink         | infer-pyrefly            |    10.0 |        18.1 |  1.8 |    0.49 |          1 |     0.31 | False |
-| streamlink         | census                   |     1.4 |         1.2 |  0.9 |    0.06 |          3 |     0.41 | False |
-| streamlink         | coverage                 |     1.2 |         2.2 |  1.8 |    0.23 |          3 |     0.27 | False |
-| streamlink         | timing                   |     6.8 |         9.3 |  1.4 |    0.33 |          2 |     0.41 | False |
-| streamlink         | traced                   |    29.6 |        32.4 |  1.1 |    0.53 |          1 |     0.65 | False |
+| pygments           | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.36 | False |
+| pygments           | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.32 | False |
+| pygments           | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.36 | False |
+| pygments           | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.05 | False |
+| pygments           | infer-union              |    66.5 |       157.2 |  2.4 |    2.37 |          2 |     2.94 | False |
+| pygments           | tests-infer-union        |    22.1 |        16.5 |  0.7 |    0.25 |          1 |     0.35 | False |
+| pygments           | tests                    |     1.8 |         1.6 |  0.9 |    0.15 |          1 |     0.35 | False |
+| streamlink         | check                    |     2.2 |         5.2 |  2.4 |    0.34 |          3 |     0.41 | False |
+| streamlink         | fix-certain              |     5.2 |        14.2 |  2.7 |    0.43 |          3 |     0.54 | False |
+| streamlink         | fix-likely               |     6.2 |        17.1 |  2.8 |     0.5 |          3 |     0.61 | False |
+| streamlink         | fix-unsafe               |     8.9 |        18.3 |  2.1 |    0.45 |          3 |      0.6 | False |
+| streamlink         | infer-basedpyright       |    41.4 |        87.0 |  2.1 |    2.29 |          1 |     0.32 | False |
+| streamlink         | infer-ty                 |    17.8 |        30.9 |  1.7 |    1.47 |          1 |     0.31 | False |
+| streamlink         | infer-pyrefly            |    27.8 |        41.9 |  1.5 |    2.02 |          1 |     0.31 | False |
+| streamlink         | census                   |     0.8 |         0.7 |  0.9 |    0.06 |          3 |     0.41 | False |
+| streamlink         | coverage                 |     1.0 |         1.9 |  1.9 |    0.23 |          2 |     0.29 | False |
+| streamlink         | timing                   |     6.4 |         9.6 |  1.5 |    0.34 |          2 |     0.41 | False |
+| streamlink         | traced                   |    35.5 |        37.2 |  1.0 |    0.55 |          1 |     0.66 | False |
 | streamlink         | tests-released           |    22.3 |        14.0 |  0.6 |    0.18 |          1 |     0.25 | False |
-| streamlink         | tests-fix-certain        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
+| streamlink         | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
 | streamlink         | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
-| streamlink         | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
-| streamlink         | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
-| streamlink         | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
-| streamlink         | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.22 | False |
-| streamlink         | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.25 | False |
-| streamlink         | infer-union              |    14.0 |        23.5 |  1.7 |    0.55 |          1 |     0.34 | False |
-| streamlink         | tests-infer-union        |    23.7 |        13.8 |  0.6 |     0.2 |          1 |     0.25 | False |
-| streamlink         | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          1 |     0.34 | False |
-| streamlink         | types-released           |    16.2 |         7.2 |  0.4 |    0.35 |          1 |     0.47 | False |
-| streamlink         | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.04 |          1 |     0.49 | False |
+| streamlink         | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
+| streamlink         | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
+| streamlink         | tests-infer-ty           |     0.7 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
+| streamlink         | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.22 | False |
+| streamlink         | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.22 | False |
+| streamlink         | infer-union              |    51.8 |       123.5 |  2.4 |    2.14 |          1 |     0.34 | False |
+| streamlink         | tests-infer-union        |    21.2 |        13.6 |  0.6 |     0.2 |          1 |     0.25 | False |
+| streamlink         | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          1 |     0.35 | False |
+| streamlink         | types-released           |    21.8 |         8.2 |  0.4 |    0.36 |          1 |     0.44 | False |
+| streamlink         | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.49 | False |
 | streamlink         | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.04 |          1 |     0.47 | False |
-| streamlink         | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.45 | False |
-| streamlink         | types-infer-basedpyright |    16.7 |         8.1 |  0.5 |    0.36 |          1 |     0.45 | False |
-| streamlink         | types-infer-ty           |    13.9 |         7.7 |  0.6 |    0.36 |          1 |     0.45 | False |
-| streamlink         | types-infer-pyrefly      |    10.6 |         7.3 |  0.7 |    0.36 |          1 |     0.47 | False |
-| streamlink         | types-infer-trace        |     6.0 |         5.7 |  1.0 |    0.36 |          1 |     0.47 | False |
-| streamlink         | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| sphinx             | check                    |     3.8 |        10.0 |  2.6 |    0.45 |          3 |     0.56 | False |
-| sphinx             | fix-certain              |     7.8 |        23.5 |  3.0 |    0.64 |          3 |      0.8 | False |
-| sphinx             | fix-likely               |    11.0 |        33.8 |  3.1 |     0.8 |          3 |      1.0 | False |
-| sphinx             | fix-unsafe               |    13.2 |        34.9 |  2.6 |    0.77 |          2 |     0.96 | False |
-| sphinx             | infer-basedpyright       |    21.9 |        40.2 |  1.8 |    0.79 |          1 |     0.33 | False |
-| sphinx             | infer-ty                 |    14.6 |        37.9 |  2.6 |     0.8 |          1 |     0.33 | False |
-| sphinx             | infer-pyrefly            |    26.3 |        41.2 |  1.6 |     0.8 |          1 |     0.33 | False |
-| sphinx             | census                   |     2.6 |         2.3 |  0.9 |    0.07 |          3 |     0.56 | False |
-| sphinx             | coverage                 |     2.0 |         4.3 |  2.1 |    0.27 |          3 |     0.34 | False |
-| sphinx             | timing                   |    14.8 |        19.6 |  1.3 |    0.45 |          2 |     0.56 | False |
-| sphinx             | traced                   |    28.1 |       157.6 |  5.6 |    1.65 |          8 |     2.07 | False |
-| sphinx             | tests-released           |    15.0 |       100.3 |  6.7 |    1.35 |          8 |      1.7 | False |
-| sphinx             | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.04 |          8 |     1.66 | False |
-| sphinx             | tests-fix-likely         |    15.6 |       109.5 |  7.0 |    1.33 |          8 |     1.66 | False |
-| sphinx             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.04 |          8 |     1.65 | False |
-| sphinx             | tests-infer-basedpyright |    13.4 |        95.3 |  7.1 |    1.33 |          8 |     1.66 | False |
-| sphinx             | tests-infer-ty           |    11.4 |        81.9 |  7.2 |    1.34 |          8 |     1.66 | False |
-| sphinx             | tests-infer-pyrefly      |    17.6 |       111.2 |  6.3 |    1.33 |          8 |     1.66 | False |
-| sphinx             | tests-infer-trace        |    12.0 |        83.5 |  7.0 |    1.33 |          8 |     1.66 | False |
-| sphinx             | infer-union              |    18.2 |        40.7 |  2.2 |    0.82 |          1 |     0.51 | False |
-| sphinx             | tests-infer-union        |    11.4 |        81.9 |  7.2 |    1.35 |          7 |     1.69 | False |
-| sphinx             | tests                    |    18.6 |       116.7 |  6.3 |    1.38 |          1 |     0.34 | False |
-| sphinx             | types-released           |    17.2 |         7.4 |  0.4 |    0.26 |          1 |     0.35 | False |
-| sphinx             | types-fix-certain        |     7.2 |         6.4 |  0.9 |    0.27 |          1 |     0.34 | False |
-| sphinx             | types-fix-likely         |     4.6 |         4.3 |  0.9 |    0.27 |          1 |     0.34 | False |
-| sphinx             | types-fix-unsafe         |     0.6 |         0.3 |  0.5 |    0.04 |          1 |     0.34 | False |
-| sphinx             | types-infer-basedpyright |    10.8 |         7.2 |  0.7 |    0.27 |          1 |     0.37 | False |
-| sphinx             | types-infer-ty           |    11.2 |         6.9 |  0.6 |    0.25 |          1 |     0.31 | False |
-| sphinx             | types-infer-pyrefly      |    11.2 |         7.2 |  0.6 |    0.26 |          1 |     0.32 | False |
-| sphinx             | types-infer-trace        |     8.6 |         6.4 |  0.7 |    0.29 |          1 |     0.34 | False |
-| sphinx             | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
-| tox                | check                    |     1.4 |         2.7 |  1.9 |    0.24 |          2 |      0.3 | False |
-| tox                | fix-certain              |     2.8 |         6.5 |  2.3 |    0.32 |          3 |     0.39 | False |
-| tox                | fix-likely               |     3.4 |         8.2 |  2.4 |    0.37 |          3 |     0.46 | False |
-| tox                | fix-unsafe               |     8.0 |        10.9 |  1.4 |    0.39 |          2 |     0.49 | False |
-| tox                | infer-basedpyright       |     6.0 |        10.3 |  1.7 |    0.38 |          1 |     0.24 | False |
-| tox                | infer-ty                 |     6.6 |        10.2 |  1.5 |    0.33 |          1 |     0.21 | False |
-| tox                | infer-pyrefly            |     7.4 |        10.5 |  1.4 |    0.38 |          1 |     0.24 | False |
-| tox                | census                   |     0.8 |         0.5 |  0.6 |    0.04 |          2 |      0.3 | False |
-| tox                | coverage                 |     0.8 |         1.2 |  1.5 |    0.17 |          2 |     0.21 | False |
-| tox                | timing                   |     3.6 |         4.7 |  1.3 |    0.24 |          2 |      0.3 | False |
-| tox                | traced                   |    25.8 |       132.4 |  5.1 |    1.49 |          7 |     1.86 | False |
+| streamlink         | types-fix-unsafe         |     0.8 |         0.3 |  0.4 |    0.03 |          1 |     0.45 | False |
+| streamlink         | types-infer-basedpyright |     9.6 |         7.2 |  0.8 |    0.36 |          1 |     0.45 | False |
+| streamlink         | types-infer-ty           |     8.8 |         7.1 |  0.8 |    0.36 |          1 |     0.45 | False |
+| streamlink         | types-infer-pyrefly      |     8.6 |         7.0 |  0.8 |    0.36 |          1 |     0.45 | False |
+| streamlink         | types-infer-trace        |    14.4 |         8.1 |  0.6 |    0.36 |          1 |     0.45 | False |
+| streamlink         | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
+| sphinx             | check                    |     0.4 |         0.2 |  0.5 |    0.05 |          3 |     0.56 | False |
+| sphinx             | fix-certain              |    11.2 |        29.0 |  2.6 |    0.59 |          4 |      0.8 | False |
+| sphinx             | fix-likely               |    14.6 |        39.9 |  2.7 |    0.81 |          4 |      1.0 | False |
+| sphinx             | fix-unsafe               |    13.8 |        39.9 |  2.9 |    0.71 |          3 |     0.96 | False |
+| sphinx             | infer-basedpyright       |    57.3 |       143.5 |  2.5 |    3.07 |          1 |     0.49 | False |
+| sphinx             | infer-ty                 |    30.8 |        56.3 |  1.8 |    2.02 |          1 |     0.33 | False |
+| sphinx             | infer-pyrefly            |    33.2 |        54.8 |  1.7 |    2.39 |          1 |      0.5 | False |
+| sphinx             | census                   |     3.8 |         8.8 |  2.3 |    0.45 |          3 |     0.56 | False |
+| sphinx             | coverage                 |     1.2 |         2.9 |  2.4 |    0.27 |          3 |     0.34 | False |
+| sphinx             | timing                   |    11.8 |        18.4 |  1.6 |    0.46 |          2 |     0.56 | False |
+| sphinx             | traced                   |    29.2 |       162.2 |  5.6 |    1.67 |          8 |     2.06 | False |
+| sphinx             | tests-released           |    16.4 |       115.4 |  7.0 |    1.35 |          8 |     1.69 | False |
+| sphinx             | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.66 | False |
+| sphinx             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.66 | False |
+| sphinx             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.66 | False |
+| sphinx             | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.66 | False |
+| sphinx             | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     1.67 | False |
+| sphinx             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     1.66 | False |
+| sphinx             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     1.66 | False |
+| sphinx             | infer-union              |    39.5 |       145.6 |  3.7 |    3.01 |          2 |     0.68 | False |
+| sphinx             | tests-infer-union        |    14.6 |       100.4 |  6.9 |    1.33 |          8 |     1.69 | False |
+| sphinx             | tests                    |     1.2 |         1.1 |  0.9 |    0.15 |          8 |     1.72 | False |
+| sphinx             | types-released           |     7.1 |         6.0 |  0.8 |    0.27 |          1 |     0.32 | False |
+| sphinx             | types-fix-certain        |     5.6 |         5.1 |  0.9 |    0.27 |          1 |     0.34 | False |
+| sphinx             | types-fix-likely         |     8.4 |         6.7 |  0.8 |    0.27 |          1 |     0.34 | False |
+| sphinx             | types-fix-unsafe         |     0.6 |         0.3 |  0.5 |    0.04 |          1 |     0.35 | False |
+| sphinx             | types-infer-basedpyright |     7.0 |         5.9 |  0.8 |    0.26 |          1 |     0.34 | False |
+| sphinx             | types-infer-ty           |     8.2 |         6.3 |  0.8 |    0.26 |          1 |     0.31 | False |
+| sphinx             | types-infer-pyrefly      |    11.8 |         7.4 |  0.6 |    0.29 |          1 |     0.32 | False |
+| sphinx             | types-infer-trace        |     7.7 |         6.1 |  0.8 |    0.27 |          1 |     0.36 | False |
+| sphinx             | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| tox                | check                    |     1.4 |         2.4 |  1.7 |    0.25 |          2 |      0.3 | False |
+| tox                | fix-certain              |     3.4 |         7.7 |  2.3 |    0.33 |          3 |      0.4 | False |
+| tox                | fix-likely               |     4.0 |         9.3 |  2.3 |    0.39 |          3 |     0.46 | False |
+| tox                | fix-unsafe               |     6.7 |        10.6 |  1.6 |    0.35 |          2 |     0.49 | False |
+| tox                | infer-basedpyright       |    25.3 |        58.0 |  2.3 |    2.01 |          1 |     0.24 | False |
+| tox                | infer-ty                 |     6.8 |        11.1 |  1.6 |    0.35 |          1 |     0.21 | False |
+| tox                | infer-pyrefly            |    10.4 |        11.7 |  1.1 |     0.4 |          1 |     0.24 | False |
+| tox                | census                   |     0.8 |         0.6 |  0.7 |    0.04 |          2 |      0.3 | False |
+| tox                | coverage                 |     0.8 |         1.4 |  1.7 |    0.18 |          2 |     0.21 | False |
+| tox                | timing                   |    10.0 |         5.8 |  0.6 |    0.25 |          2 |      0.3 | False |
+| tox                | traced                   |    39.0 |       154.2 |  4.0 |    1.51 |          7 |     1.86 | False |
 | tox                | tests-released           |    17.8 |       104.5 |  5.9 |    1.36 |          8 |     1.67 | False |
-| tox                | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.64 | False |
-| tox                | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     1.66 | False |
-| tox                | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.64 | False |
-| tox                | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     1.65 | False |
-| tox                | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     1.65 | False |
-| tox                | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     1.62 | False |
-| tox                | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     1.71 | False |
-| tox                | infer-union              |     3.8 |         8.4 |  2.2 |    0.39 |          2 |     0.32 | False |
-| tox                | tests-infer-union        |    19.5 |        97.7 |  5.0 |    1.39 |          7 |     1.71 | False |
-| tox                | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          2 |     0.35 | False |
-| pint               | check                    |     2.6 |         4.6 |  1.8 |     0.4 |          2 |      0.5 | False |
-| pint               | fix-certain              |     4.6 |         9.9 |  2.2 |    0.44 |          3 |     0.55 | False |
-| pint               | fix-likely               |    11.6 |        17.6 |  1.5 |     0.5 |          3 |     0.62 | False |
-| pint               | fix-unsafe               |    11.1 |        18.0 |  1.6 |    0.55 |          2 |     0.69 | False |
-| pint               | infer-basedpyright       |    13.4 |        18.0 |  1.3 |    0.51 |          1 |     0.32 | False |
-| pint               | infer-ty                 |    11.4 |        17.2 |  1.5 |    0.51 |          1 |     1.26 | False |
-| pint               | infer-pyrefly            |     9.8 |        16.4 |  1.7 |    0.51 |          1 |     0.32 | False |
-| pint               | census                   |     2.0 |         0.8 |  0.4 |    0.05 |          2 |      0.5 | False |
-| pint               | coverage                 |     0.8 |         1.4 |  1.7 |    0.21 |          2 |     0.26 | False |
-| pint               | timing                   |     5.0 |         6.7 |  1.3 |     0.4 |          2 |      0.5 | False |
-| pint               | traced                   |    56.5 |        50.1 |  0.9 |    0.52 |          1 |     0.65 | False |
+| tox                | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      1.7 | False |
+| tox                | infer-union              |     5.0 |        10.2 |  2.0 |     0.4 |          1 |     0.16 | False |
+| tox                | tests-infer-union        |    25.6 |       117.7 |  4.6 |    1.38 |          7 |     1.74 | False |
+| tox                | tests                    |     1.4 |         1.2 |  0.9 |    0.15 |          2 |     0.35 | False |
+| pint               | check                    |     5.6 |         5.9 |  1.1 |    0.41 |          2 |      0.5 | False |
+| pint               | fix-certain              |     7.4 |        13.4 |  1.8 |    0.46 |          3 |     0.55 | False |
+| pint               | fix-likely               |    13.6 |        19.3 |  1.4 |    0.52 |          2 |     0.62 | False |
+| pint               | fix-unsafe               |    13.6 |        18.5 |  1.4 |    0.52 |          2 |     0.69 | False |
+| pint               | infer-basedpyright       |    68.8 |       102.0 |  1.5 |    2.44 |          1 |     0.32 | False |
+| pint               | infer-ty                 |    20.4 |        29.8 |  1.5 |    2.03 |          1 |     0.32 | False |
+| pint               | infer-pyrefly            |    14.9 |        35.1 |  2.4 |    1.98 |          1 |     0.32 | False |
+| pint               | census                   |     1.2 |         0.9 |  0.8 |    0.05 |          2 |      0.5 | False |
+| pint               | coverage                 |     1.0 |         1.9 |  1.9 |    0.22 |          2 |     0.26 | False |
+| pint               | timing                   |     7.4 |         8.9 |  1.2 |    0.41 |          2 |      0.5 | False |
+| pint               | traced                   |    56.7 |        51.5 |  0.9 |    0.54 |          1 |     0.65 | False |
 | pint               | tests-released           |    64.4 |        32.8 |  0.5 |    0.15 |          1 |     0.19 | False |
-| pint               | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.19 | False |
-| pint               | tests-fix-likely         |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.19 | False |
-| pint               | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.17 | False |
-| pint               | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.17 | False |
-| pint               | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.17 | False |
-| pint               | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.17 | False |
-| pint               | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
-| pint               | infer-union              |    14.3 |        19.3 |  1.3 |    0.52 |          1 |     1.29 | False |
-| pint               | tests-infer-union        |    34.1 |        28.5 |  0.8 |    0.15 |          1 |     0.19 | False |
-| pint               | tests                    |     1.6 |         1.5 |  0.9 |    0.28 |          1 |     0.34 | False |
-| pint               | types-released           |    18.6 |        12.6 |  0.7 |    0.52 |          1 |      0.7 | False |
-| pint               | types-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.67 | False |
-| pint               | types-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.67 | False |
-| pint               | types-fix-unsafe         |     5.0 |         8.8 |  1.8 |    0.54 |          2 |     0.69 | False |
-| pint               | types-infer-basedpyright |     4.4 |         8.0 |  1.8 |    0.55 |          2 |     0.69 | False |
-| pint               | types-infer-ty           |     5.4 |         9.0 |  1.7 |    0.54 |          2 |     0.67 | False |
-| pint               | types-infer-pyrefly      |     6.8 |        10.0 |  1.5 |    0.56 |          2 |     0.67 | False |
-| pint               | types-infer-trace        |     4.3 |         7.9 |  1.8 |    0.54 |          2 |     0.67 | False |
+| pint               | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-infer-ty           |     1.0 |         0.2 |  0.2 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| pint               | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.19 | False |
+| pint               | infer-union              |    71.2 |       142.2 |  2.0 |     2.1 |          1 |     0.32 | False |
+| pint               | tests-infer-union        |    38.4 |        32.3 |  0.8 |    0.15 |          1 |     0.19 | False |
+| pint               | tests                    |     2.0 |         1.6 |  0.8 |    0.15 |          1 |     0.35 | False |
+| pint               | types-released           |    13.9 |        12.9 |  0.9 |    0.53 |          1 |     0.65 | False |
+| pint               | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.67 | False |
+| pint               | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.67 | False |
+| pint               | types-fix-unsafe         |     6.4 |        10.3 |  1.6 |    0.55 |          2 |     0.67 | False |
+| pint               | types-infer-basedpyright |     6.6 |        10.3 |  1.6 |    0.53 |          2 |     0.69 | False |
+| pint               | types-infer-ty           |     6.4 |        10.4 |  1.6 |    0.54 |          2 |     0.67 | False |
+| pint               | types-infer-pyrefly      |     5.6 |         9.9 |  1.8 |    0.55 |          2 |      0.7 | False |
+| pint               | types-infer-trace        |     6.8 |        10.9 |  1.6 |    0.55 |          2 |     0.67 | False |
 | pint               | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| altair             | check                    |     5.8 |         7.2 |  1.2 |    0.77 |          2 |     0.96 | False |
-| altair             | fix-certain              |    25.2 |        23.4 |  0.9 |    0.88 |          2 |      1.1 | False |
-| altair             | fix-likely               |    20.5 |        25.1 |  1.2 |    0.97 |          2 |     1.21 | False |
-| altair             | fix-unsafe               |    31.5 |        31.2 |  1.0 |    1.04 |          1 |      1.3 | False |
-| altair             | infer-basedpyright       |    21.5 |        26.4 |  1.2 |    0.92 |          1 |     0.57 | False |
-| altair             | infer-ty                 |    20.9 |        25.8 |  1.2 |    0.88 |          1 |     0.55 | False |
-| altair             | infer-pyrefly            |    24.1 |        28.6 |  1.2 |    0.98 |          1 |     0.61 | False |
-| altair             | census                   |     2.8 |         1.2 |  0.4 |     0.1 |          2 |     0.96 | False |
-| altair             | coverage                 |     1.2 |         2.2 |  1.8 |    0.28 |          2 |     0.35 | False |
-| altair             | timing                   |    12.5 |        14.0 |  1.1 |    0.77 |          2 |     0.96 | False |
-| altair             | traced                   |    51.2 |       189.7 |  3.7 |    4.81 |          5 |     6.42 | False |
-| altair             | tests-released           |    26.7 |       150.3 |  5.6 |     4.7 |          8 |     5.96 | False |
-| altair             | tests-fix-certain        |    26.9 |       149.4 |  5.6 |    4.57 |          6 |     5.82 | False |
-| altair             | tests-fix-likely         |    24.2 |       149.7 |  6.2 |    4.45 |          6 |     5.82 | False |
-| altair             | tests-fix-unsafe         |    31.3 |       149.7 |  4.8 |    4.71 |          6 |     5.69 | False |
-| altair             | tests-infer-basedpyright |    23.1 |       146.1 |  6.3 |    4.48 |          8 |     5.89 | False |
-| altair             | tests-infer-ty           |    22.9 |       133.6 |  5.8 |    4.52 |          8 |     6.52 | False |
-| altair             | tests-infer-pyrefly      |    22.7 |       130.6 |  5.8 |    4.48 |          8 |     6.14 | False |
-| altair             | tests-infer-trace        |    21.5 |       131.9 |  6.1 |    4.69 |          8 |     6.19 | False |
-| altair             | infer-union              |    16.1 |        23.5 |  1.5 |    1.04 |          1 |     0.65 | False |
-| altair             | tests-infer-union        |    26.0 |       145.0 |  5.6 |    4.68 |          8 |     6.16 | False |
-| altair             | tests                    |     1.2 |         1.1 |  0.9 |    0.28 |          1 |     0.34 | False |
-| altair             | types-released           |    16.4 |         7.1 |  0.4 |    0.38 |          1 |     0.54 | False |
-| altair             | types-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.47 | False |
-| altair             | types-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.49 | False |
-| altair             | types-fix-unsafe         |     2.6 |         2.6 |  1.0 |    0.38 |          1 |     0.47 | False |
-| altair             | types-infer-basedpyright |     9.6 |         6.8 |  0.7 |    0.38 |          1 |     0.54 | False |
-| altair             | types-infer-ty           |     7.8 |         6.0 |  0.8 |     0.4 |          1 |     0.51 | False |
-| altair             | types-infer-pyrefly      |     7.0 |         6.1 |  0.9 |    0.38 |          1 |     0.47 | False |
-| altair             | types-infer-trace        |     4.4 |         4.2 |  1.0 |    0.39 |          1 |     0.47 | False |
-| altair             | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| seaborn            | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.87 | False |
-| seaborn            | fix-certain              |    17.5 |        20.7 |  1.2 |    0.81 |          1 |     1.01 | False |
-| seaborn            | fix-likely               |    20.5 |        29.1 |  1.4 |    0.92 |          2 |     1.15 | False |
-| seaborn            | fix-unsafe               |    22.7 |        28.5 |  1.3 |     1.0 |          1 |     1.25 | False |
-| seaborn            | infer-basedpyright       |    25.6 |        29.6 |  1.2 |    0.91 |          1 |     0.57 | False |
-| seaborn            | infer-ty                 |    22.3 |        26.1 |  1.2 |    0.82 |          1 |     1.02 | False |
-| seaborn            | infer-pyrefly            |    24.0 |        28.8 |  1.2 |    0.95 |          1 |     1.19 | False |
-| seaborn            | census                   |     6.2 |         8.8 |  1.4 |     0.7 |          2 |     0.87 | False |
-| seaborn            | coverage                 |     1.2 |         1.5 |  1.2 |     0.2 |          2 |     0.25 | False |
-| seaborn            | timing                   |    11.4 |        14.2 |  1.2 |     0.7 |          2 |     0.87 | False |
-| seaborn            | traced                   |    64.1 |       450.6 |  7.0 |    3.65 |          8 |     4.64 | False |
-| seaborn            | tests-released           |    38.0 |       413.4 | 10.9 |    3.38 |          8 |     4.25 | False |
-| seaborn            | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     6.09 | False |
-| seaborn            | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.97 | False |
-| seaborn            | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.99 | False |
-| seaborn            | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          7 |      6.0 | False |
-| seaborn            | tests-infer-ty           |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     5.92 | False |
-| seaborn            | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      5.9 | False |
-| seaborn            | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     6.11 | False |
-| seaborn            | infer-union              |    46.8 |       103.4 |  2.2 |    2.43 |          3 |     2.96 | False |
-| seaborn            | tests-infer-union        |    45.9 |       415.9 |  9.1 |    3.44 |          8 |     4.29 | False |
-| seaborn            | tests                    |     2.2 |         1.6 |  0.7 |    0.28 |          2 |     0.34 | False |
-| seaborn            | types-released           |     1.8 |         1.1 |  0.6 |    0.15 |          1 |     0.21 | False |
+| altair             | check                    |     6.4 |         8.6 |  1.3 |    0.82 |          2 |     0.96 | False |
+| altair             | fix-certain              |    32.6 |        25.7 |  0.8 |    0.93 |          1 |      1.1 | False |
+| altair             | fix-likely               |    25.4 |        29.0 |  1.1 |    1.03 |          2 |     1.21 | False |
+| altair             | fix-unsafe               |    47.6 |        29.1 |  0.6 |    1.03 |          1 |      1.3 | False |
+| altair             | infer-basedpyright       |    60.2 |        74.4 |  1.2 |    2.32 |          1 |     0.57 | False |
+| altair             | infer-ty                 |    35.8 |        35.3 |  1.0 |    1.63 |          1 |     0.55 | False |
+| altair             | infer-pyrefly            |    40.0 |        43.5 |  1.1 |    1.79 |          1 |     0.61 | False |
+| altair             | census                   |     1.4 |         1.1 |  0.8 |     0.1 |          2 |     0.96 | False |
+| altair             | coverage                 |     1.0 |         2.2 |  2.2 |    0.28 |          2 |     0.35 | False |
+| altair             | timing                   |    13.2 |        15.1 |  1.1 |    0.82 |          2 |     0.96 | False |
+| altair             | traced                   |    40.4 |       186.8 |  4.6 |    5.34 |          5 |     6.01 | False |
+| altair             | tests-released           |    22.4 |       134.0 |  6.0 |    4.98 |          8 |     5.87 | False |
+| altair             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     5.71 | False |
+| altair             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.56 | False |
+| altair             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     5.89 | False |
+| altair             | tests-infer-basedpyright |    28.6 |       153.1 |  5.4 |    4.83 |          8 |      5.6 | False |
+| altair             | tests-infer-ty           |    18.4 |       119.5 |  6.5 |    4.68 |          8 |     5.65 | False |
+| altair             | tests-infer-pyrefly      |    21.6 |       148.4 |  6.9 |    4.67 |          8 |      5.6 | False |
+| altair             | tests-infer-trace        |    21.8 |       131.2 |  6.0 |    4.76 |          8 |     5.86 | False |
+| altair             | infer-union              |    31.9 |        71.1 |  2.2 |    2.25 |          2 |      1.3 | False |
+| altair             | tests-infer-union        |    27.1 |       153.2 |  5.7 |     4.8 |          7 |     5.85 | False |
+| altair             | tests                    |     1.0 |         0.9 |  0.9 |    0.15 |          2 |     0.35 | False |
+| altair             | types-released           |     9.0 |         6.5 |  0.7 |    0.38 |          1 |     0.47 | False |
+| altair             | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.47 | False |
+| altair             | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.49 | False |
+| altair             | types-fix-unsafe         |     3.2 |         3.2 |  1.0 |    0.38 |          1 |     0.47 | False |
+| altair             | types-infer-basedpyright |    12.8 |         7.5 |  0.6 |    0.38 |          1 |     0.47 | False |
+| altair             | types-infer-ty           |    10.6 |         6.9 |  0.7 |     0.4 |          1 |      0.5 | False |
+| altair             | types-infer-pyrefly      |     8.2 |         6.7 |  0.8 |    0.38 |          1 |     0.47 | False |
+| altair             | types-infer-trace        |     3.8 |         3.8 |  1.0 |    0.39 |          1 |     0.49 | False |
+| altair             | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
+| seaborn            | check                    |     3.6 |         0.2 |  0.1 |    0.04 |          2 |     0.87 | False |
+| seaborn            | fix-certain              |    18.6 |        24.2 |  1.3 |    0.91 |          2 |     1.01 | False |
+| seaborn            | fix-likely               |    23.4 |        32.7 |  1.4 |    1.01 |          2 |     1.15 | False |
+| seaborn            | fix-unsafe               |    19.2 |        27.4 |  1.4 |    0.95 |          2 |     1.25 | False |
+| seaborn            | infer-basedpyright       |    34.9 |        32.9 |  0.9 |     1.0 |          2 |     1.14 | False |
+| seaborn            | infer-ty                 |    35.9 |        39.2 |  1.1 |    1.59 |          1 |     0.51 | False |
+| seaborn            | infer-pyrefly            |    35.2 |        39.5 |  1.1 |    1.96 |          1 |     0.59 | False |
+| seaborn            | census                   |     6.0 |         8.9 |  1.5 |    0.75 |          2 |     0.87 | False |
+| seaborn            | coverage                 |     0.8 |         1.4 |  1.7 |     0.2 |          2 |     0.25 | False |
+| seaborn            | timing                   |    15.4 |        16.3 |  1.1 |    0.75 |          2 |     0.87 | False |
+| seaborn            | traced                   |    63.0 |       457.9 |  7.3 |    3.71 |          8 |     4.56 | False |
+| seaborn            | tests-released           |    41.9 |       381.9 |  9.1 |    3.51 |          8 |     4.22 | False |
+| seaborn            | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      4.3 | False |
+| seaborn            | infer-union              |    75.7 |       123.8 |  1.6 |    2.36 |          1 |     1.01 | False |
+| seaborn            | tests-infer-union        |    38.2 |       393.7 | 10.3 |    3.33 |          8 |      4.3 | False |
+| seaborn            | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          1 |     0.35 | False |
+| seaborn            | types-released           |     1.8 |         1.1 |  0.6 |    0.15 |          1 |     0.19 | False |
 | seaborn            | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
-| seaborn            | types-fix-likely         |     1.2 |         0.9 |  0.8 |    0.16 |          1 |      0.2 | False |
-| seaborn            | types-fix-unsafe         |     0.3 |         0.1 |  0.3 |    0.03 |          1 |     0.21 | False |
-| seaborn            | types-infer-basedpyright |     2.2 |         1.2 |  0.5 |    0.16 |          1 |      0.2 | False |
-| seaborn            | types-infer-ty           |     2.0 |         1.1 |  0.6 |    0.15 |          1 |     0.19 | False |
-| seaborn            | types-infer-pyrefly      |     1.8 |         1.1 |  0.6 |    0.15 |          1 |     0.21 | False |
-| seaborn            | types-infer-trace        |     0.7 |         0.6 |  0.9 |    0.16 |          1 |     0.19 | False |
-| seaborn            | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
-| aiohttp            | check                    |     1.8 |         3.0 |  1.7 |    0.24 |          2 |      0.3 | False |
-| aiohttp            | fix-certain              |     5.4 |         8.9 |  1.6 |    0.33 |          2 |     0.49 | False |
-| aiohttp            | fix-likely               |     5.8 |        11.9 |  2.1 |    0.41 |          2 |     0.52 | False |
-| aiohttp            | fix-unsafe               |     9.6 |        12.2 |  1.3 |    0.42 |          2 |     0.52 | False |
-| aiohttp            | infer-basedpyright       |     6.6 |        11.9 |  1.8 |    0.41 |          1 |     0.51 | False |
-| aiohttp            | infer-ty                 |     7.2 |        12.2 |  1.7 |    0.41 |          1 |     0.26 | False |
-| aiohttp            | infer-pyrefly            |    10.0 |        13.1 |  1.3 |     0.4 |          1 |     0.59 | False |
-| aiohttp            | census                   |     1.0 |         0.8 |  0.8 |    0.04 |          2 |      0.3 | False |
-| aiohttp            | coverage                 |     1.2 |         1.8 |  1.5 |    0.19 |          2 |     0.24 | False |
-| aiohttp            | timing                   |     3.6 |         4.9 |  1.4 |    0.24 |          2 |      0.3 | False |
-| aiohttp            | traced                   |   124.9 |       733.3 |  5.9 |    2.95 |          1 |     3.72 | False |
+| seaborn            | types-fix-likely         |     1.4 |         1.0 |  0.7 |    0.16 |          1 |      0.2 | False |
+| seaborn            | types-fix-unsafe         |     0.3 |         0.2 |  0.7 |    0.03 |          1 |     0.21 | False |
+| seaborn            | types-infer-basedpyright |     1.8 |         1.2 |  0.7 |    0.15 |          1 |      0.2 | False |
+| seaborn            | types-infer-ty           |     1.5 |         1.1 |  0.7 |    0.15 |          1 |     0.19 | False |
+| seaborn            | types-infer-pyrefly      |     1.6 |         1.1 |  0.7 |    0.15 |          1 |     0.19 | False |
+| seaborn            | types-infer-trace        |     0.9 |         0.7 |  0.8 |    0.16 |          1 |      0.2 | False |
+| seaborn            | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
+| aiohttp            | check                    |     0.8 |         0.1 |  0.1 |    0.04 |          2 |      0.3 | False |
+| aiohttp            | fix-certain              |     8.2 |        10.5 |  1.3 |    0.35 |          2 |     0.41 | False |
+| aiohttp            | fix-likely               |     6.4 |        13.0 |  2.0 |    0.43 |          3 |     0.51 | False |
+| aiohttp            | fix-unsafe               |     7.4 |        11.7 |  1.6 |    0.36 |          2 |     0.52 | False |
+| aiohttp            | infer-basedpyright       |    39.1 |        56.7 |  1.5 |    1.44 |          1 |     0.26 | False |
+| aiohttp            | infer-ty                 |    13.2 |        18.5 |  1.4 |    0.97 |          1 |     0.26 | False |
+| aiohttp            | infer-pyrefly            |    10.2 |        15.9 |  1.6 |    0.98 |          1 |     0.25 | False |
+| aiohttp            | census                   |     1.8 |         3.1 |  1.7 |    0.25 |          2 |      0.3 | False |
+| aiohttp            | coverage                 |     0.8 |         1.4 |  1.7 |     0.2 |          2 |     0.24 | False |
+| aiohttp            | timing                   |     4.4 |         5.8 |  1.3 |    0.25 |          2 |      0.3 | False |
+| aiohttp            | traced                   |   128.3 |       750.5 |  5.8 |    2.97 |          1 |     3.69 | False |
 | aiohttp            | tests-released           |    98.4 |       643.0 |  6.5 |    2.58 |          1 |     3.24 | False |
-| aiohttp            | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      3.2 | False |
-| aiohttp            | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.24 | False |
-| aiohttp            | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      3.8 | False |
-| aiohttp            | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.22 | False |
-| aiohttp            | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.21 | False |
-| aiohttp            | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |      3.2 | False |
-| aiohttp            | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.22 | False |
-| aiohttp            | infer-union              |    12.1 |        15.8 |  1.3 |    0.41 |          1 |     0.72 | False |
-| aiohttp            | tests-infer-union        |    93.2 |       627.2 |  6.7 |    2.57 |          1 |     3.22 | False |
-| aiohttp            | tests                    |     2.6 |         1.8 |  0.7 |    0.28 |          1 |     0.34 | False |
-| websockets         | check                    |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     0.25 | False |
-| websockets         | fix-certain              |     2.4 |         4.7 |  2.0 |    0.29 |          2 |     0.36 | False |
-| websockets         | fix-likely               |     3.0 |         5.8 |  1.9 |    0.29 |          3 |      0.4 | False |
-| websockets         | fix-unsafe               |     3.4 |         6.2 |  1.8 |    0.31 |          2 |     0.39 | False |
-| websockets         | infer-basedpyright       |     4.4 |         6.6 |  1.5 |    0.27 |          1 |     0.17 | False |
-| websockets         | infer-ty                 |     5.8 |         6.7 |  1.2 |     0.3 |          1 |     0.27 | False |
-| websockets         | infer-pyrefly            |     4.8 |         6.5 |  1.4 |     0.3 |          1 |     0.38 | False |
-| websockets         | census                   |     1.6 |         2.1 |  1.3 |    0.21 |          2 |     0.25 | False |
-| websockets         | coverage                 |     0.8 |         0.9 |  1.1 |    0.16 |          2 |      0.2 | False |
-| websockets         | timing                   |     2.4 |         3.0 |  1.2 |    0.21 |          2 |     0.26 | False |
-| websockets         | traced                   |    42.5 |        14.2 |  0.3 |    0.31 |          1 |     0.41 | False |
+| aiohttp            | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-fix-unsafe         |     0.7 |         0.2 |  0.3 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-infer-ty           |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | tests-infer-trace        |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     3.22 | False |
+| aiohttp            | infer-union              |    31.2 |        63.7 |  2.0 |    1.21 |          1 |     0.26 | False |
+| aiohttp            | tests-infer-union        |   111.7 |       652.7 |  5.8 |    2.61 |          1 |     3.21 | False |
+| aiohttp            | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          1 |     0.35 | False |
+| websockets         | check                    |     0.2 |         0.1 |  0.5 |    0.03 |          2 |     0.26 | False |
+| websockets         | fix-certain              |     4.8 |         5.4 |  1.1 |    0.33 |          2 |     0.36 | False |
+| websockets         | fix-likely               |     4.8 |         6.8 |  1.4 |     0.3 |          2 |     0.36 | False |
+| websockets         | fix-unsafe               |     4.4 |         6.4 |  1.5 |    0.29 |          2 |     0.39 | False |
+| websockets         | infer-basedpyright       |     9.2 |         8.8 |  1.0 |    0.29 |          1 |     0.17 | False |
+| websockets         | infer-ty                 |     6.0 |         7.4 |  1.2 |    0.29 |          1 |     0.19 | False |
+| websockets         | infer-pyrefly            |     5.4 |         7.2 |  1.3 |     0.3 |          1 |     0.19 | False |
+| websockets         | census                   |     1.2 |         1.7 |  1.4 |    0.21 |          2 |     0.26 | False |
+| websockets         | coverage                 |     0.8 |         1.0 |  1.2 |    0.17 |          2 |      0.2 | False |
+| websockets         | timing                   |     2.2 |         2.9 |  1.3 |    0.21 |          2 |     0.26 | False |
+| websockets         | traced                   |    38.9 |        15.3 |  0.4 |    0.34 |          1 |     0.39 | False |
 | websockets         | tests-released           |    32.6 |         5.6 |  0.2 |    0.14 |          1 |     0.17 | False |
 | websockets         | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
 | websockets         | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
-| websockets         | tests-fix-unsafe         |     0.5 |         0.2 |  0.4 |    0.03 |          1 |     0.15 | False |
+| websockets         | tests-fix-unsafe         |     0.5 |         0.2 |  0.4 |    0.03 |          1 |     0.17 | False |
 | websockets         | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.17 | False |
-| websockets         | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.19 | False |
+| websockets         | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.19 | False |
 | websockets         | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
-| websockets         | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.16 | False |
-| websockets         | infer-union              |     6.4 |         7.8 |  1.2 |    0.28 |          1 |     0.57 | False |
-| websockets         | tests-infer-union        |    33.1 |         5.6 |  0.2 |    0.13 |          1 |     0.16 | False |
-| websockets         | tests                    |     1.8 |         1.6 |  0.9 |    0.28 |          1 |     0.34 | False |
-| websockets         | types-released           |     1.0 |         0.7 |  0.7 |    0.11 |          1 |     0.15 | False |
-| websockets         | types-fix-certain        |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.14 | False |
-| websockets         | types-fix-likely         |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.14 | False |
-| websockets         | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.12 | False |
+| websockets         | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.16 | False |
+| websockets         | infer-union              |     6.6 |         8.3 |  1.3 |    0.28 |          1 |     0.17 | False |
+| websockets         | tests-infer-union        |    37.2 |         6.4 |  0.2 |    0.15 |          1 |     0.16 | False |
+| websockets         | tests                    |     2.0 |         1.7 |  0.8 |    0.15 |          1 |     0.35 | False |
+| websockets         | types-released           |     2.0 |         0.9 |  0.5 |    0.11 |          1 |     0.14 | False |
+| websockets         | types-fix-certain        |     1.2 |         0.8 |  0.7 |    0.11 |          1 |     0.14 | False |
+| websockets         | types-fix-likely         |     1.0 |         0.9 |  0.9 |    0.11 |          1 |     0.14 | False |
+| websockets         | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.14 | False |
 | websockets         | types-infer-basedpyright |     1.8 |         1.0 |  0.6 |    0.11 |          1 |     0.14 | False |
-| websockets         | types-infer-ty           |     1.6 |         1.0 |  0.6 |    0.11 |          1 |     0.14 | False |
-| websockets         | types-infer-pyrefly      |     2.6 |         1.1 |  0.4 |    0.11 |          1 |     0.14 | False |
-| websockets         | types-infer-trace        |     2.0 |         0.9 |  0.5 |    0.11 |          1 |     0.14 | False |
-| websockets         | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| anyio              | check                    |     1.4 |         1.9 |  1.4 |    0.21 |          2 |     0.26 | False |
-| anyio              | fix-certain              |     4.2 |         5.8 |  1.4 |     0.3 |          2 |     0.37 | False |
-| anyio              | fix-likely               |     7.0 |         7.2 |  1.0 |     0.3 |          2 |     0.37 | False |
-| anyio              | fix-unsafe               |     7.0 |         7.4 |  1.1 |    0.34 |          2 |     0.42 | False |
-| anyio              | infer-basedpyright       |     4.4 |         6.5 |  1.5 |     0.3 |          1 |     0.19 | False |
-| anyio              | infer-ty                 |     6.6 |         7.8 |  1.2 |    0.34 |          1 |     0.42 | False |
-| anyio              | infer-pyrefly            |     5.2 |         6.7 |  1.3 |     0.3 |          1 |     0.49 | False |
-| anyio              | census                   |     1.8 |         0.5 |  0.3 |    0.04 |          2 |     0.26 | False |
-| anyio              | coverage                 |     1.2 |         1.2 |  1.0 |    0.16 |          2 |      0.2 | False |
-| anyio              | timing                   |     3.2 |         3.4 |  1.1 |    0.21 |          2 |     0.26 | False |
-| anyio              | traced                   |   179.0 |        62.4 |  0.3 |    0.35 |          1 |     0.47 | False |
+| websockets         | types-infer-ty           |     2.0 |         1.0 |  0.5 |    0.11 |          1 |     0.14 | False |
+| websockets         | types-infer-pyrefly      |     1.0 |         0.8 |  0.8 |    0.11 |          1 |     0.14 | False |
+| websockets         | types-infer-trace        |     2.0 |         1.0 |  0.5 |    0.11 |          1 |     0.14 | False |
+| websockets         | types                    |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.04 | False |
+| anyio              | check                    |     1.2 |         1.7 |  1.4 |    0.21 |          2 |     0.26 | False |
+| anyio              | fix-certain              |     5.6 |         6.5 |  1.2 |     0.3 |          2 |     0.37 | False |
+| anyio              | fix-likely               |     8.2 |         7.9 |  1.0 |     0.3 |          2 |     0.37 | False |
+| anyio              | fix-unsafe               |     3.3 |         5.9 |  1.8 |     0.3 |          2 |     0.42 | False |
+| anyio              | infer-basedpyright       |    19.8 |        26.7 |  1.3 |     1.0 |          1 |     0.19 | False |
+| anyio              | infer-ty                 |     8.2 |         9.9 |  1.2 |    0.67 |          1 |     0.21 | False |
+| anyio              | infer-pyrefly            |     7.8 |        14.6 |  1.9 |    0.98 |          1 |     0.19 | False |
+| anyio              | census                   |     0.6 |         0.4 |  0.7 |    0.04 |          2 |     0.26 | False |
+| anyio              | coverage                 |     2.0 |         1.5 |  0.8 |    0.17 |          1 |      0.2 | False |
+| anyio              | timing                   |     3.0 |         3.3 |  1.1 |    0.21 |          2 |     0.26 | False |
+| anyio              | traced                   |   114.6 |        57.7 |  0.5 |    0.35 |          1 |     0.44 | False |
 | anyio              | tests-released           |   119.3 |        48.2 |  0.4 |    0.26 |          1 |     0.34 | False |
-| anyio              | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.34 | False |
-| anyio              | tests-fix-likely         |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.34 | False |
+| anyio              | tests-fix-certain        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.32 | False |
+| anyio              | tests-fix-likely         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.32 | False |
 | anyio              | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
 | anyio              | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
-| anyio              | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
-| anyio              | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          1 |     0.32 | False |
-| anyio              | tests-infer-trace        |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.32 | False |
-| anyio              | infer-union              |    12.0 |         8.7 |  0.7 |    0.34 |          2 |     1.05 | False |
-| anyio              | tests-infer-union        |    99.4 |        44.9 |  0.5 |    0.25 |          1 |     0.32 | False |
-| anyio              | tests                    |     3.2 |         1.9 |  0.6 |    0.28 |          1 |     0.34 | False |
-| zarr               | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          3 |     0.39 | False |
-| zarr               | fix-certain              |     6.2 |        11.4 |  1.8 |    0.39 |          2 |     0.49 | False |
-| zarr               | fix-likely               |     9.4 |        16.6 |  1.8 |    0.62 |          2 |     0.77 | False |
-| zarr               | fix-unsafe               |    13.5 |        16.6 |  1.2 |    0.55 |          2 |     0.69 | False |
-| zarr               | infer-basedpyright       |    15.0 |        16.8 |  1.1 |    0.52 |          1 |     0.32 | False |
-| zarr               | infer-ty                 |     9.0 |        15.7 |  1.7 |    0.52 |          1 |     0.57 | False |
-| zarr               | infer-pyrefly            |    12.2 |        15.8 |  1.3 |    0.52 |          1 |     0.62 | False |
-| zarr               | census                   |     3.0 |         5.1 |  1.7 |    0.31 |          3 |     0.39 | False |
-| zarr               | coverage                 |     1.0 |         1.6 |  1.6 |     0.2 |          2 |     0.25 | False |
-| zarr               | timing                   |     4.0 |         6.1 |  1.5 |    0.31 |          2 |     0.39 | False |
-| zarr               | traced                   |   166.7 |       257.2 |  1.5 |    2.55 |          2 |     3.21 | False |
+| anyio              | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     0.32 | False |
+| anyio              | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
+| anyio              | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.32 | False |
+| anyio              | infer-union              |    56.9 |        45.7 |  0.8 |    0.84 |          1 |     0.42 | False |
+| anyio              | tests-infer-union        |   124.9 |        51.5 |  0.4 |    0.27 |          1 |     0.31 | False |
+| anyio              | tests                    |     2.4 |         1.7 |  0.7 |    0.15 |          1 |     0.35 | False |
+| zarr               | check                    |     0.8 |         0.2 |  0.2 |    0.04 |          2 |     0.39 | False |
+| zarr               | fix-certain              |     8.0 |        13.1 |  1.6 |     0.4 |          2 |     0.49 | False |
+| zarr               | fix-likely               |    12.0 |        17.3 |  1.4 |    0.55 |          2 |     0.77 | False |
+| zarr               | fix-unsafe               |    11.6 |        15.4 |  1.3 |    0.45 |          2 |     0.69 | False |
+| zarr               | infer-basedpyright       |    32.9 |        88.6 |  2.7 |    2.19 |          1 |     0.32 | False |
+| zarr               | infer-ty                 |    10.6 |        23.4 |  2.2 |    1.38 |          1 |     0.32 | False |
+| zarr               | infer-pyrefly            |    11.8 |        34.9 |  3.0 |    1.97 |          1 |     0.32 | False |
+| zarr               | census                   |     2.6 |         4.4 |  1.7 |    0.32 |          2 |     0.39 | False |
+| zarr               | coverage                 |     0.8 |         1.6 |  2.0 |     0.2 |          2 |     0.25 | False |
+| zarr               | timing                   |     4.6 |         6.7 |  1.5 |    0.32 |          2 |     0.39 | False |
+| zarr               | traced                   |   174.9 |       272.7 |  1.6 |    2.67 |          2 |     3.19 | False |
 | zarr               | tests-released           |   115.0 |       212.3 |  1.8 |    2.41 |          3 |      3.0 | False |
-| zarr               | tests-fix-certain        |     0.4 |         0.1 |  0.2 |    0.03 |          4 |     3.01 | False |
-| zarr               | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          4 |     3.04 | False |
-| zarr               | tests-fix-unsafe         |     0.3 |         0.2 |  0.7 |    0.03 |          4 |     2.91 | False |
-| zarr               | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          3 |     3.07 | False |
-| zarr               | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          3 |     2.91 | False |
-| zarr               | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      2.9 | False |
-| zarr               | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          3 |     2.89 | False |
-| zarr               | infer-union              |    15.6 |        18.3 |  1.2 |    0.53 |          1 |     0.34 | False |
-| zarr               | tests-infer-union        |   129.5 |       220.5 |  1.7 |    2.41 |          3 |     2.99 | False |
-| zarr               | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          2 |     0.34 | False |
-| joblib             | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.45 | False |
-| joblib             | fix-certain              |     7.2 |         9.8 |  1.4 |    0.42 |          2 |     0.52 | False |
-| joblib             | fix-likely               |     8.4 |        11.6 |  1.4 |    0.45 |          2 |     0.56 | False |
-| joblib             | fix-unsafe               |     9.4 |        11.6 |  1.2 |    0.45 |          2 |     0.62 | False |
-| joblib             | infer-basedpyright       |    13.9 |        13.3 |  1.0 |    0.45 |          1 |     0.28 | False |
-| joblib             | infer-ty                 |     9.6 |        12.9 |  1.3 |     0.5 |          1 |     0.55 | False |
-| joblib             | infer-pyrefly            |     9.8 |        12.4 |  1.3 |    0.45 |          1 |     0.29 | False |
-| joblib             | census                   |     3.4 |         4.4 |  1.3 |    0.36 |          2 |     0.45 | False |
-| joblib             | coverage                 |     0.6 |         1.0 |  1.7 |    0.19 |          2 |     0.24 | False |
-| joblib             | timing                   |     4.4 |         5.0 |  1.1 |    0.36 |          2 |     0.45 | False |
-| joblib             | traced                   |   257.0 |       477.0 |  1.9 |     1.1 |          1 |     1.37 | False |
-| joblib             | tests-released           |   161.1 |       483.9 |  3.0 |    1.08 |          1 |     1.35 | False |
+| zarr               | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     3.01 | False |
+| zarr               | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          4 |     3.04 | False |
+| zarr               | tests-fix-unsafe         |     0.8 |         0.2 |  0.2 |    0.03 |          2 |      2.9 | False |
+| zarr               | tests-infer-basedpyright |     1.0 |         0.3 |  0.3 |    0.03 |          3 |     3.07 | False |
+| zarr               | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          3 |     2.91 | False |
+| zarr               | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          2 |      2.9 | False |
+| zarr               | tests-infer-trace        |     1.0 |         0.2 |  0.2 |    0.03 |          3 |     2.89 | False |
+| zarr               | infer-union              |    30.1 |       103.6 |  3.4 |    1.99 |          2 |     0.66 | False |
+| zarr               | tests-infer-union        |   141.3 |       221.9 |  1.6 |    2.39 |          3 |     3.01 | False |
+| zarr               | tests                    |     1.4 |         1.2 |  0.9 |    0.15 |          2 |     0.35 | False |
+| joblib             | check                    |     2.2 |         3.5 |  1.6 |    0.36 |          2 |     0.45 | False |
+| joblib             | fix-certain              |    11.2 |        11.9 |  1.1 |    0.42 |          2 |     0.52 | False |
+| joblib             | fix-likely               |    10.4 |        13.3 |  1.3 |    0.45 |          2 |     0.56 | False |
+| joblib             | fix-unsafe               |     9.8 |        12.1 |  1.2 |    0.46 |          2 |     0.56 | False |
+| joblib             | infer-basedpyright       |    60.4 |        59.5 |  1.0 |     1.8 |          1 |     0.56 | False |
+| joblib             | infer-ty                 |    12.2 |        13.4 |  1.1 |    0.45 |          1 |     0.31 | False |
+| joblib             | infer-pyrefly            |    18.2 |        14.9 |  0.8 |    0.45 |          1 |     0.28 | False |
+| joblib             | census                   |     0.6 |         0.5 |  0.8 |    0.05 |          2 |     0.45 | False |
+| joblib             | coverage                 |     0.8 |         1.2 |  1.5 |     0.2 |          2 |     0.24 | False |
+| joblib             | timing                   |     5.8 |         7.2 |  1.2 |    0.36 |          2 |     0.45 | False |
+| joblib             | traced                   |   211.0 |       493.2 |  2.3 |    1.12 |          1 |     1.37 | False |
+| joblib             | tests-released           |   225.5 |       482.5 |  2.1 |    1.09 |          1 |     1.35 | False |
 | joblib             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.36 | False |
 | joblib             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.36 | False |
-| joblib             | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.31 | False |
-| joblib             | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.32 | False |
-| joblib             | tests-infer-ty           |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.37 | False |
-| joblib             | tests-infer-pyrefly      |     0.6 |         0.2 |  0.3 |    0.03 |          1 |     1.36 | False |
+| joblib             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.36 | False |
+| joblib             | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.32 | False |
+| joblib             | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.37 | False |
+| joblib             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.36 | False |
 | joblib             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     1.34 | False |
-| joblib             | infer-union              |    11.4 |        15.1 |  1.3 |    0.48 |          1 |     0.31 | False |
-| joblib             | tests-infer-union        |   164.4 |       480.7 |  2.9 |     1.1 |          1 |     1.34 | False |
-| joblib             | tests                    |     1.8 |         1.6 |  0.9 |    0.28 |          1 |     0.34 | False |
-| networkx           | check                    |     0.6 |         0.3 |  0.5 |    0.07 |          2 |     1.65 | False |
-| networkx           | fix-certain              |    28.1 |        64.8 |  2.3 |    1.58 |          3 |     1.97 | False |
-| networkx           | fix-likely               |    49.5 |       100.5 |  2.0 |    2.12 |          3 |     2.64 | False |
-| networkx           | fix-unsafe               |   101.6 |       113.2 |  1.1 |    2.23 |          2 |      2.8 | False |
-| networkx           | infer-basedpyright       |    69.7 |       106.4 |  1.5 |    2.06 |          1 |     1.29 | False |
-| networkx           | infer-ty                 |    63.3 |       102.6 |  1.6 |    2.04 |          1 |     1.27 | False |
-| networkx           | infer-pyrefly            |    62.9 |       103.0 |  1.6 |    2.04 |          1 |     1.27 | False |
-| networkx           | census                   |    14.6 |        28.1 |  1.9 |    1.32 |          2 |     1.65 | False |
-| networkx           | coverage                 |     2.4 |         5.9 |  2.5 |     0.4 |          3 |      0.5 | False |
-| networkx           | timing                   |    36.7 |        52.0 |  1.4 |    1.32 |          2 |     1.65 | False |
-| networkx           | traced                   |    64.2 |       314.6 |  4.9 |    2.38 |          6 |     3.22 | False |
+| joblib             | infer-union              |    44.5 |        69.0 |  1.6 |    1.64 |          1 |      0.3 | False |
+| joblib             | tests-infer-union        |   168.4 |       476.0 |  2.8 |    1.07 |          1 |     1.37 | False |
+| joblib             | tests                    |     1.8 |         1.5 |  0.8 |    0.15 |          1 |     0.35 | False |
+| networkx           | check                    |     0.6 |         0.4 |  0.7 |    0.07 |          2 |     1.65 | False |
+| networkx           | fix-certain              |    41.0 |        79.6 |  1.9 |     1.6 |          3 |     1.97 | False |
+| networkx           | fix-likely               |    77.0 |       121.8 |  1.6 |    2.13 |          3 |     2.65 | False |
+| networkx           | fix-unsafe               |    86.2 |       124.4 |  1.4 |    2.13 |          2 |     2.79 | False |
+| networkx           | infer-basedpyright       |   175.9 |       285.3 |  1.6 |    4.53 |          1 |     1.29 | False |
+| networkx           | infer-ty                 |    73.5 |       114.0 |  1.6 |    2.06 |          1 |     1.27 | False |
+| networkx           | infer-pyrefly            |    80.3 |       151.2 |  1.9 |    4.27 |          1 |     1.27 | False |
+| networkx           | census                   |    30.0 |        42.8 |  1.4 |    1.34 |          2 |     1.65 | False |
+| networkx           | coverage                 |     1.8 |         4.6 |  2.6 |     0.4 |          3 |      0.5 | False |
+| networkx           | timing                   |    58.6 |        66.4 |  1.1 |    1.34 |          2 |     1.65 | False |
+| networkx           | traced                   |    52.3 |       282.4 |  5.4 |    2.62 |          7 |     2.97 | False |
 | networkx           | tests-released           |    29.5 |       236.9 |  8.0 |    2.39 |          8 |     2.94 | False |
-| networkx           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     3.01 | False |
-| networkx           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     3.01 | False |
-| networkx           | tests-fix-unsafe         |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     3.01 | False |
-| networkx           | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      3.0 | False |
+| networkx           | tests-fix-certain        |     0.2 |         0.2 |  1.0 |    0.03 |          8 |     2.85 | False |
+| networkx           | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     2.85 | False |
+| networkx           | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     3.01 | False |
+| networkx           | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          8 |      3.0 | False |
 | networkx           | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     3.02 | False |
-| networkx           | tests-infer-pyrefly      |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     2.99 | False |
-| networkx           | tests-infer-trace        |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     3.01 | False |
-| networkx           | infer-union              |   125.0 |       415.7 |  3.3 |    5.29 |          5 |     6.59 | False |
-| networkx           | tests-infer-union        |    33.5 |       270.9 |  8.1 |    2.28 |          7 |      2.9 | False |
-| networkx           | tests                    |     1.8 |         1.3 |  0.7 |    0.28 |          2 |     0.34 | False |
-| networkx           | types-released           |     3.0 |         2.9 |  1.0 |     0.3 |          1 |     0.42 | False |
+| networkx           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.99 | False |
+| networkx           | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     3.01 | False |
+| networkx           | infer-union              |   207.4 |       420.9 |  2.0 |    2.91 |          1 |     1.65 | False |
+| networkx           | tests-infer-union        |    23.6 |       207.6 |  8.8 |    2.37 |          8 |     2.85 | False |
+| networkx           | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          1 |     0.35 | False |
+| networkx           | types-released           |     6.4 |         3.3 |  0.5 |    0.31 |          1 |     0.37 | False |
 | networkx           | types-fix-certain        |     0.6 |         0.4 |  0.7 |    0.05 |          1 |     0.44 | False |
 | networkx           | types-fix-likely         |     0.6 |         0.4 |  0.7 |    0.05 |          1 |     0.44 | False |
-| networkx           | types-fix-unsafe         |     0.8 |         0.5 |  0.6 |    0.05 |          1 |      0.4 | False |
-| networkx           | types-infer-basedpyright |     5.6 |         3.7 |  0.7 |    0.33 |          1 |     0.44 | False |
-| networkx           | types-infer-ty           |     4.0 |         3.2 |  0.8 |    0.29 |          1 |     0.36 | False |
-| networkx           | types-infer-pyrefly      |     3.8 |         3.4 |  0.9 |    0.31 |          1 |     0.39 | False |
-| networkx           | types-infer-trace        |     2.2 |         2.1 |  1.0 |    0.29 |          1 |     0.36 | False |
+| networkx           | types-fix-unsafe         |     0.6 |         0.5 |  0.8 |    0.05 |          1 |      0.4 | False |
+| networkx           | types-infer-basedpyright |     3.8 |         3.4 |  0.9 |    0.33 |          1 |     0.41 | False |
+| networkx           | types-infer-ty           |     9.4 |         4.3 |  0.5 |    0.29 |          1 |     0.36 | False |
+| networkx           | types-infer-pyrefly      |     6.2 |         4.4 |  0.7 |    0.31 |          1 |     0.39 | False |
+| networkx           | types-infer-trace        |     3.4 |         3.1 |  0.9 |    0.29 |          1 |     0.36 | False |
 | networkx           | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| nibabel            | check                    |     0.4 |         0.3 |  0.7 |    0.05 |          3 |     0.77 | False |
-| nibabel            | fix-certain              |    21.3 |        28.9 |  1.4 |    0.73 |          2 |     0.91 | False |
-| nibabel            | fix-likely               |    22.9 |        38.9 |  1.7 |    0.96 |          2 |      1.2 | False |
-| nibabel            | fix-unsafe               |    17.6 |        33.0 |  1.9 |    0.92 |          3 |     1.09 | False |
-| nibabel            | infer-basedpyright       |    20.9 |        38.9 |  1.9 |    0.98 |          1 |      1.4 | False |
-| nibabel            | infer-ty                 |    31.1 |        40.7 |  1.3 |    0.96 |          1 |     1.04 | False |
-| nibabel            | infer-pyrefly            |    21.3 |        39.2 |  1.8 |    0.98 |          1 |     1.11 | False |
-| nibabel            | census                   |     6.6 |        11.6 |  1.8 |    0.62 |          3 |     0.77 | False |
-| nibabel            | coverage                 |     1.4 |         2.9 |  2.1 |    0.25 |          2 |     0.31 | False |
-| nibabel            | timing                   |    13.4 |        18.3 |  1.4 |    0.62 |          2 |     0.77 | False |
-| nibabel            | traced                   |    26.1 |       119.4 |  4.6 |    1.16 |          6 |     1.44 | False |
-| nibabel            | tests-released           |    14.0 |        88.2 |  6.3 |    1.03 |          7 |     1.27 | False |
-| nibabel            | tests-fix-certain        |    17.0 |        91.9 |  5.4 |    1.05 |          5 |     1.27 | False |
-| nibabel            | tests-fix-likely         |    12.0 |        86.1 |  7.2 |    1.05 |          7 |     1.27 | False |
-| nibabel            | tests-fix-unsafe         |    21.0 |        86.8 |  4.1 |    1.02 |          6 |      1.3 | False |
-| nibabel            | tests-infer-basedpyright |    16.5 |       102.7 |  6.2 |    1.03 |          4 |     1.31 | False |
-| nibabel            | tests-infer-ty           |    17.1 |        87.3 |  5.1 |    1.02 |          8 |     1.31 | False |
-| nibabel            | tests-infer-pyrefly      |    14.4 |        90.4 |  6.3 |    1.04 |          5 |     1.25 | False |
-| nibabel            | tests-infer-trace        |    13.4 |        87.4 |  6.5 |    1.03 |          8 |     1.29 | False |
-| nibabel            | infer-union              |    85.3 |       322.1 |  3.8 |    3.87 |          3 |     3.15 | False |
-| nibabel            | tests-infer-union        |    13.8 |        83.8 |  6.1 |    1.04 |          8 |      1.3 | False |
-| nibabel            | tests                    |    69.8 |       447.3 |  6.4 |     1.1 |          5 |     1.36 | False |
-| nibabel            | types-released           |     2.4 |         1.9 |  0.8 |    0.16 |          1 |     0.21 | False |
-| nibabel            | types-fix-certain        |     1.7 |         1.5 |  0.9 |    0.17 |          1 |     0.21 | False |
-| nibabel            | types-fix-likely         |     2.4 |         2.2 |  0.9 |    0.16 |          1 |     0.21 | False |
-| nibabel            | types-fix-unsafe         |     1.3 |         1.1 |  0.8 |    0.13 |          1 |     0.17 | False |
-| nibabel            | types-infer-basedpyright |     3.6 |         2.4 |  0.7 |    0.17 |          1 |      0.2 | False |
-| nibabel            | types-infer-ty           |     2.8 |         2.3 |  0.8 |    0.16 |          1 |     0.21 | False |
-| nibabel            | types-infer-pyrefly      |     3.2 |         2.5 |  0.8 |    0.17 |          1 |     0.22 | False |
-| nibabel            | types-infer-trace        |     2.0 |         1.6 |  0.8 |    0.17 |          1 |     0.21 | False |
+| nibabel            | check                    |     5.2 |        11.4 |  2.2 |    0.62 |          2 |     0.77 | False |
+| nibabel            | fix-certain              |    19.0 |        29.9 |  1.6 |    0.73 |          2 |     0.91 | False |
+| nibabel            | fix-likely               |    24.8 |        40.5 |  1.6 |    0.96 |          2 |      1.2 | False |
+| nibabel            | fix-unsafe               |    20.1 |        36.7 |  1.8 |    0.87 |          2 |     1.15 | False |
+| nibabel            | infer-basedpyright       |    76.8 |       229.6 |  3.0 |    3.71 |          1 |     0.61 | False |
+| nibabel            | infer-ty                 |    27.4 |        41.6 |  1.5 |    0.96 |          1 |      0.6 | False |
+| nibabel            | infer-pyrefly            |    31.4 |        45.9 |  1.5 |    0.98 |          1 |     0.61 | False |
+| nibabel            | census                   |     2.2 |         1.7 |  0.8 |    0.07 |          2 |     0.77 | False |
+| nibabel            | coverage                 |     1.0 |         1.9 |  1.9 |    0.25 |          3 |     0.31 | False |
+| nibabel            | timing                   |    13.2 |        19.3 |  1.5 |    0.62 |          2 |     0.77 | False |
+| nibabel            | traced                   |    28.8 |       121.1 |  4.2 |    1.16 |          6 |     1.45 | False |
+| nibabel            | tests-released           |    22.2 |        73.8 |  3.3 |    1.04 |          8 |     1.29 | False |
+| nibabel            | tests-fix-certain        |    18.0 |        86.5 |  4.8 |    1.03 |          7 |     1.31 | False |
+| nibabel            | tests-fix-likely         |    14.8 |        89.0 |  6.0 |    1.04 |          8 |     1.31 | False |
+| nibabel            | tests-fix-unsafe         |    19.1 |        93.5 |  4.9 |    1.05 |          6 |     1.27 | False |
+| nibabel            | tests-infer-basedpyright |    15.0 |        92.5 |  6.2 |    1.05 |          8 |     1.29 | False |
+| nibabel            | tests-infer-ty           |    15.5 |        99.7 |  6.4 |    1.06 |          7 |     1.27 | False |
+| nibabel            | tests-infer-pyrefly      |    14.8 |        91.2 |  6.2 |    1.06 |          8 |      1.3 | False |
+| nibabel            | tests-infer-trace        |    13.6 |        97.5 |  7.2 |    1.04 |          8 |     1.29 | False |
+| nibabel            | infer-union              |    75.9 |       328.6 |  4.3 |    3.49 |          4 |     4.84 | False |
+| nibabel            | tests-infer-union        |    14.0 |        85.2 |  6.1 |    1.03 |          8 |      1.3 | False |
+| nibabel            | tests                    |    57.1 |       373.5 |  6.5 |    1.13 |          8 |     1.37 | False |
+| nibabel            | types-released           |     3.0 |         2.3 |  0.8 |    0.16 |          1 |      0.2 | False |
+| nibabel            | types-fix-certain        |     3.0 |         2.6 |  0.9 |    0.17 |          1 |     0.21 | False |
+| nibabel            | types-fix-likely         |     2.6 |         2.4 |  0.9 |    0.16 |          1 |      0.2 | False |
+| nibabel            | types-fix-unsafe         |     1.4 |         1.2 |  0.9 |    0.14 |          1 |     0.16 | False |
+| nibabel            | types-infer-basedpyright |     3.2 |         2.4 |  0.7 |    0.17 |          1 |     0.21 | False |
+| nibabel            | types-infer-ty           |     3.8 |         2.5 |  0.7 |    0.17 |          1 |      0.2 | False |
+| nibabel            | types-infer-pyrefly      |     6.0 |         2.8 |  0.5 |    0.16 |          1 |     0.21 | False |
+| nibabel            | types-infer-trace        |     2.8 |         2.2 |  0.8 |    0.17 |          1 |     0.21 | False |
 | nibabel            | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| narwhals           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          3 |     0.62 | False |
-| narwhals           | fix-certain              |     7.0 |        18.4 |  2.6 |     0.5 |          3 |     0.62 | False |
-| narwhals           | fix-likely               |    19.4 |        35.6 |  1.8 |    1.01 |          2 |     1.26 | False |
-| narwhals           | fix-unsafe               |    24.5 |        38.8 |  1.6 |    1.08 |          2 |     1.35 | False |
-| narwhals           | infer-basedpyright       |    23.4 |        33.8 |  1.4 |    1.01 |          1 |     0.64 | False |
-| narwhals           | infer-ty                 |    28.9 |        35.4 |  1.2 |    1.01 |          1 |     1.22 | False |
-| narwhals           | infer-pyrefly            |    23.1 |        35.1 |  1.5 |    1.01 |          1 |     1.66 | False |
-| narwhals           | census                   |     4.0 |         7.1 |  1.8 |     0.5 |          3 |     0.62 | False |
-| narwhals           | coverage                 |     1.6 |         2.4 |  1.5 |     0.2 |          2 |     0.25 | False |
-| narwhals           | timing                   |    12.6 |        15.9 |  1.3 |     0.5 |          2 |     0.62 | False |
-| narwhals           | traced                   |    46.9 |       217.2 |  4.6 |    3.61 |          5 |     4.96 | False |
+| narwhals           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.62 | False |
+| narwhals           | fix-certain              |    11.8 |        22.9 |  1.9 |    0.51 |          3 |     0.62 | False |
+| narwhals           | fix-likely               |    21.4 |        38.7 |  1.8 |    1.02 |          2 |     1.26 | False |
+| narwhals           | fix-unsafe               |    21.5 |        37.4 |  1.7 |    1.02 |          2 |     1.35 | False |
+| narwhals           | infer-basedpyright       |    59.1 |       121.7 |  2.1 |    3.32 |          1 |     0.63 | False |
+| narwhals           | infer-ty                 |    26.9 |        52.7 |  2.0 |    2.52 |          1 |     0.63 | False |
+| narwhals           | infer-pyrefly            |    23.0 |        52.5 |  2.3 |    3.12 |          1 |     0.63 | False |
+| narwhals           | census                   |     7.4 |        10.8 |  1.5 |    0.51 |          2 |     0.62 | False |
+| narwhals           | coverage                 |     1.0 |         2.1 |  2.1 |     0.2 |          2 |     0.25 | False |
+| narwhals           | timing                   |    10.8 |        15.2 |  1.4 |    0.51 |          2 |     0.62 | False |
+| narwhals           | traced                   |    46.4 |       225.3 |  4.9 |    5.06 |          6 |     4.51 | False |
 | narwhals           | tests-released           |    42.4 |       197.4 |  4.7 |    4.03 |          7 |     5.69 | False |
-| narwhals           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          5 |      5.7 | False |
-| narwhals           | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          4 |     5.55 | False |
-| narwhals           | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          7 |      5.7 | False |
-| narwhals           | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          4 |     5.71 | False |
-| narwhals           | tests-infer-ty           |     0.3 |         0.1 |  0.3 |    0.03 |          4 |     5.84 | False |
-| narwhals           | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          5 |     5.85 | False |
-| narwhals           | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |      5.3 | False |
-| narwhals           | infer-union              |    15.8 |        30.4 |  1.9 |    1.02 |          2 |     1.27 | False |
-| narwhals           | tests-infer-union        |    27.0 |       160.7 |  6.0 |    4.05 |          7 |     5.29 | False |
-| narwhals           | tests                    |     1.0 |         0.9 |  0.9 |    0.28 |          2 |     0.35 | False |
-| narwhals           | types-released           |    41.1 |        59.2 |  1.4 |    1.62 |          2 |     1.91 | False |
-| narwhals           | types-fix-certain        |    13.2 |        28.7 |  2.2 |    1.67 |          3 |     2.04 | False |
-| narwhals           | types-fix-likely         |    19.2 |        38.9 |  2.0 |    1.58 |          3 |     1.95 | False |
-| narwhals           | types-fix-unsafe         |     0.4 |         0.1 |  0.2 |    0.03 |          2 |     1.91 | False |
-| narwhals           | types-infer-basedpyright |    26.7 |        52.9 |  2.0 |    1.57 |          3 |      2.0 | False |
-| narwhals           | types-infer-ty           |    24.7 |        50.7 |  2.1 |    1.65 |          2 |     2.34 | False |
-| narwhals           | types-infer-pyrefly      |    23.5 |        49.5 |  2.1 |    1.62 |          3 |     2.09 | False |
-| narwhals           | types-infer-trace        |    20.7 |        43.9 |  2.1 |    1.67 |          2 |     1.97 | False |
+| narwhals           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-fix-unsafe         |     0.5 |         0.2 |  0.4 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     5.04 | False |
+| narwhals           | tests-infer-trace        |     0.5 |         0.2 |  0.4 |    0.03 |          6 |     5.04 | False |
+| narwhals           | infer-union              |    38.5 |       142.7 |  3.7 |    2.88 |          2 |     1.27 | False |
+| narwhals           | tests-infer-union        |    32.2 |       179.8 |  5.6 |    4.61 |          8 |     5.06 | False |
+| narwhals           | tests                    |     2.6 |         2.2 |  0.8 |    0.16 |          2 |     0.35 | False |
+| narwhals           | types-released           |    49.5 |        65.9 |  1.3 |    1.56 |          2 |     2.02 | False |
+| narwhals           | types-fix-certain        |    20.4 |        42.8 |  2.1 |    1.59 |          3 |     2.09 | False |
+| narwhals           | types-fix-likely         |    22.4 |        43.0 |  1.9 |    1.56 |          3 |     1.97 | False |
+| narwhals           | types-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.04 |          2 |     1.91 | False |
+| narwhals           | types-infer-basedpyright |    24.8 |        51.3 |  2.1 |    1.58 |          2 |     1.96 | False |
+| narwhals           | types-infer-ty           |    25.6 |        53.7 |  2.1 |    1.89 |          3 |     2.06 | False |
+| narwhals           | types-infer-pyrefly      |    22.8 |        49.0 |  2.1 |     1.6 |          3 |     2.02 | False |
+| narwhals           | types-infer-trace        |    29.1 |        54.9 |  1.9 |    1.57 |          3 |     2.09 | False |
 | narwhals           | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
-| xarray             | check                    |    15.4 |        31.9 |  2.1 |    1.33 |          3 |     1.66 | False |
-| xarray             | fix-certain              |    71.9 |        97.4 |  1.4 |    1.82 |          2 |     2.27 | False |
-| xarray             | fix-likely               |    73.5 |       128.2 |  1.7 |    2.42 |          2 |     3.02 | False |
-| xarray             | fix-unsafe               |   125.2 |       130.1 |  1.0 |    2.41 |          2 |      3.0 | False |
-| xarray             | infer-basedpyright       |    83.3 |       135.5 |  1.6 |    2.52 |          1 |      3.5 | False |
-| xarray             | infer-ty                 |    90.8 |       138.8 |  1.5 |    2.49 |          1 |     2.44 | False |
-| xarray             | infer-pyrefly            |    92.8 |       133.7 |  1.4 |    2.39 |          1 |     1.49 | False |
-| xarray             | census                   |    15.5 |         4.4 |  0.3 |    0.16 |          3 |     1.66 | False |
-| xarray             | coverage                 |     2.4 |         6.2 |  2.6 |    0.44 |          3 |     0.55 | False |
-| xarray             | timing                   |   137.5 |        84.5 |  0.6 |    1.34 |          1 |     1.67 | False |
-| xarray             | traced                   |    62.3 |       203.0 |  3.3 |    2.45 |          4 |     3.09 | False |
-| xarray             | tests-released           |    14.8 |        95.2 |  6.4 |    1.94 |          8 |     2.51 | False |
-| xarray             | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.45 | False |
-| xarray             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.47 | False |
-| xarray             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.47 | False |
-| xarray             | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     2.45 | False |
-| xarray             | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.45 | False |
-| xarray             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.44 | False |
-| xarray             | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.49 | False |
-| xarray             | infer-union              |    61.9 |       131.9 |  2.1 |    2.58 |          2 |     6.25 | False |
-| xarray             | tests-infer-union        |    19.8 |       114.9 |  5.8 |    1.97 |          6 |     2.44 | False |
-| xarray             | tests                    |     1.0 |         0.9 |  0.9 |    0.28 |          2 |     0.34 | False |
-| litestar           | check                    |     3.2 |         5.6 |  1.7 |    0.42 |          2 |     0.52 | False |
-| litestar           | fix-certain              |     8.2 |        16.2 |  2.0 |    0.64 |          2 |     0.89 | False |
-| litestar           | fix-likely               |    15.7 |        22.6 |  1.4 |    0.91 |          2 |     1.12 | False |
-| litestar           | fix-unsafe               |    10.0 |        18.2 |  1.8 |    0.69 |          2 |     0.87 | False |
-| litestar           | infer-basedpyright       |    17.8 |        23.8 |  1.3 |    0.88 |          1 |     0.55 | False |
-| litestar           | infer-ty                 |    22.5 |        27.8 |  1.2 |    0.94 |          1 |      1.1 | False |
-| litestar           | infer-pyrefly            |    16.5 |        22.5 |  1.4 |    0.87 |          1 |     0.54 | False |
-| litestar           | census                   |     1.4 |         0.9 |  0.6 |    0.04 |          2 |     0.52 | False |
+| xarray             | check                    |    32.4 |        45.3 |  1.4 |    1.37 |          3 |     1.66 | False |
+| xarray             | fix-certain              |    47.2 |        90.0 |  1.9 |    1.87 |          2 |     2.27 | False |
+| xarray             | fix-likely               |   138.7 |       143.2 |  1.0 |    2.46 |          2 |     3.02 | False |
+| xarray             | fix-unsafe               |   137.7 |       143.4 |  1.0 |    2.44 |          2 |     3.01 | False |
+| xarray             | infer-basedpyright       |   202.3 |       391.2 |  1.9 |    5.68 |          1 |     1.57 | False |
+| xarray             | infer-ty                 |    88.9 |       196.1 |  2.2 |    4.72 |          1 |     1.56 | False |
+| xarray             | infer-pyrefly            |    80.1 |       163.4 |  2.0 |    5.23 |          1 |     1.49 | False |
+| xarray             | census                   |     4.6 |         4.4 |  1.0 |    0.16 |          3 |     1.66 | False |
+| xarray             | coverage                 |     2.4 |         6.4 |  2.7 |    0.46 |          3 |     0.55 | False |
+| xarray             | timing                   |    64.3 |        75.7 |  1.2 |    1.37 |          1 |     1.67 | False |
+| xarray             | traced                   |    56.8 |       189.0 |  3.3 |     2.5 |          5 |     3.06 | False |
+| xarray             | tests-released           |    19.0 |       119.6 |  6.3 |    1.99 |          8 |     2.42 | False |
+| xarray             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     2.46 | False |
+| xarray             | infer-union              |   174.5 |       532.9 |  3.1 |    6.21 |          2 |     2.15 | False |
+| xarray             | tests-infer-union        |    28.1 |       100.7 |  3.6 |    1.96 |          8 |     2.46 | False |
+| xarray             | tests                    |     1.8 |         1.5 |  0.8 |    0.15 |          2 |     0.35 | False |
+| litestar           | check                    |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     0.52 | False |
+| litestar           | fix-certain              |     9.0 |        17.6 |  2.0 |    0.67 |          2 |      0.8 | False |
+| litestar           | fix-likely               |    16.2 |        24.2 |  1.5 |    0.92 |          2 |     1.14 | False |
+| litestar           | fix-unsafe               |    14.0 |        21.3 |  1.5 |    0.72 |          2 |     0.86 | False |
+| litestar           | infer-basedpyright       |    49.2 |       116.1 |  2.4 |     2.7 |          1 |     0.55 | False |
+| litestar           | infer-ty                 |    17.6 |        30.0 |  1.7 |    1.73 |          1 |     0.59 | False |
+| litestar           | infer-pyrefly            |    30.4 |        49.7 |  1.6 |    2.41 |          1 |     0.54 | False |
+| litestar           | census                   |     3.8 |         6.1 |  1.6 |    0.44 |          2 |     0.52 | False |
 | litestar           | coverage                 |     1.0 |         1.9 |  1.9 |     0.2 |          2 |     0.25 | False |
-| litestar           | timing                   |     6.0 |         8.9 |  1.5 |    0.43 |          2 |     0.54 | False |
-| litestar           | traced                   |    32.9 |       167.5 |  5.1 |     4.2 |          7 |     5.15 | False |
+| litestar           | timing                   |     7.4 |        10.5 |  1.4 |    0.44 |          2 |     0.54 | False |
+| litestar           | traced                   |    37.8 |       189.8 |  5.0 |    4.29 |          7 |     5.25 | False |
 | litestar           | tests-released           |    27.6 |       127.3 |  4.6 |    3.87 |          8 |     4.94 | False |
-| litestar           | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     4.79 | False |
+| litestar           | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     4.79 | False |
 | litestar           | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     4.76 | False |
-| litestar           | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     4.74 | False |
-| litestar           | tests-infer-basedpyright |    25.4 |       118.4 |  4.7 |    3.71 |          7 |     4.56 | False |
-| litestar           | tests-infer-ty           |    25.0 |       129.8 |  5.2 |    3.84 |          4 |     4.76 | False |
-| litestar           | tests-infer-pyrefly      |    36.1 |       156.7 |  4.3 |    3.85 |          5 |     4.75 | False |
-| litestar           | tests-infer-trace        |    20.8 |       115.9 |  5.6 |    3.74 |          4 |      4.7 | False |
-| litestar           | infer-union              |    19.0 |        21.0 |  1.1 |    0.88 |          2 |      1.1 | False |
-| litestar           | tests-infer-union        |    33.5 |       142.4 |  4.3 |    3.79 |          5 |     4.85 | False |
-| litestar           | tests                    |     2.0 |         1.7 |  0.8 |    0.28 |          1 |     0.35 | False |
-| litestar           | types-released           |    44.9 |        66.0 |  1.5 |    1.87 |          2 |     2.39 | False |
-| litestar           | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     2.37 | False |
+| litestar           | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     4.81 | False |
+| litestar           | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          6 |     4.64 | False |
+| litestar           | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          7 |      4.8 | False |
+| litestar           | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          6 |     4.81 | False |
+| litestar           | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          7 |     4.67 | False |
+| litestar           | infer-union              |    40.8 |       147.2 |  3.6 |    2.48 |          2 |      1.1 | False |
+| litestar           | tests-infer-union        |    26.0 |       148.6 |  5.7 |    3.94 |          6 |     4.74 | False |
+| litestar           | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          2 |     0.35 | False |
+| litestar           | types-released           |    65.7 |        78.3 |  1.2 |    1.89 |          2 |     2.34 | False |
+| litestar           | types-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     2.35 | False |
 | litestar           | types-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     2.35 | False |
-| litestar           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.04 |          2 |     2.37 | False |
-| litestar           | types-infer-basedpyright |    58.3 |        72.9 |  1.3 |    1.88 |          2 |     2.37 | False |
-| litestar           | types-infer-ty           |    63.7 |        72.4 |  1.1 |     1.9 |          2 |     2.37 | False |
-| litestar           | types-infer-pyrefly      |    36.1 |        59.0 |  1.6 |    1.92 |          2 |     2.35 | False |
-| litestar           | types-infer-trace        |    44.0 |        52.8 |  1.2 |    1.89 |          2 |     2.36 | False |
+| litestar           | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     2.35 | False |
+| litestar           | types-infer-basedpyright |    34.4 |        54.6 |  1.6 |    1.88 |          2 |     2.35 | False |
+| litestar           | types-infer-ty           |    32.6 |        54.2 |  1.7 |    1.87 |          2 |     2.37 | False |
+| litestar           | types-infer-pyrefly      |    60.7 |        75.6 |  1.2 |    1.89 |          2 |      2.4 | False |
+| litestar           | types-infer-trace        |    50.6 |        73.9 |  1.5 |    1.86 |          2 |     2.36 | False |
 | litestar           | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| stripe             | check                    |     6.4 |        16.7 |  2.6 |    0.69 |          3 |     0.86 | False |
-| stripe             | fix-certain              |    17.2 |        46.6 |  2.7 |    0.85 |          3 |     1.06 | False |
-| stripe             | fix-likely               |    18.8 |        50.7 |  2.7 |    0.98 |          3 |     1.22 | False |
-| stripe             | fix-unsafe               |    19.2 |        53.8 |  2.8 |    1.02 |          4 |     1.26 | False |
-| stripe             | infer-basedpyright       |    32.7 |        65.0 |  2.0 |     1.1 |          1 |     0.69 | False |
-| stripe             | infer-ty                 |    37.9 |        61.6 |  1.6 |     1.0 |          1 |     0.42 | False |
-| stripe             | infer-pyrefly            |    42.5 |        69.0 |  1.6 |    1.21 |          1 |     0.77 | False |
+| stripe             | check                    |     9.8 |        19.9 |  2.0 |    0.69 |          3 |     0.86 | False |
+| stripe             | fix-certain              |    15.4 |        47.2 |  3.1 |    0.85 |          3 |     1.06 | False |
+| stripe             | fix-likely               |    18.0 |        52.3 |  2.9 |    0.99 |          3 |     1.22 | False |
+| stripe             | fix-unsafe               |    17.6 |        55.9 |  3.2 |    1.02 |          3 |     1.27 | False |
+| stripe             | infer-basedpyright       |  1147.8 |      1405.7 |  1.2 |    3.16 |          1 |     0.69 | False |
+| stripe             | infer-ty                 |    25.6 |        66.2 |  2.6 |    1.56 |          2 |     1.25 | False |
+| stripe             | infer-pyrefly            |    40.5 |       100.5 |  2.5 |    3.16 |          1 |     0.76 | False |
 | stripe             | census                   |     1.6 |         1.4 |  0.9 |    0.07 |          3 |     0.86 | False |
-| stripe             | coverage                 |     2.0 |         5.6 |  2.8 |    0.26 |          3 |     0.32 | False |
-| stripe             | timing                   |    20.8 |        31.0 |  1.5 |    0.69 |          2 |     0.86 | False |
-| celery             | check                    |     6.4 |         9.9 |  1.5 |    0.95 |          2 |     1.17 | False |
-| celery             | fix-certain              |    21.3 |        27.9 |  1.3 |    1.17 |          2 |     1.47 | False |
-| celery             | fix-likely               |    56.1 |        42.6 |  0.8 |    1.36 |          1 |     1.65 | False |
-| celery             | fix-unsafe               |    46.1 |        32.7 |  0.7 |    1.23 |          2 |     1.61 | False |
-| celery             | infer-basedpyright       |    63.4 |        37.8 |  0.6 |    1.28 |          1 |      1.6 | False |
-| celery             | infer-ty                 |    53.0 |        34.2 |  0.6 |    1.18 |          1 |     1.47 | False |
-| celery             | infer-pyrefly            |    48.3 |        33.5 |  0.7 |    1.18 |          1 |     1.49 | False |
-| celery             | census                   |     1.8 |         1.2 |  0.7 |    0.05 |          2 |     1.17 | False |
+| stripe             | coverage                 |     2.0 |         5.5 |  2.8 |    0.27 |          3 |     0.32 | False |
+| stripe             | timing                   |    21.2 |        32.4 |  1.5 |    0.69 |          2 |     0.86 | False |
+| celery             | check                    |     7.0 |        10.9 |  1.6 |    0.95 |          2 |     1.19 | False |
+| celery             | fix-certain              |    31.1 |        31.5 |  1.0 |    1.18 |          2 |     1.46 | False |
+| celery             | fix-likely               |    22.4 |        32.7 |  1.5 |    1.33 |          1 |      1.7 | False |
+| celery             | fix-unsafe               |    29.2 |        32.7 |  1.1 |    1.24 |          1 |     1.54 | False |
+| celery             | infer-basedpyright       |    51.3 |       108.8 |  2.1 |    3.47 |          1 |      1.6 | False |
+| celery             | infer-ty                 |    32.8 |        40.1 |  1.2 |    1.99 |          1 |     1.47 | False |
+| celery             | infer-pyrefly            |    38.6 |        57.0 |  1.5 |    2.89 |          1 |     1.47 | False |
+| celery             | census                   |     6.2 |         0.9 |  0.1 |    0.05 |          2 |     1.19 | False |
 | celery             | coverage                 |     0.8 |         1.5 |  1.9 |    0.21 |          2 |     0.26 | False |
-| celery             | timing                   |    13.4 |        16.7 |  1.2 |    0.95 |          2 |     1.17 | False |
-| celery             | traced                   |    87.9 |       103.0 |  1.2 |    3.88 |          2 |     4.91 | False |
-| celery             | tests-released           |    47.9 |        53.2 |  1.1 |    3.28 |          2 |     4.09 | False |
-| celery             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.8 | False |
-| celery             | tests-fix-likely         |     0.6 |         0.2 |  0.3 |    0.03 |          2 |      4.8 | False |
-| celery             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     4.97 | False |
-| celery             | tests-infer-basedpyright |     0.6 |         0.2 |  0.3 |    0.03 |          2 |     5.03 | False |
-| celery             | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     4.82 | False |
-| celery             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.8 | False |
-| celery             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |     4.88 | False |
-| celery             | infer-union              |    31.3 |        39.2 |  1.3 |    1.29 |          2 |     1.61 | False |
-| celery             | tests-infer-union        |    51.0 |        56.1 |  1.1 |    3.28 |          2 |     4.14 | False |
-| celery             | tests                    |     2.2 |         1.8 |  0.8 |    0.28 |          2 |     0.34 | False |
-| optuna             | check                    |     2.6 |         0.1 |  0.0 |    0.04 |          2 |     0.91 | False |
-| optuna             | fix-certain              |    23.4 |        27.4 |  1.2 |    1.16 |          2 |     1.45 | False |
-| optuna             | fix-likely               |    26.9 |        43.1 |  1.6 |    1.68 |          2 |      2.1 | False |
-| optuna             | fix-unsafe               |    42.7 |        50.7 |  1.2 |    1.34 |          1 |     1.71 | False |
-| optuna             | infer-basedpyright       |    29.9 |        39.5 |  1.3 |    1.58 |          1 |     0.99 | False |
-| optuna             | infer-ty                 |    48.7 |        56.3 |  1.2 |     1.7 |          1 |     1.76 | False |
-| optuna             | infer-pyrefly            |    30.1 |        39.5 |  1.3 |    1.58 |          1 |     0.99 | False |
-| optuna             | census                   |     4.2 |         8.0 |  1.9 |    0.73 |          2 |     0.91 | False |
-| optuna             | coverage                 |     0.8 |         1.5 |  1.9 |     0.2 |          2 |     0.25 | False |
-| optuna             | timing                   |    11.5 |        16.4 |  1.4 |    0.73 |          2 |     0.92 | False |
-| optuna             | traced                   |   169.1 |      1395.4 |  8.3 |    4.55 |          8 |     5.67 | False |
-| optuna             | tests-released           |   144.9 |      1586.5 | 10.9 |    4.08 |          8 |     5.17 | False |
-| optuna             | tests-fix-certain        |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     5.27 | False |
-| optuna             | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     4.91 | False |
-| optuna             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.24 | False |
-| optuna             | tests-infer-basedpyright |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     4.96 | False |
-| optuna             | tests-infer-ty           |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     5.05 | False |
-| optuna             | tests-infer-pyrefly      |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.19 | False |
-| optuna             | tests-infer-trace        |     0.5 |         0.1 |  0.2 |    0.03 |          8 |     5.11 | False |
-| optuna             | infer-union              |    19.6 |        39.5 |  2.0 |    1.59 |          3 |     3.11 | False |
-| optuna             | tests-infer-union        |   199.2 |      2069.6 | 10.4 |    4.06 |          8 |     5.01 | False |
-| optuna             | tests                    |     2.0 |         1.9 |  0.9 |    0.28 |          2 |     0.35 | False |
-| optuna             | types-released           |    16.0 |         7.0 |  0.4 |    0.37 |          1 |     0.57 | False |
-| optuna             | types-fix-certain        |     5.2 |         5.1 |  1.0 |    0.37 |          1 |     0.46 | False |
-| optuna             | types-fix-likely         |     5.4 |         5.2 |  1.0 |    0.37 |          1 |     0.46 | False |
-| optuna             | types-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.04 |          1 |     0.46 | False |
-| optuna             | types-infer-basedpyright |     6.6 |         5.2 |  0.8 |    0.37 |          1 |     0.54 | False |
-| optuna             | types-infer-ty           |     7.0 |         5.8 |  0.8 |    0.38 |          1 |     0.54 | False |
-| optuna             | types-infer-pyrefly      |     3.6 |         3.5 |  1.0 |    0.37 |          1 |     0.46 | False |
-| optuna             | types-infer-trace        |     5.4 |         4.9 |  0.9 |    0.39 |          1 |     0.46 | False |
-| optuna             | types                    |     0.4 |         0.2 |  0.5 |    0.03 |          1 |     0.04 | False |
-| dask               | check                    |    15.1 |         0.4 |  0.0 |    0.08 |          2 |     2.15 | False |
-| dask               | fix-certain              |    72.9 |       115.3 |  1.6 |    2.28 |          3 |     2.86 | False |
-| dask               | fix-likely               |    80.0 |       135.0 |  1.7 |    3.02 |          2 |     3.77 | False |
-| dask               | fix-unsafe               |   129.5 |       153.3 |  1.2 |    2.99 |          2 |     3.74 | False |
-| dask               | infer-basedpyright       |    85.9 |       142.7 |  1.7 |     3.0 |          2 |     3.75 | False |
-| dask               | infer-ty                 |    84.5 |       143.5 |  1.7 |    3.01 |          1 |     1.88 | False |
-| dask               | infer-pyrefly            |   117.5 |       151.2 |  1.3 |    3.13 |          1 |     1.95 | False |
-| dask               | census                   |    21.9 |        41.5 |  1.9 |    1.72 |          2 |     2.15 | False |
-| dask               | coverage                 |     2.4 |         7.0 |  2.9 |    0.45 |          3 |     0.56 | False |
-| dask               | timing                   |   139.1 |        95.8 |  0.7 |    1.73 |          1 |     2.15 | False |
-| dask               | traced                   |   191.9 |      1244.6 |  6.5 |    4.95 |          8 |     5.89 | False |
-| dask               | tests-released           |   187.0 |       985.1 |  5.3 |    4.51 |          8 |     5.69 | False |
-| dask               | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.82 | False |
-| dask               | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.76 | False |
-| dask               | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.55 | False |
-| dask               | tests-infer-basedpyright |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     5.82 | False |
-| dask               | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.64 | False |
-| dask               | tests-infer-pyrefly      |     0.3 |         0.2 |  0.7 |    0.03 |          7 |     5.52 | False |
+| celery             | timing                   |    19.2 |        20.7 |  1.1 |    0.95 |          2 |     1.19 | False |
+| celery             | traced                   |    77.6 |       103.1 |  1.3 |    3.83 |          2 |     4.85 | False |
+| celery             | tests-released           |    58.3 |        59.8 |  1.0 |     3.3 |          2 |      4.1 | False |
+| celery             | tests-fix-certain        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-fix-likely         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-fix-unsafe         |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-infer-pyrefly      |     0.8 |         0.2 |  0.2 |    0.03 |          2 |      4.1 | False |
+| celery             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          2 |      4.1 | False |
+| celery             | infer-union              |   119.8 |       167.1 |  1.4 |    2.96 |          1 |     0.81 | False |
+| celery             | tests-infer-union        |    48.8 |        54.7 |  1.1 |    3.29 |          2 |      4.1 | False |
+| celery             | tests                    |     1.6 |         1.4 |  0.9 |    0.15 |          2 |     0.35 | False |
+| optuna             | check                    |     0.6 |         0.2 |  0.3 |    0.04 |          2 |     0.91 | False |
+| optuna             | fix-certain              |    26.6 |        31.2 |  1.2 |    1.17 |          2 |     1.45 | False |
+| optuna             | fix-likely               |    42.8 |        50.6 |  1.2 |    1.62 |          2 |      2.1 | False |
+| optuna             | fix-unsafe               |    17.0 |        34.3 |  2.0 |    1.22 |          2 |     1.67 | False |
+| optuna             | infer-basedpyright       |    55.6 |       139.8 |  2.5 |    4.18 |          1 |     0.99 | False |
+| optuna             | infer-ty                 |    30.0 |        52.5 |  1.8 |    2.86 |          1 |     1.06 | False |
+| optuna             | infer-pyrefly            |    47.4 |        74.0 |  1.6 |    3.68 |          1 |     0.99 | False |
+| optuna             | census                   |     5.6 |        10.8 |  1.9 |    0.74 |          2 |     0.91 | False |
+| optuna             | coverage                 |     1.0 |         1.7 |  1.7 |     0.2 |          2 |     0.25 | False |
+| optuna             | timing                   |    16.6 |        20.9 |  1.3 |    0.74 |          2 |     0.91 | False |
+| optuna             | traced                   |   375.0 |      3759.5 | 10.0 |    4.89 |          8 |     5.69 | False |
+| optuna             | tests-released           |   131.5 |      1211.7 |  9.2 |    4.11 |          8 |      5.1 | False |
+| optuna             | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-fix-likely         |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-infer-pyrefly      |     0.4 |         0.1 |  0.2 |    0.03 |          8 |     5.07 | False |
+| optuna             | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     5.07 | False |
+| optuna             | infer-union              |    50.9 |       166.6 |  3.3 |    3.37 |          3 |     1.99 | False |
+| optuna             | tests-infer-union        |   268.7 |      2885.7 | 10.7 |    4.05 |          8 |     5.07 | False |
+| optuna             | tests                    |     2.0 |         1.4 |  0.7 |    0.15 |          2 |     0.35 | False |
+| optuna             | types-released           |     6.0 |         5.5 |  0.9 |    0.38 |          1 |     0.46 | False |
+| optuna             | types-fix-certain        |     7.8 |         6.3 |  0.8 |    0.37 |          1 |     0.46 | False |
+| optuna             | types-fix-likely         |     6.8 |         5.4 |  0.8 |    0.37 |          1 |     0.46 | False |
+| optuna             | types-fix-unsafe         |     0.8 |         0.3 |  0.4 |    0.04 |          1 |     0.47 | False |
+| optuna             | types-infer-basedpyright |     7.0 |         6.0 |  0.9 |    0.37 |          1 |     0.46 | False |
+| optuna             | types-infer-ty           |     5.8 |         5.4 |  0.9 |    0.37 |          1 |     0.47 | False |
+| optuna             | types-infer-pyrefly      |    10.0 |         7.2 |  0.7 |    0.38 |          1 |     0.46 | False |
+| optuna             | types-infer-trace        |     5.3 |         4.3 |  0.8 |    0.37 |          1 |     0.49 | False |
+| optuna             | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
+| dask               | check                    |    27.2 |        50.7 |  1.9 |    1.75 |          2 |     2.15 | False |
+| dask               | fix-certain              |    81.4 |       131.0 |  1.6 |    2.31 |          2 |     2.85 | False |
+| dask               | fix-likely               |    80.1 |       157.1 |  2.0 |    3.05 |          2 |     3.77 | False |
+| dask               | fix-unsafe               |    98.4 |       164.5 |  1.7 |    2.97 |          2 |     3.74 | False |
+| dask               | infer-basedpyright       |   238.5 |       477.2 |  2.0 |    7.68 |          1 |     1.88 | False |
+| dask               | infer-ty                 |   135.1 |       225.3 |  1.7 |    5.14 |          1 |     1.88 | False |
+| dask               | infer-pyrefly            |   107.1 |       203.2 |  1.9 |    6.18 |          1 |     1.96 | False |
+| dask               | census                   |     6.8 |         6.1 |  0.9 |    0.13 |          2 |     2.15 | False |
+| dask               | coverage                 |     1.8 |         4.9 |  2.7 |    0.46 |          3 |     0.56 | False |
+| dask               | timing                   |    80.3 |        97.4 |  1.2 |    1.75 |          1 |     2.16 | False |
+| dask               | traced                   |   193.9 |      1240.6 |  6.4 |    4.59 |          8 |     6.19 | False |
+| dask               | tests-released           |   168.8 |      1259.0 |  7.5 |    4.43 |          7 |     5.64 | False |
+| dask               | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.82 | False |
+| dask               | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.76 | False |
+| dask               | tests-fix-unsafe         |     0.6 |         0.2 |  0.3 |    0.03 |          8 |     5.82 | False |
+| dask               | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.82 | False |
+| dask               | tests-infer-ty           |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     5.64 | False |
+| dask               | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          7 |     5.52 | False |
 | dask               | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      5.4 | False |
-| dask               | infer-union              |   198.4 |       582.9 |  2.9 |    7.83 |          4 |     9.57 | False |
-| dask               | tests-infer-union        |   157.0 |      1093.5 |  7.0 |    4.46 |          7 |     5.69 | False |
-| dask               | tests                    |     2.8 |         1.8 |  0.6 |    0.28 |          1 |     0.35 | False |
-| mypy               | check                    |     3.0 |         0.3 |  0.1 |    0.06 |          3 |     0.65 | False |
-| mypy               | fix-certain              |    11.2 |        35.2 |  3.1 |    0.82 |          4 |     1.01 | False |
-| mypy               | fix-likely               |    18.1 |        49.1 |  2.7 |    0.95 |          3 |     1.19 | False |
-| mypy               | fix-unsafe               |    16.6 |        45.8 |  2.8 |     0.9 |          3 |     1.17 | False |
-| mypy               | infer-basedpyright       |    17.0 |        48.0 |  2.8 |    0.97 |          2 |     3.91 | False |
-| mypy               | infer-ty                 |    23.7 |        51.3 |  2.2 |    0.92 |          1 |     1.02 | False |
-| mypy               | infer-pyrefly            |    22.6 |        46.6 |  2.1 |    0.92 |          1 |      1.6 | False |
-| mypy               | census                   |     6.4 |        13.4 |  2.1 |    0.52 |          3 |     0.65 | False |
-| mypy               | coverage                 |     2.2 |         5.8 |  2.6 |    0.35 |          3 |     0.44 | False |
-| mypy               | timing                   |    14.6 |        22.7 |  1.6 |    0.52 |          2 |     0.65 | False |
-| mypy               | traced                   |   292.3 |      2093.0 |  7.2 |    6.27 |          8 |     8.41 | False |
+| dask               | infer-union              |   250.1 |       721.2 |  2.9 |    7.88 |          3 |     9.79 | False |
+| dask               | tests-infer-union        |   157.1 |      1025.6 |  6.5 |    4.55 |          8 |     5.57 | False |
+| dask               | tests                    |     1.0 |         0.8 |  0.8 |    0.15 |          1 |     0.35 | False |
+| mypy               | check                    |     6.4 |        13.8 |  2.2 |    0.52 |          3 |     0.65 | False |
+| mypy               | fix-certain              |     9.6 |        30.8 |  3.2 |    0.79 |          4 |     1.02 | False |
+| mypy               | fix-likely               |    29.2 |        57.1 |  2.0 |    0.96 |          3 |     1.19 | False |
+| mypy               | fix-unsafe               |    22.5 |        53.3 |  2.4 |     0.9 |          3 |     1.12 | False |
+| mypy               | infer-basedpyright       |    97.3 |       180.9 |  1.9 |    3.62 |          2 |     0.81 | False |
+| mypy               | infer-ty                 |    27.2 |        71.9 |  2.6 |    2.43 |          1 |     0.38 | False |
+| mypy               | infer-pyrefly            |    34.5 |        66.2 |  1.9 |    2.49 |          1 |     0.38 | False |
+| mypy               | census                   |     3.0 |         2.9 |  1.0 |     0.1 |          3 |     0.65 | False |
+| mypy               | coverage                 |     2.0 |         5.3 |  2.6 |    0.35 |          3 |     0.44 | False |
+| mypy               | timing                   |    21.4 |        27.7 |  1.3 |    0.52 |          2 |     0.65 | False |
+| mypy               | traced                   |   427.2 |      2146.7 |  5.0 |    6.45 |          8 |     7.84 | False |
 | mypy               | tests-released           |   303.7 |      2040.7 |  6.7 |     5.8 |          8 |     7.69 | False |
-| mypy               | tests-fix-certain        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      7.5 | False |
-| mypy               | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.47 | False |
-| mypy               | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |      7.5 | False |
-| mypy               | tests-infer-basedpyright |     0.2 |         0.1 |  0.5 |    0.03 |          7 |      7.5 | False |
-| mypy               | tests-infer-ty           |     0.3 |         0.1 |  0.3 |    0.03 |          8 |     7.19 | False |
-| mypy               | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.75 | False |
-| mypy               | tests-infer-trace        |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.69 | False |
-| mypy               | infer-union              |    24.0 |        60.0 |  2.5 |    0.94 |          2 |     1.97 | False |
-| mypy               | tests-infer-union        |   303.4 |      1871.5 |  6.2 |     6.5 |          8 |     7.77 | False |
-| mypy               | tests                    |     1.2 |         1.1 |  0.9 |    0.28 |          2 |     0.34 | False |
-| mypy               | types-released           |     9.4 |        25.4 |  2.7 |     0.6 |          3 |     0.77 | False |
-| mypy               | types-fix-certain        |     7.8 |        19.4 |  2.5 |    0.49 |          3 |     0.62 | False |
-| mypy               | types-fix-likely         |     7.2 |        18.4 |  2.6 |     0.5 |          3 |     0.62 | False |
-| mypy               | types-fix-unsafe         |     0.6 |         0.4 |  0.7 |    0.05 |          3 |     0.75 | False |
-| mypy               | types-infer-basedpyright |    11.0 |        27.1 |  2.5 |    0.62 |          3 |     0.77 | False |
-| mypy               | types-infer-ty           |     6.6 |        15.2 |  2.3 |    0.49 |          3 |     0.61 | False |
-| mypy               | types-infer-pyrefly      |     7.6 |        19.5 |  2.6 |     0.5 |          3 |     0.61 | False |
-| mypy               | types-infer-trace        |    12.0 |        28.5 |  2.4 |    0.63 |          3 |     0.79 | False |
-| mypy               | types                    |     0.4 |         0.1 |  0.2 |    0.03 |          1 |     0.04 | False |
+| mypy               | tests-fix-certain        |     0.2 |         0.2 |  1.0 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-fix-likely         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-fix-unsafe         |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-infer-basedpyright |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-infer-ty           |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-infer-pyrefly      |     0.2 |         0.1 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | tests-infer-trace        |     0.4 |         0.2 |  0.5 |    0.03 |          8 |     7.25 | False |
+| mypy               | infer-union              |    57.7 |       185.1 |  3.2 |    3.43 |          2 |     0.78 | False |
+| mypy               | tests-infer-union        |   374.6 |      1928.0 |  5.1 |     6.4 |          8 |     8.12 | False |
+| mypy               | tests                    |     1.8 |         1.4 |  0.8 |    0.15 |          2 |     0.35 | False |
+| mypy               | types-released           |    15.0 |        29.5 |  2.0 |    0.59 |          3 |     0.75 | False |
+| mypy               | types-fix-certain        |     9.2 |        20.2 |  2.2 |     0.5 |          3 |     0.61 | False |
+| mypy               | types-fix-likely         |    12.0 |        23.1 |  1.9 |     0.5 |          3 |     0.62 | False |
+| mypy               | types-fix-unsafe         |     0.7 |         0.5 |  0.7 |    0.05 |          3 |     0.77 | False |
+| mypy               | types-infer-basedpyright |     7.0 |        17.4 |  2.5 |    0.49 |          3 |     0.77 | False |
+| mypy               | types-infer-ty           |    19.0 |        31.2 |  1.6 |    0.62 |          3 |     0.61 | False |
+| mypy               | types-infer-pyrefly      |     7.4 |        18.3 |  2.5 |     0.5 |          3 |     0.62 | False |
+| mypy               | types-infer-trace        |     8.1 |        20.1 |  2.5 |    0.63 |          3 |     0.79 | False |
+| mypy               | types                    |     0.2 |         0.1 |  0.5 |    0.03 |          1 |     0.04 | False |
 
 The fixes whose bindings typed after aren't those typed before and those fixed, where they differ (a
 fix that didn't make its binding typed):
@@ -5631,23 +5631,23 @@ fix that didn't make its binding typed):
 | corpus | fix                | typed before | fixed | typed after | short |
 | ------ | ------------------ | -----------: | ----: | ----------: | ----: |
 | sphinx | certain            |          929 | 3,392 |       4,320 |     1 |
-| sphinx | likely             |          929 | 3,929 |       4,857 |     1 |
-| sphinx | unsafe             |          929 | 4,333 |       5,261 |     1 |
-| sphinx | infer-basedpyright |          929 | 5,088 |       6,016 |     1 |
-| sphinx | infer-ty           |          929 | 5,141 |       6,069 |     1 |
-| sphinx | infer-pyrefly      |          929 | 5,325 |       6,253 |     1 |
-| sphinx | infer-trace        |          929 | 4,333 |       5,261 |     1 |
-| mypy   | unsafe             |        2,300 | 6,753 |       9,052 |     1 |
-| mypy   | infer-basedpyright |        2,300 | 8,391 |      10,689 |     2 |
-| mypy   | infer-ty           |        2,300 | 8,695 |      10,993 |     2 |
-| mypy   | infer-pyrefly      |        2,300 | 8,914 |      11,212 |     2 |
-| mypy   | infer-trace        |        2,300 | 6,753 |       9,052 |     1 |
+| sphinx | likely             |          929 | 3,930 |       4,858 |     1 |
+| sphinx | unsafe             |          929 | 4,334 |       5,262 |     1 |
+| sphinx | infer-basedpyright |          929 | 5,079 |       6,007 |     1 |
+| sphinx | infer-ty           |          929 | 5,134 |       6,062 |     1 |
+| sphinx | infer-pyrefly      |          929 | 5,318 |       6,246 |     1 |
+| sphinx | infer-trace        |          929 | 4,334 |       5,262 |     1 |
+| mypy   | unsafe             |        2,300 | 6,758 |       9,057 |     1 |
+| mypy   | infer-basedpyright |        2,300 | 8,392 |      10,690 |     2 |
+| mypy   | infer-ty           |        2,300 | 8,696 |      10,994 |     2 |
+| mypy   | infer-pyrefly      |        2,300 | 8,915 |      11,213 |     2 |
+| mypy   | infer-trace        |        2,300 | 6,758 |       9,057 |     1 |
 
 Each suite's traced tests beside its released tests, a sample of its flakiness:
 
 | corpus             | released                                                              | traced                                                                | same failures |
 | ------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------- |
-| django             | 5 expected failures, 2 failures, 17,585 ran, 1,149 skipped            | 5 expected failures, 5 failures, 17,585 ran, 1,149 skipped            | False         |
+| django             | 5 expected failures, 2 failures, 17,585 ran, 1,149 skipped            | 5 expected failures, 6 failures, 17,585 ran, 1,149 skipped            | False         |
 | sqlalchemy         | 29,521 passed, 975 skipped                                            | 29,521 passed, 975 skipped                                            | True          |
 | pydantic           | 65 failed, 6,900 passed, 350 skipped, 29 xfailed                      | 65 failed, 6,900 passed, 350 skipped, 29 xfailed                      | True          |
 | pandas             | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed               | 165,411 passed, 24,659 skipped, 753 xfailed, 84 xpassed               | True          |
@@ -5668,99 +5668,103 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
 | mcp                | 3 failed, 6,092 passed, 8 skipped, 1 xfailed                          | 3 failed, 6,092 passed, 8 skipped, 1 xfailed                          | False         |
 | pdm                | 1,472 passed, 1 skipped                                               | 1,472 passed, 1 skipped                                               | True          |
 | strawberry-graphql | 25 error, 51 failed, 2,521 passed, 3,293 skipped, 7 xfailed           | 25 error, 51 failed, 2,521 passed, 3,293 skipped, 7 xfailed           | False         |
-| pygments           | 1 failed, 5,330 passed, 15 skipped                                    | 1 failed, 5,330 passed, 15 skipped                                    | True          |
+| pygments           | 5,330 passed, 16 skipped                                              | 5,330 passed, 16 skipped                                              | True          |
 | streamlink         | 9 error, 15 failed, 7,233 passed, 36 skipped                          | 9 error, 15 failed, 7,233 passed, 36 skipped                          | True          |
-| sphinx             | 9 failed, 2,393 passed, 22 skipped                                    | 9 failed, 2,393 passed, 22 skipped                                    | True          |
+| sphinx             | 7 failed, 2,394 passed, 23 skipped                                    | 8 failed, 2,393 passed, 23 skipped                                    | False         |
 | tox                | 6 error, 17 failed, 8,525 passed, 31 skipped                          | 6 error, 17 failed, 8,525 passed, 31 skipped                          | True          |
 | pint               | 1 failed, 2,289 passed, 590 skipped, 11 xfailed                       | 1 failed, 2,289 passed, 590 skipped, 11 xfailed                       | True          |
-| altair             | 28 failed, 1,866 passed, 12 skipped, 7 xfailed, 3 xpassed             | 28 failed, 1,866 passed, 12 skipped, 7 xfailed, 3 xpassed             | True          |
+| altair             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             | 28 failed, 1,866 passed, 12 skipped, 6 xfailed, 4 xpassed             | True          |
 | seaborn            | 8 error, 20 failed, 2,178 passed, 11 skipped, 6 xfailed               | 8 error, 20 failed, 2,178 passed, 11 skipped, 6 xfailed               | False         |
 | aiohttp            | 3 failed, 4,840 passed, 535 skipped, 2 xfailed                        | 3 failed, 4,840 passed, 535 skipped, 2 xfailed                        | True          |
 | websockets         | 2,589 ran, 8 skipped                                                  | 2,589 ran, 8 skipped                                                  | True          |
-| anyio              | 3,824 passed, 19 skipped, 5 xfailed                                   | 2 failed, 3,822 passed, 19 skipped, 5 xfailed                         | False         |
+| anyio              | 3,824 passed, 19 skipped, 5 xfailed                                   | 3,824 passed, 19 skipped, 5 xfailed                                   | True          |
 | zarr               | 8,422 passed, 1,205 skipped, 4 xfailed                                | 8,422 passed, 1,205 skipped, 4 xfailed                                | True          |
 | joblib             | 7 failed, 1,485 passed, 45 skipped, 4 xpassed                         | 10 failed, 1,482 passed, 45 skipped, 4 xpassed                        | False         |
 | networkx           | 10,083 passed, 62 skipped, 741 xfailed                                | 10,083 passed, 62 skipped, 741 xfailed                                | True          |
-| nibabel            | 20 error, 108 failed, 5,168 passed, 304 skipped, 40 xfailed           | 19 error, 109 failed, 5,167 passed, 304 skipped, 40 xfailed           | False         |
+| nibabel            | 20 error, 108 failed, 5,167 passed, 304 skipped, 40 xfailed           | 21 error, 110 failed, 5,166 passed, 303 skipped, 40 xfailed           | False         |
 | narwhals           | 972 failed, 11,116 passed, 235 skipped, 699 xfailed                   | 972 failed, 11,116 passed, 235 skipped, 699 xfailed                   | True          |
 | xarray             | 3 error, 2 failed, 6,334 passed, 9,626 skipped, 11 xfailed, 4 xpassed | 3 error, 3 failed, 6,333 passed, 9,626 skipped, 11 xfailed, 4 xpassed | False         |
-| litestar           | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           | 9 failed, 5,642 passed, 256 skipped, 13 xfailed, 30 xpassed           | False         |
+| litestar           | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           | 5 failed, 5,646 passed, 256 skipped, 13 xfailed, 30 xpassed           | True          |
 | celery             | 3 failed, 3,521 passed, 36 skipped, 3 xfailed                         | 4 failed, 3,520 passed, 36 skipped, 3 xfailed                         | False         |
 | optuna             | 16 error, 263 failed, 4,203 passed, 43 skipped                        | 16 error, 263 failed, 4,203 passed, 43 skipped                        | False         |
 | dask               | 1 failed, 16,200 passed, 1,089 skipped, 513 xfailed, 2 xpassed        | 5 failed, 16,196 passed, 1,089 skipped, 513 xfailed, 2 xpassed        | False         |
 | mypy               | 14,464 passed, 366 skipped, 12 xfailed                                | 14,464 passed, 366 skipped, 12 xfailed                                | True          |
 
-- standard library, mega+dev, fix-certain: a second pass would still fix 1
-- standard library, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from
+- standard library, mega+dev, infer-basedpyright: held 14.23 GB beside other steps
+- standard library, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 5 rounds came from
   the store, so its seconds measure less of the checker
-- standard library, mega+dev, infer-ty: held 8.24 GB beside other steps
-- standard library, mega+dev, infer-ty: ty's hints for 4 of 5 rounds came from the store, so its
+- standard library, mega+dev, infer-ty: held 9.95 GB beside other steps
+- standard library, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- standard library, mega+dev, infer-pyrefly: held 9.39 GB beside other steps
-- standard library, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 6 rounds came from the store,
+- standard library, mega+dev, infer-pyrefly: held 12.55 GB beside other steps
+- standard library, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 6 rounds came from the store,
   so its seconds measure less of the checker
-- django, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- django, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- django, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- django, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- django, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- django, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- django, mega+dev, infer-union: basedpyright's hints for 3 of 5 rounds came from the store, so its
+- django, mega+dev, infer-union: basedpyright's hints for 1 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- django, mega+dev, infer-union: pyrefly's hints for 3 of 5 rounds came from the store, so its
+- django, mega+dev, infer-union: pyrefly's hints for 1 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- django, mega+dev, infer-union: ty's hints for 3 of 5 rounds came from the store, so its seconds
+- django, mega+dev, infer-union: ty's hints for 1 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- sqlalchemy, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the
+- sqlalchemy, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the
   store, so its seconds measure less of the checker
-- sqlalchemy, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- sqlalchemy, mega+dev, infer-ty: ty's hints for 4 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- sqlalchemy, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- sqlalchemy, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- sqlalchemy, mega+dev, infer-union: basedpyright's hints for 4 of 5 rounds came from the store, so
+- sqlalchemy, mega+dev, infer-union: basedpyright's hints for 2 of 5 rounds came from the store, so
   its seconds measure less of the checker
-- sqlalchemy, mega+dev, infer-union: pyrefly's hints for 4 of 5 rounds came from the store, so its
+- sqlalchemy, mega+dev, infer-union: pyrefly's hints for 2 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- sqlalchemy, mega+dev, infer-union: ty's hints for 4 of 5 rounds came from the store, so its
+- sqlalchemy, mega+dev, infer-union: ty's hints for 2 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pydantic, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the
+- pydantic, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the
   store, so its seconds measure less of the checker
-- pydantic, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- pydantic, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- pydantic, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- pydantic, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- pydantic, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so
+- pydantic, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so
   its seconds measure less of the checker
-- pydantic, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- pydantic, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- pydantic, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- pydantic, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- pandas, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- pandas, mega+dev, infer-basedpyright: held 12.04 GB beside other steps
+- pandas, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- pandas, mega+dev, infer-ty: ty's hints for 6 of 6 rounds came from the store, so its seconds
+- pandas, mega+dev, infer-ty: held 9.41 GB beside other steps
+- pandas, mega+dev, infer-ty: ty's hints for 1 of 6 rounds came from the store, so its seconds
   measure less of the checker
-- pandas, mega+dev, infer-pyrefly: pyrefly's hints for 6 of 6 rounds came from the store, so its
+- pandas, mega+dev, infer-pyrefly: held 13.9 GB beside other steps
+- pandas, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 6 rounds came from the store, so its
   seconds measure less of the checker
-- pandas, mega+dev, traced: held 14.23 GB beside other steps
+- pandas, mega+dev, traced: held 14.24 GB beside other steps
 - pandas, mega+dev, tests-released: held 11.49 GB beside other steps
-- pandas, mega+dev, infer-union: basedpyright's hints for 6 of 6 rounds came from the store, so its
+- pandas, mega+dev, infer-union: held 11.53 GB beside other steps
+- pandas, mega+dev, infer-union: basedpyright's hints for 1 of 6 rounds came from the store, so its
   seconds measure less of the checker
-- pandas, mega+dev, infer-union: pyrefly's hints for 6 of 6 rounds came from the store, so its
+- pandas, mega+dev, infer-union: pyrefly's hints for 1 of 6 rounds came from the store, so its
   seconds measure less of the checker
-- pandas, mega+dev, infer-union: ty's hints for 6 of 6 rounds came from the store, so its seconds
+- pandas, mega+dev, infer-union: ty's hints for 1 of 6 rounds came from the store, so its seconds
   measure less of the checker
-- pandas, mega+dev, tests-infer-union: held 12.98 GB beside other steps
+- pandas, mega+dev, tests-infer-union: held 13.02 GB beside other steps
 - twisted, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
   so its seconds measure less of the checker
 - twisted, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
   measure less of the checker
 - twisted, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pip, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store, so
+- pip, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the store, so
   its seconds measure less of the checker
-- pip, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds measure
+- pip, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its seconds measure
   less of the checker
-- pip, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- pip, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
 - structlog, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the
   store, so its seconds measure less of the checker
@@ -5774,29 +5778,29 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - structlog, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- attrs, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store,
+- attrs, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 4 rounds came from the store,
   so its seconds measure less of the checker
 - attrs, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- attrs, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- attrs, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- attrs, mega+dev, infer-union: basedpyright's hints for 4 of 4 rounds came from the store, so its
+- attrs, mega+dev, infer-union: basedpyright's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- attrs, mega+dev, infer-union: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- attrs, mega+dev, infer-union: pyrefly's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- attrs, mega+dev, infer-union: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- attrs, mega+dev, infer-union: ty's hints for 2 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- click, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store,
+- click, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store,
   so its seconds measure less of the checker
-- click, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its seconds
+- click, mega+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- click, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- click, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- click, mega+dev, infer-union: basedpyright's hints for 2 of 2 rounds came from the store, so its
+- click, mega+dev, infer-union: basedpyright's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- click, mega+dev, infer-union: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- click, mega+dev, infer-union: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- click, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so its seconds
+- click, mega+dev, infer-union: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
 - hypercorn, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the
   store, so its seconds measure less of the checker
@@ -5814,13 +5818,13 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   store, so its seconds measure less of the checker
 - starlette, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- starlette, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- starlette, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- starlette, mega+dev, infer-union: basedpyright's hints for 2 of 2 rounds came from the store, so
+- starlette, mega+dev, infer-union: basedpyright's hints for 1 of 2 rounds came from the store, so
   its seconds measure less of the checker
-- starlette, mega+dev, infer-union: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- starlette, mega+dev, infer-union: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- starlette, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so its seconds
+- starlette, mega+dev, infer-union: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
 - werkzeug, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 2 rounds came from the
   store, so its seconds measure less of the checker
@@ -5858,17 +5862,17 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - httpx, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- black, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the store,
+- black, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 2 rounds came from the store,
   so its seconds measure less of the checker
-- black, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- black, mega+dev, infer-ty: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- black, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- black, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- black, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- black, mega+dev, infer-union: basedpyright's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- black, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- black, mega+dev, infer-union: pyrefly's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- black, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- black, mega+dev, infer-union: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
 - fastapi, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the store,
   so its seconds measure less of the checker
@@ -5894,23 +5898,23 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - cattrs, mega+dev, infer-union: ty's hints for 4 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- pytest, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store,
+- pytest, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the store,
   so its seconds measure less of the checker
-- pytest, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its seconds
+- pytest, mega+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- pytest, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- pytest, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- pytest, mega+dev, infer-union: basedpyright's hints for 4 of 4 rounds came from the store, so its
+- pytest, mega+dev, infer-union: basedpyright's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- pytest, mega+dev, infer-union: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- pytest, mega+dev, infer-union: pyrefly's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- pytest, mega+dev, infer-union: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- pytest, mega+dev, infer-union: ty's hints for 2 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- botocore, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the
+- botocore, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the
   store, so its seconds measure less of the checker
-- botocore, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- botocore, mega+dev, infer-ty: ty's hints for 2 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- botocore, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- botocore, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
 - botocore, mega+dev, infer-union: basedpyright's hints for 3 of 5 rounds came from the store, so
   its seconds measure less of the checker
@@ -5930,85 +5934,85 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - uvicorn, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- mcp, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store, so
+- mcp, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store, so
   its seconds measure less of the checker
-- mcp, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds measure
+- mcp, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds measure
   less of the checker
-- mcp, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- mcp, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- mcp, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- mcp, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- mcp, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its seconds
+- mcp, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- mcp, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- mcp, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- textual, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- textual, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- textual, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- textual, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- textual, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- textual, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pdm, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store, so
+- pdm, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the store, so
   its seconds measure less of the checker
-- pdm, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds measure
+- pdm, mega+dev, infer-ty: ty's hints for 4 of 5 rounds came from the store, so its seconds measure
   less of the checker
-- pdm, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- pdm, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pdm, mega+dev, infer-union: basedpyright's hints for 4 of 4 rounds came from the store, so its
+- pdm, mega+dev, infer-union: basedpyright's hints for 3 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- pdm, mega+dev, infer-union: pyrefly's hints for 4 of 4 rounds came from the store, so its seconds
+- pdm, mega+dev, infer-union: pyrefly's hints for 3 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- pdm, mega+dev, infer-union: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- pdm, mega+dev, infer-union: ty's hints for 3 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- strawberry-graphql, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from
+- strawberry-graphql, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 2 rounds came from
   the store, so its seconds measure less of the checker
-- strawberry-graphql, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its
+- strawberry-graphql, mega+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- strawberry-graphql, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 2 rounds came from the
+- strawberry-graphql, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the
   store, so its seconds measure less of the checker
-- strawberry-graphql, mega+dev, infer-union: basedpyright's hints for 2 of 2 rounds came from the
+- strawberry-graphql, mega+dev, infer-union: basedpyright's hints for 1 of 2 rounds came from the
   store, so its seconds measure less of the checker
-- strawberry-graphql, mega+dev, infer-union: pyrefly's hints for 2 of 2 rounds came from the store,
+- strawberry-graphql, mega+dev, infer-union: pyrefly's hints for 1 of 2 rounds came from the store,
   so its seconds measure less of the checker
-- strawberry-graphql, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so
+- strawberry-graphql, mega+dev, infer-union: ty's hints for 1 of 2 rounds came from the store, so
   its seconds measure less of the checker
-- pygments, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the
+- pygments, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the
   store, so its seconds measure less of the checker
-- pygments, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- pygments, mega+dev, infer-ty: ty's hints for 4 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- pygments, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- pygments, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pygments, mega+dev, infer-union: basedpyright's hints for 3 of 6 rounds came from the store, so
+- pygments, mega+dev, infer-union: basedpyright's hints for 4 of 6 rounds came from the store, so
   its seconds measure less of the checker
-- pygments, mega+dev, infer-union: pyrefly's hints for 3 of 6 rounds came from the store, so its
+- pygments, mega+dev, infer-union: pyrefly's hints for 4 of 6 rounds came from the store, so its
   seconds measure less of the checker
-- pygments, mega+dev, infer-union: ty's hints for 3 of 6 rounds came from the store, so its seconds
+- pygments, mega+dev, infer-union: ty's hints for 4 of 6 rounds came from the store, so its seconds
   measure less of the checker
-- streamlink, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the
+- streamlink, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the
   store, so its seconds measure less of the checker
-- streamlink, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- streamlink, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- streamlink, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- streamlink, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- streamlink, mega+dev, infer-union: basedpyright's hints for 4 of 4 rounds came from the store, so
+- streamlink, mega+dev, infer-union: basedpyright's hints for 3 of 4 rounds came from the store, so
   its seconds measure less of the checker
-- streamlink, mega+dev, infer-union: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- streamlink, mega+dev, infer-union: pyrefly's hints for 3 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- streamlink, mega+dev, infer-union: ty's hints for 4 of 4 rounds came from the store, so its
+- streamlink, mega+dev, infer-union: ty's hints for 3 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- sphinx, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store,
+- sphinx, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store,
   so its seconds measure less of the checker
-- sphinx, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- sphinx, mega+dev, infer-ty: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- sphinx, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- sphinx, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- sphinx, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- sphinx, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- sphinx, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- sphinx, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- sphinx, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- sphinx, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- tox, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store, so
+- tox, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store, so
   its seconds measure less of the checker
 - tox, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its seconds measure
   less of the checker
@@ -6020,35 +6024,35 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   measure less of the checker
 - tox, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- pint, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store, so
+- pint, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the store, so
   its seconds measure less of the checker
-- pint, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds measure
+- pint, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its seconds measure
   less of the checker
-- pint, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- pint, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pint, mega+dev, infer-union: basedpyright's hints for 5 of 5 rounds came from the store, so its
+- pint, mega+dev, infer-union: basedpyright's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- pint, mega+dev, infer-union: pyrefly's hints for 5 of 5 rounds came from the store, so its seconds
+- pint, mega+dev, infer-union: pyrefly's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- pint, mega+dev, infer-union: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- pint, mega+dev, infer-union: ty's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- altair, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store,
+- altair, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the store,
   so its seconds measure less of the checker
-- altair, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- altair, mega+dev, infer-ty: ty's hints for 3 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- altair, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- altair, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- altair, mega+dev, infer-union: basedpyright's hints for 5 of 5 rounds came from the store, so its
+- altair, mega+dev, infer-union: basedpyright's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- altair, mega+dev, infer-union: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- altair, mega+dev, infer-union: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- altair, mega+dev, infer-union: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- altair, mega+dev, infer-union: ty's hints for 4 of 5 rounds came from the store, so its seconds
   measure less of the checker
 - seaborn, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- seaborn, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- seaborn, mega+dev, infer-ty: ty's hints for 3 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- seaborn, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- seaborn, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
 - seaborn, mega+dev, infer-union: basedpyright's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
@@ -6056,17 +6060,17 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - seaborn, mega+dev, infer-union: ty's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- aiohttp, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store,
+- aiohttp, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 3 rounds came from the store,
   so its seconds measure less of the checker
-- aiohttp, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- aiohttp, mega+dev, infer-ty: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- aiohttp, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- aiohttp, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- aiohttp, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- aiohttp, mega+dev, infer-union: basedpyright's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- aiohttp, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- aiohttp, mega+dev, infer-union: pyrefly's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- aiohttp, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- aiohttp, mega+dev, infer-union: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
 - websockets, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the
   store, so its seconds measure less of the checker
@@ -6080,55 +6084,55 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - websockets, mega+dev, infer-union: ty's hints for 2 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- anyio, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 2 rounds came from the store,
+- anyio, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 2 rounds came from the store,
   so its seconds measure less of the checker
-- anyio, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- anyio, mega+dev, infer-ty: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- anyio, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 2 rounds came from the store, so its
+- anyio, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- anyio, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- anyio, mega+dev, infer-union: basedpyright's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- anyio, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- anyio, mega+dev, infer-union: pyrefly's hints for 1 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- anyio, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- anyio, mega+dev, infer-union: ty's hints for 1 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- zarr, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store, so
+- zarr, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 3 rounds came from the store, so
   its seconds measure less of the checker
-- zarr, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds measure
+- zarr, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds measure
   less of the checker
-- zarr, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- zarr, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- zarr, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- zarr, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- zarr, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its seconds
+- zarr, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- zarr, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- zarr, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- joblib, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store,
+- joblib, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the store,
   so its seconds measure less of the checker
 - joblib, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
   measure less of the checker
 - joblib, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- joblib, mega+dev, infer-union: basedpyright's hints for 5 of 5 rounds came from the store, so its
+- joblib, mega+dev, infer-union: basedpyright's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- joblib, mega+dev, infer-union: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- joblib, mega+dev, infer-union: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- joblib, mega+dev, infer-union: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- joblib, mega+dev, infer-union: ty's hints for 4 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- networkx, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the
+- networkx, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 5 rounds came from the
   store, so its seconds measure less of the checker
 - networkx, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- networkx, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- networkx, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- networkx, mega+dev, infer-union: basedpyright's hints for 4 of 6 rounds came from the store, so
+- networkx, mega+dev, infer-union: basedpyright's hints for 3 of 6 rounds came from the store, so
   its seconds measure less of the checker
-- networkx, mega+dev, infer-union: pyrefly's hints for 4 of 6 rounds came from the store, so its
+- networkx, mega+dev, infer-union: pyrefly's hints for 3 of 6 rounds came from the store, so its
   seconds measure less of the checker
-- networkx, mega+dev, infer-union: ty's hints for 4 of 6 rounds came from the store, so its seconds
+- networkx, mega+dev, infer-union: ty's hints for 3 of 6 rounds came from the store, so its seconds
   measure less of the checker
-- nibabel, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- nibabel, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 5 rounds came from the store,
   so its seconds measure less of the checker
 - nibabel, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
   measure less of the checker
@@ -6140,93 +6144,93 @@ Each suite's traced tests beside its released tests, a sample of its flakiness:
   seconds measure less of the checker
 - nibabel, mega+dev, infer-union: ty's hints for 4 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- narwhals, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the
+- narwhals, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the
   store, so its seconds measure less of the checker
-- narwhals, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- narwhals, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- narwhals, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- narwhals, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- narwhals, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so
+- narwhals, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so
   its seconds measure less of the checker
-- narwhals, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- narwhals, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- narwhals, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- narwhals, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- xarray, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- xarray, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- xarray, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- xarray, mega+dev, infer-ty: ty's hints for 2 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- xarray, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- xarray, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- xarray, mega+dev, infer-union: basedpyright's hints for 5 of 5 rounds came from the store, so its
+- xarray, mega+dev, infer-union: basedpyright's hints for 2 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- xarray, mega+dev, infer-union: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- xarray, mega+dev, infer-union: pyrefly's hints for 2 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- xarray, mega+dev, infer-union: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- xarray, mega+dev, infer-union: ty's hints for 2 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- litestar, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the
+- litestar, mega+dev, infer-basedpyright: basedpyright's hints for 1 of 2 rounds came from the
   store, so its seconds measure less of the checker
-- litestar, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- litestar, mega+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- litestar, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- litestar, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- litestar, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so
+- litestar, mega+dev, infer-union: basedpyright's hints for 1 of 2 rounds came from the store, so
   its seconds measure less of the checker
-- litestar, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- litestar, mega+dev, infer-union: pyrefly's hints for 1 of 2 rounds came from the store, so its
   seconds measure less of the checker
-- litestar, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- litestar, mega+dev, infer-union: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- stripe, mega+dev, infer-basedpyright: basedpyright's hints for 4 of 4 rounds came from the store,
+- stripe, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 4 rounds came from the store,
   so its seconds measure less of the checker
-- stripe, mega+dev, infer-ty: ty's hints for 2 of 2 rounds came from the store, so its seconds
+- stripe, mega+dev, infer-ty: ty's hints for 1 of 2 rounds came from the store, so its seconds
   measure less of the checker
-- stripe, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- stripe, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- celery, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store,
+- celery, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the store,
   so its seconds measure less of the checker
-- celery, mega+dev, infer-ty: ty's hints for 4 of 4 rounds came from the store, so its seconds
+- celery, mega+dev, infer-ty: ty's hints for 2 of 4 rounds came from the store, so its seconds
   measure less of the checker
-- celery, mega+dev, infer-pyrefly: pyrefly's hints for 4 of 4 rounds came from the store, so its
+- celery, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 4 rounds came from the store, so its
   seconds measure less of the checker
-- celery, mega+dev, infer-union: basedpyright's hints for 5 of 5 rounds came from the store, so its
+- celery, mega+dev, infer-union: basedpyright's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- celery, mega+dev, infer-union: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- celery, mega+dev, infer-union: pyrefly's hints for 3 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- celery, mega+dev, infer-union: ty's hints for 5 of 5 rounds came from the store, so its seconds
+- celery, mega+dev, infer-union: ty's hints for 3 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- optuna, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store,
+- optuna, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store,
   so its seconds measure less of the checker
-- optuna, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- optuna, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- optuna, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- optuna, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- optuna, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- optuna, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- optuna, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- optuna, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- optuna, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- optuna, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- dask, mega+dev, infer-basedpyright: basedpyright's hints for 5 of 5 rounds came from the store, so
+- dask, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 5 rounds came from the store, so
   its seconds measure less of the checker
-- dask, mega+dev, infer-ty: ty's hints for 5 of 5 rounds came from the store, so its seconds measure
+- dask, mega+dev, infer-ty: ty's hints for 3 of 5 rounds came from the store, so its seconds measure
   less of the checker
-- dask, mega+dev, infer-pyrefly: pyrefly's hints for 5 of 5 rounds came from the store, so its
+- dask, mega+dev, infer-pyrefly: pyrefly's hints for 1 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- dask, mega+dev, infer-union: basedpyright's hints for 2 of 5 rounds came from the store, so its
+- dask, mega+dev, infer-union: basedpyright's hints for 1 of 5 rounds came from the store, so its
   seconds measure less of the checker
-- dask, mega+dev, infer-union: pyrefly's hints for 2 of 5 rounds came from the store, so its seconds
+- dask, mega+dev, infer-union: pyrefly's hints for 1 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- dask, mega+dev, infer-union: ty's hints for 2 of 5 rounds came from the store, so its seconds
+- dask, mega+dev, infer-union: ty's hints for 1 of 5 rounds came from the store, so its seconds
   measure less of the checker
-- mypy, mega+dev, infer-basedpyright: basedpyright's hints for 3 of 3 rounds came from the store, so
+- mypy, mega+dev, infer-basedpyright: basedpyright's hints for 2 of 3 rounds came from the store, so
   its seconds measure less of the checker
-- mypy, mega+dev, infer-ty: ty's hints for 3 of 3 rounds came from the store, so its seconds measure
+- mypy, mega+dev, infer-ty: ty's hints for 2 of 3 rounds came from the store, so its seconds measure
   less of the checker
-- mypy, mega+dev, infer-pyrefly: pyrefly's hints for 3 of 3 rounds came from the store, so its
+- mypy, mega+dev, infer-pyrefly: pyrefly's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- mypy, mega+dev, infer-union: basedpyright's hints for 3 of 3 rounds came from the store, so its
+- mypy, mega+dev, infer-union: basedpyright's hints for 2 of 3 rounds came from the store, so its
   seconds measure less of the checker
-- mypy, mega+dev, infer-union: pyrefly's hints for 3 of 3 rounds came from the store, so its seconds
+- mypy, mega+dev, infer-union: pyrefly's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker
-- mypy, mega+dev, infer-union: ty's hints for 3 of 3 rounds came from the store, so its seconds
+- mypy, mega+dev, infer-union: ty's hints for 2 of 3 rounds came from the store, so its seconds
   measure less of the checker

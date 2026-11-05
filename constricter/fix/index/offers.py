@@ -266,14 +266,27 @@ def _ambiguous(
     wholes: list[str] = [origin[0] for origin in target.names.values() if origin[1] is None]
     written: set[str] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - added
     return any(
-        name in target.names
-        and any(
-            (whole, name) != target.names[name]
-            and (_class(catalog, (whole, name)) is not None or name in _UNTABLED.get(whole, ()))
-            for whole in wholes
-        )
+        name in target.names and any(_another(catalog, (whole, name), target.names[name]) for whole in wholes)
         for name in written
     )
+
+
+def _another(catalog: project.Index, other: Origin, bound: Origin) -> bool:
+    """Check whether `other`, a whole-imported module's name, is a class and not the one `bound` names.
+
+    `pandas.Index` is `pandas.core.indexes.base.Index` re-exported: the one class, however the file
+    binds it. A typing form's factory (`enum.Enum`'s, `typing.NamedTuple`) counts as a class.
+
+    Returns:
+      Whether it is.
+
+    """
+    if other == bound:
+        return False
+    if _class(catalog, other) is None and other[1] not in _UNTABLED.get(other[0], ()):
+        return False
+    defined: _Defined | None = _defined(catalog, other)
+    return defined is None or defined != _defined(catalog, bound)
 
 
 def _private(catalog: project.Index, name: str) -> bool:

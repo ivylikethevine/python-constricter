@@ -26,7 +26,17 @@ The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
 change to what `--fix` offers or refuses is read on all 47 in 10 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
 run's records with `scratch/run_fixes_diff.py`; `mega-fixes-11-04-2026-0756`), which measures none
-of the bars: a guess's bars and the tests still wait on a mega run.
+of the bars: a guess's bars and the tests still wait on a mega run. `mega-fixes-11-04-2026-1801` read the day's
+three `--fix` changes ([COMPLETED.md](COMPLETED.md#--fix)), and `mega-11-04-2026-1810` (`45d8268`,
+85 minutes on 16CPU/60GB, beside measurements) is the latest mega run, read below.
+`mega-fixes-11-05-2026-0204` read the three changes in the tree since (the shadowed builtins refined
+to functions, assignments and imported values; a hint's ambiguous name judged by where its class is
+defined, so `pandas.Index` and the file's own `Index` are one class; a shared overload parameter's
+type variable read only where a signature returns it): against `mega-fixes-11-04-2026-1801`, no fix
+withdrawn at any tier, pandas's 55 certain `read_csv` fixes back (74 with `--unsafe-fixes`), django's
+23 `Warning` guesses, enum's `property` and pytest's `exc_info` back, and every type check's errors
+the same. The hinted steps and the tests are not in `mega-fixes`, so pandas's hinted fixes and
+django's traced tests wait on a mega run.
 
 1. **What the tree changes since the latest read.** `type[T]` through a type variable another checked
    file defines, overloads under `if TYPE_CHECKING:`, a method a subclass inherits from a checked base,
@@ -43,9 +53,24 @@ of the bars: a guess's bars and the tests still wait on a mega run.
    `basic-11-03-2026-2103` has them: sqlalchemy's certain fixes 2,144 from `mega-10-30-2026-0857`'s
    2,117, with `--unsafe-fixes` 3,308 from 3,269; its one new type error on every fix step is
    `manager`'s, and the other three corpora with a type check have the mega run's errors exactly;
-   none of django's, sqlalchemy's, pydantic's or pandas's tests fails anew after any step. Done when a
-   mega run has the fixes, no new error from them and neither test among its new failures. About an
-   hour beside the run; coverage under 0.1%.
+   none of django's, sqlalchemy's, pydantic's or pandas's tests fails anew after any step. Read on
+   `mega-11-04-2026-1810` against `mega-10-30-2026-0857` (`scratch/run_fixes_diff.py`): new type
+   errors over every step 440 from 461 (sqlalchemy's after each fix step 1 from 0, `manager`'s;
+   pandas's and strawberry's hinted steps fewer), certain fixes gained on 19 corpora (textual 55,
+   sqlalchemy 27, xarray 17, anyio 13). Tests failing anew: nibabel's alone, in every step and
+   matched by as many passing anew (its randomized `test_quaternions.py` and `test_image_api.py`
+   `mmap` cases), and django's traced tests 6 failures from 5, unnamed by the diff. Two losses, both fixed in the
+   tree since: pandas's 55 certain fixes of `read_csv(...)` (`DataFrame`, from its overloads), lost
+   in `10ee8ab` (`scratch/file_bisect.py`: `stubs/signatures.py` alone), where a parameter every
+   overload shares stopped taking any argument once it named a type variable a checked file imports
+   (`**kwds: Unpack[_read_shared[HashableT]]`), now only one a signature returns
+   (`signatures.read_all`; `scratch/fix_diff.py` from `92a0983`, one process on 16CPU/60GB: 42,712
+   fixes from 42,556, 6 withdrawn, all the override exclusion's `member` guesses); and the hinted
+   steps' 2,654 basedpyright and 3,622 pyrefly fixes on pandas, withdrawn by the ambiguous-name rule
+   where `pandas` imported whole re-exports the class the file binds, which the tree's refinement
+   restores (`--infer-with=basedpyright`, one process: 48,264 fixes from 45,762). Done when a mega run has the `read_csv` fixes back, the hinted steps' fixes on
+   pandas, no new error from them, and django's sixth failure named. About 2 hours and a run;
+   coverage under 0.1%.
 2. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
    naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain

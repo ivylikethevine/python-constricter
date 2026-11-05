@@ -714,3 +714,80 @@ def test_a_subclass_takes_its_base_s_method_bound_by_the_class_passed(tmp_path: 
     _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
     fixed: str = use.read_text(encoding="utf-8")
     assert all(line in fixed for line in _INHERITED_FIXED), fixed
+
+
+_SHARED_KEYWORDS: Final = """
+from typing import TYPE_CHECKING, Generic, Literal, TypedDict, Unpack, overload
+
+if TYPE_CHECKING:
+    from pkg.labels import Label
+    from pkg.variables import Kind
+
+
+class Frame:
+    pass
+
+
+class Reader:
+    pass
+
+
+if TYPE_CHECKING:
+
+    class _Shared(TypedDict, Generic[Kind], total=False):
+        names: list[Kind]
+        index: Label | Literal[False] | None
+
+else:
+    _Shared = dict
+
+
+@overload
+def read(path: str, *, lazy: Literal[True], **kwds: Unpack[_Shared[Kind]]) -> Reader: ...
+@overload
+def read(path: str, *, lazy: Literal[False] = ..., **kwds: Unpack[_Shared[Kind]]) -> Frame: ...
+@overload
+def read(path: str, *, lazy: bool = ..., **kwds: Unpack[_Shared[Kind]]) -> Frame | Reader: ...
+def read(path, *, lazy=False, **kwds):
+    return Reader() if lazy else Frame()
+"""
+_LABELS: Final = """
+from collections.abc import Hashable, Sequence
+from typing import TypeAlias
+
+Label: TypeAlias = Hashable | Sequence[Hashable]
+"""
+_SHARED_USE: Final = """
+from pkg.readers import read
+
+
+def use(path: str) -> None:
+    frame = read(path, index=0)
+    lazy = read(path, lazy=True, index=0)
+"""
+
+_SHARED_FIXED: Final = """
+from pkg.readers import read
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.readers import Frame
+    from pkg.readers import Reader
+
+
+def use(path: str) -> None:
+    frame: Frame = read(path, index=0)
+    lazy: Reader = read(path, lazy=True, index=0)
+"""
+
+
+def test_a_parameter_every_signature_shares_takes_any_argument_past_a_type_variable_no_return_names(
+    tmp_path: Path,
+) -> None:
+    """Pandas's `read_csv(path, index_col=0)`: `**kwds: Unpack[_read_shared[HashableT]]` in each overload."""
+    _ = _write(tmp_path, "pkg/__init__.py", "")
+    _ = _write(tmp_path, "pkg/variables.py", _VARIABLES)
+    _ = _write(tmp_path, "pkg/labels.py", _LABELS)
+    _ = _write(tmp_path, "pkg/readers.py", _SHARED_KEYWORDS)
+    use: Path = _write(tmp_path, "pkg/use.py", _SHARED_USE)
+    _ = cli.main(["--fix", "-q", "--jobs=1", str(tmp_path)])
+    assert use.read_text(encoding="utf-8") == textwrap.dedent(_SHARED_FIXED)

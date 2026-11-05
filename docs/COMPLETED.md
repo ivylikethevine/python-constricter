@@ -646,17 +646,26 @@ bool` an override error. Measured (`scratch/fix_diff.py`, `scratch/fix_errors.py
   against `mega-10-30-2026-0857`'s records) one `likely` guess withdrawn, pdm's
   `backend: DEFAULT_BACKEND`, a variable of pdm's own `models.backends` imported inside the function,
   and no type check changed.
-- **No type naming a builtin the module binds itself** (decided 2026-11-04, built): `from .compat
-import str` (requests' Python 2 shim, vendored in pip) makes `pat: re.Pattern[str]` name a variable
-  to basedpyright ("Variable not allowed in type expression"), so a fix whose type names a builtin the
-  module binds at its top level is no fix (`doubts.corrected`, over `ImportPlan.defined`). pip
-  (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`, `--all-scopes`, one process on
-  16CPU/60GB): 3,584 fixes from 3,615, the 31 withdrawn in requests' `auth.py`, `models.py` and
-  `utils.py` (`str`, `bytes`, `re.Pattern[str]`, `str | None`, `frozenset[str]`; the shim binds `bytes`
-  too), one `member` guess re-listed as `rebound` too; basedpyright's errors after `--fix
---unsafe-fixes` that the plain copy lacks 131 from 163 (`reportInvalidTypeForm` 50 from 82), 32
-  gone and 2 new on `utils.py:958`'s `pat.match(value)`, which the withdrawn annotations had left
-  unchecked (`pat` of no known type). Read on all 47 by the next `mega-fixes` run.
+- **No type naming a builtin the module shadows** (decided 2026-11-04, built): `from .compat
+import str` (requests' Python 2 shim, vendored in pip; `compat` assigns `str = str`) makes
+  `pat: re.Pattern[str]` name a variable to basedpyright ("Variable not allowed in type
+  expression"), and `locale`'s `def str` the same. A type written with a builtin the module binds
+  at its top level to a function or an assignment of its own, or imports from a module that binds it
+  as a value (`linked.values`), is no fix (`ImportPlan.shadowed`, judged in `doubts.corrected`); a
+  class of the name, defined or imported (django's `Warning`, `enum`'s `property`, pytest's
+  backported `BaseExceptionGroup`), is named as any class is. First built over every top-level
+  binding, which `mega-fixes-11-04-2026-1801` read against `mega-fixes-11-04-2026-0756` as 23
+  `Warning` guesses lost on django, enum's `property` and pytest's `exc_info`; refined the same
+  evening, each back (`scratch/fix_diff.py --venv`, one process on 16CPU/60GB: django 5,505 fixes
+  from 5,482, pytest 1,688 from 1,687, enum's 1). pip (`scratch/fix_diff.py`,
+  `scratch/fix_errors.py --mode unsafe`, `--all-scopes`): 3,584 fixes from 3,615, the 31 withdrawn
+  in requests' `auth.py`, `models.py` and `utils.py` (`str`, `bytes`, `re.Pattern[str]`, `str |
+None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-listed as `rebound`
+  too; basedpyright's errors after `--fix --unsafe-fixes` that the plain copy lacks 131 from 163
+  (`reportInvalidTypeForm` 50 from 82), 32 gone and 2 new on `utils.py:958`'s `pat.match(value)`,
+  which the withdrawn annotations had left unchecked (`pat` of no known type). On the 47 corpora
+  (`mega-fixes-11-04-2026-1801`) the standard library loses `locale.py`'s 5 certain fixes (`k`,
+  `v`, three `dict[str, str]`), right by its `def str`.
 - **A checker's short name for a class the module defines another of** (decided 2026-11-04,
   built): basedpyright's hint `MappingProxyType[str, Enum]` means `enum.Enum`, but written in
   sqlalchemy's `sqltypes.py`, which defines `class Enum(..., TypeEngine[...])`, it names that class,
@@ -1103,8 +1112,14 @@ import str` (requests' Python 2 shim, vendored in pip) makes `pat: re.Pattern[st
   on 16CPU/60GB) 5,921 fixes both ways, its yaml calls `Any`. Reach measured on
   `mega-10-30-2026-0857` (`scratch/typeshed_reach.py`): 135 of 7,381 third-party bindings with no
   fix, 69 of them "imported", mostly a submodule called through `from pkg import sub` (a roadmap
-  finding). Read on all 47 by the next `mega-fixes` run. About 4 hours; coverage under 0.1% on the
-  corpora, its reach users' code.
+  finding). On the 47 corpora (`mega-fixes-11-04-2026-1801` against `mega-fixes-11-04-2026-0756`,
+  10 minutes on 16CPU/60GB): certain fixes gained, botocore 5 (`datetime.datetime`, jmespath's
+  `ParsedResult`), optuna 2 (`grpc.Channel`, `grpc.GenericRpcHandler`), aiohttp 2 (`socket.socket`,
+  `logging.Logger | None`), pandas 1 (yaml's `dump`, a `str`); guesses gained, botocore 5 and
+  textual 2 (Pygments' `Lexer`); and optuna's `_sym_db` retyped protobuf's `SymbolDatabase`. Lost:
+  pytest's `pygments_formatter: TerminalFormatter` (certain) and pygments' `vl: ViewList` (likely),
+  classes typeshed's Pygments and docutils stubs declare generic, so written bare no more. About 4
+  hours; coverage under 0.1% on the corpora, its reach users' code.
 - **pyrefly's `stubgen` for untyped packages, measured and set aside** (decided 2026-11-04): stubs
   pyrefly writes from what it infers for an installed package with no types (experimental;
   `Incomplete` where it can't tell), read as an installed package's stubs are. Measured on

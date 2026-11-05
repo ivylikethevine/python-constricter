@@ -165,7 +165,9 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     `bound`: each name its imports bind, and what that is (`io`, `io.BytesIO`); `taken`: every name
     bound anywhere in it; `after`: the line added imports go after; `defined`: each name it binds
     at its top level (an import, a class, a function, an assignment), and the line it's first bound
-    on; `added`: each name an added import binds, and that import's statement, as `spell` chose them.
+    on; `shadowed`: the builtins it binds at its top level to what a checker reads as no class (a
+    function, an assignment, an import of a value), so no type is written with them; `added`: each
+    name an added import binds, and that import's statement, as `spell` chose them.
     `guarded`: the names other checked files' types and a type checker's hints are written with
     that the module imports (or is to import) under `if TYPE_CHECKING:` alone; `checking`: its own
     such imports, where one goes, and whose types need one (see `Checking`); `postponed`: whether
@@ -176,6 +178,7 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     taken: frozenset[str]
     after: int
     defined: Mapping[str, int] = field(default_factory=dict[str, int])
+    shadowed: frozenset[str] = frozenset()
     added: dict[str, str] = field(default_factory=dict[str, str])
     guarded: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     checking: Checking = field(default_factory=Checking)

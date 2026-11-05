@@ -701,21 +701,34 @@ def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
     }
 
 
-def test_a_type_naming_a_builtin_the_module_binds_is_no_fix() -> None:
-    """A type checker reads the module's own `str` as a variable, so no type is written with it."""
+def test_a_type_naming_a_builtin_the_module_shadows_is_no_fix() -> None:
+    """A type checker reads the module's own `str` function or `bytes` variable there; a class is a class."""
     source: str = """
+    import builtins
     import re
-    from .compat import str
 
-    def f(s: bytes) -> None:
+    bytes = builtins.bytes
+
+
+    def str(value: object) -> builtins.str:
+        return repr(value)
+
+
+    class property:
+        pass
+
+
+    def f(s: builtins.bytes) -> None:
         pat = re.compile("a")
         n = len(s)
         text = s.decode()
-        parts = ["a", "b"]
+        raw = s.strip()
+        prop = property()
     """
     assert _found(source) == {
-        "pat": (None, False),  # `re.Pattern[str]` without the shim
+        "pat": (None, False),  # `re.Pattern[str]` without the shadow
         "n": ("int", False),
         "text": (None, False),  # `str`
-        "parts": (None, False),  # `list[str]`
+        "raw": (None, False),  # `bytes`
+        "prop": ("property", True),  # the module's own class, plain: a guess
     }

@@ -545,9 +545,10 @@ standard-library type's import goes under `if TYPE_CHECKING:` only for a module 
 module's functions import (`import decimal` in a function's body), or that it imports by
 `pytest.importorskip`: it may not be there to import when the module is. A class of a module only
 some platforms have, imported that way (`import pwd`, `import winreg`), is no fix: a type checker on
-another platform finds no such class. A type written with a builtin the module binds at its top
-level (`from .compat import str`, a Python 2 shim; `pat: re.Pattern[str]`) is no fix: a type
-checker reads the module's own name there, a variable.
+another platform finds no such class. A type written with a builtin the module shadows, binding it at its top level to a
+function or a value (`locale`'s `def str`; `from .compat import str`, a Python 2 shim's `str = str`) is
+no fix: a type checker reads the module's own name there. A class of the name it defines or imports
+(django's `Warning`, `enum`'s `property`) is named as any class is.
 
 An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
 package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
