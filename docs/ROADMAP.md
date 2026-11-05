@@ -35,8 +35,7 @@ defined, so `pandas.Index` and the file's own `Index` are one class; a shared ov
 type variable read only where a signature returns it): against `mega-fixes-11-04-2026-1801`, no fix
 withdrawn at any tier, pandas's 55 certain `read_csv` fixes back (74 with `--unsafe-fixes`), django's
 23 `Warning` guesses, enum's `property` and pytest's `exc_info` back, and every type check's errors
-the same. The hinted steps and the tests are not in `mega-fixes`, so pandas's hinted fixes and
-django's traced tests wait on a mega run.
+the same. `mega-11-05-2026-0219` (85 minutes on 16CPU/60GB) is the latest mega run, read in item 1.
 
 1. **What the tree changes since the latest read.** `type[T]` through a type variable another checked
    file defines, overloads under `if TYPE_CHECKING:`, a method a subclass inherits from a checked base,
@@ -68,9 +67,20 @@ django's traced tests wait on a mega run.
    fixes from 42,556, 6 withdrawn, all the override exclusion's `member` guesses); and the hinted
    steps' 2,654 basedpyright and 3,622 pyrefly fixes on pandas, withdrawn by the ambiguous-name rule
    where `pandas` imported whole re-exports the class the file binds, which the tree's refinement
-   restores (`--infer-with=basedpyright`, one process: 48,264 fixes from 45,762). Done when a mega run has the `read_csv` fixes back, the hinted steps' fixes on
-   pandas, no new error from them, and django's sixth failure named. About 2 hours and a run;
-   coverage under 0.1%.
+   restores (`--infer-with=basedpyright`, one process: 48,264 fixes from 45,762). Read on
+   `mega-11-05-2026-0219` (`866d2e2`, 85 minutes on 16CPU/60GB) against `mega-11-04-2026-1810`: no fix step
+   withdraws a fix, and the `read_csv`, `Warning`, `property` and `exc_info` fixes are back; pandas's
+   hinted steps add 2,535 basedpyright and 3,525 pyrefly fixes, and against `mega-10-30-2026-0857`
+   its basedpyright step loses 6 guesses and raises 34 a tier. New type errors over every step 450,
+   the 10 more all pandas's hinted steps, each at or under `mega-10-30-2026-0857`'s. django's sixth
+   traced failure was `test_crafted_xml_performance` (a timing test, under the tracer), passing again:
+   5 failures, as on `mega-10-30-2026-0857`. Tests failing anew, none from a changed fix: sphinx's 7
+   pygments and stemmer tests after `fix-likely` and the hinted steps, the same 7 its traced tests
+   fail on both earlier runs, with a `fix-likely` patch byte-identical to `mega-11-04-2026-1810`'s;
+   sqlalchemy's 4 `test_compare.py` after `infer-union` (`sqlite_foo` not a registered dialect
+   argument, an order-dependent fixture, as on `mega-10-29-2026-2241`); zarr's
+   `test_encode_and_write_as_completed_cancels_stray_writes_on_failure`; nibabel's randomized cases.
+   The bars are met; what is left is the move to [COMPLETED.md](COMPLETED.md).
 2. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
    naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
