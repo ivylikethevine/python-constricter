@@ -455,3 +455,47 @@ def test_the_cli_types_by_another_files_unannotated_class(tmp_path: Path) -> Non
     _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--extend-select=LVA015", str(tmp_path)])
     fixed: str = app.read_text(encoding="utf-8")
     assert _SHOW in fixed
+
+
+def test_a_news_first_parameter_is_the_class_not_what_its_reads_say() -> None:
+    """`cls` of `__new__` or `__init_subclass__` is `type[C]`, as a classmethod's: its reads guess no base."""
+    source: str = """
+    from typing import Self
+
+
+    class Base:
+        @classmethod
+        def new(cls) -> Self:
+            return cls()
+
+        @classmethod
+        def count(cls) -> int:
+            return 1
+
+
+    class Sub(Base):
+        def __new__(cls, size):
+            a = cls.new()
+            b = cls.count()
+            return a
+
+        def __init_subclass__(cls):
+            c = cls.count()
+
+        @classmethod
+        def make(cls):
+            d = cls.new()
+            return d
+
+        @staticmethod
+        def build(cls):
+            e = cls.new()
+            return e
+    """
+    assert _fixed(source=source) == {
+        "a": ("Sub", False),  # as `d`, a classmethod's
+        "b": ("int", False),
+        "c": ("int", False),
+        "d": ("Sub", False),
+        "e": (None, False),  # a staticmethod's plain parameter: its one read fits both classes
+    }

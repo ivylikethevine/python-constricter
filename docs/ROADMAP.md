@@ -27,59 +27,9 @@ all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the f
 checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
 wait on a mega run. Unread in the tree: the witness and the union's own verdicts and type check
-(item 4).
+(item 1), and a `__new__`'s `cls` (item 5).
 
-1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
-   alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
-   naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
-   unannotated function's calls where its `return`s decide nothing and none gives a value the type
-   doesn't take (`fix/values/documented.py`). A
-   method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
-   out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
-   32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
-   vouches gives its function back. nibabel (`scratch/fix_diff.py`, one process on 16CPU/60GB):
-   2,427 to 2,448 fixes, 14 of them `documented`; networkx 1. basedpyright's errors after
-   `--fix --unsafe-fixes` on nibabel, with every item then built: 33 new and 24 gone, five of the new
-   from `documented` guesses naming `int` or `float` where numpy's own scalars come back (`_fread3`,
-   `mask_volume`): `np.int64` is no `int` to a checker, which the witness tells of too. On the mega
-   run of 2026-10-29 (`f7d53b2`) it missed every bar (27 guesses, 16 told, 62.5% held, 1 of 25 read
-   blamed), its misses numpy's `int32` and
-   `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
-   On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
-   function ending `return None`, which the check records as of no known type; a `return None` or a
-   bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
-   8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
-   `a8de20a` the same. Told has stayed at 8 over three runs since numpy's refusal, so 20 needs a wider reach
-   ("numpydoc Returns sections", under Measurement) or the item decided on what's there. Done when a
-   mega run reads it against the bars on 20 told, or it's decided. About an hour beside the run;
-   coverage under 0.1%.
-2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
-   one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
-   regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
-   needing a stage still to run left for it; the report is written from the records so far, naming
-   the stages left, and published once every stage is in. A stage on another commit, other
-   uncommitted changes or another run file than the folder's earlier stages is refused, naming
-   both, unless `--join-anyway`, and the report then gives each stage's commit. Done when a super
-   run made in four stages at separate times gives the report one sitting does. Coverage unchanged.
-   The 0.4.3-rc.3 super run (`ac48774`, 16CPU/60GB) ran its four stages back to back into one
-   folder: `fixes` 17 minutes, `traced` 15, `tests` 12, `timed` 4, 48 in all as rc.2's one sitting
-   took; each joined, and the report and RUNS.md were written once the last was in. The 0.4.3-rc.4
-   super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
-   20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
-   stages hours apart, with other work between. About an hour beside the runs.
-3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
-   tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
-   measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
-   Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
-   meets none of its steps measured only under a new `output`, and a new corpus or step is unmeasured
-   within a measured run. Left: a run with a corpus new to its output, read against
-   `scratch/schedule_solve.py` on its own records, which every corpus of `corpora.toml` having records
-   under `corpus-runs/` leaves to the next corpus added (or a run under another `output` holding the
-   others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
-   run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
-   stages". About an hour beside the run; coverage unchanged.
-
-4. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
+1. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
    basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
    the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Built: where
    a later checker's usable hint gives the type the first usable one does, the fix rests on their
@@ -103,6 +53,69 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    reads `agreed+checker` and `checker` against the bars, with what the traced tests' later start
    cost the run's minutes. About an hour beside the run; coverage unchanged (`--likely` gains what
    passes).
+2. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
+   alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
+   naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
+   unannotated function's calls where its `return`s decide nothing and none gives a value the type
+   doesn't take (`fix/values/documented.py`). A
+   method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
+   out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
+   32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
+   vouches gives its function back. nibabel (`scratch/fix_diff.py`, one process on 16CPU/60GB):
+   2,427 to 2,448 fixes, 14 of them `documented`; networkx 1. basedpyright's errors after
+   `--fix --unsafe-fixes` on nibabel, with every item then built: 33 new and 24 gone, five of the new
+   from `documented` guesses naming `int` or `float` where numpy's own scalars come back (`_fread3`,
+   `mask_volume`): `np.int64` is no `int` to a checker, which the witness tells of too. On the mega
+   run of 2026-10-29 (`f7d53b2`) it missed every bar (27 guesses, 16 told, 62.5% held, 1 of 25 read
+   blamed), its misses numpy's `int32` and
+   `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
+   On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
+   function ending `return None`, which the check records as of no known type; a `return None` or a
+   bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
+   8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
+   `a8de20a` the same. Told has stayed at 8 over three runs since numpy's refusal, so 20 needs a wider reach
+   ("numpydoc Returns sections", under Measurement) or the item decided on what's there. Done when a
+   mega run reads it against the bars on 20 told, or it's decided. About an hour beside the run;
+   coverage under 0.1%.
+3. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+   one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
+   regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
+   needing a stage still to run left for it; the report is written from the records so far, naming
+   the stages left, and published once every stage is in. A stage on another commit, other
+   uncommitted changes or another run file than the folder's earlier stages is refused, naming
+   both, unless `--join-anyway`, and the report then gives each stage's commit. Done when a super
+   run made in four stages at separate times gives the report one sitting does. Coverage unchanged.
+   The 0.4.3-rc.3 super run (`ac48774`, 16CPU/60GB) ran its four stages back to back into one
+   folder: `fixes` 17 minutes, `traced` 15, `tests` 12, `timed` 4, 48 in all as rc.2's one sitting
+   took; each joined, and the report and RUNS.md were written once the last was in. The 0.4.3-rc.4
+   super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
+   20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
+   stages hours apart, with other work between. About an hour beside the runs.
+4. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+   tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
+   measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
+   Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
+   meets none of its steps measured only under a new `output`, and a new corpus or step is unmeasured
+   within a measured run. Left: a run with a corpus new to its output, read against
+   `scratch/schedule_solve.py` on its own records, which every corpus of `corpora.toml` having records
+   under `corpus-runs/` leaves to the next corpus added (or a run under another `output` holding the
+   others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
+   run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
+   stages". About an hour beside the run; coverage unchanged.
+
+5. **A `__new__`'s `cls`, typed as its class** (it withdraws a guess). pandas's
+   `subarr = cls._simple_new(...)` in `DatetimeIndex.__new__` was written `subarr: Index` (`method`),
+   then `return subarr` under `-> Self` was mypy's error, the one of `method`'s set a fix was at
+   fault for. The cause was no cross-file `Self`: `cls` in `__new__`, which Python binds to the class
+   undecorated, was left untyped, so the call was read on the base. Built on 2026-11-05: a
+   `__new__`'s, `__init_subclass__`'s and `__class_getitem__`'s first parameter is `type[C]`, as a
+   classmethod's (`scoping._IMPLICIT_CLASSMETHODS`). On pandas (`scratch/fix_diff.py --source`,
+   `--all-scopes`, one process on 16CPU/60GB): 42,715 fixes from 42,712; `subarr`'s withdrawn, its
+   call on another file's class-side `Self` method left unfixed; 4 more, `object.__new__(cls)` typed
+   as the class (`PeriodDtype`, `MultiIndex`, a metaclass's `HolidayCalendarMetaClass`) and one fix
+   resting on it. Done when a mega run reads `method`'s set at 1 of 1,083 blamed or fewer (0.09 in
+   each 100, the bar 0.1), nibabel's other being no fix's fault ([COMPLETED.md](COMPLETED.md#corpus)).
+   About an hour beside the run; coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -118,15 +131,7 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    to the lint group, `uv lock`, and a step in the Lint job. Not before 2026-11-06, the seven-day cutoff
    on new releases. Done when CI's Lint job runs it green and the disabled rule is gone. About an hour;
    coverage unchanged.
-3. **A `Self` method a base in another file defines, called on `cls`** (a finding: it changes a
-   fix). pandas's `subarr = cls._simple_new(...)` in `DatetimeIndex.__new__` is written `subarr: Index`
-   (`method`), from `Index._simple_new`'s `-> Self` in `indexes/base.py`, and `return subarr` under
-   `-> Self` is mypy's error, the one of `method`'s set that a fix is at fault for. `doubts._selfish`
-   writes `Self` for such a call only where `owner.selfish` names the method. Written `Self`, or left
-   unfixed, it'd leave `method`'s set 1 of 1,083 read blamed (0.09 in each 100, the bar 0.1), as
-   nibabel's other is no fix's fault ([COMPLETED.md](COMPLETED.md#corpus)). Measure first: how many
-   guesses rest on such a read. About 2 hours; coverage unchanged.
-4. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+3. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
    `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
    holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
@@ -135,21 +140,7 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
    receiver's `LiteralString` overloads' container returns unfixed. Measure first: how many certain
    fixes it is on the mega corpora. About 2 hours.
-5. **A copy of a name each branch binds to another type** (a finding: changing it narrows
-   fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
-   (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
-   `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
-   or the one every value fits as `rebound` takes it) would type them as a checker does, and
-   withdraw or change the fixes that rest on the last branch alone. The mega runs of 2026-10-29
-   have one such fix, an error in each of six steps: optuna's `params: dict[str, int | float]`,
-   filled from `param`, a `str` in its other branch. Measured on 2026-11-04
-   (`scratch/branch_copies.py` on `mega-10-30-2026-0857`): of 10,058 `copy` guesses on the 47
-   corpora, 9 copy a name a statement before them binds in two or more of its arms (3 of them
-   `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
-   `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
-   branches, not a copy. Too few to build a join for; left as it is unless a run shows more. About 2
-   hours.
-6. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
+4. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
    `from dateutil import parser`, so the name resolves to the package's own binding and not to the
@@ -158,11 +149,11 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    third-party bindings with no fix into a package typeshed's bundled stubs cover
    (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
    many of a run's "imported" bindings call through a name bound so. About 2 hours.
-7. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
+5. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
    an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
    no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
    stub or a checked file declares. About 2 hours.
-8. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+6. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -226,7 +217,7 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    standard library's 688 modules with one; its peak 2.06 GiB from 2.15 at 48s in one process on
    16CPU/60GB (the tree after the day's changes: 2.15 where 2.03 was measured on 10-24), the listing
    identical. What's left is the resume kept from less than the whole check. Each timing here predates the
-   changes of 2026-10-28 to 10-30: time it again first. About 6 hours; coverage unchanged.
+   changes since 2026-10-28: time it again first. About 6 hours; coverage unchanged.
 3. **A parallel check, past its longest chain.** With every CPU the standard library checks in 13.5
    and 13.9s and in 47.6s in one process (2026-10-27, 16CPU/60GB), pandas in 11.3s and 50s; 29s in
    two processes, 18s in four, 13.7s and 12.9s in eight, so about 10s of each doesn't shorten with
@@ -259,7 +250,7 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    findings differ without the edges. What's left of that path is a recheck only where a binding
    with no fix waited on the method now known, which a check's results don't name: their reasons are
    kinds (`member`, `receiver`), not the class and method.
-   Each timing here predates the changes of 2026-10-28 to 10-30: time them again first.
+   Each timing here predates the changes since 2026-10-28: time them again first.
 
 ### Large: more than 8 hours
 
@@ -290,7 +281,7 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    to return a `Mapping`, has no traced `dict[str, FileHolder]`: `mega-10-30-2026-0857`
    has 17 traced fixes fewer on nibabel, each in a `@classmethod` whose first parameter is `klass`, and
    that error gone, none new: 5 of its 461 new type errors are a traced fix's (`fk`, `index`, pint's 2,
-   nibabel's `value`). Read by position, a plain method's first
+   nibabel's `value`); on `mega-11-05-2026-0219` the same 5 of 450. Read by position, a plain method's first
    parameter would withdraw 9 of pygments' too, but a lexer's `analyse_text(text)` is made static by
    its metaclass, so `text` is a value like any other's. What's left, each a proposal, since it
    withdraws fixes:

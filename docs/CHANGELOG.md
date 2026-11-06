@@ -6,6 +6,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A `__new__`'s first parameter is its class, as a classmethod's is: a `Self` method called on `cls`
+  there no longer gives the base the method is defined on (pandas's `subarr: Index` in
+  `DatetimeIndex.__new__`, then returned as `Self`), and `object.__new__(cls)` is the class.
 - The corpus runner's witness judges the fixes made with every source at once (`infer-union`) too:
   it is told each annotation the guesses' fix and each checker's hinted fix give a binding, and the
   union's fixes read their verdicts by annotation (`infer-union.verdicts.jsonl`, `unasked` for the

@@ -679,6 +679,19 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   whole, an alias of one class the rule can't tell from two; basedpyright's errors after
   `--fix --unsafe-fixes` that the plain copy lacks 68 from 73, 5 gone (the `Enum` lines) and none
   new. Read on all 47 by the next `mega-fixes` run.
+- **A copy of a name each branch binds to another type** (decided 2026-11-04, left as it is: a
+  join would narrow fixes). `if flag: x = 1` / `else: x = "a"`, then `y = x`, gives `y: str` as a `--likely` guess
+  (`copy`), the last branch's type; `d = date(...)` / `d = datetime(...)` then `return d` a
+  `datetime` where a checker takes `date`. As at HEAD. A join of the branches' types (their union,
+  or the one every value fits as `rebound` takes it) would type them as a checker does, and
+  withdraw or change the fixes that rest on the last branch alone. The mega runs of 2026-10-29
+  have one such fix, an error in each of six steps: optuna's `params: dict[str, int | float]`,
+  filled from `param`, a `str` in its other branch. Measured on 2026-11-04
+  (`scratch/branch_copies.py` on `mega-10-30-2026-0857`): of 10,058 `copy` guesses on the 47
+  corpora, 9 copy a name a statement before them binds in two or more of its arms (3 of them
+  `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
+  `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
+  branches, not a copy. Too few to build a join for; left as it is unless a run shows more.
 
 ## Command and output
 
