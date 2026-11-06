@@ -60,11 +60,10 @@ from constricter.source.annotations import (
 )
 from constricter.source.flow import Finding, Lifetime, findings, members
 from constricter.source.quoted import newer, quote
-from constricter.source.syntax import FunctionDef
+from constricter.source.syntax import FunctionDef, class_side
 
 _SELF: Final = "self"
 _NONE: Final = "None"
-_CLASSMETHOD: Final = "classmethod"
 _STATICMETHOD: Final = "staticmethod"
 _SELF_WORD: Final = re.compile(r"\bSelf\b")  # `Self` in an annotation, `typing.Self` too
 FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
@@ -480,7 +479,7 @@ class Scope:
 
         Returns:
           It, or `None` outside such a method, or in one whose first parameter isn't `self` or a
-          classmethod's.
+          classmethod's or `__new__`'s (`syntax.class_side`).
 
         """
         function: FunctionDef | None = self.kind.function
@@ -492,7 +491,7 @@ class Scope:
         if (
             not args
             or _STATICMETHOD in decorators
-            or not (args[0].arg == _SELF or decorators == [_CLASSMETHOD])
+            or not (args[0].arg == _SELF or class_side(function))
             or not says_self(function)
         ):
             return None

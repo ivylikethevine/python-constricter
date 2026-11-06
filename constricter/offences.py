@@ -113,6 +113,7 @@ STARRED_SUBSCRIPTS: Final = (3, 11)  # the first Python to parse `tuple[int, *Ts
 # The guesses `--likely` applies: each a whole set of mechanisms, measured (see docs/LIKELY.md).
 LIKELY: Final = frozenset(
     {
+        frozenset({"agreed", "checker"}),  # a hint two or more checkers give alike (`--infer-with`)
         frozenset({"arithmetic", "copy"}),
         frozenset({"arithmetic", "copy", "literal"}),
         frozenset({"arithmetic", "literal"}),

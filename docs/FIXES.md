@@ -104,7 +104,8 @@ the value decides it, for a plain `name = value` in a function or module body:
   `bool`, `seen.difference(other)` and `seen.intersection(other)` a `set` of `seen`'s own type);
   `self` is its class's instance in a method, and in a function defined in one that takes and binds
   no `self` of its own (not under a method whose signature says `Self`); in a classmethod, `cls` is
-  `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
+  `type[C]`, as in `__new__`, `__init_subclass__` and `__class_getitem__`, which Python binds to the
+  class undecorated, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
   staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a guessed value is a guess
   too (`Box().name`), and its fix kinds include the value's. A member of an `X | None` (or
   `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the access
@@ -669,7 +670,8 @@ it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n`
 `self.n: int = n`, which a type checker reads as the attribute's declaration. Always a guess, since
 another file's subclass or outside code may store it too; none where a store isn't a plain
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
-function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
+function's), nor for a generic class without its arguments (`self.box = Box(thing)`), nor for a type
+naming a type variable the class doesn't bind (`self.kind: type[_T]`, `_T` the method's).
 
 LVA014 (opt-in) offers a plain function's or method's return type, `-> T` before the `:` ending
 its header: what its own `return`s give (`returned`, as a call to it is typed), or `None` for one
@@ -799,7 +801,7 @@ than the fix says, the fix is changed, made a guess, or not offered:
   something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
   (in a subclass, the class isn't `Self`), as is what `cls()`, `type(self)()` or `cls.__new__(cls)`
-  constructs, and a standard-library function's call given `self` that returns its class
+  constructs (`object.__new__(cls)` and `super().__new__(cls)` in a `__new__` too), and a standard-library function's call given `self` that returns its class
   (`copy.copy(self)`), and `type(self)` there a `type[Self]`: written as the module already imports
   `Self` (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a
   `Self` later bound to anything else isn't offered either;
@@ -841,7 +843,7 @@ be wrong about what the code means. Its guesses feed the rest of the scope as `-
 copy of a hinted local is typed too, as a guess). With several checkers, the first named whose hint the file can use
 types the name; where a later one's usable hint gives the same type, the fix rests on their
 agreement too (kind `agreed`, beside `checker`): a set of its own, measured apart from one checker's
-alone (see [LIKELY.md](LIKELY.md)).
+alone, and likely, applied with `--likely` (see [LIKELY.md](LIKELY.md)).
 
 A hint is used only as an annotation the file can hold:
 
@@ -1108,7 +1110,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)                 |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)                |
 | `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                                 |
-| `agreed`        | with `checker`: a later type checker's hint gives the same type (a guess)                     |
+| `agreed`        | with `checker`: a later type checker's hint gives the same type (a likely guess)              |
 | `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)           |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                         |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                          |

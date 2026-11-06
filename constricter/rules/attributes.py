@@ -12,7 +12,7 @@ from typing import Final, NamedTuple
 
 from constricter.fix.core.known import Inference, Returned
 from constricter.fix.values import stored
-from constricter.fix.values.doubts import bare
+from constricter.fix.values.doubts import Facts, bare, undeclared
 from constricter.fix.values.inference import ASSIGNED
 from constricter.fix.values.shapes import or_none
 from constricter.offences import UNANNOTATED_ATTRIBUTE, Fix, Offence
@@ -65,6 +65,7 @@ def unannotated(
             and (typed := _typed(each, found, assigned)) is not None
             # A generic class written without its arguments is no fix, as a binding's isn't.
             and not bare(typed[0], (scope := scopes[each.plain[1]]).settings.facts.generics)
+            and not _unbound(typed[0], scope, each.plain[1])
         ):
             fix = scope.offer(
                 Inference(typed[0], f"`{each.owner.name}.{each.attr}`'s assignments", typed[1]),
@@ -75,6 +76,21 @@ def unannotated(
             Offence(target.lineno, target.col_offset, _spelled(each.attr), UNANNOTATED_ATTRIBUTE, fix),
         )
     return offences
+
+
+def _unbound(annotation: str, scope: Scope, method: int) -> bool:
+    """Check whether an attribute's type names a type variable its class doesn't bind.
+
+    A type variable the storing method's signature declares (`self.kind: type[_T]`) is unbound for
+    the attribute, which the class holds: a type checker rejects it there.
+
+    Returns:
+      Whether it does.
+
+    """
+    facts: Facts = scope.settings.facts
+    bound: frozenset[str] = facts.bound.get(scope.settings.owners.get(method, ""), frozenset())
+    return undeclared(annotation, None, facts.type_vars - bound, frozenset())
 
 
 def _typed(

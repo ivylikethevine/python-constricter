@@ -176,8 +176,20 @@ import: 13 bindings of them all), so nothing says how often they hold; no type c
 | `alias`                    |     164 |     161 |
 | `member+stdlib`            |      65 |      32 |
 
-Every other set has fewer than 20 guesses a test told of. A checker's hint (`--infer-with`) and a
-traced type (`--infer-from`) weren't measured: neither is likely.
+Every other set has fewer than 20 guesses a test told of.
+
+## Hints
+
+A checker's hint (`--infer-with`) is read on the union's step, where the witness is told each
+checker's annotation for a binding (`scratch/guess_report.py --step infer-union`): on the mega run
+of 2026-11-06 (`mega-11-06-2026-0441`), a hint two or more checkers give alike passes the three bars
+and joins `LIKELY`; one checker's alone, or a traced type (`--infer-from`), doesn't.
+
+| Mechanisms       | Guesses | Packages | Checked | Blamed |  Told |  Held |  Share |
+| ---------------- | ------: | -------: | ------: | -----: | ----: | ----: | -----: |
+| `agreed+checker` |  14,445 |       42 |  10,081 |      8 | 9,149 | 8,959 |  97.9% |
+| `checker`        |  11,612 |       42 |   8,207 |     75 | 6,434 | 5,689 |  88.4% |
+| `traced`         |   3,140 |       19 |   2,074 |      4 |   162 |   162 | 100.0% |
 
 ## Measuring again
 

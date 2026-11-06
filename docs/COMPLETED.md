@@ -181,7 +181,9 @@ What constricter does today and what was measured on the way, by scope. What's n
   returns), by the `Outside` each was last checked with: a second pass leaves nothing on the seven
   corpora or the 40 mega corpora, from 605 and 248 lines. Those rounds take `fix-likely` to 1.47 and
   1.84 times `fix-certain`'s seconds there, from 1.05 and 1.13. A fix's tier is decided in one place
-  (`Offence.tier`).
+  (`Offence.tier`). A checker's hint another checker gives alike (`agreed+checker`, `--infer-with`)
+  joined on 2026-11-06, read on `mega-11-06-2026-0441`'s union step (14,445 guesses, 97.9% of 9,149
+  told held, 0.08 in each 100 read blamed); one checker's alone stays out (88.4%, 0.91).
 - **Type-checker-backed inference** (`--infer-with basedpyright,ty,pyrefly`): the checkers' inlay
   hints type what `--fix` can't, as guesses, widened, checked and imported; with basedpyright it
   about doubles what `--fix --unsafe-fixes` types on the annotated corpora. A hint naming a class
@@ -615,6 +617,18 @@ What constricter does today and what was measured on the way, by scope. What's n
   function's parameter of that name. `self.first()`, returning `T | None`, is a `T | None`, as a guess
   as any `self`'s method is; one returning `Self` is left as it was. sqlalchemy 2,375 fixes from 2,336
   with the `type[T]` changes, none lost, and basedpyright's errors 2,288 from 2,287.
+- **A `__new__`'s `cls`, typed as its class**: Python binds `__new__`, `__init_subclass__` and
+  `__class_getitem__` to the class undecorated, so their first parameter is `type[C]`, as a
+  classmethod's (`scoping._IMPLICIT_CLASSMETHODS`). pandas's `subarr = cls._simple_new(...)` in
+  `DatetimeIndex.__new__` had been read on the base, `subarr: Index`, then mypy's error under
+  `-> Self`. pandas (`scratch/fix_diff.py --source`, `--all-scopes`, one process on 16CPU/60GB):
+  42,715 fixes from 42,712, `subarr`'s withdrawn and 4 gained, `object.__new__(cls)` typed as the
+  class (`PeriodDtype`, `MultiIndex`, `HolidayCalendarMetaClass`) and one fix resting on it. On
+  `mega-11-06-2026-0441` `method` is at 1 of 1,110 read blamed (0.09 in each 100), nibabel's; but a
+  `__new__` declared `-> Self` that returns its `object.__new__(cls)` or `super().__new__(cls)` now
+  has that value written as the class, which mypy refuses to return: pandas's certain
+  `result: MultiIndex`, and sphinx's `sentinel: _Sentinel` and sqlalchemy's `self: quoted_name`
+  (`call` guesses), open in [ROADMAP.md](ROADMAP.md).
 - **A file checked again for what it reads of a class a fix imported** (`rounds._imports_read`,
   `crossed.reads_imported`): `f: TextIO`, from the tables, then `f.encoding`, on a tree that checks
   `typing.py`, was typed only by a second pass, since a file takes none of a class's members until it
@@ -1319,7 +1333,8 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   its values `bytes`, and mypy's `str-bytes-safe` is on the package's own f-string, which only a true
   type shows. pandas's `subarr: Index` is the fix's: every one of its 650 values an `Index`, but a
   `DatetimeIndex`, and `return subarr` is under `-> Self`. Without nibabel's, the set is at 0.09 in
-  each 100 against the bar's 0.1; `method` stays as it is until that's decided.
+  each 100 against the bar's 0.1; pandas's is withdrawn since (a `__new__`'s `cls`, under
+  [`--fix`](#--fix)).
 - **Tests that fail with no fix to blame, named**: sphinx's `test_html5_rubric` and nibabel's
   `test_euler.py` under their suites' `differs`. `test_euler_mat_2`'s cases aren't drawn at random:
   three fail as released, in every run since 2026-10-26, and a fourth comes and goes
@@ -1369,6 +1384,28 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   `mega-10-29-2026-2241`); zarr's `test_encode_and_write_as_completed_cancels_stray_writes_on_failure`;
   nibabel's randomized `test_quaternions.py` and `test_image_api.py` `mmap` cases, matched by as many
   passing anew. The bars are met.
+- **Read on `mega-11-06-2026-0441`** (`fa5cbd5`, 85 minutes on 16CPU/60GB, as the run before it,
+  though it asked the checkers afresh on 138 of its 141 hinted steps where that run took stored hints
+  on all 141), the changes since `mega-11-05-2026-0219`: the witness's verdict by annotation, the
+  union's own verdicts and type check (`types-infer-union`), and a `__new__`'s `cls` (under
+  [`--fix`](#--fix)). **Two checkers agreeing** (`scratch/guess_report.py --step infer-union`):
+  `agreed+checker` passes [LIKELY.md](LIKELY.md)'s bars, 14,445 guesses, 97.9% of 9,149 told held, 8
+  of 10,081 read blamed (0.08 in each 100); `checker` alone misses two, 88.4% of 6,434 held and 75 of
+  8,207 blamed (0.91). By name the two had held 86.2% and 73.7% (`scratch/agreed_seen.py`), the rest a
+  subclass or a protocol. The union's fixes, read against the verdicts as it's made: certain 99.3% of
+  36,794 told held, likely 99.5% of 25,700, other guesses 95.0% of 21,388; 3,751 fixes, all but one
+  guesses, have an annotation no step's tests were told (`unasked`). Its type check: 227 new errors,
+  blamed on 23 certain fixes (0.05 in each 100 read), 26 likely guesses and 99 others. `fix-unsafe`'s
+  sets passing the bars: 62, 40,602 of 56,021 guesses (72.5%), `method` among them again and `call`
+  not (2 of 544 read blamed, 0.37), both its blamed the `__new__` change's. Against
+  `mega-11-05-2026-0219` (`scratch/run_fixes_diff.py`, `scratch/type_errors_diff.py`): no certain fix
+  withdrawn and 90 gained (the standard library's 69, `test/test_enum.py`'s enum members the most); the hinted steps' guesses down by up to 24 a corpus, asked afresh; new type
+  errors outside the union's step 454 from 450, each of the 19 new the `__new__` change's (pandas's
+  certain `result: MultiIndex` on all 7 steps, sphinx's `sentinel` and sqlalchemy's `self` on 6). Tests:
+  sphinx's 7 pygments and stemmer tests and sqlalchemy's 4 `test_compare.py` pass again; failing anew,
+  nibabel's 18 randomized cases (`test_quaternions.py`, `test_image_api.py` and five others, one step
+  each), matched by 16 passing anew. The bars are met but for the `__new__` change's errors, open in
+  [ROADMAP.md](ROADMAP.md).
 
 ## CI, security and releases
 

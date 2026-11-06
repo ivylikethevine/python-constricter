@@ -19,41 +19,16 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest read is `mega-11-05-2026-0219` (`866d2e2`, 85 minutes, 16CPU/60GB;
+The latest read is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes, 16CPU/60GB;
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
 all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
 checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
-wait on a mega run. Unread in the tree: the witness and the union's own verdicts and type check
-(item 1), and a `__new__`'s `cls` (item 5).
+wait on a mega run. Unread in the tree: items 4 and 5.
 
-1. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
-   basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
-   the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Built: where
-   a later checker's usable hint gives the type the first usable one does, the fix rests on their
-   agreement too (kind `agreed`, beside `checker`; `Scope.hint`), a set of its own in the mechanisms
-   table; not in `--likely` until it passes the bars, and not what a guess rests on:
-   `unsafe-fix-select` trusts it by `checker` as before. On the 0.4.3-rc.8 mega run (`7a075e4`,
-   16CPU/60GB, 70 minutes): 14,941 of `infer-union`'s 26,590 checker fixes rest on an agreement,
-   read from its records; the mechanisms table lists the union step's sets since the mega run of
-   2026-10-27 (`agreed+checker` 14,861). Held by name to what the trace saw
-   (`scratch/agreed_seen.py`: every type seen named in the annotation), `agreed+checker` held 86.2%
-   of the 9,635 the trace told of and `checker` alone 73.7% of 5,321, where the union's certain
-   fixes held 90.2% by name (99.5% by the witness: a subclass or a protocol differs by name). Built
-   on 2026-11-05, so a run reads the bars: the witness is told each annotation the guesses' fix and
-   each checker's hinted fix give a binding, and judges each (`corpus_guesses.expected`, a verdict
-   by annotation), the traced tests waiting for the hinted steps where the run unites them
-   (`suite_steps.hinted`); the union's fixes are read against those verdicts as it's made
-   (`infer-union.verdicts.jsonl`; `unasked` counts the fixes whose annotation no step told, the
-   trace's); a type check runs after the union (`types-infer-union`), its new errors traced to its
-   fixes; and the guesses listing holds the union's rows beside `fix-unsafe`'s (`fix`), which
-   `scratch/guess_report.py --step infer-union --likely` reads against the bars. Done when a mega run
-   reads `agreed+checker` and `checker` against the bars, with what the traced tests' later start
-   cost the run's minutes. About an hour beside the run; coverage unchanged (`--likely` gains what
-   passes).
-2. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
+1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
    naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
    unannotated function's calls where its `return`s decide nothing and none gives a value the type
@@ -73,11 +48,11 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    function ending `return None`, which the check records as of no known type; a `return None` or a
    bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
    8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
-   `a8de20a` the same. Told has stayed at 8 over three runs since numpy's refusal, so 20 needs a wider reach
-   ("numpydoc Returns sections", under Measurement) or the item decided on what's there. Done when a
-   mega run reads it against the bars on 20 told, or it's decided. About an hour beside the run;
+   `a8de20a` and `fa5cbd5` the same. Told has stayed at 8 over three runs since numpy's refusal, so 20 needs a wider reach
+   ("numpydoc Returns sections", under Measurement): decided 2026-11-06, widened that way. Done when a
+   mega run reads it against the bars on 20 told. About an hour beside the run, after that item;
    coverage under 0.1%.
-3. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
    regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
    needing a stage still to run left for it; the report is written from the records so far, naming
@@ -91,7 +66,7 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-4. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
@@ -103,44 +78,45 @@ wait on a mega run. Unread in the tree: the witness and the union's own verdicts
    run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
    stages". About an hour beside the run; coverage unchanged.
 
-5. **A `__new__`'s `cls`, typed as its class** (it withdraws a guess). pandas's
-   `subarr = cls._simple_new(...)` in `DatetimeIndex.__new__` was written `subarr: Index` (`method`),
-   then `return subarr` under `-> Self` was mypy's error, the one of `method`'s set a fix was at
-   fault for. The cause was no cross-file `Self`: `cls` in `__new__`, which Python binds to the class
-   undecorated, was left untyped, so the call was read on the base. Built on 2026-11-05: a
-   `__new__`'s, `__init_subclass__`'s and `__class_getitem__`'s first parameter is `type[C]`, as a
-   classmethod's (`scoping._IMPLICIT_CLASSMETHODS`). On pandas (`scratch/fix_diff.py --source`,
-   `--all-scopes`, one process on 16CPU/60GB): 42,715 fixes from 42,712; `subarr`'s withdrawn, its
-   call on another file's class-side `Self` method left unfixed; 4 more, `object.__new__(cls)` typed
-   as the class (`PeriodDtype`, `MultiIndex`, a metaclass's `HolidayCalendarMetaClass`) and one fix
-   resting on it. Done when a mega run reads `method`'s set at 1 of 1,083 blamed or fewer (0.09 in
-   each 100, the bar 0.1), nibabel's other being no fix's fault ([COMPLETED.md](COMPLETED.md#corpus)).
-   About an hour beside the run; coverage unchanged.
+4. **A `__new__`'s own instance under `-> Self`.** Since `cls` in `__new__` is `type[C]`,
+   `result = object.__new__(cls)` and `self = super().__new__(cls, value)` were written as the class,
+   and a `__new__` declared `-> Self` that returns them is mypy's `return-value` error: on
+   `mega-11-06-2026-0441` pandas's certain `result: MultiIndex` (`core/indexes/multi.py`), sphinx's
+   `sentinel: _Sentinel` and sqlalchemy's `self: quoted_name` (`call` guesses, which took `call` out
+   of LIKELY.md's sets: 2 of 544 read blamed), all 19 of the run's new errors outside the union's
+   step. Built on 2026-11-06: a `__new__` declared `-> Self` finds its owner as a classmethod does
+   (`Scope._owner`, `syntax.class_side`), so what it constructs through `cls` is `Self`, written
+   where the module imports it and not offered where it doesn't; a `__new__` with no declared return
+   keeps the class. Done when a `mega-fixes` run against `mega-11-06-2026-0441` has none of the 19
+   errors, and a mega run reads `call` back under the bars. About an hour beside the run; coverage
+   about unchanged.
+5. **An attribute typed with its method's type variable** (it withdraws fixes). LVA013 writes an
+   attribute's type where a method first stores it, and a type variable that method's signature
+   declares is unbound for the attribute, which the class holds: pydantic's
+   `self.from_type: TypeForm[_FromTypeT]`, blamed for an error on the traced LVA013 run of
+   2026-10-23. Built on 2026-11-06, without measuring first: an attribute's type naming a type
+   variable its class doesn't bind is no fix (`attributes._unbound`). Done when a `mega-lva013` run
+   (`tests/corpus/runs/mega-lva013.toml`) reads the LVA013 fixes it withdraws and pydantic's error
+   gone. About an hour beside the run; coverage down by those.
 
 ### Small: under 4 hours
 
-1. **An attribute typed with its method's type variable** (a proposal: it withdraws fixes). LVA013
-   writes an attribute's type where a method first stores it, and a type variable that method's
-   signature declares is unbound for the attribute, which the class holds: pydantic's
-   `self.from_type: TypeForm[_FromTypeT]`, blamed for an error on the traced LVA013 run of
-   2026-10-23. Proposed: an attribute's type naming a type variable its class doesn't bind is no
-   fix. Measure first: the LVA013 fixes it withdraws on the mega corpora
-   (`tests/corpus/runs/mega-lva013.toml`). About an hour.
-2. **`reuse lint` back on.** It's off because no release shipped a wheel for Python 3.11+
+1. **`reuse lint` back on.** It's off because no release shipped a wheel for Python 3.11+
    ([disabled rules](CONTRIBUTING.md#disabled-rules)); 6.3.0 of 2026-10-30 ships `py3-none-any`. Add it
-   to the lint group, `uv lock`, and a step in the Lint job. Not before 2026-11-06, the seven-day cutoff
-   on new releases. Done when CI's Lint job runs it green and the disabled rule is gone. About an hour;
+   to the lint group, `uv lock`, and a step in the Lint job; past the seven-day cutoff on new releases
+   since 2026-11-06. Done when CI's Lint job runs it green and the disabled rule is gone. About an hour;
    coverage unchanged.
-3. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+2. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
    `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
    holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
    function or a class body alike (5 of pygments' errors with the class variables,
    [COMPLETED.md](COMPLETED.md)). mypy reads `LiteralString` as `str` and takes it. Either write
    `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
-   receiver's `LiteralString` overloads' container returns unfixed. Measure first: how many certain
-   fixes it is on the mega corpora. About 2 hours.
-4. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
+   receiver's `LiteralString` overloads' container returns unfixed. Measure first (decided
+   2026-11-06, the choice made on the count): how many certain fixes it is on the mega corpora. About
+   2 hours.
+3. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
    `from dateutil import parser`, so the name resolves to the package's own binding and not to the
@@ -149,11 +125,11 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    third-party bindings with no fix into a package typeshed's bundled stubs cover
    (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
    many of a run's "imported" bindings call through a name bound so. About 2 hours.
-5. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
+4. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
    an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
    no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
    stub or a checked file declares. About 2 hours.
-6. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+5. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -170,8 +146,8 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    server asks its files one at a time, so the step takes longer as well. Unconfirmed: that each
    abort is the heap cap (the servers' standard error isn't kept); a run with the first change
    showing no dump on dask confirms it. The mega run of 2026-10-29 at 19:20 (`e793bc6`) had none,
-   sized the same way. Measure first: the dumps and dask's `infer-union` seconds on a mega run with
-   it. About 2 hours; coverage unchanged.
+   sized the same way. Decided 2026-11-06: not built until a run dumps again; then measure the dumps
+   and dask's `infer-union` seconds on a mega run with it. About 2 hours; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -284,7 +260,7 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    nibabel's `value`); on `mega-11-05-2026-0219` the same 5 of 450. Read by position, a plain method's first
    parameter would withdraw 9 of pygments' too, but a lexer's `analyse_text(text)` is made static by
    its metaclass, so `text` is a value like any other's. What's left, each a proposal, since it
-   withdraws fixes:
+   withdraws fixes; decided 2026-11-06, none built for now, the first the one worth building:
    - **A union the function's tests exhaust**: nibabel's `value: ast.Constant | ast.UnaryOp`
      (`ascconv._get_value`), which tests `isinstance` against each member and raises past them, so
      its last test is always true to mypy (`redundant-expr`). Refuse a traced union where the
@@ -338,7 +314,8 @@ What to measure before building, smallest first.
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-3. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above); not read: a
+3. **numpydoc Returns sections** (decided 2026-11-06: `documented` is widened this way). Built for a
+   builtin scalar alone as `documented` (above); not read: a
    docstring naming a class (`NetworkX graph`, 391 of networkx's), a container (`dict`, `list of int`),
    several entries. A docstring's `Returns` section names what a function with no return annotation
    returns (docstub and docs2stubs read them): networkx has 2,301 such functions, 868 with a Returns section and 485

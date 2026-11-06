@@ -8,7 +8,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 - A `__new__`'s first parameter is its class, as a classmethod's is: a `Self` method called on `cls`
   there no longer gives the base the method is defined on (pandas's `subarr: Index` in
-  `DatetimeIndex.__new__`, then returned as `Self`), and `object.__new__(cls)` is the class.
+  `DatetimeIndex.__new__`, then returned as `Self`), and `object.__new__(cls)` is the class, or
+  `Self` in a `__new__` declared to return it (pandas's `result: MultiIndex` was mypy's error).
+- `--likely` applies a type checker's hint that another checker gives alike (`agreed+checker`,
+  with `--infer-with` of two or more), which passed LIKELY.md's bars on the mega corpora.
+- LVA013 offers no attribute type naming a type variable the class doesn't bind
+  (`self.kind: type[_T]`, `_T` the storing method's), which a type checker rejects.
 - The corpus runner's witness judges the fixes made with every source at once (`infer-union`) too:
   it is told each annotation the guesses' fix and each checker's hinted fix give a binding, and the
   union's fixes read their verdicts by annotation (`infer-union.verdicts.jsonl`, `unasked` for the

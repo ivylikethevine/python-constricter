@@ -33,6 +33,7 @@ from constricter.source.syntax import (
     Start,
     arm_ends,
     child_statements,
+    class_side,
     collect_functions,
     expressions,
     has_within,
@@ -42,9 +43,6 @@ from constricter.source.walked import classes
 
 # The node class of `type X = ...` statements, by name: Python 3.11's `ast` has no `TypeAlias`.
 _TYPE_ALIAS: Final = "TypeAlias"
-_CLASSMETHOD: Final = "classmethod"
-# The methods Python binds to the class without the decorator: their first parameter is the class too.
-_IMPLICIT_CLASSMETHODS: Final = frozenset({"__new__", "__init_subclass__", "__class_getitem__"})
 
 
 # Enum members mustn't be annotated: a base imported from here is one, however it's aliased.
@@ -211,12 +209,7 @@ def function_scope(
         _ = scope.inferred.types.setdefault(OWN_SELF, owner)
     # A classmethod's first parameter is its class (`type[C]`), whatever it's called; so is a
     # `__new__`'s, which Python binds to the class undecorated, and not the base a guess reads it as.
-    decorators: list[str | None] = [node_name(d) for d in func.decorator_list]
-    if (
-        owner is not None
-        and named
-        and (decorators == [_CLASSMETHOD] or (not decorators and func.name in _IMPLICIT_CLASSMETHODS))
-    ):
+    if owner is not None and named and class_side(func):
         _ = scope.inferred.types.setdefault(named[0].arg, f"type[{owner}]")
     seed_parameters(scope, func, named)
     # What the module's top level binds once, the function reads as it's typed there.
