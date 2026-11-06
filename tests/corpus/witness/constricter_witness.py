@@ -6,14 +6,16 @@ Run with this file's directory and this checkout's root on the path (`corpus_sui
 `CORPUS_TRACER` names it): a module of its own name, not one of `tests`, which a traced package's
 own tests are a package of too. `WITNESS_VARIABLE` names two paths, as JSON: a file of what to
 expect, and a directory to write to. The file maps each traced file's path, then the line of a
-binding a fix annotates, then the name, to the annotation and the import statements it adds.
+binding a fix annotates, then the name, to each annotation a fix gives it (the guesses' fix's, a
+checker's hints'), each with the import statements its fix adds.
 
-As a statement that binds such a name ends, the annotation is evaluated where the statement is (its
+As a statement that binds such a name ends, each annotation is evaluated where the statement is (its
 function's globals and locals, with the fix's imports), once, and the value is held to it: it's an
 instance of the class, or of one of a union's. A builtin container is held to its annotation's
 arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
-Each process writes, for each binding, how many times the value fit, didn't, and couldn't be told
-(`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no `isinstance`
+Each process writes, for each binding and annotation, how many times the value fit, didn't, and
+couldn't be told (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no
+`isinstance`
 checks, a type variable with no bound, a value that's a test's mock, a `SimpleNamespace`, an
 in-memory file where `io`'s or `typing`'s file class is named (`_in_memory`) or of a class a test
 module defines (`_stand_in`; a package's `pytest` plugin module is one), and an annotation that names
@@ -60,7 +62,7 @@ WITNESS_VARIABLE: Final = "CORPUS_WITNESS"
 FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
-_MOST: Final = 50  # how many times one binding is judged
+_MOST: Final = 50  # how many times one binding is judged against one annotation
 _TOLD: Final = 3  # how many of a binding's differing values are told of, the first
 # What an annotation's class takes besides its own instances: a number's narrower numbers.
 _TAKEN: Final = {
@@ -91,9 +93,9 @@ _TESTS: Final = frozenset({"test", "tests", "testing", "conftest", "pytest"})
 _CALLABLE: Final = collections.abc.Callable
 # What makes a union: `X | Y`, and `Union[X, Y]` where that's another thing (before Python 3.14).
 _UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"])})
-# What to expect of a file: by the line, then the name, the annotation and the fix's imports.
-_Expected: TypeAlias = dict[str, dict[str, list[str]]]
-_Key: TypeAlias = tuple[str, int, str]  # a binding: its file's path, its line and its name
+# What to expect of a file: by the line, then the name, each annotation with its fix's imports.
+_Expected: TypeAlias = dict[str, dict[str, list[list[str]]]]
+_Key: TypeAlias = tuple[str, int, str, str]  # a binding and an annotation: its file's path, line, name, text
 _Judged: TypeAlias = list[str | int | list[int] | list[str]]  # a binding's key, its counts, what differed
 
 
@@ -305,8 +307,8 @@ class Witness(recording.Recorder):
         self.expected: dict[str, _Expected]
         self.out: Path | None
         self.expected, self.out = _settings()
-        self.hints: dict[_Key, object] = {}  # each binding's annotation, evaluated; `_UNSET`: it can't be
-        self.verdicts: dict[_Key, list[int]] = {}  # each binding's counts: fit, differing, unknown
+        self.hints: dict[_Key, object] = {}  # each annotation, evaluated; `_UNSET`: it can't be
+        self.verdicts: dict[_Key, list[int]] = {}  # each key's counts: fit, differing, unknown
         self.differed: dict[_Key, list[str]] = {}  # the first values that differed: their type, the hint's
         # What's expected of each function's file (see `_told`), by the function's id, kept with it.
         self.told: dict[int, tuple[recording.Function, tuple[str, _Expected] | None]] = {}
@@ -333,17 +335,18 @@ class Witness(recording.Recorder):
         return self.told[id(function)][1]
 
     def _judge(self, frame: FrameType, path: str, expected: _Expected) -> None:
-        # Hold each name the pending statement bound to its annotation, where one's expected.
+        # Hold each name the pending statement bound to each annotation expected of it.
         pending: tuple[CodeType | None, _Statement] | None = self.pending.get(id(frame))
         if pending is None or pending[0] is not frame.f_code:
             return
         line: int
         name: str
         for line, name in pending[1].stores:
-            said: list[str] | None = expected.get(str(line), {}).get(name)
-            key: _Key = (path, line, name)
-            if said is not None and sum(self.verdicts.get(key, ())) < _MOST:
-                self._weighed(frame, key, said, frame.f_locals)
+            said: list[str]
+            for said in expected.get(str(line), {}).get(name, []):
+                key: _Key = (path, line, name, said[0])
+                if sum(self.verdicts.get(key, ())) < _MOST:
+                    self._weighed(frame, key, said, frame.f_locals)
 
     def _weighed(self, frame: FrameType, key: _Key, said: list[str], bound: Mapping[str, object]) -> None:
         # Hold what a name is bound to in `frame` to its annotation `said`, and count the verdict.
@@ -372,8 +375,7 @@ class Witness(recording.Recorder):
         if self.out is not None:
             self.out.mkdir(parents=True, exist_ok=True)
             judged: list[_Judged] = [
-                [path, line, name, counts, self.differed.get((path, line, name), [])]
-                for (path, line, name), counts in self.verdicts.items()
+                [*key, counts, self.differed.get(key, [])] for key, counts in self.verdicts.items()
             ]
             _ = (self.out / f"{os.getpid()}.json").write_text(json.dumps(judged), encoding="utf-8")
         return super().found()

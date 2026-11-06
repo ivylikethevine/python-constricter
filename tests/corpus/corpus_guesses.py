@@ -3,9 +3,11 @@
 The tests run traced by `tests/corpus/witness/constricter_witness.py`, which is told each fix (the
 annotation, where, and the imports it adds) and holds the value to the annotation as its statement
 ends, where it ran: an instance of the class, or of one of a union's, a subscripted class held to
-the class alone. `expected` writes what it's told, `verdicts` reads what its processes wrote, and
-`Verdict` is one binding's: how many times its value fit, didn't, and couldn't be told (an
-annotation that can't be evaluated there, a protocol nothing checks at run time).
+the class alone. A binding two fix steps annotate differently (the guesses' and a checker's hints')
+is held to each. `expected` writes what it's told, `verdicts` reads what its processes wrote, and
+`Verdict` is one binding's against one annotation: how many times its value fit, didn't, and
+couldn't be told (an annotation that can't be evaluated there, a protocol nothing checks at run
+time).
 
 `seen` reads the trace itself, for the files that are still what was traced: the types each
 binding held, as the trace spells them. They say what a value that didn't fit was.
@@ -29,11 +31,13 @@ _Names: TypeAlias = dict[str, tuple[str, ...]]  # a line's bindings: each name's
 Seen: TypeAlias = Mapping[str, Mapping[int, _Names]]
 _Lines: TypeAlias = dict[str, dict[str, list[str]]]  # a file's bindings, as a trace file writes them
 _File: TypeAlias = dict[str, str | _Lines]  # a traced file: its `path` and its `bindings`
-_Key: TypeAlias = tuple[str, int, str]  # a binding: its file's path, its line and its name
+# A binding and an annotation: its file's path, its line, its name and the annotation's text.
+_Key: TypeAlias = tuple[str, int, str, str]
 # A binding as a process writes it: its key, its counts, and the first values that differed.
-_Written: TypeAlias = tuple[str, int, str, list[int], list[str]]
+_Written: TypeAlias = tuple[str, int, str, str, list[int], list[str]]
 _TOLD: Final = 3  # how many of a binding's differing values a verdict tells of, the first
-_Told: TypeAlias = dict[str, dict[str, list[str]]]  # what's expected of a file: by line, then name
+_Said: TypeAlias = list[list[str]]  # what's expected of a binding: each annotation with its fix's imports
+_Told: TypeAlias = dict[str, dict[str, _Said]]  # what's expected of a file: by line, then name
 
 WITNESS: Final = Path(__file__).parent / "witness" / "constricter_witness.py"
 # What `corpus_suite.TRACER_VARIABLE` is to be, for a run the witness traces: its name, and where it is.
@@ -90,13 +94,15 @@ class Verdict(NamedTuple):
         return bool(self.fit or self.differ)
 
 
-Verdicts: TypeAlias = Mapping[str, Mapping[int, Mapping[str, Verdict]]]  # by path, line, then name
-_Judged: TypeAlias = dict[int, dict[str, Verdict]]  # a file's, as they're gathered
+# By path, line, name, then annotation.
+Verdicts: TypeAlias = Mapping[str, Mapping[int, Mapping[str, Mapping[str, Verdict]]]]
+_Judged: TypeAlias = dict[int, dict[str, dict[str, Verdict]]]  # a file's, as they're gathered
 
 
 def expected(root: Path, fixes: Mapping[str, Sequence[Fixed]]) -> str:
     """Write what the witness is to expect of the checkout at `root`: each of `fixes`, by its file.
 
+    A binding given the same annotation twice (by two fix steps) is expected once; given two, both.
     And empty the directory its processes write to.
 
     Returns:
@@ -109,7 +115,10 @@ def expected(root: Path, fixes: Mapping[str, Sequence[Fixed]]) -> str:
     for path, listed in fixes.items():
         fix: Fixed
         for fix in listed:
-            told.setdefault(path, {}).setdefault(str(fix.line), {})[fix.name] = [fix.annotation, *fix.imports]
+            names: dict[str, _Said] = told.setdefault(path, {}).setdefault(str(fix.line), {})
+            said: _Said = names.setdefault(fix.name, [])
+            if all(each[0] != fix.annotation for each in said):
+                said.append([fix.annotation, *fix.imports])
     _ = (root / _EXPECTED).write_text(json.dumps(told), encoding="utf-8")
     out: Path = root / _VERDICTS
     out.mkdir(exist_ok=True)
@@ -132,29 +141,33 @@ def verdicts(root: Path) -> Verdicts:
     for part in sorted((root / _VERDICTS).glob("*.json")):
         written: _Written
         for written in cast("list[_Written]", json.loads(part.read_text(encoding="utf-8"))):
-            key: _Key = (written[0], written[1], written[2])
-            had: list[int] = counts.setdefault(key, [0, 0, 0])
-            counts[key] = [one + other for one, other in zip(had, written[3], strict=True)]
-            told.setdefault(key, []).extend(written[4])
+            judged: _Key = (written[0], written[1], written[2], written[3])
+            had: list[int] = counts.setdefault(judged, [0, 0, 0])
+            counts[judged] = [one + other for one, other in zip(had, written[4], strict=True)]
+            told.setdefault(judged, []).extend(written[5])
     found: dict[str, _Judged] = {}
-    path: str
-    line: int
-    name: str
+    key: _Key
     each: list[int]
-    for (path, line, name), each in counts.items():
-        differed: tuple[str, ...] = tuple(dict.fromkeys(told.get((path, line, name), ())))[:_TOLD]
-        found.setdefault(path, {}).setdefault(line, {})[name] = Verdict(each[0], each[1], each[2], differed)
+    for key, each in counts.items():
+        differed: tuple[str, ...] = tuple(dict.fromkeys(told.get(key, ())))[:_TOLD]
+        found.setdefault(key[0], {}).setdefault(key[1], {}).setdefault(key[2], {})[key[3]] = Verdict(
+            each[0],
+            each[1],
+            each[2],
+            differed,
+        )
     return found
 
 
-def verdict(judged: Verdicts, path: str, line: int, name: str) -> Verdict:
-    """Find the verdict on the binding of `name` on `line` of `path`.
+def verdict(judged: Verdicts, path: str, line: int, name: str, annotation: str) -> Verdict:
+    """Find the verdict on the binding of `name` on `line` of `path` against `annotation`.
 
     Returns:
-      It; one of no values where no traced test reached the binding.
+      It; one of no values where no traced test reached the binding, or the witness wasn't told
+      the annotation.
 
     """
-    return judged.get(path, {}).get(line, {}).get(name, Verdict())
+    return judged.get(path, {}).get(line, {}).get(name, {}).get(annotation, Verdict())
 
 
 def seen(root: Path, trace: str) -> Seen:

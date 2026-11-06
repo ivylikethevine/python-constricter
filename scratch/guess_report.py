@@ -4,8 +4,11 @@
   local/.venv/bin/python -m scratch.guess_report --differ KIND  # the guesses of KIND a value differed from
   local/.venv/bin/python -m scratch.guess_report --blamed KIND  # those a type checker blames
   local/.venv/bin/python -m scratch.guess_report --likely       # the sets that pass `LIKELY.md`'s bars
+  local/.venv/bin/python -m scratch.guess_report --step infer-union --likely  # the union's fixes' sets
 
-With no `--from`, every listing kept in `local/scratch/guesses/` (what older runs wrote).
+With no `--from`, every listing kept in `local/scratch/guesses/` (what older runs wrote). With no
+`--step`, the `fix-unsafe` rows (a row with no `fix` is one): the `infer-union` rows hold the
+guesses' fixes again, with the checkers' hints and the trace's fixes, so the two aren't summed.
 
 A guess's kinds are its mechanisms, joined by `+`. A table by the whole set, then one by each
 mechanism in it (a guess counts under each of its own). For each: the guesses, those in packages
@@ -29,9 +32,15 @@ BLAMED = 0.1  # the most guesses blamed by a type checker, per 100 checked
 
 
 SOURCE = "--from"  # then a corpus run's folder: its `listings.jsonl`'s guesses, or its `guesses.jsonl`
+STEP = "--step"  # then the fix step whose rows to read: `fix-unsafe` (the default) or `infer-union`
 
 
 def rows() -> list[dict]:
+    step = sys.argv[sys.argv.index(STEP) + 1] if STEP in sys.argv else "fix-unsafe"
+    return [row for row in _rows() if row.get("fix", "fix-unsafe") == step]
+
+
+def _rows() -> list[dict]:
     found = []
     folder = Path(sys.argv[sys.argv.index(SOURCE) + 1]) if SOURCE in sys.argv else None
     if (
@@ -106,8 +115,9 @@ def likely(groups: dict[str, list[dict]]) -> dict[str, list[dict]]:
 
 
 def main(argv: list[str]) -> int:
-    if SOURCE in argv:
-        argv = [arg for index, arg in enumerate(argv) if arg != SOURCE and argv[index - 1] != SOURCE]
+    for option in (SOURCE, STEP):
+        if option in argv:
+            argv = [arg for index, arg in enumerate(argv) if arg != option and argv[index - 1] != option]
     every = rows()
     guesses = [row for row in every if row["unsafe"]]
     whole: dict[str, list[dict]] = defaultdict(list)

@@ -1311,6 +1311,51 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   `test_euler.py` under their suites' `differs`. `test_euler_mat_2`'s cases aren't drawn at random:
   three fail as released, in every run since 2026-10-26, and a fourth comes and goes
   (`-4.71, -4.71, -1.57` on 2026-10-30, `-4.71, -6.28, -1.57` on 2026-10-28).
+- **Read on `mega-11-04-2026-1810` and `mega-11-05-2026-0219`** (`45d8268` and `866d2e2`, 85 minutes
+  each on 16CPU/60GB, beside measurements), the changes since `mega-10-30-2026-0857`: `type[T]`
+  through a type variable another checked file defines, overloads under `if TYPE_CHECKING:`, a method
+  a subclass inherits from a checked base, a concrete class's `type[Base]` left to its declared return,
+  a member of `self` in a generic class's own method written with its parameters, a file checked again
+  where a fix imported a class it reads the members of, the override exclusion, the constructor guess
+  of a class bound in branches, the shadowed builtins refined to functions, assignments and imported
+  values, a hint's ambiguous name judged by where its class is defined, and a shared overload
+  parameter's type variable read only where a signature returns it (each under
+  [`--fix`](#--fix)). Before them, `basic-11-03-2026-2103` (`8c3a756`, 35 minutes on 16CPU/60GB,
+  from 0.3.8's 58) read the seven corpora: sqlalchemy's certain fixes 2,144 from
+  `mega-10-30-2026-0857`'s 2,117, with `--unsafe-fixes` 3,308 from 3,269; its one new type error on
+  every fix step `manager`, a `ClassManager[_O]` then `manager.original_init(...)`, which the class
+  declares `Optional`; the other three corpora with a type check at the mega run's errors exactly, and
+  none of django's, sqlalchemy's, pydantic's or pandas's tests failing anew after any step. The
+  2026-11-04 run against `mega-10-30-2026-0857` (`scratch/run_fixes_diff.py`,
+  `scratch/type_errors_diff.py`): new type errors over every step 440 from 461 (sqlalchemy's after each
+  fix step 1 from 0, `manager`'s; pandas's and strawberry's hinted steps fewer), certain fixes gained
+  on 19 corpora (textual 55, sqlalchemy 27, xarray 17, anyio 13), and two losses: pandas's 55 certain
+  `read_csv(...)` fixes (`DataFrame`, from its overloads), lost in `10ee8ab` (`scratch/file_bisect.py`:
+  `stubs/signatures.py` alone), where a parameter every overload shares stopped taking any argument
+  once it named a type variable a checked file imports (`**kwds: Unpack[_read_shared[HashableT]]`),
+  and the hinted steps' 2,654 basedpyright and 3,622 pyrefly fixes on pandas, withdrawn by the
+  ambiguous-name rule where `pandas` imported whole re-exports the class the file binds. Both mended in
+  `866d2e2`: a shared parameter's type variable is read only where a signature returns it
+  (`signatures.read_all`; `scratch/fix_diff.py` from `92a0983`, one process on 16CPU/60GB: 42,712
+  fixes from 42,556, 6 withdrawn, all the override exclusion's `member` guesses), and the ambiguous
+  name is judged by where its class is defined (`--infer-with=basedpyright`, one process: 48,264 fixes
+  from 45,762). `mega-fixes-11-05-2026-0204` (10 minutes) read the three changes against
+  `mega-fixes-11-04-2026-1801`: no fix withdrawn at any tier, pandas's 55 certain `read_csv` fixes back
+  (74 with `--unsafe-fixes`), django's 23 `Warning` guesses, enum's `property` and pytest's `exc_info`
+  back, every type check's errors the same. The 2026-11-05 run against the 2026-11-04 run: no fix step
+  withdraws a fix, the `read_csv`, `Warning`, `property` and `exc_info` fixes are back, pandas's hinted
+  steps add 2,535 basedpyright and 3,525 pyrefly fixes, and against `mega-10-30-2026-0857` its
+  basedpyright step loses 6 guesses and raises 34 a tier. New type errors over every step 450, the 10
+  more all pandas's hinted steps, each at or under `mega-10-30-2026-0857`'s. Tests: django's traced
+  tests 6 failures from 5 on the 2026-11-04 run, the sixth `test_crafted_xml_performance` (a timing
+  test, under the tracer), passing again on 2026-11-05, 5 as on `mega-10-30-2026-0857`; failing anew
+  on 2026-11-05, none from a changed fix: sphinx's 7 pygments and stemmer tests after `fix-likely` and
+  the hinted steps, the same 7 its traced tests fail on both earlier runs, with a `fix-likely` patch
+  byte-identical to the 2026-11-04 run's; sqlalchemy's 4 `test_compare.py` after `infer-union`
+  (`sqlite_foo` not a registered dialect argument, an order-dependent fixture, as on
+  `mega-10-29-2026-2241`); zarr's `test_encode_and_write_as_completed_cancels_stray_writes_on_failure`;
+  nibabel's randomized `test_quaternions.py` and `test_image_api.py` `mmap` cases, matched by as many
+  passing anew. The bars are met.
 
 ## CI, security and releases
 

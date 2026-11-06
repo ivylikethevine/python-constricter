@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpus runner's witness judges the fixes made with every source at once (`infer-union`) too:
+  it is told each annotation the guesses' fix and each checker's hinted fix give a binding, and the
+  union's fixes read their verdicts by annotation (`infer-union.verdicts.jsonl`, `unasked` for the
+  trace's); a type check runs after the union, and the guesses listing holds its rows beside
+  `fix-unsafe`'s (`fix`), so the `agreed+checker` and `checker` sets can be held to LIKELY.md's bars.
+  The traced tests wait for the hinted steps where the run unites them.
 - A class passed for a `type[T]` types the call through more of a project's own code: a type variable
   another checked file defines, overloads under `if TYPE_CHECKING:`, and a method a subclass inherits
   from a checked base (textual: 17 more fixes). A function taking `type[Base]` of a concrete class

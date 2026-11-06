@@ -28,7 +28,8 @@
     census = true                    # every untyped binding, classified: what has no fix, and why
     tests = true                     # a suite's own tests, as released and after each fix
     types = true                     # its own type checks, each new error traced to its fix
-    traced = true                    # its tests traced: each fix held to what they bind; a fix by the trace
+    traced = true                    # its tests traced: each fix held to what they bind (the guesses' and,
+                                     # with `infer-union`, each checker's hints'); a fix by the trace
 
     timing = 3                       # a check timed that many times, in one process and with `jobs`
     timing-beside = false            # true: the timed checks run beside the other steps, not alone at the

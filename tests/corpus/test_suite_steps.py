@@ -10,7 +10,7 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import catalog, corpus_suite, suite_checkouts, suite_steps
+from tests.corpus import catalog, corpus_suite, jsonl, suite_checkouts, suite_steps
 from tests.corpus.catalog import PYTEST, Suite
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Job, Record, Store
@@ -26,6 +26,8 @@ _KEY: Final = 12  # the characters of a parser's key
 _AGAIN: Final = "again"  # in a tests record: the released tests run once more
 _RELEASED: Final = "tests-released"  # the released tests, every fixed run's baseline
 _UNION: Final = "infer-union"  # the fix with every source at once
+_TYPES_UNION: Final = "types-infer-union"  # the type checks after it
+_Written: TypeAlias = list[str | int | list[int] | list[str]]  # a binding as a witness process writes it
 
 
 def _job(tmp_path: Path) -> Job:
@@ -49,10 +51,13 @@ def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
     job: Job = _job(tmp_path / "this")
     needs: dict[str, frozenset[str]] = suite_steps.needs(job)
     union: str = "tests-infer-union"
-    assert needs["traced"] == {"fix-unsafe"}
+    assert needs["traced"] == {"fix-unsafe", "infer-ty"}  # the witness is told the hints' fixes
     assert needs[_RELEASED] == frozenset()
     assert needs[_UNION] == {"traced"}
     assert needs[union] == {_UNION, _RELEASED}
+    assert needs[_TYPES_UNION] == {_UNION, "types-released"}
+    assert _TYPES_UNION in needs["types"]
+    assert suite_checkouts.checkouts(job, _TYPES_UNION) == ("types",)
     assert needs["tests-fix-unsafe"] == {"fix-unsafe", _RELEASED, "tests-infer-trace", union}
     assert needs["tests-fix-certain"] == {"fix-certain", _RELEASED, "tests-fix-unsafe", union}
     assert needs["tests-infer-trace"] == {"traced", _RELEASED, union}
@@ -73,6 +78,10 @@ def test_each_part_waits_for_what_it_reads(tmp_path: Path) -> None:
     assert suite_steps.needs(untraced)[_RELEASED] == frozenset()
     assert suite_steps.needs(untraced)["tests-fix-unsafe"] == {"fix-unsafe", _RELEASED}
     assert _UNION not in suite_steps.needs(untraced)  # no checker: the guesses' fix is every source's
+    assert _TYPES_UNION not in suite_steps.waiting(untraced)
+    # With no union, nothing reads the hints' verdicts: the traced tests wait for the guesses alone.
+    hinted: Job = job._replace(run=parse({"steps": {"traced": True, "infer-with": ["ty"], "tests": False}}))
+    assert suite_steps.needs(hinted)["traced"] == {"fix-unsafe"}
     unhinted: Job = job._replace(
         run=parse({"steps": {"tests": True, "infer-with": ["ty"], "tests-hinted": False}}),
     )
@@ -185,6 +194,21 @@ def test_an_earlier_runs_tests_are_taken_where_the_run_skips_them_or_the_trace_c
     job.store.write("a", job.recorded, "traced", _FAILED | {"stopped": False})
     Store(runs / "old").write("a", "0.3.6", _RELEASED, _keyed(_PASSED))
     assert suite_steps.taken(skipping) == _keyed(_PASSED) | {"from": "old"}
+
+
+def _witnessed(base: Path, judged: dict[tuple[str, str], list[int]]) -> None:
+    """Write what a witness process judged on the traced checkout `base`: each name's counts by annotation.
+
+    The names on the lines `_listed` gives them.
+    """
+    out: Path = base / ".venv" / "corpus-suite-verdicts"
+    out.mkdir(parents=True, exist_ok=True)
+    names: tuple[str, ...] = ("x", "y", "z", "w")
+    rows: list[_Written] = [
+        ["src/a/a.py", names.index(name), name, annotation, counts, []]
+        for (name, annotation), counts in judged.items()
+    ]
+    _ = (out / "1.json").write_text(json.dumps(rows), encoding="utf-8")
 
 
 def _listed(job: Job, step: str, fixes: tuple[str, ...]) -> None:
@@ -349,7 +373,30 @@ def test_the_union_fixes_with_every_source_at_once(tmp_path: Path, monkeypatch: 
     job.store.write("a", job.recorded, "traced", {"error": "nothing runs its tests traced"})
     assert suite_steps.union(job) == {"fixed": 1}
     job.store.write("a", job.recorded, "traced", _PASSED | {"summary": "2 passed"})
-    assert suite_steps.union(job) == {"fixed": 1}
+    _listed(job, _WHOLE, ("x", "y"))
+    _listed(job, "infer-ty", ("x", "y", "z"))
+    _listed(job, _UNION, ("x", "y", "z", "w"))  # `w`: the trace's, which the witness wasn't told
+    judged_by_witness: dict[tuple[str, str], list[int]] = {
+        ("x", "int"): [2, 0, 0],
+        ("y", "int"): [1, 1, 0],
+        ("z", "int"): [0, 0, 1],
+    }
+    _witnessed(tmp_path / "traced", judged_by_witness)
+    judged: Record = suite_steps.union(job)
+    assert judged == {
+        "fixed": 1,
+        "told": {"certain": 2},
+        "held": {"certain": 1},
+        "differed": {"certain": 1},
+        "unasked": {"certain": 1},
+    }
+    lines: list[Record] = jsonl.read(job.store.path("a", job.recorded, _UNION, ".verdicts.jsonl"))
+    assert [(each["name"], each["annotation"], each["verdict"]) for each in lines] == [
+        ("x", "int", [2, 0, 0]),
+        ("y", "int", [1, 1, 0]),
+        ("z", "int", [0, 0, 1]),
+        ("w", "int", [0, 0, 0]),
+    ]
     trace: str = str(tmp_path / "traced" / corpus_suite.TRACE_FILE)
     turn: Final = "--infer-in-turn"  # one checker's servers at a time
     assert asked == [

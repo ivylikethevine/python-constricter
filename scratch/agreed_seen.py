@@ -2,9 +2,10 @@
 
   local/.venv/bin/python scratch/agreed_seen.py RUN_FOLDER [--min 20]
 
-The witness judges only `fix-unsafe`'s fixes (`traced.verdicts.jsonl`), so the union's own, the
-`agreed` sets among them, have no verdict. This joins each corpus's `infer-union.fixes.jsonl` with
-`traced.seen.jsonl` by path, line and name, and calls a fix held where every type the trace saw is
+Runs before 2026-11-05 judged only `fix-unsafe`'s fixes (`traced.verdicts.jsonl`), so the union's
+own, the `agreed` sets among them, have no verdict there; a run since keeps them in
+`infer-union.verdicts.jsonl`. This reads by name what older runs can give: it joins each corpus's
+`infer-union.fixes.jsonl` with `traced.seen.jsonl` by path, line and name, and calls a fix held where every type the trace saw is
 named in its annotation (a subscript's class alone, a union's members each, `Optional`, `Self` and
 the like read as anything), differing where one isn't, untold where the trace saw nothing or only
 `?`. By name alone, a subclass or a protocol differs where the witness would find it holds, so a

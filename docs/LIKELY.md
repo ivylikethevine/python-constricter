@@ -35,8 +35,9 @@ beside 61,029 certain fixes. Two things are held against each:
   annotation, evaluated where the statement is: an instance of the class it names, or of one of a
   union's (a subscripted class is held to the class alone, not its arguments). A fix a test could
   tell of held where every such value was one, and differed where one wasn't. The corpora runs do
-  this for every suite whose tests they can trace, and `docs/runs/` gives each package's fixes by tier
-  with those told, held and differing.
+  this for every suite whose tests they can trace, for the guesses' fixes and for the fixes with
+  every source at once (`infer-union`, whose checker hints the witness is told beforehand), and
+  `docs/runs/` gives each package's fixes by tier with those told, held and differing.
 
 A set of mechanisms is likely where all three hold:
 

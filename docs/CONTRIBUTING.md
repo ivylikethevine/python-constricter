@@ -98,11 +98,13 @@ them, in `local/corpus-suites/`), three more steps run on its checkout with each
 applied: `tests`, the package's own tests as released and after each fix; `types`, its own type
 checker as its CI runs it, each new error traced to the fix behind it, a certain one, a likely guess
 or another guess; and `traced`, its tests under a witness that holds each fixed binding's value to
-its annotation, then a fix by their trace (`python -m constricter.trace`, where pytest runs them, or
-a script the suite names does in one process: Django's `runtests.py`). A part after a fix whose
-patch another fix's part ran, or whose patch a clean run's holds, is that part's (`implied`). The
-tests run first after every source's fixes at once (`infer-union`: the guesses, each checker's
-hints in the run's order, then the trace's), and where that run is the released tests', each fix's
+each annotation the guesses' fix and the checkers' hinted fixes give it, then a fix by their trace
+(`python -m constricter.trace`, where pytest runs them, or a script the suite names does in one
+process: Django's `runtests.py`). A part after a fix whose patch another fix's part ran, or whose
+patch a clean run's holds, is that part's (`implied`). The tests run first after every source's
+fixes at once (`infer-union`: the guesses, each checker's hints in the run's order, then the
+trace's; its own fixes read the witness's verdicts by annotation, and its own type check runs
+after it), and where that run is the released tests', each fix's
 part is its (`patch: union`; `tests-union = false` turns it off); else each runs as before. A
 fixed run with a failure new or gone against every released run (this run's, the traced tests',
 earlier runs' on the same checkout) is run again, one for each such outcome, and the released tests

@@ -229,7 +229,7 @@ def checkouts(job: Job, name: str) -> tuple[str, ...]:
         return tuple(f"{_RUN}{index}" for index in range(min(max(1, suite.at_once), len(tested))))
     if name == TRACED:
         return (TRACED,)
-    return (TYPES,) if name in parts(job.run, TYPES) else ()
+    return (TYPES,) if name in parts(job.run, TYPES) or name == part(TYPES, INFER_UNION) else ()
 
 
 def binds(name: str) -> bool:
@@ -317,6 +317,8 @@ def types_part(job: Job, name: str) -> Record:
 def types(job: Job) -> Record:
     """Gather the parts of a suite's own type checks: as released, and after each fix the run made.
 
+    The union's too (`infer-union`), where the run fixes with every source at once.
+
     Returns:
       The step's record: the released errors' count, and each fixed run's, with those gone and
       each new one; a part another stands for (`implied`) as that one's.
@@ -331,6 +333,7 @@ def types(job: Job) -> Record:
         message: str = "the checks as released have no record"
         raise RuntimeError(message)
     steps: list[str] = [name.removeprefix(f"{TYPES}-") for name in parts(job.run, TYPES)[1:]]
+    steps += [INFER_UNION] if united(job.run) else []
     got: dict[str, Record] = {}
     step: str
     for step in steps:

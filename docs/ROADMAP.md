@@ -19,69 +19,17 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest read is `mega-10-30-2026-0857` (`a8de20a`, 70 minutes, 16CPU/60GB;
-[COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora on the current tree,
-`basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on
-16CPU/60GB, from 0.3.8's 58; the mega run's 70 buys the other 40 corpora for 35 minutes more. A
-change to what `--fix` offers or refuses is read on all 47 in 10 minutes by `mega-fixes`
-(`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
-run's records with `scratch/run_fixes_diff.py`; `mega-fixes-11-04-2026-0756`), which measures none
-of the bars: a guess's bars and the tests still wait on a mega run. `mega-fixes-11-04-2026-1801` read the day's
-three `--fix` changes ([COMPLETED.md](COMPLETED.md#--fix)), and `mega-11-04-2026-1810` (`45d8268`,
-85 minutes on 16CPU/60GB, beside measurements) is the latest mega run, read below.
-`mega-fixes-11-05-2026-0204` read the three changes in the tree since (the shadowed builtins refined
-to functions, assignments and imported values; a hint's ambiguous name judged by where its class is
-defined, so `pandas.Index` and the file's own `Index` are one class; a shared overload parameter's
-type variable read only where a signature returns it): against `mega-fixes-11-04-2026-1801`, no fix
-withdrawn at any tier, pandas's 55 certain `read_csv` fixes back (74 with `--unsafe-fixes`), django's
-23 `Warning` guesses, enum's `property` and pytest's `exc_info` back, and every type check's errors
-the same. `mega-11-05-2026-0219` (85 minutes on 16CPU/60GB) is the latest mega run, read in item 1.
+The latest read is `mega-11-05-2026-0219` (`866d2e2`, 85 minutes, 16CPU/60GB;
+[COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
+(`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
+58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
+all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
+checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
+`mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
+wait on a mega run. Unread in the tree: the witness and the union's own verdicts and type check
+(item 4).
 
-1. **What the tree changes since the latest read.** `type[T]` through a type variable another checked
-   file defines, overloads under `if TYPE_CHECKING:`, a method a subclass inherits from a checked base,
-   a concrete class's `type[Base]` left to its declared return, a member of `self` in a generic class's
-   own method written with its parameters, and a file checked again where a fix imported a class it
-   reads the members of ([COMPLETED.md](COMPLETED.md#--fix)); `differs` entries for sphinx's
-   `test_html5_rubric` and nibabel's `test_euler.py`. On textual (`scratch/fix_diff.py`, one process
-   on 16CPU/60GB) 3,254 fixes from 3,237, none lost, and basedpyright's errors after
-   `--fix --unsafe-fixes` the same 412 (`scratch/fix_errors.py`); on xarray the 6 certain again; on
-   sqlalchemy 2,375 from 2,336, none lost,
-   and 1 new error of 2,288 (`manager`, a `ClassManager[_O]`, then `manager.original_init(...)`, which
-   the class declares `Optional`); on the standard library without its tests, a second pass 0 lines
-   from 1, 21.1s from 20.2s (`scratch/rounds_cost.py`); on pydantic no change. On the seven,
-   `basic-11-03-2026-2103` has them: sqlalchemy's certain fixes 2,144 from `mega-10-30-2026-0857`'s
-   2,117, with `--unsafe-fixes` 3,308 from 3,269; its one new type error on every fix step is
-   `manager`'s, and the other three corpora with a type check have the mega run's errors exactly;
-   none of django's, sqlalchemy's, pydantic's or pandas's tests fails anew after any step. Read on
-   `mega-11-04-2026-1810` against `mega-10-30-2026-0857` (`scratch/run_fixes_diff.py`): new type
-   errors over every step 440 from 461 (sqlalchemy's after each fix step 1 from 0, `manager`'s;
-   pandas's and strawberry's hinted steps fewer), certain fixes gained on 19 corpora (textual 55,
-   sqlalchemy 27, xarray 17, anyio 13). Tests failing anew: nibabel's alone, in every step and
-   matched by as many passing anew (its randomized `test_quaternions.py` and `test_image_api.py`
-   `mmap` cases), and django's traced tests 6 failures from 5, unnamed by the diff. Two losses, both fixed in the
-   tree since: pandas's 55 certain fixes of `read_csv(...)` (`DataFrame`, from its overloads), lost
-   in `10ee8ab` (`scratch/file_bisect.py`: `stubs/signatures.py` alone), where a parameter every
-   overload shares stopped taking any argument once it named a type variable a checked file imports
-   (`**kwds: Unpack[_read_shared[HashableT]]`), now only one a signature returns
-   (`signatures.read_all`; `scratch/fix_diff.py` from `92a0983`, one process on 16CPU/60GB: 42,712
-   fixes from 42,556, 6 withdrawn, all the override exclusion's `member` guesses); and the hinted
-   steps' 2,654 basedpyright and 3,622 pyrefly fixes on pandas, withdrawn by the ambiguous-name rule
-   where `pandas` imported whole re-exports the class the file binds, which the tree's refinement
-   restores (`--infer-with=basedpyright`, one process: 48,264 fixes from 45,762). Read on
-   `mega-11-05-2026-0219` (`866d2e2`, 85 minutes on 16CPU/60GB) against `mega-11-04-2026-1810`: no fix step
-   withdraws a fix, and the `read_csv`, `Warning`, `property` and `exc_info` fixes are back; pandas's
-   hinted steps add 2,535 basedpyright and 3,525 pyrefly fixes, and against `mega-10-30-2026-0857`
-   its basedpyright step loses 6 guesses and raises 34 a tier. New type errors over every step 450,
-   the 10 more all pandas's hinted steps, each at or under `mega-10-30-2026-0857`'s. django's sixth
-   traced failure was `test_crafted_xml_performance` (a timing test, under the tracer), passing again:
-   5 failures, as on `mega-10-30-2026-0857`. Tests failing anew, none from a changed fix: sphinx's 7
-   pygments and stemmer tests after `fix-likely` and the hinted steps, the same 7 its traced tests
-   fail on both earlier runs, with a `fix-likely` patch byte-identical to `mega-11-04-2026-1810`'s;
-   sqlalchemy's 4 `test_compare.py` after `infer-union` (`sqlite_foo` not a registered dialect
-   argument, an order-dependent fixture, as on `mega-10-29-2026-2241`); zarr's
-   `test_encode_and_write_as_completed_cancels_stray_writes_on_failure`; nibabel's randomized cases.
-   The bars are met; what is left is the move to [COMPLETED.md](COMPLETED.md).
-2. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
+1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
    naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
    unannotated function's calls where its `return`s decide nothing and none gives a value the type
@@ -105,7 +53,7 @@ the same. `mega-11-05-2026-0219` (85 minutes on 16CPU/60GB) is the latest mega r
    ("numpydoc Returns sections", under Measurement) or the item decided on what's there. Done when a
    mega run reads it against the bars on 20 told, or it's decided. About an hour beside the run;
    coverage under 0.1%.
-3. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
    regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
    needing a stage still to run left for it; the report is written from the records so far, naming
@@ -119,7 +67,7 @@ the same. `mega-11-05-2026-0219` (85 minutes on 16CPU/60GB) is the latest mega r
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-4. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
@@ -130,6 +78,31 @@ the same. `mega-11-05-2026-0219` (85 minutes on 16CPU/60GB) is the latest mega r
    others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
    run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
    stages". About an hour beside the run; coverage unchanged.
+
+4. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
+   basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
+   the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Built: where
+   a later checker's usable hint gives the type the first usable one does, the fix rests on their
+   agreement too (kind `agreed`, beside `checker`; `Scope.hint`), a set of its own in the mechanisms
+   table; not in `--likely` until it passes the bars, and not what a guess rests on:
+   `unsafe-fix-select` trusts it by `checker` as before. On the 0.4.3-rc.8 mega run (`7a075e4`,
+   16CPU/60GB, 70 minutes): 14,941 of `infer-union`'s 26,590 checker fixes rest on an agreement,
+   read from its records; the mechanisms table lists the union step's sets since the mega run of
+   2026-10-27 (`agreed+checker` 14,861). Held by name to what the trace saw
+   (`scratch/agreed_seen.py`: every type seen named in the annotation), `agreed+checker` held 86.2%
+   of the 9,635 the trace told of and `checker` alone 73.7% of 5,321, where the union's certain
+   fixes held 90.2% by name (99.5% by the witness: a subclass or a protocol differs by name). Built
+   on 2026-11-05, so a run reads the bars: the witness is told each annotation the guesses' fix and
+   each checker's hinted fix give a binding, and judges each (`corpus_guesses.expected`, a verdict
+   by annotation), the traced tests waiting for the hinted steps where the run unites them
+   (`suite_steps.hinted`); the union's fixes are read against those verdicts as it's made
+   (`infer-union.verdicts.jsonl`; `unasked` counts the fixes whose annotation no step told, the
+   trace's); a type check runs after the union (`types-infer-union`), its new errors traced to its
+   fixes; and the guesses listing holds the union's rows beside `fix-unsafe`'s (`fix`), which
+   `scratch/guess_report.py --step infer-union --likely` reads against the bars. Done when a mega run
+   reads `agreed+checker` and `checker` against the bars, with what the traced tests' later start
+   cost the run's minutes. About an hour beside the run; coverage unchanged (`--likely` gains what
+   passes).
 
 ### Small: under 4 hours
 
@@ -369,29 +342,12 @@ What to measure before building, smallest first.
    (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
    constricter command of the run (2026-10-21). Done when the census is read at both. About an
    hour beside the run; coverage unchanged.
-2. **Two checkers agreeing, likely.** `checker` is one set to LIKELY.md's bars, by checker; a hint
-   basedpyright, ty and pyrefly agree on (two of them, or all three) is a set of its own, measured
-   the same way, and `--likely` applies it where one checker's hint alone doesn't pass. Done when
-   the mechanisms table counts the agreeing sets. Built: where a later checker's usable hint gives
-   the type the first usable one does, the fix rests on their agreement too (kind `agreed`, beside
-   `checker`; `Scope.hint`), a set of its own in the mechanisms table; not in `--likely` until it
-   passes the bars, and not what a guess rests on: `unsafe-fix-select` trusts it by `checker` as
-   before. On the 0.4.3-rc.8 mega run (`7a075e4`, 16CPU/60GB, 70 minutes): 14,941 of `infer-union`'s
-   26,590 checker fixes rest on an agreement, read from its records; the mechanisms table lists the
-   union step's sets since the mega run of 2026-10-27 (`agreed+checker` 14,861). The bars can't be
-   read from a run yet: the witness judges `fix-unsafe`'s fixes alone (`traced.verdicts.jsonl`) and
-   no type check runs after `infer-union`. Held by name to what the trace saw instead
-   (`scratch/agreed_seen.py`: every type seen named in the annotation), `agreed+checker` held 86.2%
-   of the 9,635 the trace told of and `checker` alone 73.7% of 5,321, where the union's certain
-   fixes held 90.2% by name (99.5% by the witness: a subclass or a protocol differs by name). Left:
-   the witness judging the union's fixes too, and a type check after it, then the sets held to the
-   bars. About 3 hours beside a run; coverage unchanged (`--likely` gains what passes).
-3. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
+2. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
    make at run time (a model's fields, a manager's querysets), but only inside a mypy run. About 0
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-4. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above); not read: a
+3. **numpydoc Returns sections.** Built for a builtin scalar alone as `documented` (above); not read: a
    docstring naming a class (`NetworkX graph`, 391 of networkx's), a container (`dict`, `list of int`),
    several entries. A docstring's `Returns` section names what a function with no return annotation
    returns (docstub and docs2stubs read them): networkx has 2,301 such functions, 868 with a Returns section and 485
@@ -400,7 +356,7 @@ What to measure before building, smallest first.
    none: under 1,000 usable. A guess, a docstring's name resolved where the module would resolve it,
    held to the witness. Done when measured on networkx and pandas. About 4 hours; coverage under
    0.5%.
-5. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
+4. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new

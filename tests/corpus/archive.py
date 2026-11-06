@@ -25,11 +25,13 @@ _Nested: TypeAlias = dict[str, dict[str, _Steps]]  # a report's, by corpus and v
 RECORDS: Final = "records"
 LISTED: Final = "listings.jsonl.gz"  # compressed: a large suite's tests by name alone run past 100 MB
 LISTING: Final = "listing"  # in a line of it: the listing it's from
-GUESSES: Final = "guesses"  # the listing of every fix-unsafe fix with what blames it or bears it out
+GUESSES: Final = "guesses"  # every fix-unsafe and infer-union fix: what blames it, what bears it out
 # The listings each corpus keeps, each named, with the step's it is and its suffix: what the witness
-# judged and what the trace saw of each binding, and the released tests by name.
+# judged of the guesses' fixes and the union's, what the trace saw of each binding, and the released
+# tests by name.
 LISTINGS: Final = (
     ("verdicts", "traced", ".verdicts.jsonl"),
+    ("union-verdicts", "infer-union", ".verdicts.jsonl"),
     ("seen", "traced", ".seen.jsonl"),
     ("released-tests", "tests-released", ".tests.jsonl"),
 )
