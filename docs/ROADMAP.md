@@ -87,9 +87,12 @@ wait on a mega run. Unread in the tree: items 4 and 5.
    step. Built on 2026-11-06: a `__new__` declared `-> Self` finds its owner as a classmethod does
    (`Scope._owner`, `syntax.class_side`), so what it constructs through `cls` is `Self`, written
    where the module imports it and not offered where it doesn't; a `__new__` with no declared return
-   keeps the class. Done when a `mega-fixes` run against `mega-11-06-2026-0441` has none of the 19
-   errors, and a mega run reads `call` back under the bars. About an hour beside the run; coverage
-   about unchanged.
+   keeps the class. `mega-fixes-11-06-2026-0924` (10 minutes, 16CPU/60GB) against
+   `mega-11-06-2026-0441`: the fix steps' new type errors 60 from 67, the 7 gone the change's and none
+   new; 6 fixes written `Self` where they were the class (pandas's `result`, sphinx's `sentinel`,
+   sqlalchemy's `self` as `typing.Self`, cattrs's 3), pandas's `new_codes: FrozenList`, which rested
+   on `result`, withdrawn, and no other corpus's fixes changed. Done when a mega run reads `call` back
+   under the bars. About an hour beside the run; coverage about unchanged.
 5. **An attribute typed with its method's type variable** (it withdraws fixes). LVA013 writes an
    attribute's type where a method first stores it, and a type variable that method's signature
    declares is unbound for the attribute, which the class holds: pydantic's
