@@ -628,7 +628,13 @@ What constricter does today and what was measured on the way, by scope. What's n
   `__new__` declared `-> Self` that returns its `object.__new__(cls)` or `super().__new__(cls)` now
   has that value written as the class, which mypy refuses to return: pandas's certain
   `result: MultiIndex`, and sphinx's `sentinel: _Sentinel` and sqlalchemy's `self: quoted_name`
-  (`call` guesses), open in [ROADMAP.md](ROADMAP.md).
+  (`call` guesses). Since, a `__new__` declared `-> Self` finds its owner as a classmethod does
+  (`Scope._owner`, `syntax.class_side`), so what it constructs through `cls` is `Self`, written where
+  the module imports it: `mega-fixes-11-06-2026-0924` has those 6 fixes `Self` and pandas's
+  `new_codes`, resting on `result`, withdrawn, no other fix changed; `mega-11-06-2026-0949`
+  (`0818b15`, 67 minutes on 16CPU/60GB) has new type errors 659 from 681, the 22 gone the change's on
+  every step, none new, and `call` back over the bars (none of 544 read blamed; 64 sets, 41,256 of
+  56,021 guesses, 73.6%).
 - **A file checked again for what it reads of a class a fix imported** (`rounds._imports_read`,
   `crossed.reads_imported`): `f: TextIO`, from the tables, then `f.encoding`, on a tree that checks
   `typing.py`, was typed only by a second pass, since a file takes none of a class's members until it

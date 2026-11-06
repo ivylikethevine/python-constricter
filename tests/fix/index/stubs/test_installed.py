@@ -633,6 +633,7 @@ BUNDLED: Final = {
     "part/own.py": "def own() -> str:\n    return ''\n",
     "pkg_dist-1.2.3.dist-info/METADATA": "Metadata-Version: 2.1\nName: Pkg-Dist\nVersion: 1.2.3\n",
     "lone-2.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: lone\nVersion: 2.0\n",
+    "nameless-0.1.dist-info/METADATA": "Metadata-Version: 2.1\nVersion: 0.1\n",  # no name: no version
     "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/METADATA.toml": 'version = "1.2.*"\n',
     "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/pkg/__init__.pyi": "def make() -> int: ...\n",
     "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/pkg/sub.pyi": "def sub() -> float: ...\n",

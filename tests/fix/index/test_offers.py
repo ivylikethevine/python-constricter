@@ -246,9 +246,10 @@ def test_an_edit_nothing_can_call_ambiguous_is_kept(tmp_path: Path, text: str) -
 
 def test_a_class_a_whole_import_reexports_is_the_one_the_file_binds(tmp_path: Path) -> None:
     """`pandas.Index` is `pandas.core.indexes.base.Index`: a hint showing `Index` names the one class."""
-    _ = (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg").mkdir()
     _ = (tmp_path / "pkg" / "__init__.py").write_text(
-        "from pkg.base import Index as Index\n", encoding="utf-8",
+        "from pkg.base import Index as Index\n",
+        encoding="utf-8",
     )
     _ = (tmp_path / "pkg" / "base.py").write_text("class Index:\n    pass\n", encoding="utf-8")
     path: Path = tmp_path / "pkg" / "uses.py"
@@ -257,4 +258,27 @@ def test_a_class_a_whole_import_reexports_is_the_one_the_file_binds(tmp_path: Pa
     hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
     paths: list[Path] = [tmp_path / "pkg" / "__init__.py", tmp_path / "pkg" / "base.py", path]
     found: Hints = offers.vetted(project.index(paths), path, hints)[0]
+    assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})
+
+
+@pytest.mark.parametrize(
+    ("package", "uses"),
+    [
+        ("class Index:\n    pass\n", "import pkg\nfrom pkg import Index\n\nx = 1\n"),  # the one it binds
+        ("def Index() -> None:\n    pass\n", "import pkg\n\n\nclass Index:\n    pass\n\n\nx = 1\n"),
+    ],
+)
+def test_a_whole_imports_name_that_is_no_other_class_leaves_the_hint(
+    tmp_path: Path,
+    package: str,
+    uses: str,
+) -> None:
+    """The very name the file binds, or a whole-imported module's function of the name, is no other class."""
+    (tmp_path / "pkg").mkdir()
+    _ = (tmp_path / "pkg" / "__init__.py").write_text(package, encoding="utf-8")
+    path: Path = tmp_path / "pkg" / "uses.py"
+    _ = path.write_text(uses, encoding="utf-8")
+    offered: Offered = Offered("list[Index]", ())
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    found: Hints = offers.vetted(project.index([tmp_path / "pkg" / "__init__.py", path]), path, hints)[0]
     assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})

@@ -358,3 +358,16 @@ def test_a_newly_typed_variable_a_class_in_its_line_defines_is_left_alone() -> N
     }
     tree: ast.Module = ast.parse(textwrap.dedent(SHADOWED))
     assert classvars.defined(tree) == {"Column": {"labelled"}, "Exact": {"shown"}}
+
+
+def test_a_none_bound_variable_of_an_unreached_class_is_left_out_alone() -> None:
+    """Of a class not reached, only its `None`-bound variables are left out where its line defines them."""
+    kept: dict[str, dict[str, str]]
+    nones: dict[str, frozenset[str]]
+    kept, nones = classvars.unshadowed(
+        {"Base": {"size": "int"}},
+        {"Sub": frozenset({"shown", "label"})},
+        ({"Base": frozenset({"shown"})}, {"Base": (), "Sub": ("Base",)}),
+        frozenset({"Base"}),
+    )
+    assert (kept, nones) == ({"Base": {"size": "int"}}, {"Sub": frozenset({"label"})})

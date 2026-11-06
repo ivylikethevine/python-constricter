@@ -19,14 +19,15 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest read is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes, 16CPU/60GB;
+The latest run is `mega-11-06-2026-0949` (`0818b15`, 67 minutes, 16CPU/60GB), read for a
+`__new__`'s `Self`; the latest read in full is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes;
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
 all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
 checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
-wait on a mega run. Unread in the tree: items 4 and 5.
+wait on a mega run. Unread in the tree: item 4, which `mega-lva013` reads.
 
 1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
@@ -78,22 +79,7 @@ wait on a mega run. Unread in the tree: items 4 and 5.
    run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
    stages". About an hour beside the run; coverage unchanged.
 
-4. **A `__new__`'s own instance under `-> Self`.** Since `cls` in `__new__` is `type[C]`,
-   `result = object.__new__(cls)` and `self = super().__new__(cls, value)` were written as the class,
-   and a `__new__` declared `-> Self` that returns them is mypy's `return-value` error: on
-   `mega-11-06-2026-0441` pandas's certain `result: MultiIndex` (`core/indexes/multi.py`), sphinx's
-   `sentinel: _Sentinel` and sqlalchemy's `self: quoted_name` (`call` guesses, which took `call` out
-   of LIKELY.md's sets: 2 of 544 read blamed), all 19 of the run's new errors outside the union's
-   step. Built on 2026-11-06: a `__new__` declared `-> Self` finds its owner as a classmethod does
-   (`Scope._owner`, `syntax.class_side`), so what it constructs through `cls` is `Self`, written
-   where the module imports it and not offered where it doesn't; a `__new__` with no declared return
-   keeps the class. `mega-fixes-11-06-2026-0924` (10 minutes, 16CPU/60GB) against
-   `mega-11-06-2026-0441`: the fix steps' new type errors 60 from 67, the 7 gone the change's and none
-   new; 6 fixes written `Self` where they were the class (pandas's `result`, sphinx's `sentinel`,
-   sqlalchemy's `self` as `typing.Self`, cattrs's 3), pandas's `new_codes: FrozenList`, which rested
-   on `result`, withdrawn, and no other corpus's fixes changed. Done when a mega run reads `call` back
-   under the bars. About an hour beside the run; coverage about unchanged.
-5. **An attribute typed with its method's type variable** (it withdraws fixes). LVA013 writes an
+4. **An attribute typed with its method's type variable** (it withdraws fixes). LVA013 writes an
    attribute's type where a method first stores it, and a type variable that method's signature
    declares is unbound for the attribute, which the class holds: pydantic's
    `self.from_type: TypeForm[_FromTypeT]`, blamed for an error on the traced LVA013 run of

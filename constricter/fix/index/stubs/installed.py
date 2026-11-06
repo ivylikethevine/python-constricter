@@ -67,6 +67,7 @@ _CAP: Final = 256 << 20  # the bytes a build's entries may take: past it, the lo
 _BUNDLED: Final = ("basedpyright", "dist", "typeshed-fallback", "stubs")
 _METADATA: Final = "METADATA.toml"
 _VERSION: Final = "version"
+_NAME: Final = "Name"  # a distribution's, in its metadata
 _COMPATIBLE: Final = "~="  # a PEP 440 compatible release: `~=7.34.1` is 7.34.1 or later, under 7.35
 _ANY: Final = ".*"  # `6.0.*`: any 6.0 release
 
@@ -491,7 +492,8 @@ def _installed(search: tuple[Path, ...]) -> Mapping[str, str]:
     with contextlib.suppress(OSError):
         for distribution in importlib.metadata.distributions(path=[str(directory) for directory in search]):
             name: str
-            if name := cast("str | None", distribution.metadata["Name"]) or "":
+            # Asked first: a missing name read is deprecated (a `KeyError` to come), and a warning.
+            if _NAME in distribution.metadata and (name := distribution.metadata[_NAME]):
                 _ = found.setdefault(_normalized(name), distribution.version)
     return found
 
