@@ -114,6 +114,9 @@ def test_a_docstrings_named_return_types_a_call_as_a_guess() -> None:
     assert fixes["no"][:2] == ("str", False)  # its `return` decides: the docstring isn't read
     assert fixes["maybe"][0] is None  # a `return` of nothing
     assert fixes["order"] == ("int", True, frozenset({"documented", "returned"}))
+    likely: dict[str, bool] = {o.name: o.likely for o in offences}
+    assert likely["d"]  # `documented+returned` passes LIKELY.md's bars
+    assert likely["order"]
 
 
 @pytest.mark.parametrize(
@@ -343,7 +346,7 @@ def test_a_class_takes_its_own_return_alone(returned: list[str | None], expected
 _UNNAMED: frozenset[str] = frozenset({"OrderedDict", "dt.MINYEAR"})  # generic, and a constant
 
 
-def test_the_standard_librarys_classes_are_spelled_as_imported() -> None:
+def test_standard_library_classes_are_spelled_as_imported() -> None:
     """A class its import names, or one of a module it imports; not one missing its type arguments."""
     names: frozenset[str] = stdlib.class_names(
         {"dt": "datetime", "Decimal": "decimal.Decimal", "OrderedDict": "collections.OrderedDict"},

@@ -168,6 +168,7 @@ LIKELY: Final = frozenset(
         frozenset({"copy", "unpack"}),
         frozenset({"declared", "returned"}),
         frozenset({"declared", "returned", "unpack"}),
+        frozenset({"documented", "returned"}),
         frozenset({"filled", "literal"}),
         frozenset({"literal", "rebound", "unpack"}),
         frozenset({"loop", "member"}),

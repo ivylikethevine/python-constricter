@@ -22,6 +22,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   `Self` in a `__new__` declared to return it (pandas's `result: MultiIndex` was mypy's error).
 - `--likely` applies a type checker's hint that another checker gives alike (`agreed+checker`,
   with `--infer-with` of two or more), which passed LIKELY.md's bars on the mega corpora.
+- `--likely` applies a docstring's named return (`documented+returned`), which passed LIKELY.md's
+  bars on the mega run of 2026-11-06: 41 told, 39 held, none blamed.
 - LVA013 offers no attribute type naming a type variable the class doesn't bind
   (`self.kind: type[_T]`, `_T` the storing method's), which a type checker rejects.
 - The corpus runner's witness judges the fixes made with every source at once (`infer-union`) too:

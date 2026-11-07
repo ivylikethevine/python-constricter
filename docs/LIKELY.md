@@ -143,6 +143,13 @@ an installed package with no `py.typed` declares (`declared`), in three sets.
 | `declared+returned+unpack`      |     128 |        3 |     121 |      0 |  121 |  119 |  98.3% |
 | `constructor+declared+returned` |      57 |        3 |      47 |      0 |   44 |   44 | 100.0% |
 
+And by the mega run of 2026-11-06 (`mega-11-06-2026-2039`): the return an unannotated function's
+docstring names (`documented`).
+
+| Mechanisms            | Guesses | Packages | Checked | Blamed | Told | Held | Share |
+| --------------------- | ------: | -------: | ------: | -----: | ---: | ---: | ----: |
+| `documented+returned` |     102 |        8 |      72 |      0 |   41 |   39 | 95.1% |
+
 ## What isn't likely
 
 Short of a bar, with what it missed:

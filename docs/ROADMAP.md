@@ -19,9 +19,11 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest run is `mega-lva013-11-06-2026-1718` (`2843438`, 56 minutes, 16CPU/60GB), read for
-LVA013, and before it `mega-11-06-2026-0949` (`0818b15`, 67 minutes) for a `__new__`'s `Self`; the
-latest read in full is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes;
+The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), read for
+`documented`'s bars and the `LiteralString` splits, with `vague-11-06-2026-2206` beside it for the
+`vague = 0` census (both in [COMPLETED.md](COMPLETED.md#corpus)); before them
+`mega-lva013-11-06-2026-1718` (`2843438`, 56 minutes) for LVA013; the latest read in full is
+`mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes;
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
@@ -30,38 +32,7 @@ checks alone, against the latest mega run's records with `scratch/run_fixes_diff
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
 wait on a mega run.
 
-1. **A docstring's named return** (`documented`, a guess). A numpydoc `Returns` section, a
-   Google-style `Returns:` or a Sphinx `:rtype:` naming a builtin scalar, a class the module binds
-   (its own or imported, not generic), a builtin container of those, one `or None`, or several
-   numpydoc entries every `return` displays as a tuple, types a plain unannotated function's calls
-   where its `return`s decide nothing and none gives a value the type doesn't take
-   (`fix/values/documented.py`). A
-   method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
-   out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
-   32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
-   vouches gives its function back. nibabel (`scratch/fix_diff.py`, one process on 16CPU/60GB):
-   2,427 to 2,448 fixes, 14 of them `documented`; networkx 1. basedpyright's errors after
-   `--fix --unsafe-fixes` on nibabel, with every item then built: 33 new and 24 gone, five of the new
-   from `documented` guesses naming `int` or `float` where numpy's own scalars come back (`_fread3`,
-   `mask_volume`): `np.int64` is no `int` to a checker, which the witness tells of too. On the mega
-   run of 2026-10-29 (`f7d53b2`) it missed every bar (27 guesses, 16 told, 62.5% held, 1 of 25 read
-   blamed), its misses numpy's `int32` and
-   `int64`: a module importing numpy has no `documented` number since (`documented.imports_numpy`).
-   On `e793bc6` 14 guesses, 8 told, 87.5% held, 1 of 12 blamed: nibabel's `offset: int`, from a
-   function ending `return None`, which the check records as of no known type; a `return None` or a
-   bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
-   8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
-   `a8de20a`, `fa5cbd5` and `2843438` the same. Told stayed at 8 over four runs since numpy's
-   refusal, so it was widened past scalars on 2026-11-06: one process each on 16CPU/60GB,
-   networkx's `documented` fixes went from 5 to 44 (33 of them tests' `G.copy()` as `nx.Graph`) and
-   pandas's from 1 to 62 (`Index` from `Index`'s own methods, `DataFrame`). A union naming a class
-   among other types is refused: pandas's window and groupby methods' `Series or DataFrame` was 118
-   more, each the receiver's own kind, which mypy holds against a caller passing it to
-   `assert_frame_equal(left: DataFrame)`. Reach on the other corpora, the census's upper bound
-   (`scratch/documented_names.py`, which takes every imported name for a class): xarray 2 to 21
-   functions, dask 2 to 22. Done when a mega run reads it against the bars on 20 told. About an hour
-   beside the run; coverage under 0.1%.
-2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
+1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
    regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
    needing a stage still to run left for it; the report is written from the records so far, naming
@@ -75,7 +46,7 @@ wait on a mega run.
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+2. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
@@ -276,18 +247,12 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
 
 What to measure before building, smallest first.
 
-1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
-   `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
-   the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
-   (xarray, dask, networkx, pandas): `tests/corpus/runs/vague.toml` runs their check and census
-   at `--vague 0`, to read against a mega run's census at the same commit. Done when the census is
-   read at both. About an hour beside the run; coverage unchanged.
-2. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
+1. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
    make at run time (a model's fields, a manager's querysets), but only inside a mypy run. About 0
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-3. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
+2. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new

@@ -1436,6 +1436,25 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   each), matched by 16 passing anew. The bars are met but for the `__new__` change's errors, open in
   [ROADMAP.md](ROADMAP.md).
 
+- **A docstring's named return (`documented`) held to the bars.** Built for builtin scalars, it
+  missed every bar on 2026-10-29 (`f7d53b2`: 27 guesses, 16 told, 62.5% held, numpy's `int32` and
+  `int64`), then sat at 8 told over four runs once a module importing numpy had no `documented`
+  number. Widened on 2026-11-06 to a class the module binds (its own or imported, not generic), a
+  builtin container of those, one `or None`, and several numpydoc entries a tuple display gives,
+  refusing a union naming a class among other types (pandas's `Series or DataFrame`, the receiver's
+  own kind: 118 fixes mypy would hold against `assert_frame_equal`). One process each on
+  16CPU/60GB, networkx's `documented` fixes went from 5 to 44 and pandas's from 1 to 62. On
+  `mega-11-06-2026-2039` (`edcaba3`, 87 minutes): 148 `documented` guesses, 67 told, 65 held
+  (97.0%), none blamed; `documented+returned` passes LIKELY.md's three bars (102 guesses, 72 in a
+  checked package, none blamed, 41 told, 39 held, 95.1%) and joins `LIKELY`. The same run's certain fixes have 41
+  `list[LiteralString]` splits; no type error names `LiteralString`.
+- **What `vague = 0` buys the scientific corpora.** `vague-11-06-2026-2206` (`edcaba3`,
+  `tests/corpus/runs/vague.toml`) ran the census of xarray, dask, networkx and pandas at `--vague 0`,
+  read against `mega-11-06-2026-2039`'s at the default (no `Any` anywhere). Bindings with no fix:
+  pandas 35,014 to 34,849, xarray 11,196 to 11,037, dask 18,238 to 18,110, networkx 15,982 to
+  16,009: 425 fewer of 80,430 (0.5%) on the four together; networkx's 27 more not looked into. The
+  default costs them little.
+
 ## CI, security and releases
 
 - **CI** (`ci.yml`): every check in [CONTRIBUTING](CONTRIBUTING.md#development), the pre-commit

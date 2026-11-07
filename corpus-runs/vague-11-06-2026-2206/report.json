@@ -1,0 +1,5198 @@
+{
+  "run": {
+    "label": "vague",
+    "started": "2026-11-06T22:06:42-08:00",
+    "versions": [
+      "dev"
+    ],
+    "formats": [
+      "json",
+      "markdown",
+      "csv"
+    ],
+    "jobs": 4,
+    "at-once": 4,
+    "corpora": [
+      "xarray",
+      "dask",
+      "networkx",
+      "pandas"
+    ],
+    "minus": [],
+    "check": true,
+    "fix": [],
+    "coverage": false,
+    "infer-with": [],
+    "census": true,
+    "tests": false,
+    "types": false,
+    "traced": false,
+    "timing": 0,
+    "profile": false,
+    "install": false,
+    "suite-seconds": 1800,
+    "suite-workers": 0,
+    "constricter": "0.4.5.dev41+g28434383f.d20261107",
+    "commit": "edcaba3d1126",
+    "changes": "5cc9229cccd9",
+    "python": "3.14.7",
+    "system": "Linux",
+    "cpus": 16,
+    "share": 0,
+    "gigabytes": 60,
+    "checkers": [],
+    "parser": "3aeda7010fee",
+    "minutes": 1
+  },
+  "corpora": {
+    "xarray": {
+      "version": "2026.9.0",
+      "root": "local/corpus-suites/xarray-v2026.09.0/xarray"
+    },
+    "dask": {
+      "version": "2026.8.0",
+      "root": "local/corpus-suites/dask-2026.8.0/dask"
+    },
+    "networkx": {
+      "version": "3.7",
+      "root": "local/corpus-suites/networkx-networkx-3.7/networkx"
+    },
+    "pandas": {
+      "version": "3.0.6",
+      "root": "local/corpus-suites/pandas-v3.0.6/pandas"
+    }
+  },
+  "records": {
+    "xarray": {
+      "vague+dev": {
+        "check": {
+          "codes": {
+            "LVA001": 18968,
+            "LVA002": 1599,
+            "LVA004": 777,
+            "LVA005": 73,
+            "LVA006": 20
+          },
+          "files": 199,
+          "levels": {
+            "constrict": [
+              21344,
+              93
+            ],
+            "relaxed": [
+              0,
+              21344
+            ],
+            "strict": [
+              19745,
+              1692
+            ],
+            "suffocate": [
+              21437,
+              0
+            ]
+          },
+          "offered": {
+            "certain": 4760,
+            "guess": 452,
+            "likely": 5095
+          },
+          "seconds": 13.0,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 28.5,
+            "given": {
+              "cpus": 3,
+              "memory": 1.74
+            },
+            "memory": 1.46,
+            "seconds": 13.4,
+            "started": 1794031603.7,
+            "waited": 0.0
+          }
+        },
+        "census": {
+          "guessed": 5547,
+          "reasons": {
+            "declined": 157,
+            "imported": 1140,
+            "library": 451,
+            "local": 367,
+            "member": 973,
+            "other": 64,
+            "receiver": 1366,
+            "untyped": 622,
+            "vague": 130
+          },
+          "seconds": 13.0,
+          "shapes": {
+            "DictComp (unknown elements)": 145,
+            "GeneratorExp (unknown elements)": 9,
+            "JoinedStr": 1,
+            "Lambda": 34,
+            "ListComp (unknown elements)": 199,
+            "None literal": 30,
+            "SetComp (unknown elements)": 24,
+            "attr: chained": 235,
+            "attr: global.x": 36,
+            "attr: imported.x": 5,
+            "attr: local.x": 131,
+            "attr: modclass.x": 3,
+            "attr: module.x": 26,
+            "attr: other.x": 1,
+            "attr: param.x": 79,
+            "attr: self.x": 83,
+            "await: call: chained .method()": 6,
+            "await: call: imported.attr()": 1,
+            "await: call: local.method()": 1,
+            "await: call: module.func()": 1,
+            "await: call: param name": 1,
+            "await: copy: local": 1,
+            "binop (one side literal)": 108,
+            "binop (unknown operands)": 735,
+            "boolop (and)": 12,
+            "boolop (or)": 18,
+            "call: builtin abs()": 4,
+            "call: builtin any()": 1,
+            "call: builtin compile()": 1,
+            "call: builtin dict()": 72,
+            "call: builtin enumerate()": 40,
+            "call: builtin getattr()": 80,
+            "call: builtin iter()": 3,
+            "call: builtin list()": 40,
+            "call: builtin locals()": 2,
+            "call: builtin max()": 5,
+            "call: builtin min()": 4,
+            "call: builtin next()": 16,
+            "call: builtin object()": 3,
+            "call: builtin open()": 7,
+            "call: builtin property()": 1,
+            "call: builtin reversed()": 3,
+            "call: builtin set()": 49,
+            "call: builtin slice()": 5,
+            "call: builtin sorted()": 11,
+            "call: builtin staticmethod()": 6,
+            "call: builtin tuple()": 80,
+            "call: builtin type()": 6,
+            "call: builtin zip()": 141,
+            "call: builtin.method()": 15,
+            "call: capitalised": 6,
+            "call: chained .method()": 1391,
+            "call: cls name": 3,
+            "call: cls.method()": 1,
+            "call: global name": 5,
+            "call: global.method()": 41,
+            "call: imported class": 101,
+            "call: imported function": 885,
+            "call: imported.attr()": 177,
+            "call: local name": 116,
+            "call: local.method()": 910,
+            "call: modclass.method()": 10,
+            "call: module class": 3,
+            "call: module function (annotated)": 60,
+            "call: module function (unannotated)": 392,
+            "call: module.func()": 1388,
+            "call: other callee": 65,
+            "call: other name": 80,
+            "call: other.method()": 18,
+            "call: param name": 170,
+            "call: param.method()": 332,
+            "call: self.method()": 447,
+            "compare": 53,
+            "conditional": 144,
+            "copy: builtin": 3,
+            "copy: global": 9,
+            "copy: imported": 39,
+            "copy: local": 135,
+            "copy: modclass": 7,
+            "copy: moddef": 3,
+            "copy: other": 10,
+            "copy: param (annotated)": 43,
+            "copy: param (unannotated)": 116,
+            "copy: self": 10,
+            "dict (mixed/unknown elements)": 204,
+            "empty dict": 119,
+            "empty list": 79,
+            "empty tuple": 1,
+            "list (mixed/unknown elements)": 162,
+            "other constant": 52,
+            "set (mixed/unknown elements)": 2,
+            "subscript: global[...]": 6,
+            "subscript: imported[...]": 21,
+            "subscript: local[...]": 297,
+            "subscript: other": 249,
+            "subscript: other[...]": 8,
+            "subscript: param[...]": 75,
+            "subscript: self[...]": 3,
+            "tuple (mixed/unknown elements)": 60,
+            "unaryop Invert": 4,
+            "unaryop USub": 2
+          },
+          "unfixed": 11037,
+          "unparsed": 0,
+          "untyped": 21344,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 3.3,
+            "given": {
+              "cpus": 3,
+              "memory": 1.74
+            },
+            "memory": 0.16,
+            "seconds": 16.4,
+            "started": 1794031603.7,
+            "waited": 0.0
+          }
+        }
+      }
+    },
+    "dask": {
+      "vague+dev": {
+        "check": {
+          "codes": {
+            "LVA001": 20748,
+            "LVA002": 1691,
+            "LVA004": 1732,
+            "LVA005": 8,
+            "LVA006": 5,
+            "LVA009": 2,
+            "LVA011": 1
+          },
+          "files": 361,
+          "levels": {
+            "constrict": [
+              24173,
+              14
+            ],
+            "relaxed": [
+              0,
+              24173
+            ],
+            "strict": [
+              22480,
+              1707
+            ],
+            "suffocate": [
+              24187,
+              0
+            ]
+          },
+          "offered": {
+            "certain": 3224,
+            "guess": 975,
+            "likely": 1862
+          },
+          "seconds": 13.7,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 32.8,
+            "given": {
+              "cpus": 3,
+              "memory": 2.21
+            },
+            "memory": 1.64,
+            "seconds": 14.0,
+            "started": 1794031603.7,
+            "waited": 0.0
+          }
+        },
+        "census": {
+          "guessed": 2837,
+          "reasons": {
+            "declined": 16,
+            "imported": 3823,
+            "library": 957,
+            "local": 372,
+            "member": 743,
+            "other": 149,
+            "receiver": 3261,
+            "untyped": 1440,
+            "vague": 51
+          },
+          "seconds": 13.7,
+          "shapes": {
+            "DictComp (unknown elements)": 167,
+            "GeneratorExp (unknown elements)": 31,
+            "JoinedStr": 7,
+            "Lambda": 53,
+            "ListComp (unknown elements)": 351,
+            "None literal": 65,
+            "SetComp (unknown elements)": 28,
+            "attr: builtin.x": 1,
+            "attr: chained": 178,
+            "attr: cls.x": 2,
+            "attr: global.x": 8,
+            "attr: imported.x": 112,
+            "attr: local.x": 139,
+            "attr: modclass.x": 6,
+            "attr: module.x": 59,
+            "attr: param.x": 98,
+            "attr: self.x": 158,
+            "await: call: chained .method()": 1,
+            "await: call: local.method()": 1,
+            "await: call: param.method()": 17,
+            "binop (one side literal)": 195,
+            "binop (unknown operands)": 405,
+            "boolop (and)": 3,
+            "boolop (or)": 53,
+            "call: builtin abs()": 2,
+            "call: builtin any()": 1,
+            "call: builtin dict()": 72,
+            "call: builtin divmod()": 18,
+            "call: builtin enumerate()": 135,
+            "call: builtin frozenset()": 1,
+            "call: builtin getattr()": 146,
+            "call: builtin int()": 3,
+            "call: builtin iter()": 7,
+            "call: builtin len()": 1,
+            "call: builtin list()": 209,
+            "call: builtin max()": 30,
+            "call: builtin min()": 12,
+            "call: builtin next()": 13,
+            "call: builtin object()": 4,
+            "call: builtin open()": 5,
+            "call: builtin property()": 1,
+            "call: builtin range()": 5,
+            "call: builtin reversed()": 1,
+            "call: builtin set()": 83,
+            "call: builtin slice()": 11,
+            "call: builtin sorted()": 31,
+            "call: builtin staticmethod()": 79,
+            "call: builtin sum()": 16,
+            "call: builtin tuple()": 95,
+            "call: builtin type()": 17,
+            "call: builtin vars()": 2,
+            "call: builtin zip()": 232,
+            "call: builtin.method()": 3,
+            "call: capitalised": 7,
+            "call: chained .method()": 1446,
+            "call: cls name": 1,
+            "call: cls.method()": 10,
+            "call: global name": 13,
+            "call: global.method()": 906,
+            "call: imported class": 46,
+            "call: imported function": 1716,
+            "call: imported.attr()": 70,
+            "call: local name": 143,
+            "call: local.method()": 1411,
+            "call: module class": 168,
+            "call: module function (annotated)": 24,
+            "call: module function (unannotated)": 490,
+            "call: module.func()": 3966,
+            "call: other callee": 152,
+            "call: other name": 51,
+            "call: other.method()": 10,
+            "call: param name": 131,
+            "call: param.method()": 469,
+            "call: self.method()": 127,
+            "compare": 48,
+            "conditional": 148,
+            "copy: builtin": 15,
+            "copy: global": 10,
+            "copy: imported": 14,
+            "copy: local": 232,
+            "copy: modclass": 13,
+            "copy: moddef": 8,
+            "copy: other": 19,
+            "copy: param (annotated)": 12,
+            "copy: param (unannotated)": 390,
+            "copy: self": 10,
+            "dict (mixed/unknown elements)": 446,
+            "empty dict": 192,
+            "empty list": 295,
+            "empty tuple": 5,
+            "list (mixed/unknown elements)": 365,
+            "other constant": 100,
+            "set (mixed/unknown elements)": 8,
+            "subscript: global[...]": 9,
+            "subscript: local[...]": 246,
+            "subscript: other": 333,
+            "subscript: other[...]": 8,
+            "subscript: param[...]": 180,
+            "subscript: self[...]": 3,
+            "tuple (mixed/unknown elements)": 269,
+            "unaryop USub": 2
+          },
+          "unfixed": 18110,
+          "unparsed": 0,
+          "untyped": 24171,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 3.6,
+            "given": {
+              "cpus": 3,
+              "memory": 2.21
+            },
+            "memory": 0.14,
+            "seconds": 17.4,
+            "started": 1794031603.7,
+            "waited": 0.0
+          }
+        }
+      }
+    },
+    "networkx": {
+      "vague+dev": {
+        "check": {
+          "codes": {
+            "LVA001": 18854,
+            "LVA002": 3221,
+            "LVA004": 381,
+            "LVA005": 4
+          },
+          "files": 583,
+          "levels": {
+            "constrict": [
+              22456,
+              4
+            ],
+            "relaxed": [
+              0,
+              22456
+            ],
+            "strict": [
+              19235,
+              3225
+            ],
+            "suffocate": [
+              22460,
+              0
+            ]
+          },
+          "offered": {
+            "certain": 3942,
+            "guess": 365,
+            "likely": 2140
+          },
+          "seconds": 8.6,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 22.1,
+            "given": {
+              "cpus": 3,
+              "memory": 1.67
+            },
+            "memory": 1.3,
+            "seconds": 9.0,
+            "started": 1794031603.7,
+            "waited": 0.0
+          }
+        },
+        "census": {
+          "guessed": 2505,
+          "reasons": {
+            "declined": 5,
+            "imported": 4225,
+            "library": 1375,
+            "local": 371,
+            "member": 340,
+            "other": 23,
+            "receiver": 1303,
+            "untyped": 431,
+            "vague": 13
+          },
+          "seconds": 8.6,
+          "shapes": {
+            "DictComp (unknown elements)": 219,
+            "GeneratorExp (unknown elements)": 106,
+            "ListComp (unknown elements)": 265,
+            "None literal": 60,
+            "SetComp (unknown elements)": 95,
+            "attr: chained": 79,
+            "attr: cls.x": 1,
+            "attr: global.x": 1,
+            "attr: imported.x": 6,
+            "attr: local.x": 139,
+            "attr: module.x": 91,
+            "attr: param.x": 105,
+            "attr: self.x": 296,
+            "binop (one side literal)": 102,
+            "binop (unknown operands)": 383,
+            "boolop (and)": 6,
+            "boolop (or)": 14,
+            "call: builtin abs()": 1,
+            "call: builtin compile()": 1,
+            "call: builtin dict()": 137,
+            "call: builtin enumerate()": 87,
+            "call: builtin float()": 1,
+            "call: builtin frozenset()": 8,
+            "call: builtin getattr()": 1,
+            "call: builtin iter()": 27,
+            "call: builtin len()": 2,
+            "call: builtin list()": 373,
+            "call: builtin map()": 4,
+            "call: builtin max()": 47,
+            "call: builtin min()": 60,
+            "call: builtin next()": 79,
+            "call: builtin object()": 13,
+            "call: builtin range()": 1,
+            "call: builtin reversed()": 3,
+            "call: builtin round()": 4,
+            "call: builtin set()": 273,
+            "call: builtin sorted()": 256,
+            "call: builtin staticmethod()": 16,
+            "call: builtin sum()": 126,
+            "call: builtin tuple()": 9,
+            "call: builtin type()": 1,
+            "call: builtin zip()": 144,
+            "call: builtin.method()": 61,
+            "call: capitalised": 53,
+            "call: chained .method()": 472,
+            "call: cls name": 1,
+            "call: cls.method()": 2,
+            "call: global name": 10,
+            "call: global.method()": 185,
+            "call: imported class": 17,
+            "call: imported function": 725,
+            "call: imported.attr()": 157,
+            "call: local name": 168,
+            "call: local.method()": 790,
+            "call: modclass.method()": 5,
+            "call: module class": 6,
+            "call: module function (unannotated)": 474,
+            "call: module.func()": 4476,
+            "call: other callee": 28,
+            "call: other name": 123,
+            "call: other.method()": 32,
+            "call: param name": 157,
+            "call: param.method()": 602,
+            "call: self.method()": 334,
+            "compare": 22,
+            "conditional": 126,
+            "copy: builtin": 9,
+            "copy: global": 58,
+            "copy: imported": 11,
+            "copy: local": 667,
+            "copy: modclass": 21,
+            "copy: moddef": 25,
+            "copy: other": 32,
+            "copy: param (unannotated)": 503,
+            "copy: self": 3,
+            "dict (mixed/unknown elements)": 169,
+            "empty dict": 219,
+            "empty list": 198,
+            "empty tuple": 1,
+            "list (mixed/unknown elements)": 276,
+            "other constant": 69,
+            "set (mixed/unknown elements)": 45,
+            "subscript: global[...]": 11,
+            "subscript: local[...]": 307,
+            "subscript: other": 326,
+            "subscript: other[...]": 28,
+            "subscript: param[...]": 142,
+            "subscript: self[...]": 1,
+            "tuple (mixed/unknown elements)": 218,
+            "unaryop USub": 2
+          },
+          "unfixed": 16009,
+          "unparsed": 0,
+          "untyped": 22456,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 3.0,
+            "given": {
+              "cpus": 3,
+              "memory": 1.67
+            },
+            "memory": 0.11,
+            "seconds": 3.2,
+            "started": 1794031617.7,
+            "waited": 14.0
+          }
+        }
+      }
+    },
+    "pandas": {
+      "vague+dev": {
+        "check": {
+          "codes": {
+            "LVA001": 73367,
+            "LVA002": 2778,
+            "LVA004": 1648,
+            "LVA005": 21,
+            "LVA006": 2,
+            "LVA009": 1,
+            "LVA011": 1
+          },
+          "files": 1420,
+          "levels": {
+            "constrict": [
+              77794,
+              24
+            ],
+            "relaxed": [
+              0,
+              77794
+            ],
+            "strict": [
+              75015,
+              2803
+            ],
+            "suffocate": [
+              77818,
+              0
+            ]
+          },
+          "offered": {
+            "certain": 17325,
+            "guess": 1543,
+            "likely": 24076
+          },
+          "seconds": 27.6,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 0.8,
+            "given": {
+              "cpus": 3,
+              "memory": 4.65
+            },
+            "memory": 0.21,
+            "seconds": 24.2,
+            "started": 1794031617.1,
+            "waited": 13.4
+          }
+        },
+        "census": {
+          "guessed": 25619,
+          "reasons": {
+            "declined": 173,
+            "imported": 3755,
+            "library": 889,
+            "local": 1194,
+            "member": 4834,
+            "other": 500,
+            "receiver": 6482,
+            "untyped": 756,
+            "vague": 88
+          },
+          "seconds": 27.6,
+          "shapes": {
+            "DictComp (unknown elements)": 57,
+            "GeneratorExp (unknown elements)": 70,
+            "JoinedStr": 8,
+            "Lambda": 120,
+            "ListComp (unknown elements)": 357,
+            "None literal": 155,
+            "SetComp (unknown elements)": 14,
+            "attr: builtin.x": 1,
+            "attr: chained": 792,
+            "attr: cls.x": 7,
+            "attr: imported.x": 94,
+            "attr: local.x": 439,
+            "attr: modclass.x": 1,
+            "attr: module.x": 121,
+            "attr: other.x": 14,
+            "attr: param.x": 281,
+            "attr: self.x": 270,
+            "binop (one side literal)": 254,
+            "binop (unknown operands)": 1112,
+            "boolop (and)": 37,
+            "boolop (or)": 30,
+            "call: builtin abs()": 7,
+            "call: builtin all()": 3,
+            "call: builtin bytes()": 1,
+            "call: builtin dict()": 29,
+            "call: builtin divmod()": 35,
+            "call: builtin enumerate()": 231,
+            "call: builtin eval()": 5,
+            "call: builtin float()": 1,
+            "call: builtin frozenset()": 4,
+            "call: builtin getattr()": 307,
+            "call: builtin isinstance()": 1,
+            "call: builtin iter()": 6,
+            "call: builtin len()": 11,
+            "call: builtin list()": 169,
+            "call: builtin map()": 7,
+            "call: builtin max()": 19,
+            "call: builtin min()": 12,
+            "call: builtin next()": 32,
+            "call: builtin object()": 2,
+            "call: builtin open()": 20,
+            "call: builtin ord()": 1,
+            "call: builtin pow()": 4,
+            "call: builtin property()": 5,
+            "call: builtin range()": 4,
+            "call: builtin repr()": 1,
+            "call: builtin reversed()": 1,
+            "call: builtin round()": 3,
+            "call: builtin set()": 49,
+            "call: builtin slice()": 25,
+            "call: builtin sorted()": 29,
+            "call: builtin sum()": 4,
+            "call: builtin tuple()": 26,
+            "call: builtin type()": 26,
+            "call: builtin zip()": 305,
+            "call: builtin.method()": 9,
+            "call: capitalised": 60,
+            "call: chained .method()": 4660,
+            "call: cls name": 22,
+            "call: cls.method()": 13,
+            "call: global name": 3,
+            "call: global.method()": 114,
+            "call: imported class": 736,
+            "call: imported function": 1424,
+            "call: imported.attr()": 360,
+            "call: local name": 296,
+            "call: local.method()": 5922,
+            "call: modclass.method()": 11,
+            "call: module class": 7,
+            "call: module function (annotated)": 59,
+            "call: module function (unannotated)": 273,
+            "call: module.func()": 3363,
+            "call: other callee": 503,
+            "call: other name": 113,
+            "call: other.method()": 38,
+            "call: param name": 769,
+            "call: param.method()": 1403,
+            "call: self name": 1,
+            "call: self.method()": 552,
+            "call: str-literal.method()": 2,
+            "compare": 347,
+            "conditional": 470,
+            "copy: builtin": 59,
+            "copy: cls": 2,
+            "copy: global": 11,
+            "copy: imported": 89,
+            "copy: local": 409,
+            "copy: modclass": 10,
+            "copy: moddef": 15,
+            "copy: other": 78,
+            "copy: param (annotated)": 67,
+            "copy: param (unannotated)": 1955,
+            "copy: self": 18,
+            "dict (mixed/unknown elements)": 330,
+            "empty dict": 90,
+            "empty list": 274,
+            "empty tuple": 1,
+            "list (mixed/unknown elements)": 777,
+            "other constant": 178,
+            "set (mixed/unknown elements)": 12,
+            "subscript: global[...]": 13,
+            "subscript: imported[...]": 17,
+            "subscript: local[...]": 947,
+            "subscript: other": 1510,
+            "subscript: other[...]": 6,
+            "subscript: param[...]": 384,
+            "subscript: self[...]": 18,
+            "tuple (mixed/unknown elements)": 368,
+            "unaryop Invert": 40,
+            "unaryop UAdd": 3,
+            "unaryop USub": 19
+          },
+          "unfixed": 34849,
+          "unparsed": 0,
+          "untyped": 77793,
+          "used": {
+            "alone": false,
+            "by": "scope",
+            "cpu": 99.1,
+            "given": {
+              "cpus": 3,
+              "memory": 4.65
+            },
+            "memory": 3.73,
+            "seconds": 37.6,
+            "started": 1794031612.7,
+            "waited": 9.0
+          }
+        }
+      }
+    }
+  },
+  "problems": [],
+  "notes": [],
+  "tables": {
+    "offences": [
+      [
+        "corpus",
+        "corpus version",
+        "constricter",
+        "files",
+        "LVA001",
+        "LVA002",
+        "LVA004",
+        "LVA005",
+        "LVA006",
+        "LVA009",
+        "LVA011",
+        "total"
+      ],
+      [
+        "xarray",
+        "2026.9.0",
+        "vague+dev",
+        "199",
+        "18968",
+        "1599",
+        "777",
+        "73",
+        "20",
+        "0",
+        "0",
+        "21437"
+      ],
+      [
+        "dask",
+        "2026.8.0",
+        "vague+dev",
+        "361",
+        "20748",
+        "1691",
+        "1732",
+        "8",
+        "5",
+        "2",
+        "1",
+        "24187"
+      ],
+      [
+        "networkx",
+        "3.7",
+        "vague+dev",
+        "583",
+        "18854",
+        "3221",
+        "381",
+        "4",
+        "0",
+        "0",
+        "0",
+        "22460"
+      ],
+      [
+        "pandas",
+        "3.0.6",
+        "vague+dev",
+        "1420",
+        "73367",
+        "2778",
+        "1648",
+        "21",
+        "2",
+        "1",
+        "1",
+        "77818"
+      ]
+    ],
+    "levels": [
+      [
+        "corpus",
+        "constricter",
+        "level",
+        "errors",
+        "warnings"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "relaxed",
+        "0",
+        "21344"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "strict",
+        "19745",
+        "1692"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "constrict",
+        "21344",
+        "93"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "suffocate",
+        "21437",
+        "0"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "relaxed",
+        "0",
+        "24173"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "strict",
+        "22480",
+        "1707"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "constrict",
+        "24173",
+        "14"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "suffocate",
+        "24187",
+        "0"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "relaxed",
+        "0",
+        "22456"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "strict",
+        "19235",
+        "3225"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "constrict",
+        "22456",
+        "4"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "suffocate",
+        "22460",
+        "0"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "relaxed",
+        "0",
+        "77794"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "strict",
+        "75015",
+        "2803"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "constrict",
+        "77794",
+        "24"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "suffocate",
+        "77818",
+        "0"
+      ]
+    ],
+    "census": [
+      [
+        "corpus",
+        "constricter",
+        "untyped",
+        "guessed",
+        "unfixed",
+        "unparsed",
+        "shape",
+        "bindings"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "21344",
+        "5547",
+        "11037",
+        "0",
+        "",
+        ""
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "DictComp (unknown elements)",
+        "145"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "GeneratorExp (unknown elements)",
+        "9"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "JoinedStr",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "Lambda",
+        "34"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "ListComp (unknown elements)",
+        "199"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "None literal",
+        "30"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "SetComp (unknown elements)",
+        "24"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: chained",
+        "235"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: global.x",
+        "36"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: imported.x",
+        "5"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: local.x",
+        "131"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: modclass.x",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: module.x",
+        "26"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: other.x",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: param.x",
+        "79"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: self.x",
+        "83"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: chained .method()",
+        "6"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: imported.attr()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: local.method()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: module.func()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: param name",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: copy: local",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (one side literal)",
+        "108"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (unknown operands)",
+        "735"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (and)",
+        "12"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (or)",
+        "18"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin abs()",
+        "4"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin any()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin compile()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin dict()",
+        "72"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin enumerate()",
+        "40"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin getattr()",
+        "80"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin iter()",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin list()",
+        "40"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin locals()",
+        "2"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin max()",
+        "5"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin min()",
+        "4"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin next()",
+        "16"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin object()",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin open()",
+        "7"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin property()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin reversed()",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin set()",
+        "49"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin slice()",
+        "5"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sorted()",
+        "11"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin staticmethod()",
+        "6"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin tuple()",
+        "80"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin type()",
+        "6"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin zip()",
+        "141"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin.method()",
+        "15"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: capitalised",
+        "6"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: chained .method()",
+        "1391"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls name",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls.method()",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global name",
+        "5"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global.method()",
+        "41"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported class",
+        "101"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported function",
+        "885"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported.attr()",
+        "177"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local name",
+        "116"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local.method()",
+        "910"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: modclass.method()",
+        "10"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module class",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (annotated)",
+        "60"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (unannotated)",
+        "392"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module.func()",
+        "1388"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other callee",
+        "65"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other name",
+        "80"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other.method()",
+        "18"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param name",
+        "170"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param.method()",
+        "332"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: self.method()",
+        "447"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "compare",
+        "53"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "conditional",
+        "144"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: builtin",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: global",
+        "9"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: imported",
+        "39"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: local",
+        "135"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: modclass",
+        "7"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: moddef",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: other",
+        "10"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (annotated)",
+        "43"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (unannotated)",
+        "116"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: self",
+        "10"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "dict (mixed/unknown elements)",
+        "204"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty dict",
+        "119"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty list",
+        "79"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty tuple",
+        "1"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "list (mixed/unknown elements)",
+        "162"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "other constant",
+        "52"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "set (mixed/unknown elements)",
+        "2"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: global[...]",
+        "6"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: imported[...]",
+        "21"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: local[...]",
+        "297"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other",
+        "249"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other[...]",
+        "8"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: param[...]",
+        "75"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: self[...]",
+        "3"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "tuple (mixed/unknown elements)",
+        "60"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop Invert",
+        "4"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop USub",
+        "2"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "24171",
+        "2837",
+        "18110",
+        "0",
+        "",
+        ""
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "DictComp (unknown elements)",
+        "167"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "GeneratorExp (unknown elements)",
+        "31"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "JoinedStr",
+        "7"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "Lambda",
+        "53"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "ListComp (unknown elements)",
+        "351"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "None literal",
+        "65"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "SetComp (unknown elements)",
+        "28"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: builtin.x",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: chained",
+        "178"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: cls.x",
+        "2"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: global.x",
+        "8"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: imported.x",
+        "112"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: local.x",
+        "139"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: modclass.x",
+        "6"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: module.x",
+        "59"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: param.x",
+        "98"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: self.x",
+        "158"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: chained .method()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: local.method()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "await: call: param.method()",
+        "17"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (one side literal)",
+        "195"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (unknown operands)",
+        "405"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (and)",
+        "3"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (or)",
+        "53"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin abs()",
+        "2"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin any()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin dict()",
+        "72"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin divmod()",
+        "18"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin enumerate()",
+        "135"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin frozenset()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin getattr()",
+        "146"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin int()",
+        "3"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin iter()",
+        "7"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin len()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin list()",
+        "209"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin max()",
+        "30"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin min()",
+        "12"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin next()",
+        "13"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin object()",
+        "4"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin open()",
+        "5"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin property()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin range()",
+        "5"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin reversed()",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin set()",
+        "83"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin slice()",
+        "11"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sorted()",
+        "31"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin staticmethod()",
+        "79"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sum()",
+        "16"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin tuple()",
+        "95"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin type()",
+        "17"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin vars()",
+        "2"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin zip()",
+        "232"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin.method()",
+        "3"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: capitalised",
+        "7"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: chained .method()",
+        "1446"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls name",
+        "1"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls.method()",
+        "10"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global name",
+        "13"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global.method()",
+        "906"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported class",
+        "46"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported function",
+        "1716"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported.attr()",
+        "70"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local name",
+        "143"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local.method()",
+        "1411"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module class",
+        "168"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (annotated)",
+        "24"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (unannotated)",
+        "490"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module.func()",
+        "3966"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other callee",
+        "152"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other name",
+        "51"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other.method()",
+        "10"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param name",
+        "131"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param.method()",
+        "469"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: self.method()",
+        "127"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "compare",
+        "48"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "conditional",
+        "148"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: builtin",
+        "15"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: global",
+        "10"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: imported",
+        "14"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: local",
+        "232"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: modclass",
+        "13"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: moddef",
+        "8"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: other",
+        "19"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (annotated)",
+        "12"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (unannotated)",
+        "390"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: self",
+        "10"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "dict (mixed/unknown elements)",
+        "446"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty dict",
+        "192"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty list",
+        "295"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty tuple",
+        "5"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "list (mixed/unknown elements)",
+        "365"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "other constant",
+        "100"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "set (mixed/unknown elements)",
+        "8"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: global[...]",
+        "9"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: local[...]",
+        "246"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other",
+        "333"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other[...]",
+        "8"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: param[...]",
+        "180"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: self[...]",
+        "3"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "tuple (mixed/unknown elements)",
+        "269"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop USub",
+        "2"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "22456",
+        "2505",
+        "16009",
+        "0",
+        "",
+        ""
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "DictComp (unknown elements)",
+        "219"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "GeneratorExp (unknown elements)",
+        "106"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "ListComp (unknown elements)",
+        "265"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "None literal",
+        "60"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "SetComp (unknown elements)",
+        "95"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: chained",
+        "79"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: cls.x",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: global.x",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: imported.x",
+        "6"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: local.x",
+        "139"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: module.x",
+        "91"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: param.x",
+        "105"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: self.x",
+        "296"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (one side literal)",
+        "102"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (unknown operands)",
+        "383"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (and)",
+        "6"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (or)",
+        "14"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin abs()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin compile()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin dict()",
+        "137"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin enumerate()",
+        "87"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin float()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin frozenset()",
+        "8"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin getattr()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin iter()",
+        "27"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin len()",
+        "2"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin list()",
+        "373"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin map()",
+        "4"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin max()",
+        "47"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin min()",
+        "60"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin next()",
+        "79"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin object()",
+        "13"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin range()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin reversed()",
+        "3"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin round()",
+        "4"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin set()",
+        "273"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sorted()",
+        "256"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin staticmethod()",
+        "16"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sum()",
+        "126"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin tuple()",
+        "9"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin type()",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin zip()",
+        "144"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin.method()",
+        "61"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: capitalised",
+        "53"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: chained .method()",
+        "472"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls name",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls.method()",
+        "2"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global name",
+        "10"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global.method()",
+        "185"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported class",
+        "17"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported function",
+        "725"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported.attr()",
+        "157"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local name",
+        "168"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local.method()",
+        "790"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: modclass.method()",
+        "5"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module class",
+        "6"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (unannotated)",
+        "474"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module.func()",
+        "4476"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other callee",
+        "28"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other name",
+        "123"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other.method()",
+        "32"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param name",
+        "157"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param.method()",
+        "602"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: self.method()",
+        "334"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "compare",
+        "22"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "conditional",
+        "126"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: builtin",
+        "9"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: global",
+        "58"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: imported",
+        "11"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: local",
+        "667"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: modclass",
+        "21"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: moddef",
+        "25"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: other",
+        "32"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (unannotated)",
+        "503"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: self",
+        "3"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "dict (mixed/unknown elements)",
+        "169"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty dict",
+        "219"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty list",
+        "198"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty tuple",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "list (mixed/unknown elements)",
+        "276"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "other constant",
+        "69"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "set (mixed/unknown elements)",
+        "45"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: global[...]",
+        "11"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: local[...]",
+        "307"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other",
+        "326"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other[...]",
+        "28"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: param[...]",
+        "142"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: self[...]",
+        "1"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "tuple (mixed/unknown elements)",
+        "218"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop USub",
+        "2"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "77793",
+        "25619",
+        "34849",
+        "0",
+        "",
+        ""
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "DictComp (unknown elements)",
+        "57"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "GeneratorExp (unknown elements)",
+        "70"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "JoinedStr",
+        "8"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "Lambda",
+        "120"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "ListComp (unknown elements)",
+        "357"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "None literal",
+        "155"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "SetComp (unknown elements)",
+        "14"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: builtin.x",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: chained",
+        "792"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: cls.x",
+        "7"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: imported.x",
+        "94"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: local.x",
+        "439"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: modclass.x",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: module.x",
+        "121"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: other.x",
+        "14"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: param.x",
+        "281"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "attr: self.x",
+        "270"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (one side literal)",
+        "254"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "binop (unknown operands)",
+        "1112"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (and)",
+        "37"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "boolop (or)",
+        "30"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin abs()",
+        "7"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin all()",
+        "3"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin bytes()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin dict()",
+        "29"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin divmod()",
+        "35"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin enumerate()",
+        "231"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin eval()",
+        "5"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin float()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin frozenset()",
+        "4"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin getattr()",
+        "307"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin isinstance()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin iter()",
+        "6"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin len()",
+        "11"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin list()",
+        "169"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin map()",
+        "7"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin max()",
+        "19"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin min()",
+        "12"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin next()",
+        "32"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin object()",
+        "2"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin open()",
+        "20"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin ord()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin pow()",
+        "4"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin property()",
+        "5"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin range()",
+        "4"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin repr()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin reversed()",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin round()",
+        "3"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin set()",
+        "49"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin slice()",
+        "25"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sorted()",
+        "29"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin sum()",
+        "4"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin tuple()",
+        "26"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin type()",
+        "26"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin zip()",
+        "305"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: builtin.method()",
+        "9"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: capitalised",
+        "60"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: chained .method()",
+        "4660"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls name",
+        "22"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: cls.method()",
+        "13"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global name",
+        "3"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: global.method()",
+        "114"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported class",
+        "736"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported function",
+        "1424"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: imported.attr()",
+        "360"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local name",
+        "296"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: local.method()",
+        "5922"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: modclass.method()",
+        "11"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module class",
+        "7"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (annotated)",
+        "59"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module function (unannotated)",
+        "273"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: module.func()",
+        "3363"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other callee",
+        "503"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other name",
+        "113"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: other.method()",
+        "38"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param name",
+        "769"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: param.method()",
+        "1403"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: self name",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: self.method()",
+        "552"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "call: str-literal.method()",
+        "2"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "compare",
+        "347"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "conditional",
+        "470"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: builtin",
+        "59"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: cls",
+        "2"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: global",
+        "11"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: imported",
+        "89"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: local",
+        "409"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: modclass",
+        "10"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: moddef",
+        "15"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: other",
+        "78"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (annotated)",
+        "67"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: param (unannotated)",
+        "1955"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "copy: self",
+        "18"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "dict (mixed/unknown elements)",
+        "330"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty dict",
+        "90"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty list",
+        "274"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "empty tuple",
+        "1"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "list (mixed/unknown elements)",
+        "777"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "other constant",
+        "178"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "set (mixed/unknown elements)",
+        "12"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: global[...]",
+        "13"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: imported[...]",
+        "17"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: local[...]",
+        "947"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other",
+        "1510"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: other[...]",
+        "6"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: param[...]",
+        "384"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "subscript: self[...]",
+        "18"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "tuple (mixed/unknown elements)",
+        "368"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop Invert",
+        "40"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop UAdd",
+        "3"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "",
+        "",
+        "",
+        "",
+        "unaryop USub",
+        "19"
+      ]
+    ],
+    "steps": [
+      [
+        "corpus",
+        "constricter",
+        "step",
+        "seconds",
+        "CPU seconds",
+        "CPUs",
+        "GB held",
+        "CPUs given",
+        "GB given",
+        "alone"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "check",
+        "13.4",
+        "28.5",
+        "2.1",
+        "1.46",
+        "3",
+        "1.74",
+        "False"
+      ],
+      [
+        "xarray",
+        "vague+dev",
+        "census",
+        "16.4",
+        "3.3",
+        "0.2",
+        "0.16",
+        "3",
+        "1.74",
+        "False"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "check",
+        "14.0",
+        "32.8",
+        "2.3",
+        "1.64",
+        "3",
+        "2.21",
+        "False"
+      ],
+      [
+        "dask",
+        "vague+dev",
+        "census",
+        "17.4",
+        "3.6",
+        "0.2",
+        "0.14",
+        "3",
+        "2.21",
+        "False"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "check",
+        "9.0",
+        "22.1",
+        "2.5",
+        "1.3",
+        "3",
+        "1.67",
+        "False"
+      ],
+      [
+        "networkx",
+        "vague+dev",
+        "census",
+        "3.2",
+        "3.0",
+        "0.9",
+        "0.11",
+        "3",
+        "1.67",
+        "False"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "check",
+        "24.2",
+        "0.8",
+        "0.0",
+        "0.21",
+        "3",
+        "4.65",
+        "False"
+      ],
+      [
+        "pandas",
+        "vague+dev",
+        "census",
+        "37.6",
+        "99.1",
+        "2.6",
+        "3.73",
+        "3",
+        "4.65",
+        "False"
+      ]
+    ]
+  }
+}
