@@ -30,11 +30,12 @@ checks alone, against the latest mega run's records with `scratch/run_fixes_diff
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
 wait on a mega run.
 
-1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
-   alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
-   naming `int`, `float`, `bool`, `str`, `bytes` or `complex`, or one `or None`, types a plain
-   unannotated function's calls where its `return`s decide nothing and none gives a value the type
-   doesn't take (`fix/values/documented.py`). A
+1. **A docstring's named return** (`documented`, a guess). A numpydoc `Returns` section, a
+   Google-style `Returns:` or a Sphinx `:rtype:` naming a builtin scalar, a class the module binds
+   (its own or imported, not generic), a builtin container of those, one `or None`, or several
+   numpydoc entries every `return` displays as a tuple, types a plain unannotated function's calls
+   where its `return`s decide nothing and none gives a value the type doesn't take
+   (`fix/values/documented.py`). A
    method's fix names it in its kinds beside `returned`; what else a method's guess rests on stays
    out, as before. Reach: about 120 undecorated functions on the mega corpora's sources (nibabel
    32, networkx 29, botocore 25); networkx has 121 more under `@nx._dispatchable`, which no rule
@@ -50,11 +51,16 @@ wait on a mega run.
    function ending `return None`, which the check records as of no known type; a `return None` or a
    bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
    8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
-   `a8de20a`, `fa5cbd5` and `2843438` the same. Told has stayed at 8 over four runs since numpy's
-   refusal, so 20 needs a wider reach
-   ("numpydoc Returns sections", under Measurement): decided 2026-11-06, widened that way. Done when a
-   mega run reads it against the bars on 20 told. About an hour beside the run, after that item;
-   coverage under 0.1%.
+   `a8de20a`, `fa5cbd5` and `2843438` the same. Told stayed at 8 over four runs since numpy's
+   refusal, so it was widened past scalars on 2026-11-06: one process each on 16CPU/60GB,
+   networkx's `documented` fixes went from 5 to 44 (33 of them tests' `G.copy()` as `nx.Graph`) and
+   pandas's from 1 to 62 (`Index` from `Index`'s own methods, `DataFrame`). A union naming a class
+   among other types is refused: pandas's window and groupby methods' `Series or DataFrame` was 118
+   more, each the receiver's own kind, which mypy holds against a caller passing it to
+   `assert_frame_equal(left: DataFrame)`. Reach on the other corpora, the census's upper bound
+   (`scratch/documented_names.py`, which takes every imported name for a class): xarray 2 to 21
+   functions, dask 2 to 22. Done when a mega run reads it against the bars on 20 told. About an hour
+   beside the run; coverage under 0.1%.
 2. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
    regrouped by a run file's `[stages]` table. `--stage NAME` runs that stage's steps alone, a step
@@ -83,23 +89,7 @@ wait on a mega run.
 
 ### Small: under 4 hours
 
-1. **`reuse lint` back on.** It was off because no release shipped a wheel for Python 3.11+; 6.3.0
-   of 2026-10-30 ships `py3-none-any`. Built: `reuse` in the dev group, a `reuse lint` step in the
-   Lint job after typos, and its disabled rule gone. Left: CI's Lint job running it green, on the
-   next push. Under an hour; coverage unchanged.
-2. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
-   `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
-   `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
-   holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
-   function or a class body alike (5 of pygments' errors with the class variables,
-   [COMPLETED.md](COMPLETED.md)). mypy reads `LiteralString` as `str` and takes it. Either write
-   `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
-   receiver's `LiteralString` overloads' container returns unfixed. Measured on
-   `mega-11-06-2026-0949` (`scratch/literal_split.py`): 33 of its 110,349 certain fixes are a
-   one-line `str` literal's `split()` with literal arguments, 31 of them in tests (django's `MONTHS`
-   and `imaplib.Months` the others), and about 3 more a literal spanning lines (textual's `DIGITS3X3`
-   pair); that run fixes no class body, where pygments' 5 are. Waits on the choice. About 2 hours.
-3. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
+1. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
    `from dateutil import parser`, so the name resolves to the package's own binding and not to the
@@ -108,11 +98,11 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    third-party bindings with no fix into a package typeshed's bundled stubs cover
    (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
    many of a run's "imported" bindings call through a name bound so. About 2 hours.
-4. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
+2. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
    an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
    no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
    stub or a checked file declares. About 2 hours.
-5. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+3. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -289,25 +279,15 @@ What to measure before building, smallest first.
 1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
    `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
    the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
-   (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
-   constricter command of the run (2026-10-21). Done when the census is read at both. About an
-   hour beside the run; coverage unchanged.
+   (xarray, dask, networkx, pandas): `tests/corpus/runs/vague.toml` runs their check and census
+   at `--vague 0`, to read against a mega run's census at the same commit. Done when the census is
+   read at both. About an hour beside the run; coverage unchanged.
 2. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
    make at run time (a model's fields, a manager's querysets), but only inside a mypy run. About 0
    calls in the corpora reach them. Done when measured on django's tests through mypy's
    `reveal_type` or a plugin's own output, or recorded as out of reach. About 3 hours; coverage
    unknown until measured.
-3. **numpydoc Returns sections** (decided 2026-11-06: `documented` is widened this way). Built for a
-   builtin scalar alone as `documented` (above); not read: a
-   docstring naming a class (`NetworkX graph`, 391 of networkx's), a container (`dict`, `list of int`),
-   several entries. A docstring's `Returns` section names what a function with no return annotation
-   returns (docstub and docs2stubs read them): networkx has 2,301 such functions, 868 with a Returns section and 485
-   naming one plain type; pandas 1,787 (360, 108), dask 3,912 (181, 56), xarray 1,088 (60, 38). Many
-   names are vague (`dictionary`, `graph`), and `nx.path_graph`, the most called (460 calls), has
-   none: under 1,000 usable. A guess, a docstring's name resolved where the module would resolve it,
-   held to the witness. Done when measured on networkx and pandas. About 4 hours; coverage under
-   0.5%.
-4. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
+3. **Types from a model.** Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict
    types (TypyBench and TypeEvalPy score them), but none is deterministic, and each needs a model
    or an API. Only as a file `--infer-from` reads, through the hint filter and the witness, as any
    guess is. Done when one is measured on pydantic against the checkers' hints: the fixes, the new

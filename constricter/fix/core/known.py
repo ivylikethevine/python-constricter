@@ -314,7 +314,8 @@ class LibraryNames(NamedTuple):
     every Python the module runs on parses an unpacked tuple in a subscript (`tuple[int, *Ts]`,
     3.11's syntax), so an annotation may be written with one. `aliased`: whether `typing` has
     `TypeAlias` on every Python the module runs on (3.10's; yes where that isn't known), so a new
-    import may name it.
+    import may name it. `written`: the installed and checked files' classes it names, none generic,
+    which a docstring's return may name (see `Lineages.written`).
     """
 
     casts: frozenset[str] = frozenset()
@@ -327,6 +328,7 @@ class LibraryNames(NamedTuple):
     aliases: Mapping[str, Expansion] = MappingProxyType({})
     starred: bool = False
     aliased: bool = True
+    written: frozenset[str] = frozenset()
 
 
 class Returned(NamedTuple):
@@ -617,6 +619,8 @@ class Outside:  # pylint: disable=too-many-instance-attributes
     installed_aliases: Mapping[str, Expansion] = field(
         default_factory=dict[str, Expansion],
     )
+    # See `LibraryNames.written`
+    written: frozenset[str] = frozenset()
     # The classes it imports under `if TYPE_CHECKING:` alone, which an annotation can name (see `offers.own`).
     checking: Mapping[str, Guarded] = field(default_factory=dict[str, Guarded])
     plain: frozenset[str] | None = None

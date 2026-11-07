@@ -39,6 +39,13 @@ _OPTIONAL: Final = "Optional"
 _SELF: Final = "self"
 _SELF_TYPE: Final = "Self"  # a generic class's method returning its receiver (see `GenericClass`)
 _DEEPEST: Final = 8  # how many generic bases up a member is looked for
+# The `str` methods typeshed gives a `LiteralString` receiver a list of `LiteralString`, which a checker
+# holds invariant against `list[str]`: a literal's `"a b".split()`, its arguments literals too.
+_LITERAL_LISTS: Final = frozenset({"split", "rsplit", "splitlines"})
+_LITERAL: Final = "LiteralString"
+_LITERAL_STRING: Final = f"typing.{_LITERAL}"
+_EXTENSIONS: Final = "typing_extensions"  # for a Python older than 3.11, for type checking alone
+_EXTENDED: Final = f"{_EXTENSIONS}.{_LITERAL}"
 # One way to type a member: given the receiver's type as text, the member's name, and the call
 # (`None` for an attribute), its inference, or `None` if this source doesn't know it.
 _MemberSource: TypeAlias = Callable[[str, str, ast.Call | None, Known], Inference | None]
@@ -131,19 +138,68 @@ def _class_side(receiver: str, name: str, call: ast.Call | None, known: Known) -
     return None if found is None else Inference(found, _declared_return(receiver, name), frozenset({_METHOD}))
 
 
-def _fixed(receiver: str, name: str, call: ast.Call | None, _known: Known) -> Inference | None:
+def _fixed(receiver: str, name: str, call: ast.Call | None, known: Known) -> Inference | None:
     """Type a `str`, `bytes`, `int` or `float` method with a fixed return type (`METHOD_RETURNS`).
+
+    A `str` literal's `split()`, `rsplit()` or `splitlines()` with literal arguments is a
+    `list[LiteralString]` (see `_literal_list`).
 
     Returns:
       Its inference, or `None`.
 
     """
     found: str | None = None if call is None else METHOD_RETURNS.get(receiver, {}).get(name)
+    if found is None or call is None:
+        return None
+    reason: str = f"`{receiver}.{name}`'s fixed return type"
+    return Inference(_literal_list(name, call, known) or found, reason, frozenset({_METHOD}))
+
+
+def _literal_call(call: ast.Call) -> bool:
+    """Check that a call is a `str` literal's method's, every argument a literal (`str`, `None`, a number).
+
+    Returns:
+      Whether it is.
+
+    """
+    arguments: list[ast.expr] = [*call.args, *(keyword.value for keyword in call.keywords)]
     return (
-        None
-        if found is None
-        else Inference(found, f"`{receiver}.{name}`'s fixed return type", frozenset({_METHOD}))
+        isinstance(call.func, ast.Attribute)
+        and isinstance(call.func.value, ast.Constant)
+        and isinstance(call.func.value.value, str)
+        and all(
+            isinstance(each, ast.Constant) and isinstance(each.value, str | int | None) for each in arguments
+        )
     )
+
+
+def _literal_list(name: str, call: ast.Call, known: Known) -> str | None:
+    """Type a `str` literal's method returning a list where typeshed's `LiteralString` overload takes it.
+
+    Every argument a literal (`str`, `None`, a number, a `bool`). `LiteralString` is named as the
+    module can: from `typing` where every Python it runs on has it (3.11's, as
+    `LibraryNames.starred` says), else from `typing_extensions` for type checking alone, which every
+    checker's stubs have and nothing imports when the module runs.
+
+    Returns:
+      `list[LiteralString]`, or `None`: `list[str]` is the call's type then.
+
+    """
+    plan: ImportPlan | None = known.names.plan
+    if name not in _LITERAL_LISTS or plan is None or not _literal_call(call):
+        return None
+    spelled: str | None = (
+        plan.spell(_LITERAL_STRING)
+        if known.names.starred
+        else plan.named(_LITERAL_STRING)
+        or plan.named(_EXTENDED)
+        or (
+            _LITERAL
+            if plan.guard(_LITERAL, (_EXTENSIONS, _LITERAL), f"from {_EXTENSIONS} import {_LITERAL}")
+            else None
+        )
+    )
+    return None if spelled is None else f"list[{spelled}]"
 
 
 def _declared(

@@ -13,7 +13,7 @@ locals.
 
 import ast
 import operator
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias
 
@@ -24,7 +24,7 @@ from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered
 from constricter.fix.values.bodies import is_generator, plain, terminates
 from constricter.fix.values.documented import KIND as DOCUMENTED
-from constricter.fix.values.documented import documented, imports_numpy
+from constricter.fix.values.documented import documented, imports_numpy, writable
 from constricter.fix.values.inference import RETURNED
 from constricter.fix.values.shapes import is_none
 from constricter.fix.values.stored import (
@@ -50,6 +50,9 @@ _UNVOUCHED: Final[frozenset[str]] = frozenset()  # no decorator vouched for: a m
 # What a call calls: a name (`f()`), or an attribute (`x.m()`), the other `None`.
 _Callee: TypeAlias = tuple[str | None, str | None]
 _Call: TypeAlias = tuple[tuple[int, int], _Callee]  # where a call starts (line, column), and what it calls
+# The decorators that give a function back, and whether the module may write a name as a class
+# (`documented.writable`).
+_Named: TypeAlias = tuple[frozenset[str], Callable[[str], bool]]
 
 
 def returned(
@@ -57,13 +60,15 @@ def returned(
     recorded: Mapping[int, Sequence[Recorded]],
     assigned: Mapping[int, Sequence[Assigned]],
     used: Mapping[int, Sequence[Used]],
-    vouched: frozenset[str] = _UNVOUCHED,
+    named: tuple[frozenset[str], Callable[[str], bool] | None] = (_UNVOUCHED, None),
 ) -> Returned:
     """Read what the module's unannotated functions and methods return, and what its classes assign.
 
     `recorded` holds each checked function's `return` statements, `assigned` its `self.x = value`
     assignments and `used` its reads of `self`'s empty containers, by the function's `id()`;
-    `vouched` spells the decorators that give a function back (see `constricter.source.decorators`).
+    `named`: the spellings of the decorators that give a function back (see
+    `constricter.source.decorators`), and whether the module may write a name as a class (see
+    `documented.writable`; its own classes alone where not given).
 
     Returns:
       Their return types: the module's functions', and each class's methods'; and each class's
@@ -73,17 +78,18 @@ def returned(
     calls: dict[str, str] = {}
     methods: dict[str, dict[str, str]] = {}
     guesses: dict[str, frozenset[str]] = {}
+    known: _Named = (named[0], writable(tree) if named[1] is None else named[1])
     name: str
     annotation: str
     origins: frozenset[str]
-    for name, annotation, origins in _typed(tree, tree.body, recorded, vouched):
+    for name, annotation, origins in _typed(tree, tree.body, recorded, known):
         calls[name] = annotation
         if origins:
             guesses[name] = origins
     attributes: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in classes(tree):
-        for name, annotation, origins in _typed(tree, node.body, recorded, vouched):
+        for name, annotation, origins in _typed(tree, node.body, recorded, known):
             methods.setdefault(node.name, {})[name] = annotation
             if origins:
                 guesses[f"{node.name}.{name}"] = origins
@@ -306,14 +312,17 @@ class Table:
         module: ast.Module,
         imported: Returns | None = None,
         vouched: frozenset[str] = _UNVOUCHED,
+        writes: Callable[[str], bool] | None = None,
     ) -> None:
         """Start a table for `module`, with what the functions it imports from other files return.
 
-        `vouched` spells the decorators that give a function back (see `constricter.source.decorators`).
+        `vouched` spells the decorators that give a function back (see `constricter.source.decorators`);
+        `writes`: whether the module may write a name as a class (see `documented.writable`; its own
+        classes alone where not given).
         """
         imported = imported or Returns()
         self.module: ast.Module = module
-        self.vouched: frozenset[str] = vouched
+        self.named: _Named = (vouched, writable(module) if writes is None else writes)
         self.recorded: dict[int, list[Recorded]] = {}
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
         self.used: dict[int, list[Used]] = {}  # each checked function's reads of `self`'s empty containers
@@ -340,8 +349,8 @@ class Table:
         self._completed(func)
         slot: Slot | None = slots(self.module).get(id(func))
         found: tuple[str, frozenset[str]] | None
-        found = None if slot is None else _return_type(self.module, func, returns, self.vouched)
-        if slot is None or (found := found or _documented(self.module, func, returns, self.vouched)) is None:
+        found = None if slot is None else _return_type(self.module, func, returns, self.named[0])
+        if slot is None or (found := found or _documented(self.module, func, returns, self.named)) is None:
             return
         annotation: str
         origins: frozenset[str]
@@ -430,9 +439,11 @@ def _typed(
     module: ast.Module,
     body: Sequence[ast.stmt],
     recorded: Mapping[int, Sequence[Recorded]],
-    vouched: frozenset[str],
+    named: _Named,
 ) -> Iterator[tuple[str, str, frozenset[str]]]:
     """Find the plain unannotated functions directly in `body` whose `return`s decide their type.
+
+    `named`: the decorators that give a function back, and what the module may write as a class.
 
     Yields:
       Each one's name, return type, and what that rests on if it's a guess.
@@ -442,7 +453,7 @@ def _typed(
     for func in plain(body):
         found: tuple[str, frozenset[str]] | None
         returns: Sequence[Recorded] = recorded.get(id(func), ())
-        found = _return_type(module, func, returns, vouched) or _documented(module, func, returns, vouched)
+        found = _return_type(module, func, returns, named[0]) or _documented(module, func, returns, named)
         if found is not None:
             yield _key(func), *found
 
@@ -451,24 +462,27 @@ def _documented(
     module: ast.Module,
     func: FunctionDef,
     returns: Sequence[Recorded],
-    vouched: frozenset[str],
+    named: _Named,
 ) -> tuple[str, frozenset[str]] | None:
     """Type a plain function its `return`s don't decide by the return its docstring names (a guess).
 
     As `_return_type` takes one: undecorated, unannotated, a plain `def` that ends by a `return`,
-    every one of them of a value (see `documented`).
+    every one of them of a value (see `documented`); `named`: the decorators that give a function
+    back, and what the module may write as a class. Not a class the function binds itself.
 
     Returns:
       The type, and that it rests on the docstring; or `None`.
 
     """
-    if not returns or _decorated(func, vouched) or func.returns is not None or func.type_comment:
+    if not returns or _decorated(func, named[0]) or func.returns is not None or func.type_comment:
         return None
     if not _ends_by_returning(module, func):
         return None
     types: list[str | None] = [None if typed is None else typed.annotation for typed, _ in returns]
-    found: str | None = documented(func, types, numpy=imports_numpy(module))
-    return None if found is None else (found, frozenset({DOCUMENTED}))
+    found: str | None = documented(func, types, numpy=imports_numpy(module), classes=named[1])
+    if found is None or roots(found) & bound_within(func):
+        return None
+    return found, frozenset({DOCUMENTED})
 
 
 def _ends_by_returning(module: ast.Module, func: FunctionDef) -> bool:

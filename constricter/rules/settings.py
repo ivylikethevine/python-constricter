@@ -142,6 +142,7 @@ def module_settings(
                 seen.installed_aliases,
                 checks.min_python is not None and checks.min_python >= STARRED_SUBSCRIPTS,
                 checks.min_python is None or checks.min_python >= TYPING_ALIAS,
+                seen.written,
             ),
             Limits(checks.max_length, checks.vague, widened.marks(lines)),
             vouched=passing(tree, defined_type_vars(tree)).union(seen.vouched),

@@ -229,3 +229,45 @@ def test_an_overload_is_picked_by_the_checked_files_classes(tmp_path: Path) -> N
         "seven": None,  # a mapping's parameter says nothing of a list's elements
         "eight": "str",
     }
+
+
+_SHAPES: Final = """
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class Plain:
+    pass
+
+
+class Box(Generic[T]):
+    pass
+"""
+_SHAPED: Final = """
+import pkg.shapes as sh
+from pkg.shapes import Box, Plain
+"""
+
+
+def test_the_classes_a_file_names_at_once_are_written_but_generic_ones(tmp_path: Path) -> None:
+    """Those it imports by name; not a generic one, nor one under a module, worked out only when asked."""
+    (tmp_path / "pkg").mkdir()
+    name: str
+    source: str
+    for name, source in (("__init__", ""), ("shapes", _SHAPES)):
+        _ = (tmp_path / "pkg" / f"{name}.py").write_text(
+            textwrap.dedent(source),
+            encoding="utf-8",
+            newline="\n",
+        )
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(textwrap.dedent(_SHAPED), encoding="utf-8", newline="\n")
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    found: own_types.Lineages = own_types.lineages(
+        catalog,
+        main,
+        {},
+        {"np.ndarray": (), "Lost": ("gone.Lost",)},
+    )
+    assert found.written() == frozenset({"Plain"})
