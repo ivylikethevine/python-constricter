@@ -591,6 +591,17 @@ What constricter does today and what was measured on the way, by scope. What's n
   fixes over every fix step, as on rc.1, rc.7 and rc.8. They need more data before they're kept
   or dropped: more guesses a test tells of, from more corpora or a wider reach. On the mega run of 2026-10-29 (`f7d53b2`): `reads` 68 guesses, 37
   told, 94.6% held, none of 30 read blamed; `named` 2.
+- **An attribute typed with its method's type variable is no LVA013 fix.** LVA013 wrote an
+  attribute's type where a method first stores it, a type variable of that method's signature
+  included, which the class doesn't bind: pydantic's `self.from_type: TypeForm[_FromTypeT]` was a
+  type error on the traced LVA013 run of 2026-10-23. An attribute's type naming a type variable its
+  class doesn't bind is no fix since (`attributes._unbound`). On `mega-lva013-11-06-2026-1718`
+  (`2843438`, 56 minutes on 16CPU/60GB), of the 31 `assigned` guesses gone since that run, 4 name a
+  type variable: pydantic's `self.from_type` and `self.raw_function: AnyCallableT`, starlette's
+  `self.cls: _MiddlewareFactory[P]` and litestar's `self.func: Callable[P, T]`; pydantic's error is
+  gone. `assigned` has 4,902 guesses, 977 told, 99.0% held and none blamed (2 on 2026-10-23); its set
+  alone 3,163, 135 told, 97.8% held, none blamed. No fixed run's tests fail anew, and none of the
+  run's 112 new type errors is an LVA013 fix's.
 - **A call's type variable bound by a class passed as `type[T]`.** `query_one("#x", Static)`,
   declared `def query_one(self, selector: str, kind: type[T]) -> T`, had no fix: a checked file's
   function whose return names a type variable was never read, overloaded or not. An undecorated

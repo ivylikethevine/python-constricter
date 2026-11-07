@@ -19,15 +19,16 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest run is `mega-11-06-2026-0949` (`0818b15`, 67 minutes, 16CPU/60GB), read for a
-`__new__`'s `Self`; the latest read in full is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes;
+The latest run is `mega-lva013-11-06-2026-1718` (`2843438`, 56 minutes, 16CPU/60GB), read for
+LVA013, and before it `mega-11-06-2026-0949` (`0818b15`, 67 minutes) for a `__new__`'s `Self`; the
+latest read in full is `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes;
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
 all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
 checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
 `mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
-wait on a mega run. Unread in the tree: item 4, which `mega-lva013` reads.
+wait on a mega run.
 
 1. **A docstring's named return** (`documented`, a guess). Built for builtin scalars
    alone: a numpydoc `Returns` section of one entry, a Google-style `Returns:` or a Sphinx `:rtype:`
@@ -49,7 +50,8 @@ wait on a mega run. Unread in the tree: item 4, which `mega-lva013` reads.
    function ending `return None`, which the check records as of no known type; a `return None` or a
    bare `return` refuses a type without `None` since (`documented._gives_none`). On `d160aa8` 12 guesses,
    8 told, 87.5% held, none of 10 read blamed: too few to pass the bars (20 told) or fail them;
-   `a8de20a` and `fa5cbd5` the same. Told has stayed at 8 over three runs since numpy's refusal, so 20 needs a wider reach
+   `a8de20a`, `fa5cbd5` and `2843438` the same. Told has stayed at 8 over four runs since numpy's
+   refusal, so 20 needs a wider reach
    ("numpydoc Returns sections", under Measurement): decided 2026-11-06, widened that way. Done when a
    mega run reads it against the bars on 20 told. About an hour beside the run, after that item;
    coverage under 0.1%.
@@ -79,22 +81,12 @@ wait on a mega run. Unread in the tree: item 4, which `mega-lva013` reads.
    run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
    stages". About an hour beside the run; coverage unchanged.
 
-4. **An attribute typed with its method's type variable** (it withdraws fixes). LVA013 writes an
-   attribute's type where a method first stores it, and a type variable that method's signature
-   declares is unbound for the attribute, which the class holds: pydantic's
-   `self.from_type: TypeForm[_FromTypeT]`, blamed for an error on the traced LVA013 run of
-   2026-10-23. Built on 2026-11-06, without measuring first: an attribute's type naming a type
-   variable its class doesn't bind is no fix (`attributes._unbound`). Done when a `mega-lva013` run
-   (`tests/corpus/runs/mega-lva013.toml`) reads the LVA013 fixes it withdraws and pydantic's error
-   gone. About an hour beside the run; coverage down by those.
-
 ### Small: under 4 hours
 
-1. **`reuse lint` back on.** It's off because no release shipped a wheel for Python 3.11+
-   ([disabled rules](CONTRIBUTING.md#disabled-rules)); 6.3.0 of 2026-10-30 ships `py3-none-any`. Add it
-   to the lint group, `uv lock`, and a step in the Lint job; past the seven-day cutoff on new releases
-   since 2026-11-06. Done when CI's Lint job runs it green and the disabled rule is gone. About an hour;
-   coverage unchanged.
+1. **`reuse lint` back on.** It was off because no release shipped a wheel for Python 3.11+; 6.3.0
+   of 2026-10-30 ships `py3-none-any`. Built: `reuse` in the dev group, a `reuse lint` step in the
+   Lint job after typos, and its disabled rule gone. Left: CI's Lint job running it green, on the
+   next push. Under an hour; coverage unchanged.
 2. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
    `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
@@ -102,9 +94,11 @@ wait on a mega run. Unread in the tree: item 4, which `mega-lva013` reads.
    function or a class body alike (5 of pygments' errors with the class variables,
    [COMPLETED.md](COMPLETED.md)). mypy reads `LiteralString` as `str` and takes it. Either write
    `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
-   receiver's `LiteralString` overloads' container returns unfixed. Measure first (decided
-   2026-11-06, the choice made on the count): how many certain fixes it is on the mega corpora. About
-   2 hours.
+   receiver's `LiteralString` overloads' container returns unfixed. Measured on
+   `mega-11-06-2026-0949` (`scratch/literal_split.py`): 33 of its 110,349 certain fixes are a
+   one-line `str` literal's `split()` with literal arguments, 31 of them in tests (django's `MONTHS`
+   and `imaplib.Months` the others), and about 3 more a literal spanning lines (textual's `DIGITS3X3`
+   pair); that run fixes no class body, where pygments' 5 are. Waits on the choice. About 2 hours.
 3. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
@@ -325,5 +319,5 @@ What to measure before building, smallest first.
   2026-10-31: `ossf/scorecard-action` v2.5.0 is taken, so zizmor's `self-repository` now waits on
   actionlint, whose newest, 1.7.12, rejects `$/`; harden-runner's block policy on macOS and Windows
   waits on the other repos' shared workflows, as one batch; astroid 4.3.4 still ships no `py.typed`,
-  and fastjsonschema 2.22.2 is as before; reuse 6.3.0 ships a wheel at last, an item under Small). About
-  an hour a pass.
+  and fastjsonschema 2.22.2 is as before; reuse 6.3.0 ships a wheel at last, and `reuse lint` is
+  back on). About an hour a pass.

@@ -226,17 +226,16 @@ tag's (hatch-vcs); a build between tags is a dev version, `0.5.1.dev3+g1a2b3c4`.
 
 Everything else is on. Some of these may be revisited.
 
-| Tool               | Rule                                                                               | Why                                                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                                               |
-| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                                               |
-| mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information.                    |
-| pylint             | `too-many-instance-attributes` on `Module`, `Outside` and `ImportPlan`             | Each is a record of one file's tables, a field a table, built by keyword.                                                    |
-| typos              | the word `astroid`                                                                 | A real package name.                                                                                                         |
-| typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.                               |
-| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.                        |
-| reuse              | `reuse lint` not run (the files still comply: `REUSE.toml` covers them)            | Before 6.3.0 no release shipped a wheel for Python 3.11+, so installing it built from source with an unpinned `poetry-core`. |
-| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.                        |
+| Tool               | Rule                                                                               | Why                                                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| ruff               | `incorrect-blank-line-before-class`, `multi-line-summary-second-line` (D203/D213)  | Each contradicts a rule that stays on (D211/D212); one of each pair has to go.                            |
+| ruff (`tests/`)    | `assert` (S101)                                                                    | pytest works through `assert`.                                                                            |
+| mypy, basedpyright | astroid's and fastjsonschema's untyped calls and missing stubs                     | Neither astroid (pylint's parser) nor fastjsonschema (the SARIF test's validator) ships type information. |
+| pylint             | `too-many-instance-attributes` on `Module`, `Outside` and `ImportPlan`             | Each is a record of one file's tables, a field a table, built by keyword.                                 |
+| typos              | the word `astroid`                                                                 | A real package name.                                                                                      |
+| typos              | `constricter/fix/tables/*.json`, `stdlib_tables/partial.json`                      | Generated from typeshed: the standard library's own names, which typos takes for misspellings.            |
+| harden-runner      | `egress-policy: audit` on macOS and Windows, and in the weekly external-link check | macOS and Windows jobs need an allowlist from their audit runs first; external links can go anywhere.     |
+| zizmor             | `self-repository` (`.github/zizmor.yml`)                                           | Scorecard reads the `$/` form it wants as an unpinned third-party action, so local actions stay `./`.     |
 
 ## AI-assisted contributions
 

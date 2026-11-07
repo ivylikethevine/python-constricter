@@ -94,6 +94,7 @@ dev = [
     "psutil", # tests/corpus/corpora_cpu.py: a step's process tree, its CPU seconds and memory
     "pytest-xdist",
     "pyyaml", # tests/ci_local.py reads the CI and Security workflows for their steps
+    "reuse", # every file's license, held to REUSE.toml (`reuse lint`)
     "ruff",
     "twine",
     "ty", # a fourth type checker (see [tool.ty])

@@ -118,6 +118,7 @@ jobs:
           constricter stdlib_tables tests hatch_build.py
       - run: flake8 constricter stdlib_tables tests hatch_build.py
       - run: typos
+      - run: reuse lint
       - run: validate-pyproject pyproject.toml
       - run: lint-imports --cache-dir local/.import_linter_cache
       - run: deptry constricter
