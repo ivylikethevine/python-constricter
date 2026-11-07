@@ -94,7 +94,11 @@ the value decides it, for a plain `name = value` in a function or module body:
   `pair[0]` or `pair[-1]`), an attribute (an annotated one, or a `@property` declaring its return)
   or method call of a class defined in the same module or another checked file (`p.x`, `p.norm()`),
   a `str`/`bytes` method with a fixed return (`s.strip()`, `", ".join(parts)`,
-  `"k=v".partition("=")` as `tuple[str, str, str]`; an `int`'s or a `float`'s too, `n.bit_length()`,
+  `"k=v".partition("=")` as `tuple[str, str, str]`; a `str` literal's `split()`, `rsplit()` or
+  `splitlines()` with literal arguments as `list[LiteralString]`, typeshed's overload, which a
+  checker holds invariant against `list[str]` (imported from `typing` where every Python the code
+  runs on has it, 3.11, else from `typing_extensions` under `if TYPE_CHECKING:`); an `int`'s or a
+  `float`'s too, `n.bit_length()`,
   `x.is_integer()`), or a `list`/`set`/`dict` method that returns its own element type
   (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default of that type, and
   `d.get(k, default)` or `d.pop(k, default)` by a literal or empty display: `V` where `V` takes it,

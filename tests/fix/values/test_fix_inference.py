@@ -450,3 +450,56 @@ def test_a_fixed_return_method_on_a_literal_is_certain() -> None:
     source: str = "def f(xs: list[str]) -> None:\n  a = ', '.join(xs)\n  b = '{}'.format(Box())\n"
     offences: list[Offence] = check_source(source)
     assert [(o.name, o.fix, o.unsafe) for o in offences] == [("a", "str", False), ("b", "str", False)]
+
+
+_NEWER: Final = Checks(min_python=(3, 11))  # whose `typing` has `LiteralString`
+
+
+@pytest.mark.parametrize(
+    ("value", "checks", "fix"),
+    [
+        ("'a b'.split()", _NEWER, "list[LiteralString]"),
+        ("'a,b'.split(',', 1)", _NEWER, "list[LiteralString]"),
+        ("'a b'.rsplit(sep=None)", _NEWER, "list[LiteralString]"),
+        ("'a\\nb'.splitlines(True)", _NEWER, "list[LiteralString]"),
+        ("'a b'.split(sep)", _NEWER, "list[str]"),  # a `str` argument takes the `str` overload
+        ("'a b'.partition(' ')", _NEWER, "tuple[str, str, str]"),  # covariant: `str` takes it
+        ("'a b'.split()", Checks(min_python=(3, 10)), "list[LiteralString]"),
+        ("'a b'.split()", Checks(), "list[LiteralString]"),  # the oldest Python unknown
+    ],
+)
+def test_a_str_literals_split_is_a_list_of_literal_strings(value: str, checks: Checks, fix: str) -> None:
+    """The `LiteralString` overload typeshed gives it, which a checker holds invariant against `list[str]`."""
+    offences: list[Offence] = check_source(f"def f(sep: str) -> None:\n    a = {value}\n", checks=checks)
+    assert [o.fix for o in offences] == [fix]
+
+
+_SPLIT: Final = "def f() -> None:\n    a = 'a b'.split()\n"
+_EXTENDED: Final = "from typing_extensions import LiteralString"
+
+
+@pytest.mark.parametrize(
+    ("source", "checks", "imported"),
+    [
+        (_SPLIT, _NEWER, "from typing import LiteralString"),
+        (_SPLIT, Checks(), _EXTENDED),  # for type checking alone: nothing imports it as the module runs
+        (f"from typing_extensions import LiteralString\n{_SPLIT}", Checks(), None),
+        (f"import typing\n{_SPLIT}", _NEWER, None),
+    ],
+)
+def test_literal_string_is_imported_as_the_module_can(
+    source: str,
+    checks: Checks,
+    imported: str | None,
+) -> None:
+    """From `typing` where every Python the module runs on has it, else from `typing_extensions`."""
+    offences: list[Offence] = check_source(source, checks=checks)
+    assert offences[0].edit is not None
+    written: tuple[str, ...] = (*offences[0].edit.imports, *offences[0].edit.guarded)
+    assert (imported in written) if imported else not written
+
+
+def test_literal_string_bound_otherwise_is_no_fix_of_its_own() -> None:
+    """A name the module binds to something else: the call's `list[str]`."""
+    source: str = f"LiteralString = 1\n{_SPLIT}"
+    assert [o.fix for o in check_source(source)] == ["list[str]"]

@@ -89,19 +89,7 @@ wait on a mega run.
 
 ### Small: under 4 hours
 
-1. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
-   `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
-   `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
-   holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
-   function or a class body alike (5 of pygments' errors with the class variables,
-   [COMPLETED.md](COMPLETED.md)). mypy reads `LiteralString` as `str` and takes it. Either write
-   `list[LiteralString]` (a later `append` of a `str` then fails under pyright), or leave a literal
-   receiver's `LiteralString` overloads' container returns unfixed. Measured on
-   `mega-11-06-2026-0949` (`scratch/literal_split.py`): 33 of its 110,349 certain fixes are a
-   one-line `str` literal's `split()` with literal arguments, 31 of them in tests (django's `MONTHS`
-   and `imaplib.Months` the others), and about 3 more a literal spanning lines (textual's `DIGITS3X3`
-   pair); that run fixes no class body, where pygments' 5 are. Waits on the choice. About 2 hours.
-2. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
+1. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
    `from dateutil import parser`, so the name resolves to the package's own binding and not to the
@@ -110,11 +98,11 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    third-party bindings with no fix into a package typeshed's bundled stubs cover
    (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
    many of a run's "imported" bindings call through a name bound so. About 2 hours.
-3. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
+2. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
    an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
    no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
    stub or a checked file declares. About 2 hours.
-4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+3. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -291,9 +279,9 @@ What to measure before building, smallest first.
 1. **A `vague = 0` run.** The runs use the default, no `Any` anywhere, which rejects `NDArray[Any]`,
    `dict[str, Any]`, `pickle.loads` and `json.loads`: `numpy` alone is 4,320 calls with no fix on
    the 47 corpora. One run at `vague = 0` says what the default costs on the scientific corpora
-   (xarray, dask, networkx, pandas): a run file's `options = ["--vague", "0"]` gives it to every
-   constricter command of the run (2026-10-21). Done when the census is read at both. About an
-   hour beside the run; coverage unchanged.
+   (xarray, dask, networkx, pandas): `tests/corpus/runs/vague.toml` runs their check and census
+   at `--vague 0`, to read against a mega run's census at the same commit. Done when the census is
+   read at both. About an hour beside the run; coverage unchanged.
 2. **Framework plugins' types.** django-stubs' and pydantic's mypy plugins type what the frameworks
    make at run time (a model's fields, a manager's querysets), but only inside a mypy run. About 0
    calls in the corpora reach them. Done when measured on django's tests through mypy's

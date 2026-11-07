@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A `str` literal's `split()`, `rsplit()` or `splitlines()` with literal arguments is fixed
+  `list[LiteralString]`: typeshed's `LiteralString` overload, which basedpyright held invariant
+  against the `list[str]` written before (django's `MONTHS`, textual's `DIGITS3X3`). It's imported
+  from `typing` on Python 3.11 or later, else from `typing_extensions` for type checking alone.
 - A docstring's named return (`documented`) reads more than builtin scalars: a class the module
   binds by that name, its own or one it imports (`Index`, `nx.Graph`, `dt.datetime`), not a generic
   one; a builtin container of one (`list of int`, `dict[str, Graph]`); one `or None`; and a numpydoc

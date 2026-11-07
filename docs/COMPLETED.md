@@ -723,6 +723,18 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
   `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
   branches, not a copy. Too few to build a join for; left as it is unless a run shows more.
+- **A `str` literal's `split()`.** `macros = """a b""".split()` was fixed `list[str]` (certain,
+  `literal+method`), but typeshed's `LiteralString` overload gives a literal's `split()`
+  `list[LiteralString]`, which basedpyright holds invariant against `list[str]` (5 of pygments'
+  errors with the class variables). Measured on `mega-11-06-2026-0949` (`scratch/literal_split.py`):
+  33 of its 110,349 certain fixes are a one-line literal's `split()` with literal arguments, 31 in
+  tests (django's `MONTHS`, `imaplib.Months`), and about 3 a literal spanning lines (textual's
+  `DIGITS3X3`). Decided 2026-11-06, of writing `list[LiteralString]` or no fix: the former, though
+  a later `append` of a `str` then fails under pyright. Built: `split`, `rsplit` and `splitlines`
+  on a `str` literal with every argument a literal are `list[LiteralString]`
+  (`members._literal_list`), from `typing` where every Python the code runs on has it (3.11),
+  else from `typing_extensions` under `if TYPE_CHECKING:`; mypy reads it as `str`. A `str`
+  argument keeps the `str` overload's `list[str]`.
 
 ## Command and output
 
