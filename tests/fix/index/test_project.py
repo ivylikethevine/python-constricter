@@ -755,3 +755,26 @@ def test_a_class_imported_for_type_checking_alone_gives_its_members(tmp_path: Pa
         "    size = ",
         "    size: int = ",
     ).replace("    named = ", "    named: str = ")
+
+
+SHADOWING: Final = """
+from pkg.compat import str
+from pkg.messages import Warning
+
+
+def run(s: bytes) -> None:
+    text = s.decode()
+    w = Warning()
+    return text, w
+"""
+SHADOWED: Final = SHADOWING.replace("w = Warning()", "w: Warning = Warning()")
+
+
+def test_a_builtin_imported_as_another_modules_value_is_shadowed(tmp_path: Path) -> None:
+    """`from .compat import str`, where `compat` assigns `str = str`: no type names it; a class is a class."""
+    _ = _write(tmp_path / "pkg" / "__init__.py", "")
+    _ = _write(tmp_path / "pkg" / "compat.py", "str = str\n")
+    _ = _write(tmp_path / "pkg" / "messages.py", "class Warning:\n    pass\n")
+    main: Path = _write(tmp_path / "main.py", SHADOWING)
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(tmp_path)]) == cli.EXIT_FOUND
+    assert main.read_text(encoding="utf-8") == SHADOWED

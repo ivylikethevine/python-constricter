@@ -201,6 +201,22 @@ def test_a_generic_class_is_never_written_bare() -> None:
     assert _found(GENERIC) == [(16, 8, "self.box", None, False), (17, 8, "self.plain", "Plain", True)]
 
 
+def test_a_type_variable_the_class_doesnt_bind_is_no_fix() -> None:
+    """A type variable the storing method's signature declares is unbound for the class's attribute."""
+    source: str = """
+    from typing import TypeVar
+
+    _T = TypeVar("_T")
+
+
+    class Adapter:
+        def __init__(self, kind: type[_T], name: str) -> None:
+            self.kind = kind
+            self.name = name
+    """
+    assert _found(source) == [(8, 8, "self.kind", None, False), (9, 8, "self.name", "str", True)]
+
+
 def test_the_fix_policy_holds() -> None:
     """`fix-ignore = assigned` drops the fix, not the offence."""
     policy: Checks = _ON._replace(fixes=FixPolicy(ignore=frozenset({"assigned"})))

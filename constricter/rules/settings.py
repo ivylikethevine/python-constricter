@@ -131,7 +131,7 @@ def module_settings(
                 origins,
                 # What annotations alone can name: its own imports for type checking, and other files' types'.
                 replace(
-                    imports.plan(tree),
+                    imports.plan(tree, seen.values),
                     guarded={**seen.checking, **seen.guarded},
                     factories=seen.factories,
                 ),

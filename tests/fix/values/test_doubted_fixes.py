@@ -276,6 +276,34 @@ def test_a_library_call_given_self_that_returns_its_class_is_self() -> None:
     }
 
 
+def test_a_news_own_instance_is_self_where_it_returns_self() -> None:
+    """`object.__new__(cls)` in a `__new__` declared `-> Self` is `Self`, as a classmethod's `cls()`."""
+    source: str = """
+    from typing import Self
+
+    class Name(str):
+        def __new__(cls, value: str) -> Self:
+            a = super().__new__(cls, value)
+            return a
+
+    class Sentinel:
+        def __new__(cls, name: str) -> Self:
+            b = object.__new__(cls)
+            return b
+
+    class Plain:
+        def __new__(cls):
+            c = object.__new__(cls)
+            return c
+    """
+    found: dict[str, tuple[str | None, bool]] = _found(source)
+    assert {name: fix for name, (fix, _) in found.items()} == {
+        "a": "Self",
+        "b": "Self",
+        "c": "Plain",  # a signature without `Self`
+    }
+
+
 def test_a_generic_class_is_never_written_bare() -> None:
     """`[self]` in a generic class would be `list[Box]`, missing its type arguments: nothing is offered."""
     source: str = """
@@ -698,4 +726,37 @@ def test_a_read_a_test_narrows_is_what_the_test_leaves() -> None:
         "s": (None, False),  # by a pattern's star
         "t": (None, False),  # by a pattern
         "u": (None, False),  # by an import
+    }
+
+
+def test_a_type_naming_a_builtin_the_module_shadows_is_no_fix() -> None:
+    """A type checker reads the module's own `str` function or `bytes` variable there; a class is a class."""
+    source: str = """
+    import builtins
+    import re
+
+    bytes = builtins.bytes
+
+
+    def str(value: object) -> builtins.str:
+        return repr(value)
+
+
+    class property:
+        pass
+
+
+    def f(s: builtins.bytes) -> None:
+        pat = re.compile("a")
+        n = len(s)
+        text = s.decode()
+        raw = s.strip()
+        prop = property()
+    """
+    assert _found(source) == {
+        "pat": (None, False),  # `re.Pattern[str]` without the shadow
+        "n": ("int", False),
+        "text": (None, False),  # `str`
+        "raw": (None, False),  # `bytes`
+        "prop": ("property", True),  # the module's own class, plain: a guess
     }

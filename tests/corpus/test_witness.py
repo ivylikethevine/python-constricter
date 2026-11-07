@@ -16,13 +16,14 @@ from unittest import mock
 import pytest
 
 from constricter import trace
-from tests.corpus import corpus_guesses
+from tests.corpus import corpus_guesses, corpus_suite
 
 _Holds: TypeAlias = Callable[[object, object], bool | None]
 _Patched: TypeAlias = Callable[[object, str], bool]
 _Case: TypeAlias = tuple[object, object, bool | None]  # a value, an annotation, and whether it holds
 _T = TypeVar("_T")
 _Judged: TypeAlias = list[str | int | list[int] | list[str]]  # a binding as a witness process writes it
+_IMPORT: Final = "from pathlib import Path"  # what a fix naming `Path` adds
 _HELD: Final[tuple[_Case, ...]] = (
     ([1, 2], list[int], True),
     ([1, "a", 3], list[int], False),
@@ -167,7 +168,10 @@ def test_only_a_builtin_containers_elements_are_read(holds: _Holds) -> None:
 
 
 def test_a_verdict_tells_of_the_values_that_differed(tmp_path: Path) -> None:
-    """The first ones its processes wrote, each once: the value's class and the annotation's."""
+    """The first ones its processes wrote, each once: the value's class and the annotation's.
+
+    A binding is judged against each annotation it was given, each a verdict of its own.
+    """
     with mock.patch.dict(trace.__dict__):
         kind: Callable[[_Rows | float], str] = typing.cast(
             "Callable[[_Rows | float], str]",
@@ -178,18 +182,42 @@ def test_a_verdict_tells_of_the_values_that_differed(tmp_path: Path) -> None:
     written: Path = tmp_path / ".venv" / "corpus-suite-verdicts"
     written.mkdir(parents=True)
     processes: list[list[_Judged]] = [
-        [["a.py", 1, "x", [3, 1, 0], [differed]], ["a.py", 2, "y", [1, 0, 0], []]],
-        [["a.py", 1, "x", [0, 2, 0], [differed, f"{kind(1.0)} against <class 'str'>"]]],
+        [
+            ["a.py", 1, "x", "str", [3, 1, 0], [differed]],
+            ["a.py", 1, "x", "int | str", [4, 0, 0], []],
+            ["a.py", 2, "y", "int", [1, 0, 0], []],
+        ],
+        [["a.py", 1, "x", "str", [0, 2, 0], [differed, f"{kind(1.0)} against <class 'str'>"]]],
     ]
     pid: int
     judged: list[_Judged]
     for pid, judged in enumerate(processes):
         _ = (written / f"{pid}.json").write_text(json.dumps(judged), encoding="utf-8")
     verdicts: corpus_guesses.Verdicts = corpus_guesses.verdicts(tmp_path)
-    assert verdicts["a.py"][1]["x"] == corpus_guesses.Verdict(
+    assert verdicts["a.py"][1]["x"]["str"] == corpus_guesses.Verdict(
         3,
         3,
         0,
         (differed, "builtins:float against <class 'str'>"),
     )
-    assert verdicts["a.py"][2]["y"] == corpus_guesses.Verdict(1, 0, 0)
+    assert corpus_guesses.verdict(verdicts, "a.py", 1, "x", "int | str") == corpus_guesses.Verdict(4, 0, 0)
+    assert verdicts["a.py"][2]["y"]["int"] == corpus_guesses.Verdict(1, 0, 0)
+    assert corpus_guesses.verdict(verdicts, "a.py", 2, "y", "str") == corpus_guesses.Verdict()
+
+
+def test_the_witness_is_told_each_annotation_a_binding_is_given_once(tmp_path: Path) -> None:
+    """Two fix steps' same annotation once; two annotations both, each with its fix's imports."""
+    (tmp_path / ".venv").mkdir()
+    fixes: dict[str, list[corpus_suite.Fix]] = {
+        "src/a.py": [
+            corpus_suite.Fix("src/a.py", 1, "x", "str", "constructor", unsafe=True),
+            corpus_suite.Fix("src/a.py", 1, "x", "str", "checker", unsafe=True),
+            corpus_suite.Fix("src/a.py", 1, "x", "Path", "checker", unsafe=True, imports=(_IMPORT,)),
+            corpus_suite.Fix("src/a.py", 2, "y", "int", "literal", unsafe=False),
+        ],
+    }
+    told: list[str] = cast("list[str]", json.loads(corpus_guesses.expected(tmp_path, fixes)))
+    assert json.loads(Path(told[0]).read_text(encoding="utf-8")) == {
+        "src/a.py": {"1": {"x": [["str"], ["Path", _IMPORT]]}, "2": {"y": [["int"]]}},
+    }
+    assert Path(told[1]).is_dir()

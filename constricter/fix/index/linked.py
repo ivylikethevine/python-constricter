@@ -48,10 +48,13 @@ def same(catalog: Index, path: Path, guarded: Mapping[str, Guarded]) -> tuple[fr
 
 
 def values(catalog: Index, path: Path) -> frozenset[str]:
-    """Find the names the file at `path` imports that another checked module binds by assignment.
+    """Find the names the file at `path` imports that another module binds as a value, not a class.
 
-    `F`, by `F = duckdb.FunctionExpression` there: a value, whatever its name looks like, and a call
-    of it constructs nothing a type can be written for.
+    `F`, by `F = duckdb.FunctionExpression` in another checked module (its `assigned`): a value,
+    whatever its name looks like, and a call of it constructs nothing a type can be written for. And
+    `Observer`, by `Observer = _get_observer_cls()` in an installed module, or bound there in more than
+    one arm of an `if` (its `variables`): a variable to a checker, whatever it holds at run time.
+    Imported at the file's top level, or inside a function for its own use (`inner`).
 
     Returns:
       Them, as the file binds them; none for a file `catalog` doesn't have.
@@ -63,10 +66,12 @@ def values(catalog: Index, path: Path) -> frozenset[str]:
     found: set[str] = set()
     local: str
     origin: Origin
-    for local, origin in target.names.items():
+    for local, origin in {**target.inner, **target.names}.items():
         where: Origin = spelling.canonical_origin(catalog.modules, origin)
         defining: Module | None = catalog.modules.get(where[0])
-        if defining is not None and where[1] in defining.assigned and where[0] != target.name:
+        if defining is None or where[0] == target.name:
+            continue
+        if where[1] in (defining.variables if defining.installed else defining.assigned):
             found.add(local)
     return frozenset(found)
 

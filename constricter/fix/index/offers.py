@@ -66,10 +66,10 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
     """Drop the edits of the file at `path`'s hints that import what isn't a class, or a generic one bare.
 
     And those writing a name the file binds that a module it imports whole has a class of too (see
-    `_ambiguous`).
+    `_ambiguous`); a hint showing such a name is dropped whole, since what it shows is taken first.
 
     Returns:
-      The hints, without them: such a hint is judged by what it shows alone.
+      The hints, without them: a hint without its edit is judged by what it shows alone.
 
     """
     if not any(found.offered for found in hints):
@@ -84,11 +84,17 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
             catalog,
             module,
             found._replace(
+                types={
+                    where: shown
+                    for where, shown in found.types.items()
+                    if not _ambiguous(catalog, target, shown, ())
+                },
                 offered={
                     where: offered
                     for where, offered in found.offered.items()
                     if _sound(catalog, module, offered, found.types.get(where, ""))
-                    and not _ambiguous(catalog, target, offered)
+                    and not _ambiguous(catalog, target, offered.text, offered.imports)
+                    and not _ambiguous(catalog, target, found.types.get(where, ""), ())
                 },
             ),
             guarded,
@@ -226,12 +232,17 @@ def _sound(catalog: project.Index, module: tuple[str, bool], offered: Offered, s
     return True
 
 
-def _ambiguous(catalog: project.Index, target: project.Module | None, offered: Offered) -> bool:
-    """Check whether a hint's edit writes a name the file binds and a module it imports whole has a class of.
+def _ambiguous(
+    catalog: project.Index,
+    target: project.Module | None,
+    text: str,
+    imports: tuple[str, ...],
+) -> bool:
+    """Check whether a hint's `text` names what the file binds and a module it imports whole has a class of.
 
     basedpyright shows `enum.Enum` as `Enum`, and its edit writes it so, where the file defines an
     `Enum` of its own (sqlalchemy's `sqltypes.py`, importing `enum`): which the checker meant can't
-    be told. A name the edit imports itself is the edit's.
+    be told. `imports`: the edit's, where `text` is its; a name they import themselves is the edit's.
 
     Returns:
       Whether one is.
@@ -240,12 +251,12 @@ def _ambiguous(catalog: project.Index, target: project.Module | None, offered: O
     if target is None:
         return False
     try:
-        tree: ast.Expression = ast.parse(offered.text, mode="eval")
+        tree: ast.Expression = ast.parse(text, mode="eval")
     except SyntaxError:
         return False
     added: set[str] = set()
     statement: str
-    for statement in offered.imports:  # each parses: `vetted` asks `_sound` first
+    for statement in imports:  # each parses: `vetted` asks `_sound` first
         added.update(
             (alias.asname or alias.name).partition(".")[0]
             for node in ast.parse(statement).body
@@ -255,14 +266,27 @@ def _ambiguous(catalog: project.Index, target: project.Module | None, offered: O
     wholes: list[str] = [origin[0] for origin in target.names.values() if origin[1] is None]
     written: set[str] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} - added
     return any(
-        name in target.names
-        and any(
-            (whole, name) != target.names[name]
-            and (_class(catalog, (whole, name)) is not None or name in _UNTABLED.get(whole, ()))
-            for whole in wholes
-        )
+        name in target.names and any(_another(catalog, (whole, name), target.names[name]) for whole in wholes)
         for name in written
     )
+
+
+def _another(catalog: project.Index, other: Origin, bound: Origin) -> bool:
+    """Check whether `other`, a whole-imported module's name, is a class and not the one `bound` names.
+
+    `pandas.Index` is `pandas.core.indexes.base.Index` re-exported: the one class, however the file
+    binds it. A typing form's factory (`enum.Enum`'s, `typing.NamedTuple`) counts as a class.
+
+    Returns:
+      Whether it is.
+
+    """
+    if other == bound:
+        return False
+    if _class(catalog, other) is None and other[1] not in _UNTABLED.get(other[0], ()):
+        return False
+    defined: _Defined | None = _defined(catalog, other)
+    return defined is None or defined != _defined(catalog, bound)
 
 
 def _private(catalog: project.Index, name: str) -> bool:

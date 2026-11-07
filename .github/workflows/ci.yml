@@ -37,7 +37,7 @@ jobs:
       tested: ${{ steps.find.outputs.tested }}
       tree: ${{ steps.find.outputs.tree }}
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -73,7 +73,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -118,6 +118,7 @@ jobs:
           constricter stdlib_tables tests hatch_build.py
       - run: flake8 constricter stdlib_tables tests hatch_build.py
       - run: typos
+      - run: reuse lint
       - run: validate-pyproject pyproject.toml
       - run: lint-imports --cache-dir local/.import_linter_cache
       - run: deptry constricter
@@ -139,7 +140,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -173,7 +174,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -222,7 +223,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -262,7 +263,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -315,7 +316,7 @@ jobs:
       # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
       # (3.14t).
       # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
@@ -361,7 +362,7 @@ jobs:
       contents: read
     steps:
       # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
@@ -399,7 +400,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -427,7 +428,7 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >

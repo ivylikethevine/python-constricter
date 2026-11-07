@@ -213,19 +213,23 @@ def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path
         ("import enum\n\n\nx = 1\n", True),  # nothing of its own of that name
     ],
 )
-def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_edit(
+def test_a_name_the_file_binds_and_a_module_it_imports_has_too_is_no_hint(
     tmp_path: Path,
     source: str,
     *,
     kept: bool,
 ) -> None:
-    """As basedpyright writes `enum.Enum`: `Enum`, where the file may define an `Enum` of its own."""
+    """As basedpyright writes `enum.Enum`: `Enum`, where the file may define an `Enum` of its own.
+
+    What the hint shows is taken before its edit, so the hint goes whole, not its edit alone.
+    """
     path: Path = tmp_path / "kinds.py"
     _ = path.write_text(source, encoding="utf-8")
     offered: Offered = Offered("MappingProxyType[str, Enum]", ("from types import MappingProxyType",))
-    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text, (2, 1): "int"}, {_AT: offered}),)
     found: Hints = offers.vetted(project.index([path]), path, hints)[0]
     assert found.offered == ({_AT: offered} if kept else {})
+    assert found.types == ({_AT: offered.text, (2, 1): "int"} if kept else {(2, 1): "int"})
 
 
 @pytest.mark.parametrize("text", ["Decimal", "Decimal["])
@@ -238,3 +242,43 @@ def test_an_edit_nothing_can_call_ambiguous_is_kept(tmp_path: Path, text: str) -
     catalog: project.Index
     for catalog in (project.index([]), project.index([path])):
         assert offers.vetted(catalog, path, hints)[0].offered == {_AT: offered}
+
+
+def test_a_class_a_whole_import_reexports_is_the_one_the_file_binds(tmp_path: Path) -> None:
+    """`pandas.Index` is `pandas.core.indexes.base.Index`: a hint showing `Index` names the one class."""
+    (tmp_path / "pkg").mkdir()
+    _ = (tmp_path / "pkg" / "__init__.py").write_text(
+        "from pkg.base import Index as Index\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "pkg" / "base.py").write_text("class Index:\n    pass\n", encoding="utf-8")
+    path: Path = tmp_path / "pkg" / "uses.py"
+    _ = path.write_text("import pkg\nfrom pkg.base import Index\n\nx = 1\n", encoding="utf-8")
+    offered: Offered = Offered("list[Index]", ())
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    paths: list[Path] = [tmp_path / "pkg" / "__init__.py", tmp_path / "pkg" / "base.py", path]
+    found: Hints = offers.vetted(project.index(paths), path, hints)[0]
+    assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})
+
+
+@pytest.mark.parametrize(
+    ("package", "uses"),
+    [
+        ("class Index:\n    pass\n", "import pkg\nfrom pkg import Index\n\nx = 1\n"),  # the one it binds
+        ("def Index() -> None:\n    pass\n", "import pkg\n\n\nclass Index:\n    pass\n\n\nx = 1\n"),
+    ],
+)
+def test_a_whole_imports_name_that_is_no_other_class_leaves_the_hint(
+    tmp_path: Path,
+    package: str,
+    uses: str,
+) -> None:
+    """The very name the file binds, or a whole-imported module's function of the name, is no other class."""
+    (tmp_path / "pkg").mkdir()
+    _ = (tmp_path / "pkg" / "__init__.py").write_text(package, encoding="utf-8")
+    path: Path = tmp_path / "pkg" / "uses.py"
+    _ = path.write_text(uses, encoding="utf-8")
+    offered: Offered = Offered("list[Index]", ())
+    hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
+    found: Hints = offers.vetted(project.index([tmp_path / "pkg" / "__init__.py", path]), path, hints)[0]
+    assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})

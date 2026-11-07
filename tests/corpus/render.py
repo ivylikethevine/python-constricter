@@ -267,38 +267,47 @@ def _blames(checked: Record) -> Counter[_Key]:
 
 
 def guesses(records: Records, store: Store) -> list[Record]:
-    """Gather every fix of each corpus's `fix-unsafe` step, with what blames it or bears it out.
+    """Gather every fix of each corpus's `fix-unsafe` and `infer-union` steps, with what judges it.
 
     The new type errors its suite's checks traced to it (`errors`; `checked`: whether the suite has
-    checks that ran), and how its binding's values stood to its annotation as the traced tests ran
-    (`verdict`: how many fit, didn't, and couldn't be told; `seen`: the types the trace spells).
-    What a set of mechanisms is measured by, to be likely (docs/LIKELY.md).
+    checks that ran after the step), and how its binding's values stood to its annotation as the
+    traced tests ran (`verdict`: how many fit, didn't, and couldn't be told; `seen`: the types the
+    trace spells), the step's own verdicts (`<step>.verdicts.jsonl`, by annotation). What a set of
+    mechanisms is measured by, to be likely (docs/LIKELY.md): the guesses' sets by `fix-unsafe`'s
+    rows, and those the union alone makes (`agreed+checker`) by `infer-union`'s (`fix`), which
+    hold the guesses' fixes again.
 
     Returns:
-      Them, a record a fix; none of a corpus whose suite ran neither its checks nor its tests traced.
+      Them, a record a fix; none of a step its corpus's suite ran neither its checks nor its tests
+      traced after.
 
     """
     found: list[Record] = []
-    step: str = FIX_UNSAFE
+    step: str
     tree: Tree
     version: str
-    for tree, version in itertools.product(records.trees, records.versions):
+    for tree, version, step in itertools.product(records.trees, records.versions, (FIX_UNSAFE, INFER_UNION)):
         fixed: Record = cast("Record", records.of(tree, version, TYPES).get("fixed", {}))
         checked: Record = cast("Record", fixed.get(step, {}))
-        judged: list[Record] = jsonl.read(store.path(tree.name, version, TRACED, ".verdicts.jsonl"))
+        judged: list[Record] = jsonl.read(
+            store.path(tree.name, version, TRACED if step == FIX_UNSAFE else step, ".verdicts.jsonl"),
+        )
         if tree.base is None or not (checked or judged):
             continue
         source: str = tree.root.relative_to(tree.base).as_posix()
         errors: Counter[_Key] = _blames(checked)
-        told: dict[_Key, Record] = {_key(each["path"], each): each for each in judged}
+        told: dict[tuple[_Key, str], Record] = {
+            (_key(each["path"], each), str(each["annotation"])): each for each in judged
+        }
         fix: Record
         for fix in jsonl.read(store.path(tree.name, version, step, ".fixes.jsonl")):
             key: _Key = _key(f"{source}/{fix['path']}", fix)
-            verdict: Record = told.get(key, {})
+            verdict: Record = told.get((key, str(fix["annotation"])), {})
             found.append(
                 {
                     "package": tree.name,
                     "constricter": version,
+                    "fix": step,
                     "path": key[0],
                     "line": key[1],
                     "name": key[2],

@@ -99,6 +99,34 @@ def guarded_origins(tree: ast.Module, name: str, *, is_package: bool) -> dict[st
     return {bound: origin for bound, origin in found.items() if bound not in either}
 
 
+def inner_origins(tree: ast.Module, name: str, *, is_package: bool) -> dict[str, Origin]:
+    """Map the names module `name` imports inside its functions and classes, for their own use.
+
+    Not its top level's (`origins_of`, `guarded_origins`): what a body binds for its own use, which the
+    body's calls then name. Not a name two such imports bind to different things.
+
+    Returns:
+      What each refers to.
+
+    """
+    found: dict[str, Origin] = {}
+    either: set[str] = set()
+    node: ast.AST
+    bound: str
+    origin: Origin
+    for node in (
+        n
+        for stmt in tree.body
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for n in ast.walk(stmt)
+    ):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            for bound, origin in _imported(node, name, is_package=is_package).items():
+                if found.setdefault(bound, origin) != origin:
+                    either.add(bound)
+    return {bound: origin for bound, origin in found.items() if bound not in either}
+
+
 def skipped(tree: ast.Module, names: Mapping[str, Origin]) -> dict[str, Origin]:
     """Map each name the module binds to `pytest.importorskip("mod")` to that module, as an import binds it.
 

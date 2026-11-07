@@ -2,8 +2,10 @@
 
 `with_installed` adds to the cross-file index the modules the checked files import from installed
 packages that declare their types: a stub package (`numpy-stubs`), a `py.typed` package's stubs
-(`.pyi`) or source, or a lone stub module; and, as guesses (`declared`, see `as_untyped`), those of
-packages that declare none, read for their own annotations. Each is found on the search path (the
+(`.pyi`) or source, or a lone stub module; of packages that declare none, typeshed's third-party
+stubs bundled with basedpyright (`bundled`), as a stub package where the installed version is the
+stub set's and as guesses where not; and, as guesses (`declared`, see `as_untyped`), those of
+packages with neither, read for their own annotations. Each is found on the search path (the
 running interpreter's, and the active virtual environment's, `search_path`) as the import system
 would, and read
 as `modules.read` reads a checked file, but never checked or fixed; the modules they import from
@@ -16,17 +18,19 @@ apart at most (`swept`): what's unread for a month goes, and what's over its cap
 
 import contextlib
 import hashlib
+import importlib.metadata
 import os
 import pickle  # the cache: written and read by constricter alone, in the user's own directory
 import sys
 import sysconfig
 import tempfile
 import time
+import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter._version import __version__  # not the package's: it imports the rules
 from constricter.empty import Empty
@@ -36,6 +40,7 @@ from constricter.fix.index.project import HOPS, STDLIB
 from constricter.fix.index.stubs.declared import Class, Declarations
 
 LIMIT: Final = 2000  # the most installed modules one run reads
+_Toml: TypeAlias = "str | int | float | bool | list[_Toml] | dict[str, _Toml]"  # a `METADATA.toml`'s values
 _STUBS: Final = "-stubs"
 _TYPED: Final = "py.typed"
 # Modules whose classes are typing forms, typed by typeshed, installed with no `py.typed`: read as
@@ -57,6 +62,14 @@ _SWEPT: Final = ".swept"  # in a build's part of the cache: touched when that bu
 _DAY: Final = 86400.0  # the seconds between a build's sweeps
 _KEPT: Final = 30 * _DAY  # the seconds an entry is kept unread, and another build's part unswept
 _CAP: Final = 256 << 20  # the bytes a build's entries may take: past it, the longest unread go
+# typeshed's third-party stub sets, as basedpyright bundles them under a site directory: each set a
+# distribution's, holding `METADATA.toml` (its `version`) and the packages or modules it stubs.
+_BUNDLED: Final = ("basedpyright", "dist", "typeshed-fallback", "stubs")
+_METADATA: Final = "METADATA.toml"
+_VERSION: Final = "version"
+_NAME: Final = "Name"  # a distribution's, in its metadata
+_COMPATIBLE: Final = "~="  # a PEP 440 compatible release: `~=7.34.1` is 7.34.1 or later, under 7.35
+_ANY: Final = ".*"  # `6.0.*`: any 6.0 release
 
 
 def search_path() -> tuple[Path, ...]:
@@ -103,10 +116,18 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         seen.add(name)
         path: Path | None
         module: Module | None
+        stub: tuple[Path, bool] | None
         if (path := locate(name, tuple(search))) is not None:
             module = cached(path, name)
         elif name.partition(".")[0] in _FORMS:  # typeshed's: its classes are special forms
             module = None
+        elif (
+            name.partition(".")[0] not in _CLASSES_ALONE
+            and (stub := bundled(name, tuple(search))) is not None
+            and _unseen(name, tuple(search)) is not None
+        ):
+            module = cached(stub[0], name)  # installed untyped, stubbed by typeshed
+            module = module if module is None or stub[1] else as_untyped(module)
         else:  # installed with no types declared, or not at all
             module = _unseen(name, tuple(search))
             module = None if module is None else as_untyped(module)
@@ -320,6 +341,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
 
     `from pkg import util` may name the module `pkg.util` as well as something `pkg` defines; a call
     through an imported module (`pkg.util.f()` after `import pkg.util`) names each module on its way.
+    What a function imports for its own use counts too (`Module.inner`).
 
     Returns:
       Their names, in order, each once.
@@ -329,7 +351,7 @@ def _imported(found: Iterable[Module]) -> list[str]:
     module: Module
     for module in found:
         origin: tuple[str, str | None]
-        for origin in (*module.names.values(), *module.guarded.values()):
+        for origin in (*module.names.values(), *module.guarded.values(), *module.inner.values()):
             if origin[0].partition(".")[0] not in STDLIB and origin[0] != module.name:
                 names[origin[0]] = None
                 if origin[1] is not None:
@@ -384,6 +406,146 @@ def locate(name: str, search: tuple[Path, ...]) -> Path | None:
         if here:
             return None  # installed here, untyped: an earlier directory shadows any later one
     return None
+
+
+def bundled(name: str, search: tuple[Path, ...]) -> tuple[Path, bool] | None:
+    """Find typeshed's stub for module `name` among the third-party stub sets basedpyright bundles.
+
+    Of the first set on `search` with a stub for it; a set that lacks a module (`partial-stub`, or
+    a module the stubs never had) leaves it to the package's own source.
+
+    Returns:
+      The stub, and whether the installed distribution's version is one the set is for: read as a
+      stub package where it is, as the package's own annotations (`as_untyped`) where it isn't, or
+      the distribution isn't found; or `None` if no set stubs the module.
+
+    """
+    top: str
+    rest: list[str]
+    top, *rest = name.split(".")
+    stubs: _Set
+    for stubs in _sets(search).get(top, ()):
+        found: Path | None
+        if (found := _module_file(stubs.directory.joinpath(top, *rest))) is not None:
+            return found, fits(_installed(search).get(_normalized(stubs.directory.name)), stubs.version)
+    return None
+
+
+class _Set(NamedTuple):
+    """One of typeshed's stub sets: its directory, named for its distribution, and the version it's for."""
+
+    directory: Path
+    version: str
+
+
+@lru_cache(maxsize=4)
+def _sets(search: tuple[Path, ...]) -> Mapping[str, tuple[_Set, ...]]:
+    """Map each top-level package or module typeshed's bundled stub sets have to the sets, in order.
+
+    Returns:
+      By name: each set, with the version its `METADATA.toml` names.
+
+    """
+    found: dict[str, list[_Set]] = {}
+    directory: Path
+    for directory in search:
+        root: Path = directory.joinpath(*_BUNDLED)
+        if not root.is_dir():
+            continue
+        stubs: Path
+        for stubs in sorted(root.iterdir()):
+            version: str | None
+            if (version := _version(stubs / _METADATA)) is None:
+                continue
+            with contextlib.suppress(OSError):
+                entry: Path
+                for entry in stubs.iterdir():
+                    if entry.name != _METADATA and (entry.is_dir() or entry.suffix == STUB):
+                        found.setdefault(entry.stem, []).append(_Set(stubs, version))
+    return {name: tuple(sets) for name, sets in found.items()}
+
+
+def _version(metadata: Path) -> str | None:
+    """Read the version a stub set's `METADATA.toml` says its stubs are for.
+
+    Returns:
+      It, `""` for none; `None` if the file is missing or doesn't parse.
+
+    """
+    try:
+        raw: dict[str, _Toml] = tomllib.loads(metadata.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None
+    return str(raw.get(_VERSION, ""))
+
+
+@lru_cache(maxsize=4)
+def _installed(search: tuple[Path, ...]) -> Mapping[str, str]:
+    """Map each distribution installed on `search` to its version, by its normalized name.
+
+    Returns:
+      Them; a distribution found twice is the first directory's.
+
+    """
+    found: dict[str, str] = {}
+    distribution: importlib.metadata.Distribution
+    with contextlib.suppress(OSError):
+        for distribution in importlib.metadata.distributions(path=[str(directory) for directory in search]):
+            name: str
+            # Asked first: a missing name read is deprecated (a `KeyError` to come), and a warning.
+            if _NAME in distribution.metadata and (name := distribution.metadata[_NAME]):
+                _ = found.setdefault(_normalized(name), distribution.version)
+    return found
+
+
+def _normalized(distribution: str) -> str:
+    """Normalize a distribution's name as PEP 503 does: `PyYAML` and `pyyaml` are one.
+
+    Returns:
+      It.
+
+    """
+    return "-".join(
+        part for part in distribution.lower().replace("_", "-").replace(".", "-").split("-") if part
+    )
+
+
+def fits(version: str | None, wanted: str) -> bool:
+    """Check whether an installed `version` is one typeshed's `wanted` names.
+
+    `6.0.*` is any 6.0 release, `~=7.34.1` any from 7.34.1 under 7.35 (PEP 440), `2026.5.9` that one.
+
+    Returns:
+      Whether it is; an unknown version never.
+
+    """
+    if version is None:
+        return False
+    release: tuple[int, ...] = _release(version)
+    base: tuple[int, ...]
+    if wanted.startswith(_COMPATIBLE):
+        base = _release(wanted.removeprefix(_COMPATIBLE))
+        return bool(base) and release[: len(base) - 1] == base[:-1] and release >= base
+    if wanted.endswith(_ANY):
+        base = _release(wanted.removesuffix(_ANY))
+        return release[: len(base)] == base
+    return release == _release(wanted)
+
+
+def _release(version: str) -> tuple[int, ...]:
+    """Read a version's release segment: its leading dotted integers (`2.9.0.post0` is 2.9.0).
+
+    Returns:
+      Them.
+
+    """
+    found: list[int] = []
+    part: str
+    for part in version.strip().split("."):
+        if not part.isdigit():
+            break
+        found.append(int(part))
+    return tuple(found)
 
 
 @lru_cache(maxsize=256)

@@ -7,6 +7,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import at
+from constricter.source.annotations import node_name
 from constricter.source.walked import children as child_nodes
 from constricter.source.walked import classes, of_type
 
@@ -38,6 +39,9 @@ _KEEP: Final = 1024  # the walks kept: all of most modules' functions, for a che
 Start: TypeAlias = tuple[int, int]  # where a node starts: its line and column
 _FUTURE: Final = "__future__"
 _SELF: Final = "self"
+_CLASSMETHOD: Final = "classmethod"
+# The methods Python binds to the class without the decorator: their first parameter is the class too.
+_IMPLICIT_CLASSMETHODS: Final = frozenset({"__new__", "__init_subclass__", "__class_getitem__"})
 # `from __future__` features only code that also runs on Python 2 imports: its type comments count.
 _PYTHON2_FUTURES: frozenset[str] = frozenset(
     {
@@ -65,6 +69,19 @@ def python2_compatible(tree: ast.Module) -> bool:
         and any(alias.name in _PYTHON2_FUTURES for alias in stmt.names)
         for stmt in tree.body
     )
+
+
+def class_side(function: FunctionDef) -> bool:
+    """Check whether a method's first parameter is its class: a classmethod's, or `__new__`'s.
+
+    Python binds `__new__`, `__init_subclass__` and `__class_getitem__` to the class undecorated.
+
+    Returns:
+      Whether it is.
+
+    """
+    decorators: list[str] = [node_name(d) for d in function.decorator_list]
+    return decorators == [_CLASSMETHOD] or (not decorators and function.name in _IMPLICIT_CLASSMETHODS)
 
 
 def collect_functions(body: list[ast.stmt], into: list[FunctionDef], *, nested: bool = True) -> None:

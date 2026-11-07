@@ -5,7 +5,8 @@ source in between, with a fix step's patch applied for a fixed run: the very fix
 outputs count. None is the tree the run's other steps copy, so none waits for them to have.
 
 - `traced`, for a suite whose tests can be traced, with this checkout: the tests under a witness
-  told every fix of `fix-unsafe`, each fix's verdict kept; and `infer-trace`, a fix by their trace;
+  told every fix of `fix-unsafe` and, where the run fixes with every source at once, of each
+  checker's hints (`witnessed`), each fix's verdict kept; and `infer-trace`, a fix by their trace;
 - the parts of `tests` (`pipeline.part`): the package's own tests as released (or as an earlier
   run found them, `taken`), and after each of the run's fixes, the trace's too, each a step that
   starts once its fix is made, unless another fix's part stands for it
@@ -13,10 +14,11 @@ outputs count. None is the tree the run's other steps copy, so none waits for th
   step of its own), which stands for them all where it's the released tests', so that most suites'
   tests run twice, not eight times; then `tests`, which runs one fixed run again for each outcome
   with a failure new or gone, and keeps only what it fails both times and no released run did as
-  the fix's (`weighed`);
+  the fix's (`weighed`); the union's own fixes are held to the witness's verdicts too, by
+  annotation (`infer-union.verdicts.jsonl`);
 - the parts of `types`, for a suite with type checks (`suite_checkouts.types`): its own checkers'
-  errors as released and after each fix, each new one traced to the fix it's about; then `types`,
-  which gathers them.
+  errors as released and after each fix, the union's too, each new one traced to the fix it's
+  about; then `types`, which gathers them.
 """
 
 import itertools
@@ -37,6 +39,7 @@ from tests.corpus.pipeline import (
     FIX_UNSAFE,
     FROM,
     IMPLIED,
+    INFER,
     INFER_TRACE,
     INFER_UNION,
     RELEASED,
@@ -52,7 +55,7 @@ from tests.corpus.pipeline import (
     parts,
     united,
 )
-from tests.corpus.run_config import DEV, directory, started
+from tests.corpus.run_config import DEV, Run, directory, started
 from tests.corpus.suite_checkouts import (
     COUNTS,
     ENVIRONMENT,
@@ -74,6 +77,7 @@ _Key: TypeAlias = tuple[tuple[tuple[str, int], ...], frozenset[str]]  # an outco
 _PARSER: Final = "parser"  # in a released part's record: what read the tests' output (`corpus_suite.parser`)
 CONFIRMED: Final = "confirmed"  # in a taken record: the step whose outcome equals it (the traced tests)
 _TRACED_KIND: Final = "traced"  # the mechanism of a fix that rests on a trace
+_UNASKED: Final = "unasked"  # in the union's record: the fixes whose annotation the witness wasn't told
 # The counts a test moves between, failing where it passed or passing where it was expected to fail
 # (altair's does from run to run): a run's others say what else changed.
 _MOVED: Final = frozenset({"passed", "failed", "error", "failures", "errors", "xfailed", "xpassed"})
@@ -138,18 +142,51 @@ def _key(outcome: corpus_suite.Outcome) -> _Key:
     return tuple(sorted(outcome.counts.items())), outcome.failed
 
 
+def hinted(run: Run) -> list[str]:
+    """List the run's fix steps by a checker's hints, told to the witness where the run unites them.
+
+    Returns:
+      Their names (`infer-basedpyright`); none for a run with no `infer-union`.
+
+    """
+    return [f"{INFER}{checker}" for checker in run.steps.infer] if united(run) else []
+
+
+def witnessed(job: Job) -> dict[str, list[corpus_suite.Fix]]:
+    """Read the fixes the witness is told: `fix-unsafe`'s, and each checker's hints' (`hinted`).
+
+    The union's fixes are those sources' in the run's order and the trace's (`union`), so a union
+    fix's annotation is one of theirs at the binding, unless the trace's or a later pass's: the
+    witness can judge the union before the trace it needs is made.
+
+    Returns:
+      Them, per file, as `fixes_made` reads a step's.
+
+    """
+    found: dict[str, list[corpus_suite.Fix]] = {}
+    step: str
+    for step in (FIX_UNSAFE, *hinted(job.run)):
+        path: str
+        listed: list[corpus_suite.Fix]
+        for path, listed in fixes_made(job, step).items():
+            found.setdefault(path, []).extend(listed)
+    return found
+
+
 def traced(job: Job) -> Record:
     """Trace the corpus package's tests under the witness, then fix a copy by their trace.
 
-    The witness is told each fix of the run's `fix-unsafe` step, and holds each fixed binding's value
-    to the fix's annotation as the tests bind it (`corpus_guesses`): each fix's verdict is kept, a
-    line each, with the types the trace saw (`traced.verdicts.jsonl`). The fix by the trace is a
-    fix step of its own, `infer-trace` (`--fix --unsafe-fixes --infer-from` the trace), which the
-    suite's tests and type checks then run after as they do any other.
+    The witness is told each fix of the run's `fix-unsafe` step and each checker's hints'
+    (`witnessed`), and holds each fixed binding's value to each annotation as the tests bind it
+    (`corpus_guesses`): the guesses' fixes' verdicts are kept, a line each, with the types the trace
+    saw (`traced.verdicts.jsonl`); the union's are read as it's made (`union`). The fix by the trace
+    is a fix step of its own, `infer-trace` (`--fix --unsafe-fixes --infer-from` the trace), which
+    the suite's tests and type checks then run after as they do any other.
 
     Returns:
-      The step's record: the traced tests' summary, outcome and seconds, and by tier the fixes a
-      test could tell of, those whose every value fit and those one of whose didn't.
+      The step's record: the traced tests' summary, outcome and seconds, and by tier the
+      `fix-unsafe` fixes a test could tell of, those whose every value fit and those one of whose
+      didn't.
 
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
@@ -157,7 +194,7 @@ def traced(job: Job) -> Record:
     made: dict[str, list[corpus_suite.Fix]] = fixes_made(job, FIX_UNSAFE)
     os.environ.update(job.tree.variables or {})
     os.environ[corpus_suite.TRACER_VARIABLE] = corpus_guesses.TRACER
-    os.environ[corpus_guesses.WITNESS_VARIABLE] = corpus_guesses.expected(base, made)
+    os.environ[corpus_guesses.WITNESS_VARIABLE] = corpus_guesses.expected(base, witnessed(job))
     start: float = time.perf_counter()
     ran: tuple[str, corpus_suite.Outcome] | None = corpus_suite.traced(
         base,
@@ -175,31 +212,44 @@ def traced(job: Job) -> Record:
     )
     record: Record = {"summary": ran[0], "resting": resting, "seconds": round(seconds, 1)} | _outcome(ran[1])
     record["stopped"] = corpus_suite.stopped(ran[1])  # for running too long: its trace is a part of one
-    return record | {key: dict(count) for key, count in _judged(job, made).items()}
+    return record | _judged(job, made, TRACED)
 
 
-def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Counter[str]]:
-    """Read the witness's verdict on each of the fixes `made`, and keep each, a line each.
+def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]], step: str) -> Record:
+    """Read the witness's verdict on each of the fixes `made` by `step`, and keep each, a line each.
 
-    With the types the trace saw the binding hold (`traced.verdicts.jsonl`).
+    With the types the trace saw the binding hold (`<step>.verdicts.jsonl`). A fix whose annotation
+    the witness wasn't told (the trace's, or one a later pass of the union wrote) has no verdict,
+    and is counted apart (`unasked`).
 
     Returns:
-      By tier, the fixes a traced test could tell of, those whose every value fit, and those one
-      of whose didn't.
+      By tier, the fixes a traced test could tell of, those whose every value fit, those one of
+      whose didn't, and those the witness wasn't asked about.
 
     """
     base: Path = prepared(job, TRACED)
     judged: corpus_guesses.Verdicts = corpus_guesses.verdicts(base)
     seen: corpus_guesses.Seen = corpus_guesses.kept(job, base, corpus_suite.TRACE_FILE)
-    counts: dict[str, Counter[str]] = {"told": Counter(), "held": Counter(), "differed": Counter()}
+    asked: frozenset[tuple[str, int, str, str]] = frozenset(
+        (each.path, each.line, each.name, each.annotation)
+        for each in itertools.chain.from_iterable(witnessed(job).values())
+    )
+    counts: dict[str, Counter[str]] = {key: Counter() for key in ("told", "held", "differed", _UNASKED)}
     lines: list[str] = []
     each: corpus_suite.Fix
     for each in itertools.chain.from_iterable(made.values()):
-        verdict: corpus_guesses.Verdict = corpus_guesses.verdict(judged, each.path, each.line, each.name)
+        verdict: corpus_guesses.Verdict = corpus_guesses.verdict(
+            judged,
+            each.path,
+            each.line,
+            each.name,
+            each.annotation,
+        )
         level: str = Tier.of(unsafe=each.unsafe, likely=each.likely).value
         counts["told"][level] += bool(verdict.fit or verdict.differ)
         counts["held"][level] += bool(verdict.fit and not verdict.differ)
         counts["differed"][level] += bool(verdict.differ)
+        counts[_UNASKED][level] += (each.path, each.line, each.name, each.annotation) not in asked
         lines.append(
             json.dumps(
                 {
@@ -215,11 +265,11 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]]) -> dict[str, Coun
                 },
             ),
         )
-    _ = job.store.path(job.tree.name, job.recorded, TRACED, ".verdicts.jsonl").write_text(
+    _ = job.store.path(job.tree.name, job.recorded, step, ".verdicts.jsonl").write_text(
         "".join(f"{line}\n" for line in lines),
         encoding="utf-8",
     )
-    return counts
+    return {key: dict(count) for key, count in counts.items() if key != _UNASKED or step != TRACED}
 
 
 def _fixed_run(job: Job, step: str, kept: str, base: Path) -> corpus_suite.Outcome | str:
@@ -443,17 +493,27 @@ def union(job: Job) -> Record:
     (`--infer-in-turn`), and `--infer-from` the traced tests' trace where the run made one. A binding
     more than one source types gets the first's, as a user asking for every source gets it. The
     suite's tests after it (`tests-infer-union`) stand for each fix's where they're the released tests'.
+    Where the tests ran traced, each of its fixes is held to the witness's verdict on its annotation
+    (`_judged`; the witness was told the guesses' and each checker's hints' fixes, `witnessed`), a
+    line each (`infer-union.verdicts.jsonl`): what a set of mechanisms the union alone makes
+    (`agreed+checker`) is measured by, to be likely.
 
     Returns:
-      The step's record, as `pipeline.fix` keeps a fix step's.
+      The step's record, as `pipeline.fix` keeps a fix step's; where the tests ran traced, with
+      by tier the fixes a test could tell of, those that held, those that differed, and those the
+      witness wasn't asked about.
 
     """
     extra: list[str] = ["--unsafe-fixes", "--infer-with", ",".join(job.run.steps.infer)]
     extra += launch.offered(job.version, "--infer-in-turn")  # one checker's servers at a time
     trace: Record | None = read_record(job, TRACED)
-    if trace is not None and COUNTS in trace:
+    judged: bool
+    if judged := trace is not None and COUNTS in trace:
         extra += ["--infer-from", str(prepared(job, TRACED) / corpus_suite.TRACE_FILE)]
-    return fix(job, INFER_UNION, extra)
+    record: Record = fix(job, INFER_UNION, extra)
+    if judged and record.get("fixed") is not None:
+        record |= _judged(job, fixes_made(job, INFER_UNION), INFER_UNION)
+    return record
 
 
 def _reruns(
@@ -644,6 +704,8 @@ def waiting(job: Job) -> dict[str, Callable[[Job], Record]]:
         found[TESTS] = tests
     if suite is not None and suite.checks and job.run.steps.types:
         found |= {name: partial(types_part, name=name) for name in parts(job.run, TYPES)}
+        if INFER_UNION in found:
+            found[part(TYPES, INFER_UNION)] = partial(types_part, name=part(TYPES, INFER_UNION))
         found[TYPES] = types
     return found
 
@@ -655,9 +717,10 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
     part as released; a tier's for the guesses', and the guesses' for the trace's, whose run may
     stand for theirs (`standing`); each of the tests' for the part after every source's fixes at
     once, which may stand for them all, and that one for its fix (`infer-union`), which waits for
-    the traced tests, whose trace it reads. The tests as released wait for the traced tests where
-    those may confirm an earlier run's record of them (`taken`). Each kind's step waits for its
-    parts, and the traced tests for `fix-unsafe`, whose fixes they hold.
+    the traced tests, whose trace it reads; the type checks' after the union for the union. The
+    tests as released wait for the traced tests where those may confirm an earlier run's record of
+    them (`taken`). Each kind's step waits for its parts, and the traced tests for `fix-unsafe`,
+    whose fixes they hold, and for each checker's hints' where the run unites them (`hinted`).
 
     Returns:
       Each step's, by its name: only steps the run has.
@@ -665,7 +728,9 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
     """
     names: dict[str, Callable[[Job], Record]] = waiting(job)
     every: frozenset[str] = frozenset((*names, *fixing(job.run)))
-    found: dict[str, frozenset[str]] = {TRACED: frozenset({FIX_UNSAFE})} if TRACED in names else {}
+    found: dict[str, frozenset[str]] = (
+        {TRACED: frozenset({FIX_UNSAFE, *hinted(job.run)}) & every} if TRACED in names else {}
+    )
     confirmable: bool = TRACED in names and job.run.steps.tests_released and bool(earlier(job))
     joined: str = part(TESTS, INFER_UNION) if INFER_UNION in names else ""
     kind: str
@@ -678,6 +743,9 @@ def needs(job: Job) -> dict[str, frozenset[str]]:
         if kind == TESTS and joined:
             found[INFER_UNION] = frozenset({TRACED}) & every
             found[joined] = frozenset({INFER_UNION, own[0]})
+        if kind == TYPES and part(TYPES, INFER_UNION) in names:
+            found[TYPES] |= {part(TYPES, INFER_UNION)}
+            found[part(TYPES, INFER_UNION)] = frozenset({INFER_UNION, own[0]})
         name: str
         for name in own[1:]:
             step: str = name.removeprefix(f"{kind}-")

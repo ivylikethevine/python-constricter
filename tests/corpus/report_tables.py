@@ -157,6 +157,13 @@ def _type_errors(records: Records) -> Rows:
 
 
 def _traced(records: Records) -> Rows:
+    """Set each traced run's verdicts out by tier: the guesses' fixes' (`fix-unsafe`), then the union's.
+
+    Returns:
+      The rows: a corpus's traced tests, then its tiers, then the union's tiers (`infer-union`
+      before the tier), where the union was judged.
+
+    """
     head: _Row = ["corpus", "constricter", "tier", *_VERDICTS, "resting on the trace", "tests"]
     rows: Rows = [[*head, "seconds", "untraced"]]
     tree: Tree
@@ -169,10 +176,14 @@ def _traced(records: Records) -> Rows:
         )  # pytest-pretty's: a count a line
         took: _Row = [record.get("seconds", ""), records.of(tree, version, TESTS).get("seconds", "")]
         rows.append([tree.name, version, "", "", "", "", record.get("resting", ""), summary, *took])
-        tier: str
-        for tier in (CERTAIN, LIKELY, GUESS) if _VERDICTS[0] in record else ():
-            counts: _Row = [cast("dict[str, int]", record[key]).get(tier, 0) for key in _VERDICTS]
-            rows.append([tree.name, version, tier, *counts, "", "", "", ""])
+        step: str
+        judged: Record
+        for step, judged in ((TRACED, record), (INFER_UNION, records.of(tree, version, INFER_UNION))):
+            tier: str
+            for tier in (CERTAIN, LIKELY, GUESS) if _VERDICTS[0] in judged else ():
+                counts: _Row = [cast("dict[str, int]", judged[key]).get(tier, 0) for key in _VERDICTS]
+                named: str = tier if step == TRACED else f"{step} {tier}"
+                rows.append([tree.name, version, named, *counts, "", "", "", ""])
     return rows
 
 

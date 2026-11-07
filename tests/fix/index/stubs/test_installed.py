@@ -621,3 +621,119 @@ def test_mypy_extensions_is_read_for_its_classes_alone(
     native: project.Module = catalog.modules["mypy_extensions"]
     assert _NATIVE_INT in native.classes
     assert native.returned == Returns()
+
+
+# A site with an untyped package and module, typeshed's stub sets for them as basedpyright bundles
+# them, and the distributions' metadata: `pkg` the stubs' version, `lone` another, `part` partial.
+BUNDLED: Final = {
+    "pkg/__init__.py": "def make():\n    return 1\n",
+    "pkg/sub.py": "def sub():\n    return 1.0\n",
+    "lone.py": "def k():\n    return b''\n",
+    "part/__init__.py": "def p():\n    return 1\n",
+    "part/own.py": "def own() -> str:\n    return ''\n",
+    "pkg_dist-1.2.3.dist-info/METADATA": "Metadata-Version: 2.1\nName: Pkg-Dist\nVersion: 1.2.3\n",
+    "lone-2.0.dist-info/METADATA": "Metadata-Version: 2.1\nName: lone\nVersion: 2.0\n",
+    "nameless-0.1.dist-info/METADATA": "Metadata-Version: 2.1\nVersion: 0.1\n",  # no name: no version
+    "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/METADATA.toml": 'version = "1.2.*"\n',
+    "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/pkg/__init__.pyi": "def make() -> int: ...\n",
+    "basedpyright/dist/typeshed-fallback/stubs/pkg-dist/pkg/sub.pyi": "def sub() -> float: ...\n",
+    "basedpyright/dist/typeshed-fallback/stubs/lone/METADATA.toml": 'version = "1.*"\n',
+    "basedpyright/dist/typeshed-fallback/stubs/lone/lone.pyi": "def k() -> bytes: ...\n",
+    "basedpyright/dist/typeshed-fallback/stubs/part/METADATA.toml": 'version = "0.1.*"\npartial-stub = true',
+    "basedpyright/dist/typeshed-fallback/stubs/part/part/__init__.pyi": "def p() -> int: ...\n",
+    "basedpyright/dist/typeshed-fallback/stubs/gone/METADATA.toml": 'version = "1.*"\n',
+    "basedpyright/dist/typeshed-fallback/stubs/gone/gone/__init__.pyi": "def g() -> int: ...\n",
+    "basedpyright/dist/typeshed-fallback/stubs/bad/METADATA.toml": "version = [\n",
+    "basedpyright/dist/typeshed-fallback/stubs/bad/bad/__init__.pyi": "",
+}
+USING: Final = """
+import lone
+import pkg.sub
+from part import p
+from part.own import own
+from pkg import make
+import gone
+
+
+def run():
+    a = make()
+    b = pkg.sub.sub()
+    c = lone.k()
+    d = p()
+    e = own()
+    f = gone.g()
+    return a, b, c, d, e, f
+"""
+CERTAIN: Final = (
+    "    a: int = make()\n",
+    "    b: float = pkg.sub.sub()\n",
+    "    c = lone.k()\n",  # another version's stubs: a guess
+    "    d = p()\n",  # no distribution found: a guess
+    "    e = own()\n",  # the package's own annotation: a guess
+    "    f = gone.g()\n",  # stubbed, not installed
+)
+GUESSED: Final = (
+    "    c: bytes = lone.k()\n",
+    "    d: int = p()\n",
+    "    e: str = own()\n",
+    "    f = gone.g()\n",
+)
+
+
+def test_typeshed_stubs_bundled_with_basedpyright_are_found_for_an_untyped_package(tmp_path: Path) -> None:
+    """By the stub set's top-level package or module, with whether the installed version is the set's."""
+    site: Path = _site(tmp_path, BUNDLED)
+    stubs: Path = site / "basedpyright" / "dist" / "typeshed-fallback" / "stubs"
+    assert installed.bundled("pkg", (site,)) == (stubs / "pkg-dist" / "pkg" / "__init__.pyi", True)
+    assert installed.bundled("pkg.sub", (site,)) == (stubs / "pkg-dist" / "pkg" / "sub.pyi", True)
+    assert installed.bundled("lone", (site,)) == (stubs / "lone" / "lone.pyi", False)  # 2.0 isn't 1.*
+    assert installed.bundled("part", (site,)) == (stubs / "part" / "part" / "__init__.pyi", False)  # no dist
+    assert installed.bundled("part.own", (site,)) is None  # a partial set leaves it to the package
+    assert installed.bundled("gone", (site,)) == (stubs / "gone" / "gone" / "__init__.pyi", False)
+    assert installed.bundled("pkg.missing", (site,)) is None
+    assert installed.bundled("bad", (site,)) is None  # its metadata doesn't parse
+    assert installed.bundled("pkg", (tmp_path,)) is None  # no bundle on the path
+
+
+@pytest.mark.parametrize(
+    ("version", "wanted", "fits"),
+    [
+        ("6.0.3", "6.0.*", True),
+        ("6.1", "6.0.*", False),
+        ("1.2.3", "1.*", True),
+        ("7.34.2", "~=7.34.1", True),
+        ("7.34.0", "~=7.34.1", False),
+        ("7.35.0", "~=7.34.1", False),
+        ("2.9.0.post0", "2.9.*", True),
+        ("2026.5.9", "2026.5.9", True),
+        ("2026.5.10", "2026.5.9", False),
+        ("1.0", "", False),
+        (None, "1.*", False),
+    ],
+)
+def test_an_installed_version_fits_typesheds_as_pep_440_reads_it(
+    version: str | None,
+    wanted: str,
+    *,
+    fits: bool,
+) -> None:
+    """`6.0.*` any 6.0 release, `~=7.34.1` a compatible one, a bare version that one; unknown, none."""
+    assert installed.fits(version, wanted) is fits
+
+
+def test_calls_into_a_package_typesheds_bundled_stubs_type_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Certain where the installed version is the stubs', a guess where not; a partial set leaves a module."""
+    site: Path = _site(tmp_path, BUNDLED)
+    monkeypatch.setattr(sys, "path", [str(site), *sys.path])
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(USING), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_FOUND
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in CERTAIN), fixed
+    assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
+    fixed = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in GUESSED), fixed

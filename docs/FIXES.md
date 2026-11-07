@@ -104,7 +104,8 @@ the value decides it, for a plain `name = value` in a function or module body:
   `bool`, `seen.difference(other)` and `seen.intersection(other)` a `set` of `seen`'s own type);
   `self` is its class's instance in a method, and in a function defined in one that takes and binds
   no `self` of its own (not under a method whose signature says `Self`); in a classmethod, `cls` is
-  `type[C]`, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
+  `type[C]`, as in `__new__`, `__init_subclass__` and `__class_getitem__`, which Python binds to the
+  class undecorated, whose class attributes (`limit: int = 3`, `ClassVar[T]`) and classmethods' and
   staticmethods' declared returns type `cls.x` and `cls.m()`. A member of a guessed value is a guess
   too (`Box().name`), and its fix kinds include the value's. A member of an `X | None` (or
   `Optional[X]`) is `X`'s: a checker has narrowed the value there, or reports the access
@@ -545,7 +546,10 @@ standard-library type's import goes under `if TYPE_CHECKING:` only for a module 
 module's functions import (`import decimal` in a function's body), or that it imports by
 `pytest.importorskip`: it may not be there to import when the module is. A class of a module only
 some platforms have, imported that way (`import pwd`, `import winreg`), is no fix: a type checker on
-another platform finds no such class.
+another platform finds no such class. A type written with a builtin the module shadows, binding it at its top level to a
+function or a value (`locale`'s `def str`; `from .compat import str`, a Python 2 shim's `str = str`) is
+no fix: a type checker reads the module's own name there. A class of the name it defines or imports
+(django's `Warning`, `enum`'s `property`) is named as any class is.
 
 An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
 package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
@@ -561,7 +565,13 @@ itself, `from m import x as x`), or not written; and one of its generic classes 
 bare (`np.ndarray`). A class a module the file imports re-exports has its members there
 (`pytest.LogCaptureFixture`'s `text`, `pkg.Row`'s).
 
-An installed package that declares no types (no `py.typed`, no stubs) is read for its own
+An installed package that declares no types (no `py.typed`, no stubs) is typed by typeshed's
+third-party stubs where basedpyright, installed on the same path, bundles a set for it
+(`typeshed-fallback/stubs`; PyYAML, python-dateutil, six, protobuf, tqdm, pytz, regex and some 200
+more): as a stub package where the installed distribution's version is one the set's metadata
+names (`6.0.*` any 6.0 release, `~=7.34.1` a compatible one, a bare version that one), as the
+guesses below where it's another, or the distribution isn't found; a module the set lacks (a
+partial set's) is left to the package's own source. Otherwise it is read for its own
 annotations, as pyright reads one: its functions' and methods' declared returns type the calls
 into it as guesses (`declared`, with `returned`), through its re-exports (`pd.date_range(...)` is a
 `DatetimeIndex` under `--unsafe-fixes`); its classes' attributes, its classmethods and its
@@ -660,7 +670,8 @@ it's stored `None` and otherwise only a known `T` (`optional` too): `self.n = n`
 `self.n: int = n`, which a type checker reads as the attribute's declaration. Always a guess, since
 another file's subclass or outside code may store it too; none where a store isn't a plain
 `self.x = value` in one of the class's methods (`self.a, self.b = ...`, `del self.a`, a nested
-function's), nor for a generic class without its arguments (`self.box = Box(thing)`).
+function's), nor for a generic class without its arguments (`self.box = Box(thing)`), nor for a type
+naming a type variable the class doesn't bind (`self.kind: type[_T]`, `_T` the method's).
 
 LVA014 (opt-in) offers a plain function's or method's return type, `-> T` before the `:` ending
 its header: what its own `return`s give (`returned`, as a call to it is typed), or `None` for one
@@ -790,7 +801,7 @@ than the fix says, the fix is changed, made a guess, or not offered:
   something may rebind it, and not offered where the module binds it again;
 - `self`, and a method declared to return `Self` called on `self` or `cls`, is `Self`, not its class
   (in a subclass, the class isn't `Self`), as is what `cls()`, `type(self)()` or `cls.__new__(cls)`
-  constructs, and a standard-library function's call given `self` that returns its class
+  constructs (`object.__new__(cls)` and `super().__new__(cls)` in a `__new__` too), and a standard-library function's call given `self` that returns its class
   (`copy.copy(self)`), and `type(self)` there a `type[Self]`: written as the module already imports
   `Self` (`typing.Self` is Python 3.11's, so no import is added), and not offered without one; a
   `Self` later bound to anything else isn't offered either;
@@ -832,7 +843,7 @@ be wrong about what the code means. Its guesses feed the rest of the scope as `-
 copy of a hinted local is typed too, as a guess). With several checkers, the first named whose hint the file can use
 types the name; where a later one's usable hint gives the same type, the fix rests on their
 agreement too (kind `agreed`, beside `checker`): a set of its own, measured apart from one checker's
-alone (see [LIKELY.md](LIKELY.md)).
+alone, and likely, applied with `--likely` (see [LIKELY.md](LIKELY.md)).
 
 A hint is used only as an annotation the file can hold:
 
@@ -900,9 +911,9 @@ reads them: the class is written through an import the module runs if it has one
 after `import shapes`), else imported under `if TYPE_CHECKING:` as another checked file's type is, a
 module body's annotation quoted. Never by an import that runs: the checker's Python may have a class
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
-later one importing it from elsewhere is dropped. A hint whose edit writes a name the file binds,
-where a module it imports whole has a class of that name too, is dropped: basedpyright shows
-`enum.Enum` as `Enum`, and its edit writes it so in a file defining an `Enum` of its own. A type alias naming a type variable, in a forward reference alone too
+later one importing it from elsewhere is dropped. A hint that shows, or whose edit writes, a name
+the file binds where a module it imports whole has a class of that name too, is dropped: basedpyright
+shows `enum.Enum` as `Enum`, and its edit writes it so, in a file defining an `Enum` of its own. A type alias naming a type variable, in a forward reference alone too
 (`Union["Mapper[_T]", "AliasedInsp[_T]"]`), takes arguments as a generic class does: neither a
 hint's edit nor a fix writes it bare (a fix copying another file's bare annotation of it included). Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
@@ -1066,54 +1077,54 @@ Each fix names the mechanisms that decided it, parts included (`[1, 2]` is a `co
 `literal`s), by a stable id: `--show-fixes` prints them after the reason (`[container, literal]`),
 and `--format=json`'s `fix` object has them as `kinds`.
 
-| Id              | Decided by                                                                                |
-| --------------- | ----------------------------------------------------------------------------------------- |
-| `literal`       | a literal, an f-string, `not x`, or `x in y` or `x is y`                                  |
-| `container`     | a list, set, tuple or dict display whose elements' types agree                            |
-| `joined`        | a list, set or dict display whose elements' types differ, as their union (a guess)        |
-| `copy`          | a copy of a local whose type is known                                                     |
-| `tested`        | a read a test around it narrows (`if x is None: return`): what the test leaves of it      |
-| `subscript`     | a subscript of a container whose type is known                                            |
-| `attribute`     | an attribute of a class the module (or another checked file) defines                      |
-| `method`        | a method with a fixed or declared return type, on a value whose type is known             |
-| `builtin`       | a builtin with a fixed return type (`len`, `str`), or one its arguments decide (`min`)    |
-| `call`          | a function, classmethod or staticmethod that declares its return type                     |
-| `constructor`   | a call to a capitalised name, taken to construct one (a guess)                            |
-| `conditional`   | both sides of `a if c else b`, or one side and `None`                                     |
-| `boolean`       | `a or b` or `a and b`, its operands of one type                                           |
-| `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                 |
-| `arithmetic`    | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator          |
-| `comprehension` | a list, set or dict comprehension's elements                                              |
-| `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                         |
-| `await`         | `await` of a checked file's `async def`, a function or a method                           |
-| `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                      |
-| `unpack`        | an unpacking, each name by its own value, or the value's type split over them             |
-| `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                        |
-| `cast`          | `typing.cast(T, x)`: its `T`                                                              |
-| `comment`       | the statement's own `# type:` comment: LVA003's loop, LVA001's with `type-comments` off   |
-| `redundant`     | LVA007: the repeated annotation, dropped                                                  |
-| `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)            |
-| `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)           |
-| `text`          | a function overloaded on `str` against `bytes` alone: its `str` signature's (a guess)     |
-| `operand`       | a `str`'s or `bytes`'s `+` or `*` with a value of no known type: the text's (a guess)     |
-| `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)             |
-| `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)            |
-| `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                             |
-| `agreed`        | with `checker`: a later type checker's hint gives the same type (a guess)                 |
-| `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)       |
-| `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                     |
-| `filled`        | an empty container, then only what the function adds to it (a guess)                      |
-| `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)  |
-| `documented`    | an unannotated function's docstring's named return, a builtin scalar (a guess)            |
-| `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)         |
-| `member`        | a plain class's variable, by its value in the class's body (a guess)                      |
-| `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                       |
-| `callable`      | a function or a bound method bound to a name, by what its call gives                      |
-| `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)        |
-| `reads`         | an unannotated parameter, by the one class with every member read of it (a guess)         |
-| `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess) |
-| `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)      |
-| `declared`      | an installed package's own annotation, with no `py.typed` to vouch for it (a guess)       |
+| Id              | Decided by                                                                                    |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `literal`       | a literal, an f-string, `not x`, or `x in y` or `x is y`                                      |
+| `container`     | a list, set, tuple or dict display whose elements' types agree                                |
+| `joined`        | a list, set or dict display whose elements' types differ, as their union (a guess)            |
+| `copy`          | a copy of a local whose type is known                                                         |
+| `tested`        | a read a test around it narrows (`if x is None: return`): what the test leaves of it          |
+| `subscript`     | a subscript of a container whose type is known                                                |
+| `attribute`     | an attribute of a class the module (or another checked file) defines                          |
+| `method`        | a method with a fixed or declared return type, on a value whose type is known                 |
+| `builtin`       | a builtin with a fixed return type (`len`, `str`), or one its arguments decide (`min`)        |
+| `call`          | a function, classmethod or staticmethod that declares its return type                         |
+| `constructor`   | a call to a capitalised name, taken to construct one (a guess)                                |
+| `conditional`   | both sides of `a if c else b`, or one side and `None`                                         |
+| `boolean`       | `a or b` or `a and b`, its operands of one type                                               |
+| `compare`       | a comparison of builtin values (`n < 3`), always a `bool`                                     |
+| `arithmetic`    | arithmetic on builtin values, a `pathlib` path's `/`, a library class's operator              |
+| `comprehension` | a list, set or dict comprehension's elements                                                  |
+| `builder`       | `sorted`, `list`, `set`, `frozenset` or `tuple` of known elements                             |
+| `await`         | `await` of a checked file's `async def`, a function or a method                               |
+| `loop`          | what a loop (or `sorted`, `list`, ...) iterates over                                          |
+| `unpack`        | an unpacking, each name by its own value, or the value's type split over them                 |
+| `narrow`        | LVA008's or LVA010's narrower annotation (a guess)                                            |
+| `cast`          | `typing.cast(T, x)`: its `T`                                                                  |
+| `comment`       | the statement's own `# type:` comment: LVA003's loop, LVA001's with `type-comments` off       |
+| `redundant`     | LVA007: the repeated annotation, dropped                                                      |
+| `stdlib`        | the standard library's functions, classes and members, from typeshed (`uuid4`)                |
+| `open`          | `open(path, mode)`'s file object, by its literal mode (`io.TextIOWrapper`, ...)               |
+| `text`          | a function overloaded on `str` against `bytes` alone: its `str` signature's (a guess)         |
+| `operand`       | a `str`'s or `bytes`'s `+` or `*` with a value of no known type: the text's (a guess)         |
+| `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)                 |
+| `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)                |
+| `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                                 |
+| `agreed`        | with `checker`: a later type checker's hint gives the same type (a likely guess)              |
+| `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)           |
+| `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                         |
+| `filled`        | an empty container, then only what the function adds to it (a guess)                          |
+| `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)      |
+| `documented`    | an unannotated function's docstring's named return, a builtin scalar (a guess)                |
+| `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)             |
+| `member`        | a plain class's variable, by its value in the class's body (a guess)                          |
+| `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                           |
+| `callable`      | a function or a bound method bound to a name, by what its call gives                          |
+| `callers`       | an unannotated parameter every call in the checked files passes one type (a guess)            |
+| `reads`         | an unannotated parameter, by the one class with every member read of it (a guess)             |
+| `fixture`       | a test's parameter, by its pytest fixture's value or its `parametrize` literals (a guess)     |
+| `named`         | a bare parameter, by the one type the checked files annotate its name with (a guess)          |
+| `declared`      | an installed package's own annotation, or typeshed's stub for another version of it (a guess) |
 
 The wider types `fix-widen` adds are kinds too: see [below](#wider-types-fix-widen).
 

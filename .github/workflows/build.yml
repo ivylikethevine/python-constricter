@@ -25,7 +25,7 @@ jobs:
       id-token: write # sign the attestation
       attestations: write # store the attestation
     steps:
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: block
           # The v0.2.2 and v0.2.3 release runs' hosts: uv and the dev wheels (setup), the
@@ -91,7 +91,7 @@ jobs:
       # downloads (github.com redirects them to objects.githubusercontent.com), the hash-checked
       # build dependencies, AlmaLinux's packages (clang), Sigstore and the attestation.
       # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
-      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
           allowed-endpoints: >
@@ -115,7 +115,7 @@ jobs:
       - id: sdist
         shell: bash
         run: echo "path=$(ls dist/*.tar.gz)" >> "$GITHUB_OUTPUT"
-      - uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+      - uses: pypa/cibuildwheel@b9e566a2b284570af229f6c2a33673410d0389a3 # v4.3.4
         with:
           package-dir: ${{ steps.sdist.outputs.path }}
           output-dir: wheelhouse

@@ -540,10 +540,16 @@ def corrected(
 ) -> Inference | None:
     """Write `found` as a type checker sees it: `Self` where the value is one; nothing for a bare generic.
 
+    Nor for a type written with a builtin the module shadows (`ImportPlan.shadowed`: `locale`'s
+    `def str`, a Python 2 shim's `str = str` imported): a type checker reads the module's own name
+    there, a function or a variable.
+
     Returns:
       The inference to offer, or `None` if there's none to.
 
     """
+    if plan is not None and not roots(found.annotation).isdisjoint(plan.shadowed):
+        return None
     written: str | None
     if (written := None if owner is None else _selfish(value, found, owner)) is not None:
         spelled: str | None = None if plan is None else spelled_self(plan)

@@ -2,6 +2,7 @@
 
 import ast
 import bisect
+import builtins
 import re
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -22,6 +23,8 @@ _FUTURE: Final = "__future__"
 _IMPORTORSKIP: Final = "pytest.importorskip"  # a module it names may be missing
 _MODNAME: Final = "modname"  # its parameter
 _DOT: Final = "."
+BUILTINS: Final = frozenset(dir(builtins))
+_NONE: Final[frozenset[str]] = frozenset()
 _ANNOTATIONS: Final = "annotations"  # `from __future__ import annotations` postpones them all
 # Each module's names, for as long as its tree lives: the index reads them, then the check.
 _Taken: TypeAlias = tuple[frozenset[str], frozenset[str]]
@@ -43,12 +46,14 @@ _BINDERS: Final = (
 )
 
 
-def plan(tree: ast.Module) -> ImportPlan:
+def plan(tree: ast.Module, imported_values: frozenset[str] = _NONE) -> ImportPlan:
     """Read what `tree` already imports, every name it binds, and where its imports end.
 
     Only imports that run count as binding a name to use (not those under `if TYPE_CHECKING:`: a
     module's own annotations are evaluated when it's imported); every name bound anywhere in the
-    file is taken, so an added import never shadows one (nor a builtin).
+    file is taken, so an added import never shadows one (nor a builtin). `imported_values`: the
+    names it imports that another module binds as a value (`linked.values`), which with its own
+    functions and assignments say which builtins it shadows.
 
     Returns:
       A fresh plan for the module's fixes.
@@ -64,6 +69,7 @@ def plan(tree: ast.Module) -> ImportPlan:
         taken,
         _after(tree),
         defined,
+        shadowed=_shadowed(tree) | (imported_values & BUILTINS),
         checking=Checking(
             _block(tree),
             _lazy(tree, bound),
@@ -262,6 +268,25 @@ def _bound(tree: ast.Module) -> dict[str, str]:
 
     """
     return {name: origin for name, origin, _ in import_bindings(_running(tree.body))}
+
+
+def _shadowed(tree: ast.Module) -> frozenset[str]:
+    """Name the builtins the module binds at its top level to a function or a value of its own.
+
+    `def str(val)` (`locale`'s), `str = str` (a Python 2 shim): a type written with the name would
+    name those, which a type checker refuses ("Variable not allowed in type expression"). A class
+    of the name (`enum`'s `property`) is a class, named as any is.
+
+    Returns:
+      Them.
+
+    """
+    found: set[str] = set()
+    stmt: ast.stmt
+    for stmt in _running(tree.body):
+        if isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef | ast.Assign | ast.AnnAssign):
+            found.update(name for name in _names(stmt) if name in BUILTINS)
+    return frozenset(found)
 
 
 def _defined(tree: ast.Module) -> dict[str, int]:

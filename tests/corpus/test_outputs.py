@@ -382,12 +382,25 @@ def test_fixes_are_counted_by_their_whole_set_of_mechanisms(tmp_path: Path) -> N
     tree: Tree
     store, tree = _recorded(tmp_path)
     agreed: Record = {"agreed+checker": {"guess": 3}, "checker": {"guess": 1}}
-    store.write(tree.name, "rc+dev", "infer-union", _fixed(4, {"guess": 4}) | {"sets": agreed})
-    written: list[Path] = render.write(render.gathered(run, store, [tree]), tmp_path, {"label": "rc"})
+    judged: Record = {
+        "told": {"guess": 3},
+        "held": {"guess": 2},
+        "differed": {"guess": 1},
+        "unasked": {"guess": 1},
+    }
+    store.write(tree.name, "rc+dev", "infer-union", _fixed(4, {"guess": 4}) | {"sets": agreed} | judged)
+    records: report_tables.Records = render.gathered(run, store, [tree])
+    written: list[Path] = render.write(records, tmp_path, {"label": "rc"})
     file: IO[str]
     with (tmp_path / "tables" / "mechanisms.csv").open(encoding="utf-8") as file:
         rows: _Rows = list(csv.reader(file))
     assert rows[0] == ["fix", "constricter", "mechanisms", "fixed", CERTAIN, LIKELY, "guess"]
+    # The union's verdicts follow the guesses' fixes' in the traced table, by tier.
+    assert report_tables.TABLES["traced"](records)[5:] == [
+        ["standard library", "rc+dev", "infer-union certain", 0, 0, 0, "", "", "", ""],
+        ["standard library", "rc+dev", "infer-union likely", 0, 0, 0, "", "", "", ""],
+        ["standard library", "rc+dev", "infer-union guess", 3, 2, 1, "", "", "", ""],
+    ]
     assert rows[5:] == [
         ["unsafe", "rc+dev", "call", "2", "2", "", ""],
         ["unsafe", "rc+dev", "constructor", "2", "", "2", ""],
@@ -400,7 +413,10 @@ def test_fixes_are_counted_by_their_whole_set_of_mechanisms(tmp_path: Path) -> N
 
 
 def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path: Path) -> None:
-    """A suite's corpus: its `fix-unsafe` fixes, the type errors traced to each, and the witness's verdict."""
+    """A suite's corpus: its `fix-unsafe` and `infer-union` fixes, each with its errors and its verdict.
+
+    A verdict is the fix's by its annotation: the union's `str` for `x` has its own.
+    """
     tree: Tree = Tree("pkg", "1.0", tmp_path / "src" / "pkg", tmp_path)
     store: Store = Store(tmp_path)
     listed: _Rows = [["a.py", "certain"], ["b.py", "guess"]]
@@ -427,19 +443,30 @@ def test_each_judged_fix_is_listed_with_what_blames_it_and_bears_it_out(tmp_path
         "".join(f"{json.dumps(fix)}\n" for fix in fixes),
         encoding="utf-8",
     )
-    told: Record = {"path": "src/pkg/a.py", "line": 2, "name": "x", "verdict": [3, 0, 0], "seen": ["int"]}
+    told: Record = {"path": "src/pkg/a.py", "line": 2, "name": "x", "annotation": "int"}
     _ = store.path(tree.name, "rc+dev", pipeline.TRACED, ".verdicts.jsonl").write_text(
-        f"{json.dumps(told)}\n",
+        f"{json.dumps(told | {'verdict': [3, 0, 0], 'seen': ['int']})}\n",
+        encoding="utf-8",
+    )
+    _ = store.path(tree.name, "rc+dev", "infer-union", ".fixes.jsonl").write_text(
+        f"{json.dumps(fixes[0] | {'annotation': 'str', 'kinds': ['checker']})}\n",
+        encoding="utf-8",
+    )
+    _ = store.path(tree.name, "rc+dev", "infer-union", ".verdicts.jsonl").write_text(
+        f"{json.dumps(told | {'annotation': 'str', 'verdict': [0, 3, 0], 'seen': ['int']})}\n",
         encoding="utf-8",
     )
     run: Run = parse({"run": {"label": "rc", "formats": [JSON]}})
     found: list[Record] = render.guesses(render.gathered(run, store, [tree]), store)
     assert [
-        (each["path"], each["unsafe"], each["errors"], each["verdict"], each["seen"]) for each in found
+        (each["fix"], each["path"], each["unsafe"], each["errors"], each["verdict"], each["seen"])
+        for each in found
     ] == [
-        ("src/pkg/a.py", False, 0, [3, 0, 0], ["int"]),
-        ("src/pkg/b.py", True, 1, [0, 0, 0], None),
+        ("fix-unsafe", "src/pkg/a.py", False, 0, [3, 0, 0], ["int"]),
+        ("fix-unsafe", "src/pkg/b.py", True, 1, [0, 0, 0], None),
+        ("infer-union", "src/pkg/a.py", False, 0, [0, 3, 0], ["int"]),
     ]
+    assert [each["checked"] for each in found] == [True, True, False]
     assert render.write(render.gathered(run, store, [tree]), tmp_path, {})[1] == tmp_path / "guesses.jsonl"
 
 
