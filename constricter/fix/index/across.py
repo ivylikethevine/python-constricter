@@ -60,6 +60,7 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
     hints: tuple[Hints, ...] = offers.vetted(modules, path, hinted.get(path, ()))
     # What only a hint can name: the classes the file imports for type checking alone.
     own: offers.Own = offers.own(modules, path) if hints else offers.Own()
+    lineage: own_types.Lineages = own_types.lineages(modules, path, guarded, methods.lineage)
     overloaded: dict[str, tuple[ReadSignature, ...]] = {
         **stubbed.overloaded(modules, path, guarded),
         **methods.signatures,
@@ -90,7 +91,8 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         installed_classes=stubbed.classes(modules, path),
         read_members=crossed.member_names(modules, path),
         installed_parameters=methods.parameters,
-        installed_lineage=own_types.lineages(modules, path, guarded, methods.lineage),
+        installed_lineage=lineage,
+        written=lineage.written(),
         installed_aliases=methods.aliases,
         checking=own.guarded,
         plain=plain.classes(modules, path),

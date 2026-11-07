@@ -1,7 +1,7 @@
 """The rules: every local variable is typed where it's first bound (see README)."""
 
 import ast
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
 from typing import Final, NamedTuple, cast
 
@@ -9,6 +9,8 @@ from constricter.fix.core import imports
 from constricter.fix.core.known import (
     Guarded,
     ImportPlan,
+    Known,
+    LibraryNames,
     Observed,
     Offered,
     Outside,
@@ -17,7 +19,8 @@ from constricter.fix.core.known import (
     Returns,
 )
 from constricter.fix.index.params import open_functions
-from constricter.fix.values import returned, stored
+from constricter.fix.libraries import stdlib
+from constricter.fix.values import documented, returned, stored
 from constricter.fix.values.hinted import TRACED
 from constricter.fix.values.tables import Tables, module_tables
 from constricter.jsonc import as_text
@@ -370,7 +373,8 @@ def _settled(
       return.
 
     """
-    table: returned.Table = returned.Table(tree, imported, first.known.vouched)
+    writes: Callable[[str], bool] = _classes(tree, first.known, first.facts.generics)
+    table: returned.Table = returned.Table(tree, imported, first.known.vouched, writes)
     seeded: Seeded = first.parameters or Seeded()
     # The table, filled in as the functions are checked in call order, is what they all read.
     settings: Settings = replace(
@@ -466,7 +470,35 @@ def _returned_by(tree: ast.Module, table: returned.Table, settings: Settings) ->
       It.
 
     """
-    return returned.returned(tree, table.recorded, table.assigned, table.used, settings.known.vouched)
+    return returned.returned(
+        tree,
+        table.recorded,
+        table.assigned,
+        table.used,
+        (settings.known.vouched, table.named[1]),
+    )
+
+
+def _classes(tree: ast.Module, known: Known, generics: frozenset[str]) -> Callable[[str], bool]:
+    """Tell what the module may write as a class: its own, and those it names (see `documented.writable`).
+
+    `generics`: the generic classes it names, its imports' from the standard library's and other
+    checked files' (`Facts.generics`), whose arguments a docstring doesn't give.
+
+    Returns:
+      Whether a name is one.
+
+    """
+    names: LibraryNames = known.names
+    return documented.writable(
+        tree,
+        (
+            known.classes.__contains__,
+            names.written.__contains__,
+            stdlib.class_names(names.stdlib).__contains__,
+        ),
+        (frozenset(known.generic).__contains__, generics.__contains__),
+    )
 
 
 def _knowing(settings: Settings, imported: Returns, found: Returned) -> Settings:

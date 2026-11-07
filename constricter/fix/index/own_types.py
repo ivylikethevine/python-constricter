@@ -251,6 +251,27 @@ class Lineages(Mapping[str, tuple[str, ...]]):
         """
         return sum(1 for _ in self)
 
+    def written(self) -> frozenset[str]:
+        """Name the classes the file names at once, installed and checked files', none generic where defined.
+
+        Not those of a module it imports, worked out only when asked (pickled, a worker has those
+        asked so far). A line's first path names its class (`numpy.ndarray`), whose module records
+        its generic classes, defaults or not: written bare, a type checker fills their parameters in.
+
+        Returns:
+          Each, as the file names it.
+
+        """
+        found: set[str] = set()
+        name: str
+        line: tuple[str, ...]
+        for name, line in (*self.installed.items(), *self.named.own.items()):
+            module: Module | None = self.catalog.modules.get(line[0].rpartition(".")[0]) if line else None
+            defined: str = line[0].rpartition(".")[2] if line else ""
+            if module is not None and defined not in module.generics | module.defaulted_generics:
+                found.add(name)
+        return frozenset(found)
+
     @override
     def __eq__(self, other: object) -> bool:
         """Compare two by what decides them: the classes named at once and the modules the rest are under.
