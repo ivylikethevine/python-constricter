@@ -83,11 +83,7 @@ wait on a mega run.
 
 ### Small: under 4 hours
 
-1. **`reuse lint` back on.** It was off because no release shipped a wheel for Python 3.11+; 6.3.0
-   of 2026-10-30 ships `py3-none-any`. Built: `reuse` in the dev group, a `reuse lint` step in the
-   Lint job after typos, and its disabled rule gone. Left: CI's Lint job running it green, on the
-   next push. Under an hour; coverage unchanged.
-2. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
+1. **A `str` literal's `split()`** (a finding: changing it withdraws or retypes certain fixes).
    `macros = """a b""".split()` is fixed `list[str]` (certain, `literal+method`), but typeshed's
    `LiteralString` overload gives a literal's `split()` `list[LiteralString]`, which basedpyright
    holds invariant: "`list[LiteralString]` is not assignable to declared type `list[str]`", in a
@@ -99,7 +95,7 @@ wait on a mega run.
    one-line `str` literal's `split()` with literal arguments, 31 of them in tests (django's `MONTHS`
    and `imaplib.Months` the others), and about 3 more a literal spanning lines (textual's `DIGITS3X3`
    pair); that run fixes no class body, where pygments' 5 are. Waits on the choice. About 2 hours.
-3. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
+2. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
 import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
    and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
    `from dateutil import parser`, so the name resolves to the package's own binding and not to the
@@ -108,11 +104,11 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    third-party bindings with no fix into a package typeshed's bundled stubs cover
    (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
    many of a run's "imported" bindings call through a name bound so. About 2 hours.
-4. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
+3. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
    an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
    no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
    stub or a checked file declares. About 2 hours.
-5. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all

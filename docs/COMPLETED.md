@@ -1455,6 +1455,10 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
   `Returns:`, `Yields:` and `Raises:` to its function; no docstring lists its arguments, and the
   annotations give the types (`.flake8`).
+- **Licenses, checked**: `reuse lint` holds every file to `REUSE.toml`, in the Lint job after typos
+  (`reuse` in the dev group), first green on pull request #77 at `c15e4bf`. It was off while no
+  release shipped a wheel for Python 3.11+, which CI's `uv sync --no-build` needs; 6.3.0 ships
+  `py3-none-any`.
 - **The tests, in parallel**: `pytest -n auto --dist loadgroup` (pytest-xdist, as
   `tests/ci_local.py` runs them) takes 16s with coverage on 16 CPUs, from 50s in one process; the
   eight that start `--jobs` workers of their own share a worker. The floor is the fuzz test, 11s in
