@@ -94,7 +94,11 @@ the value decides it, for a plain `name = value` in a function or module body:
   `pair[0]` or `pair[-1]`), an attribute (an annotated one, or a `@property` declaring its return)
   or method call of a class defined in the same module or another checked file (`p.x`, `p.norm()`),
   a `str`/`bytes` method with a fixed return (`s.strip()`, `", ".join(parts)`,
-  `"k=v".partition("=")` as `tuple[str, str, str]`; an `int`'s or a `float`'s too, `n.bit_length()`,
+  `"k=v".partition("=")` as `tuple[str, str, str]`; a `str` literal's `split()`, `rsplit()` or
+  `splitlines()` with literal arguments as `list[LiteralString]`, typeshed's overload, which a
+  checker holds invariant against `list[str]` (imported from `typing` where every Python the code
+  runs on has it, 3.11, else from `typing_extensions` under `if TYPE_CHECKING:`); an `int`'s or a
+  `float`'s too, `n.bit_length()`,
   `x.is_integer()`), or a `list`/`set`/`dict` method that returns its own element type
   (`nums.pop()`, `d.get(k)` as `V | None`, `d.get(k, 0)` as `V` with a default of that type, and
   `d.get(k, default)` or `d.pop(k, default)` by a literal or empty display: `V` where `V` takes it,
@@ -273,11 +277,18 @@ the value decides it, for a plain `name = value` in a function or module body:
   subclass may override it); a function whose `return`s are themselves guesses makes its calls
   guesses too. `return`s of one type and of `None` (or a bare `return`) give `T | None`, a guess, as
   a type checker infers the function's return. One whose `return`s decide nothing is typed by the return its docstring names, a
-  guess (`documented`): a numpydoc `Returns` section of one entry, a Google-style `Returns:` whose
-  first line names a type or a Sphinx `:rtype:`, naming `int`, `float`, `bool`, `str`, `bytes` or
-  `complex` (or `integer`, `boolean`, `string`), or one of them `or None`; only where every
-  `return` gives a value, of no known type or one the type takes, none without `or None` where one
-  is `return None`, and no number in a module importing numpy, whose scalars (`np.int64`) a checker
+  guess (`documented`): a numpydoc `Returns` section, a Google-style `Returns:` whose first line
+  names a type or a Sphinx `:rtype:`, naming `int`, `float`, `bool`, `str`, `bytes` or `complex`
+  (or `integer`, `boolean`, `string`); a class the module binds by that name, its own or one it
+  imports (`DataFrame`, `pd.DataFrame`, `dt.datetime`), not a generic one, whose arguments a
+  docstring doesn't give; a `list`, `set`, `frozenset` or `tuple` of one (`list of int`); an
+  annotation of those (`dict[str, Graph]`); or several, `or` or `|` between (`int or float`,
+  `Graph or None`), but no class among other types than `None`: `Series or DataFrame` is the
+  receiver's own kind, which a checker given the union holds against each caller using one's
+  members. A numpydoc section of several entries is a tuple of their types where every `return` is
+  a tuple display of as many. Only where every `return` gives a value, of no known type or one the
+  type takes (a class's own, not a subclass's), none without `None` named where one is
+  `return None`, and no number in a module importing numpy, whose scalars (`np.int64`) a checker
   takes for none. A generator function counts by
   its `yield`s instead: each a statement of its own
   (nothing is sent in), all of one type `T`, and no `return` of a value, give a
@@ -1115,7 +1126,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                         |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                          |
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)      |
-| `documented`    | an unannotated function's docstring's named return, a builtin scalar (a guess)                |
+| `documented`    | an unannotated function's docstring's named return type (a guess)                             |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)             |
 | `member`        | a plain class's variable, by its value in the class's body (a guess)                          |
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                           |

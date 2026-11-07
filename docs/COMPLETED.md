@@ -723,6 +723,18 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
   `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
   branches, not a copy. Too few to build a join for; left as it is unless a run shows more.
+- **A `str` literal's `split()`.** `macros = """a b""".split()` was fixed `list[str]` (certain,
+  `literal+method`), but typeshed's `LiteralString` overload gives a literal's `split()`
+  `list[LiteralString]`, which basedpyright holds invariant against `list[str]` (5 of pygments'
+  errors with the class variables). Measured on `mega-11-06-2026-0949` (`scratch/literal_split.py`):
+  33 of its 110,349 certain fixes are a one-line literal's `split()` with literal arguments, 31 in
+  tests (django's `MONTHS`, `imaplib.Months`), and about 3 a literal spanning lines (textual's
+  `DIGITS3X3`). Decided 2026-11-06, of writing `list[LiteralString]` or no fix: the former, though
+  a later `append` of a `str` then fails under pyright. Built: `split`, `rsplit` and `splitlines`
+  on a `str` literal with every argument a literal are `list[LiteralString]`
+  (`members._literal_list`), from `typing` where every Python the code runs on has it (3.11),
+  else from `typing_extensions` under `if TYPE_CHECKING:`; mypy reads it as `str`. A `str`
+  argument keeps the `str` overload's `list[str]`.
 
 ## Command and output
 
@@ -1424,6 +1436,25 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   each), matched by 16 passing anew. The bars are met but for the `__new__` change's errors, open in
   [ROADMAP.md](ROADMAP.md).
 
+- **A docstring's named return (`documented`) held to the bars.** Built for builtin scalars, it
+  missed every bar on 2026-10-29 (`f7d53b2`: 27 guesses, 16 told, 62.5% held, numpy's `int32` and
+  `int64`), then sat at 8 told over four runs once a module importing numpy had no `documented`
+  number. Widened on 2026-11-06 to a class the module binds (its own or imported, not generic), a
+  builtin container of those, one `or None`, and several numpydoc entries a tuple display gives,
+  refusing a union naming a class among other types (pandas's `Series or DataFrame`, the receiver's
+  own kind: 118 fixes mypy would hold against `assert_frame_equal`). One process each on
+  16CPU/60GB, networkx's `documented` fixes went from 5 to 44 and pandas's from 1 to 62. On
+  `mega-11-06-2026-2039` (`edcaba3`, 87 minutes): 148 `documented` guesses, 67 told, 65 held
+  (97.0%), none blamed; `documented+returned` passes LIKELY.md's three bars (102 guesses, 72 in a
+  checked package, none blamed, 41 told, 39 held, 95.1%) and joins `LIKELY`. The same run's certain fixes have 41
+  `list[LiteralString]` splits; no type error names `LiteralString`.
+- **What `vague = 0` buys the scientific corpora.** `vague-11-06-2026-2206` (`edcaba3`,
+  `tests/corpus/runs/vague.toml`) ran the census of xarray, dask, networkx and pandas at `--vague 0`,
+  read against `mega-11-06-2026-2039`'s at the default (no `Any` anywhere). Bindings with no fix:
+  pandas 35,014 to 34,849, xarray 11,196 to 11,037, dask 18,238 to 18,110, networkx 15,982 to
+  16,009: 425 fewer of 80,430 (0.5%) on the four together; networkx's 27 more not looked into. The
+  default costs them little.
+
 ## CI, security and releases
 
 - **CI** (`ci.yml`): every check in [CONTRIBUTING](CONTRIBUTING.md#development), the pre-commit
@@ -1455,6 +1486,10 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   deptry takes every group for a dev one). pydoclint, as a flake8 plugin, holds a docstring's
   `Returns:`, `Yields:` and `Raises:` to its function; no docstring lists its arguments, and the
   annotations give the types (`.flake8`).
+- **Licenses, checked**: `reuse lint` holds every file to `REUSE.toml`, in the Lint job after typos
+  (`reuse` in the dev group), first green on pull request #77 at `c15e4bf`. It was off while no
+  release shipped a wheel for Python 3.11+, which CI's `uv sync --no-build` needs; 6.3.0 ships
+  `py3-none-any`.
 - **The tests, in parallel**: `pytest -n auto --dist loadgroup` (pytest-xdist, as
   `tests/ci_local.py` runs them) takes 16s with coverage on 16 CPUs, from 50s in one process; the
   eight that start `--jobs` workers of their own share a worker. The floor is the fuzz test, 11s in

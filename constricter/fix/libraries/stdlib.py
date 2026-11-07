@@ -606,6 +606,34 @@ def generics(bound: Mapping[str, str]) -> frozenset[str]:
     )
 
 
+def class_names(bound: Mapping[str, str]) -> frozenset[str]:
+    """Spell the standard library's classes as a module's imports (`bound`, see `origins`) name them.
+
+    Returns:
+      Each spelling (`OrderedDict`, `dt.datetime`) of a class the tables know (`defines_class`), but
+      none written bare that's missing its type arguments (see `generics`).
+
+    """
+    return frozenset(
+        f"{name}{path.removeprefix(origin)}"
+        for name, origin in bound.items()
+        for path in _class_paths(origin)
+        if not needs_arguments(path)
+    )
+
+
+@lru_cache(maxsize=1024)
+def _class_paths(origin: str) -> tuple[str, ...]:
+    """Find the classes an import's origin names: itself, or those in its module (see `defines_class`).
+
+    Returns:
+      Their paths.
+
+    """
+    paths: set[str] = {path for path, found in CLASSES.items() if path == found} | set(_TYPE_PARAMETERS)
+    return tuple(path for path in paths if path == origin or path.startswith(f"{origin}."))
+
+
 def held_whole(path: str) -> str | None:
     """Find the class at `path` (or the one `path` is another name of), if the tables hold it whole.
 

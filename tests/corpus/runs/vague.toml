@@ -1,0 +1,26 @@
+# The scientific corpora's census at `--vague 0`, which lets a fix name `Any` (`NDArray[Any]`,
+# `dict[str, Any]`): what the default, no `Any` anywhere, costs them, read against the mega run's
+# census at the same commit. No suites, hints, coverage or timing. Not published: the census alone.
+
+[run]
+label = "vague"
+versions = ["dev"]
+jobs = 4
+at-once = 4
+options = ["--vague", "0"]
+
+[corpora]
+include = ["xarray", "dask", "networkx", "pandas"]
+install = false
+
+[steps]
+check = true
+fix = []
+infer-with = []
+census = true
+coverage = false
+timing = 0
+profile = false
+tests = false
+types = false
+traced = false
