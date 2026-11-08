@@ -84,9 +84,9 @@ jobs:
       - run: pip-audit --strict --require-hashes --disable-pip -r local/audit.txt
       # Every lockfile git keeps, as Scorecard's Vulnerabilities check reads them after a merge, run
       # before one; an osv-scanner.toml beside a lockfile (.github's) accepts the advisories it lists.
-      - uses: ./.github/actions/setup-tool
+      - uses: ./.github/actions/setup-tools
         with:
-          tool: osv-scanner
+          tools: osv-scanner
       - run: osv-scanner scan source --recursive .
 
   dependency-review:
@@ -132,7 +132,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0 # the whole history
-      - uses: ./.github/actions/setup-tool
+      - uses: ./.github/actions/setup-tools
         with:
-          tool: gitleaks
+          tools: gitleaks
       - run: gitleaks git --redact --no-banner --exit-code 1 .

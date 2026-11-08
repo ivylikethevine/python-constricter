@@ -22,23 +22,25 @@ from constricter.source.declarations import (
     self_returns,
 )
 from constricter.source.decorators import Held, Pass, passes
-from constricter.source.syntax import import_bindings
+from constricter.source.syntax import Start, import_bindings
 
 _NEW_TYPES: Final = frozenset({"typing.NewType", "typing_extensions.NewType"})
+_CALL: Final = "__call__"  # what calling an instance calls
 
 
 class Tables(NamedTuple):
     """A module's own tables (see `returns`, `classes`, `method_returns`, `class_methods`).
 
     Its functions' declared returns (a `NewType` bound nowhere else returning itself: `Ref(name)` is
-    a `Ref`), and its classes' attributes and methods' returns (their classmethods' and
-    staticmethods' too, which an instance has as well; an `async` method's as what awaiting its call
-    gives, its name after `signatures.AWAIT`), the attributes each takes from the module's
-    other classes included (see `Lineage`); `held`, the functions other modules'
-    decorators may give back, and `passes`, its own such decorators; `sides`, its classes'
-    classmethods' and staticmethods' returns, those each takes from the module's other classes
-    included (see `Lineage`), and `held_sides`, those other modules' decorators may give back;
-    `side_calls`, `sides` as called on the class (see `_side_calls`). `partial` and
+    a `Ref`; an instance of a callable class of its own, its `__call__`'s: see `_called_instances`),
+    and its classes' attributes and methods' returns (their classmethods' and staticmethods' too,
+    which an instance has as well; an `async` method's as what awaiting its call gives, its name
+    after `signatures.AWAIT`), the attributes each takes from the module's other classes included
+    (see `Lineage`); `held`, the functions other modules' decorators may give back, and `passes`,
+    its own such decorators; `sides`, its classes' classmethods' and staticmethods' returns, those
+    each takes from the module's other classes included (see `Lineage`), and `held_sides`, those
+    other modules' decorators may give back; `side_calls`, `sides` as called on the class (see
+    `_side_calls`). `partial` and
     `partial_methods`: its functions' and methods' returns that are tuples with a vague part.
     `tuples`: its named tuples, each with the tuple unpacking one gives (see `named_tuples`).
     `unions`: its type aliases of a union, each with the union (see `aliased_unions`).
@@ -72,17 +74,22 @@ def module_tables(tree: ast.Module) -> Tables:
     awaited: dict[str, dict[str, str]] = method_returns(tree, awaited=True)
     made: list[str] = _new_types(tree)
     rebound: frozenset[str] = frozenset(rebound_names(tree)) if made else frozenset()
+    methods: dict[str, dict[str, str]] = {
+        owner: {
+            **own.get(owner, {}),
+            **plain,
+            **{AWAIT + name: each for name, each in awaited[owner].items()},
+        }
+        for owner, plain in method_returns(tree).items()
+    }
     return Tables(
-        {**returns(tree), **{name: name for name in made if name not in rebound}},
-        order.flattened(classes(tree)),
         {
-            owner: {
-                **own.get(owner, {}),
-                **methods,
-                **{AWAIT + name: each for name, each in awaited[owner].items()},
-            }
-            for owner, methods in method_returns(tree).items()
+            **_called_instances(tree, order.flattened(methods)),
+            **returns(tree),
+            **{name: name for name in made if name not in rebound},
         },
+        order.flattened(classes(tree)),
+        methods,
         held(tree),
         passes(tree),
         sides,
@@ -116,6 +123,46 @@ def _side_calls(tree: ast.Module, sides: Mapping[str, Mapping[str, str]]) -> dic
         if isinstance(stmt, ast.ClassDef) and counts[stmt.name] == 1 and stmt.name not in values
         for name, annotation in sides.get(stmt.name, {}).items()
     }
+
+
+def _called_instances(tree: ast.Module, methods: Mapping[str, Mapping[str, str]]) -> dict[str, str]:
+    """Type the calls of the module's instances of its callable classes: `gettz(name)`, by `gettz: _GetTZ`.
+
+    A top-level name bound once, declared (`gettz: _GetTZ`) or bound (`add = Adder()`) as an
+    instance of a top-level class defined once whose name nothing binds as a value, which has a
+    `__call__` (its own, or one it takes from the module's other classes) declaring a return as
+    `method_returns` reads one: not a generic class's, nor an `async` one's.
+
+    Returns:
+      Each such name, and that return.
+
+    """
+    if not any(_CALL in each for each in methods.values()):  # most modules: no callable class
+        return {}
+    rebound: dict[str, list[Start]] = rebound_names(tree)
+    values: frozenset[str] = taken_names(tree)[1]
+    counts: Counter[str] = Counter(node.name for node in walked.classes(tree))
+    top: frozenset[str] = frozenset(stmt.name for stmt in tree.body if isinstance(stmt, ast.ClassDef))
+    found: dict[str, str] = {}
+    stmt: ast.stmt
+    name: str
+    klass: str
+    for stmt in tree.body:
+        match stmt:
+            case (
+                ast.AnnAssign(target=ast.Name(id=name), annotation=ast.Name(id=klass))
+                | ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=ast.Name(id=klass)))
+            ) if (
+                name not in rebound
+                and klass in top
+                and counts[klass] == 1
+                and klass not in values
+                and _CALL in methods.get(klass, {})
+            ):
+                found[name] = methods[klass][_CALL]
+            case _:
+                pass
+    return found
 
 
 def _new_types(tree: ast.Module) -> list[str]:

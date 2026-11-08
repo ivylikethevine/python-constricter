@@ -735,6 +735,21 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`members._literal_list`), from `typing` where every Python the code runs on has it (3.11),
   else from `typing_extensions` under `if TYPE_CHECKING:`; mypy reads it as `str`. A `str`
   argument keeps the `str` overload's `list[str]`.
+- **A package's submodule bound by `from pkg import sub`, called through.** An installed package's
+  name bound by `from pkg import sub` is the submodule where the package's `__init__` binds `sub`
+  so too (`from pkg import sub`, `from . import sub`, as typeshed's `dateutil` does), not only
+  where it leaves it unbound (`classnames.as_module`, which the overloads' and installed classes'
+  lookups take): `from dateutil import parser`, then `parser.parse(text)`, is a `datetime`. A plain
+  function's call was already typed so (`spelling.resolved`). On `mega-11-06-2026-2039`
+  (`scratch/imported_reach.py`), 1,156 "imported" bindings with no fix call `sub.f()` after
+  `from pkg import sub`, 96 of them where the package binds `sub` itself: 87 the corpora's own
+  functions (networkx's `algorithms.bipartite`, optuna's `logging`), which this leaves as they
+  were, and 9 third-party (numpy's `ma` and `linalg`, psycopg2's `extensions`), none an overload.
+  `mega-fixes-11-08-2026-0815` (`77fe292` with it, 11 minutes on 16CPU/60GB), against
+  `mega-11-06-2026-2039` (`scratch/run_fixes_diff.py`): no fix withdrawn or added on the 47
+  corpora, no new type error; the tier moves it shows are `77fe292`'s `documented+returned`
+  (guesses now likely), and `multiprocessing/spawn.py`'s `opts`, a `returned` guess now certain,
+  not this change's: the standard library is checked, not installed.
 
 ## Command and output
 

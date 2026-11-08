@@ -737,3 +737,50 @@ def test_calls_into_a_package_typesheds_bundled_stubs_type_are_typed(
     assert cli.main(["--fix", "--unsafe-fixes", "-q", str(main)]) == cli.EXIT_FOUND
     fixed = main.read_text(encoding="utf-8")
     assert all(line in fixed for line in GUESSED), fixed
+
+
+ZONES: Final = {
+    "zones/py.typed": "",
+    "zones/__init__.pyi": "from zones.tz import gettz as gettz\n",
+    "zones/tz.pyi": """
+        from datetime import tzinfo
+        from typing import type_check_only
+
+        @type_check_only
+        class _GetTZ:
+            def __call__(self, name: str | None = None) -> tzinfo | None: ...
+
+        gettz: _GetTZ
+    """,
+}
+ZONED: Final = """
+import zones
+from zones import tz
+
+
+def run(name: str):
+    a = tz.gettz(name)
+    b = zones.gettz(name)
+    return a, b
+"""
+ZONED_FIXED: Final = (
+    "from datetime import tzinfo\n",
+    "    a: tzinfo | None = tz.gettz(name)\n",
+    "    b: tzinfo | None = zones.gettz(name)\n",
+)
+
+
+def test_an_installed_instances_call_is_typed_by_its_class(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`tz.gettz(name)`, by typeshed's `gettz: _GetTZ`, is what `_GetTZ.__call__` declares."""
+    site: Path = _site(tmp_path, ZONES)
+    monkeypatch.setattr(sys, "path", [str(site), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(ZONED), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN  # both fixed
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in ZONED_FIXED), fixed

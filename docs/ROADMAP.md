@@ -29,8 +29,8 @@ The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), re
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
 all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
 checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
-`mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
-wait on a mega run.
+`mega-fixes-11-08-2026-0815`, 11 minutes), which measures none of the bars: a guess's bars and the
+tests still wait on a mega run.
 
 1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
@@ -57,23 +57,30 @@ wait on a mega run.
    others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
    run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
    stages". About an hour beside the run; coverage unchanged.
+3. **A callable instance's call.** Built: a module's top-level name bound once, declared
+   (`gettz: _GetTZ`) or bound (`add = Adder()`) as an instance of a top-level class of that module
+   defined once, not generic, with a `__call__` declaring a return (its own or one it inherits in
+   the module), is typed as a function declaring that return (`tables._called_instances`, among
+   the module's `returns`): typeshed's `tz.gettz(name)` is a `tzinfo | None`, an installed or a
+   checked module's alike. Before it, the same module's `add(1)` was a guess and another's no fix.
+   On `mega-11-06-2026-2039` (`scratch/imported_reach.py`) 10 "imported" bindings with no fix call a
+   module-level instance whose class defines `__call__`: 9 declare no return (xarray's ufuncs,
+   dask's `ufunc.sqrt`), 1 does (`dateutil.tz.gettz`). Not reached: an instance whose class is
+   another module's, and a generic class's. pydantic's 1,145 fixes, guesses included, the same.
+   Left: a `mega-fixes` run read against the latest mega
+   run's records with `scratch/run_fixes_diff.py`. Done when it adds no new type error. About half
+   an hour beside the run; coverage about unchanged.
 
 ### Small: under 4 hours
 
-1. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
-import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
-   and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
-   `from dateutil import parser`, so the name resolves to the package's own binding and not to the
-   module. numpy's `from numpy import random`, then `random.default_rng()`, the same; a package whose
-   `__init__` leaves the submodule unbound (pydantic's `networks`) is typed by either form. Of the 135
-   third-party bindings with no fix into a package typeshed's bundled stubs cover
-   (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
-   many of a run's "imported" bindings call through a name bound so. About 2 hours.
-2. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
-   an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
-   no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
-   stub or a checked file declares. About 2 hours.
-3. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+1. **A module's own class named as a typing generic** (a finding). numpy's `default_rng()` declares
+   `-> Generator`, its own `numpy.random.Generator`, and gets no fix ("imported"): a bare
+   `Generator` return is read as typing's, vague without its arguments (`source.annotations`), so
+   `_generator.pyi` gives no return at all (`declarations.returns`). On `mega-11-06-2026-2039` 75
+   `numpy.random.default_rng` bindings have no fix. Done when a return naming a class its module
+   defines, or imports from outside `typing` and `collections.abc`, isn't read as the generic of
+   that name. About 2 hours, for about 0.03%.
+2. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all

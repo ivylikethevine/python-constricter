@@ -408,6 +408,25 @@ def f(g: st.Grid[st.Float]) -> None:
 THROUGH_FIXED: Final = "    a: st.Float = g.first()\n"
 PLUGIN_FIXED: Final = "    a: int = s.size()\n"
 MODERN_FIXED: Final = "    a: modern.Array[modern.Float] = modern.empty(n, modern.Float)\n"
+PARSE: Final = """
+from typing import overload
+
+@overload
+def parse(text: str) -> int: ...
+@overload
+def parse(text: bytes) -> str: ...
+"""
+SUBMODULE: Final = """
+from dates import parser, moved
+
+
+def f(text: str) -> None:
+    a = parser.parse(text)
+    b = moved.parse(text)
+    print(a, b)
+"""
+SUBMODULE_FIXED: Final = "    a: int = parser.parse(text)\n"
+MOVED_UNFIXED: Final = "    b = moved.parse(text)\n"
 
 
 def _site(root: Path, files: dict[str, str]) -> Path:
@@ -483,6 +502,34 @@ def test_an_installed_class_extending_a_checked_protocol_has_a_gap_in_its_lineag
     )
     _ = cli.main(["--fix", "-q", str(package)])
     assert PLUGIN_FIXED in main.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("binding", ["from dates import parser, other", "from . import parser, other"])
+def test_a_submodule_its_package_binds_itself_is_called_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    binding: str,
+) -> None:
+    """`from dates import parser`, then `parser.parse(text)`, the package's `__init__` binding it so too.
+
+    As typeshed's `dateutil` does; a name the package binds to something else stays its attribute.
+    """
+    dates: dict[str, str] = {
+        "dates/py.typed": "",
+        "dates/__init__.pyi": f"{binding}\nfrom dates._held import held as moved\n",
+        "dates/parser.pyi": PARSE,
+        "dates/other.pyi": PARSE,
+        "dates/moved.pyi": PARSE,
+        "dates/_held.pyi": "held: int\n",
+    }
+    monkeypatch.setattr(sys, "path", [str(_site(tmp_path, dates)), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "main.py"
+    _ = main.write_text(textwrap.dedent(SUBMODULE), encoding="utf-8")
+    _ = cli.main(["--fix", "-q", str(main)])
+    fixed: str = main.read_text(encoding="utf-8")
+    assert SUBMODULE_FIXED in fixed
+    assert MOVED_UNFIXED in fixed  # `moved` is the package's `held`, not its submodule
 
 
 def test_signatures_are_read_once_per_index(tmp_path: Path, site: Path) -> None:
