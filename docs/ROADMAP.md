@@ -88,6 +88,17 @@ tests still wait on a mega run.
    showing no dump on dask confirms it. The mega run of 2026-10-29 at 19:20 (`e793bc6`) had none,
    sized the same way. Decided 2026-11-06: not built until a run dumps again; then measure the dumps
    and dask's `infer-union` seconds on a mega run with it. About 2 hours; coverage unchanged.
+3. **A receiver typed in the same pass, its method's call left to a second** (a finding).
+   `alt-11-08-2026-1133` (`fix-certain`): a second pass would still fix 4 in trio and 1 in rich. In
+   trio's `_tests/test_highlevel_open_tcp_listeners.py`, the first pass declares
+   `listener: trio.SocketListener = listeners[0]` (itself `listeners: list[trio.SocketListener]` that
+   pass) but leaves `s1 = await listener.accept()`, which the second types `SocketStream`; in rich's
+   `jupyter.py`, the loop target `style` of `for text, style, control in Segment.simplify(...)` is
+   declared `Optional[Style]`, and only the second pass types `rule = style.get_html_style(theme)`
+   under `if style:`. Each is a method's call on a receiver whose type the first pass found but no
+   annotation yet stated; not yet traced (the rounds, `cli/rounds.py`, first). Done when one pass
+   leaves nothing for a second on the `alt` corpora (the runner's "a second pass would still fix").
+   About 3 hours; coverage about unchanged, its fixes made one pass sooner.
 
 ### Medium: 4 to 8 hours
 

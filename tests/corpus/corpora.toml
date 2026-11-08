@@ -974,7 +974,8 @@ install = ["pip -e .[socks] --group test --group typecheck"]
 tests = "-n {workers} tests"
 checks = ["pyright src/requests/"]
 
-# Its CI installs it with Poetry: its dev dependencies as Poetry pins them.
+# Its CI installs it with Poetry: its dev dependencies as Poetry pins them, and Pygments as its
+# `poetry.lock` does (a later one highlights its syntax tests' code otherwise).
 [corpus.rich]
 why = "protocols and dataclasses, typed strictly"
 version = "15.0.0"
@@ -990,7 +991,7 @@ package = "rich-15.0.0/rich"
 repository = "https://github.com/Textualize/rich"
 tag = "v15.0.0"
 source = "rich"
-install = ["pip -e . 'pytest>=7,<8' attrs 'mypy>=1.11,<2' 'typing-extensions>=4,<5'"]
+install = ["pip -e . 'pytest>=7,<8' attrs 'mypy>=1.11,<2' 'typing-extensions>=4,<5' pygments==2.19.2"]
 tests = "tests"
 checks = ["mypy -p rich --no-incremental"]
 
@@ -1014,6 +1015,9 @@ install = ["pip -r test-requirements.txt --no-deps", "pip -e ."]
 tests = "--run-slow src/trio"
 checks = ["mypy --platform linux", "pyright src/trio/_tests/type_tests src/trio/_core/_tests/type_tests"]
 
+[corpus.trio.suite.differs]
+"src/trio/_tests/test_deprecate.py::test_warn_deprecated" = "it asserts the warning it raises is on the line above its own `_here()` call, which a declaration added between moves"
+
 # Its nox `test` session's pytest (its dummy servers on ports of their own) and its `mypy` session.
 [corpus.urllib3]
 why = "a strictly typed library"
@@ -1030,7 +1034,8 @@ repository = "https://github.com/urllib3/urllib3"
 tag = "2.8.0"
 source = "src/urllib3"
 install = ["sync --frozen --group dev --group mypy --extra socks --extra brotli --extra zstd --extra h2"]
-tests = "--disable-socket --allow-unix-socket --allow-hosts=localhost,127.0.0.1,::1,127.0.0.0,240.0.0.0 test"
+# Without pytest-memray, whose `limit_memory` mark reads the cache a run's pytest goes without.
+tests = "-p no:memray --disable-socket --allow-unix-socket --allow-hosts=localhost,127.0.0.1,::1,127.0.0.0,240.0.0.0 test"
 checks = ["mypy -p dummyserver -m noxfile -p urllib3 -p test"]
 
 # One package of the langchain monorepo, `libs/core`: its own lock, installed into the checkout's venv.
@@ -1053,8 +1058,10 @@ install = ["sync --frozen --project libs/core --group test --group typing"]
 tests = "-n {workers} --benchmark-disable --disable-socket --allow-unix-socket libs/core/tests/unit_tests"
 checks = ["mypy --config-file libs/core/pyproject.toml libs/core/langchain_core"]
 
-# Its tests on SQLite, as its CI's default. Its CI type-checks with ty, whose output the runner doesn't
-# read.
+# Its tests on SQLite, as its CI's default, with an empty pytest config: it has none, and pytest would
+# take this project's, above the checkout. Two of its tests fail here, before and after a fix: each runs
+# its example in a subprocess outside the checkout. Its CI type-checks with ty, whose output the runner
+# doesn't read.
 [corpus.sqlmodel]
 why = "pydantic and SQLAlchemy generics together"
 version = "0.0.48"
@@ -1070,7 +1077,7 @@ repository = "https://github.com/fastapi/sqlmodel"
 tag = "0.0.48"
 source = "sqlmodel"
 install = ["sync --frozen --no-dev --group tests"]
-tests = "tests"
+tests = "-c /dev/null --rootdir . tests"
 checks = []
 
 # Its tox `py314` and `mypy` environments.
