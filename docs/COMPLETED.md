@@ -750,6 +750,20 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   corpora, no new type error; the tier moves it shows are `77fe292`'s `documented+returned`
   (guesses now likely), and `multiprocessing/spawn.py`'s `opts`, a `returned` guess now certain,
   not this change's: the standard library is checked, not installed.
+- **A callable instance's call.** A module's top-level name bound once, declared (`gettz: _GetTZ`)
+  or bound (`add = Adder()`) as an instance of a top-level class of that module defined once, not
+  generic, with a `__call__` declaring a return (its own or one it inherits in the module), is
+  typed as a function declaring that return (`tables._called_instances`, among the module's
+  `returns`): typeshed's `tz.gettz(name)` is a `tzinfo | None`, an installed or a checked module's
+  alike. Before it, the same module's `add(1)` was a guess and another's no fix. On
+  `mega-11-06-2026-2039` (`scratch/imported_reach.py`) 10 "imported" bindings with no fix call a
+  module-level instance whose class defines `__call__`: 9 declare no return (xarray's ufuncs,
+  dask's `ufunc.sqrt`), 1 does (`dateutil.tz.gettz`). Not reached: an instance whose class is
+  another module's, and a generic class's. `mega-fixes-11-08-2026-1051` (`686b2df`, 10 minutes on
+  16CPU/60GB), against `mega-fixes-11-08-2026-0815` (`scratch/run_fixes_diff.py`): one guess now
+  certain, textual's `value_tokens: dict[str, list[Token]]` (`css/tokenize.py`, by
+  `tokenize_value = ValueTokenizerState()`, whose `__call__` it inherits), no other fix withdrawn
+  or added on the 47 corpora, and the type errors the same.
 
 ## Command and output
 
