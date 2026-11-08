@@ -27,8 +27,8 @@ The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), re
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
-all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
-checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
+the 47 timed corpora in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix
+steps and type checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
 `mega-fixes-11-08-2026-1051`, 10 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
@@ -52,11 +52,13 @@ tests still wait on a mega run.
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
    meets none of its steps measured only under a new `output`, and a new corpus or step is unmeasured
    within a measured run. Left: a run with a corpus new to its output, read against
-   `scratch/schedule_solve.py` on its own records, which every corpus of `corpora.toml` having records
-   under `corpus-runs/` leaves to the next corpus added (or a run under another `output` holding the
-   others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
-   run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
-   stages". About an hour beside the run; coverage unchanged.
+   `scratch/schedule_solve.py` on its own records: the first run of `alt`
+   (`tests/corpus/runs/alt.toml`) or the next super or mega run, which meets the seven corpora added
+   unmeasured (requests, rich, trio, urllib3, langchain-core, sqlmodel and marshmallow, grouped by
+   their files alone; their suites not yet run here). Done when it takes within a tenth of the
+   shortest schedule of its own records. A run in stages plans each stage's steps alone since
+   (`planning.ranks`'s `chosen`), read with "Runs in stages". About an hour beside the run; coverage
+   unchanged.
 
 ### Small: under 4 hours
 
@@ -165,6 +167,19 @@ tests still wait on a mega run.
    with no fix waited on the method now known, which a check's results don't name: their reasons are
    kinds (`member`, `receiver`), not the class and method.
    Each timing here predates the changes since 2026-10-28: time them again first.
+4. **A checked package's own stubs.** A package may ship a stub beside its source (`axes/_axes.pyi`
+   beside `axes/_axes.py`), which a type checker reads for every importer, and a stub alone for each
+   compiled module (`_path.pyi`). `--fix` reads stubs only for installed packages (stub before
+   source, `stubs.installed`); in a checked tree it reads the `.py` alone and never the `.pyi`. In
+   matplotlib 3.11.2's sdist (`scratch/stub_pairs.py`), 78 of its 179 modules (tests aside) have a
+   stub beside them and 9 compiled ones a stub alone; the 4,325 functions of those 78 declare 2
+   returns, and their stubs declare about 2,976 more by name. How: a checked module's stub taken
+   before its source for its importers' returns, classes and methods (as an installed module's is),
+   and the stub's declared returns read for the source's own calls, a lone stub as its compiled
+   module. Done when matplotlib, added as a corpus (its sdist alone at first: its build needs meson
+   and a C++ toolchain), types its importers' calls by its stubs and its fixes add no new type
+   error. Measure first: matplotlib's bindings with no fix that call a function its stub declares.
+   About 6 hours; coverage on the corpora small, its reach a stub-shipping package's users.
 
 ### Large: more than 8 hours
 
