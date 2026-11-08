@@ -178,6 +178,11 @@ the value decides it, for a plain `name = value` in a function or module body:
   given one (`cls.__new__(cls)`, `object.__new__(Row)`); and an instance of a class declaring
   `__call__`, what that returns (another checked file's class too). Not a callable that may be
   `None`, nor an `R` that is `None` or vague;
+- a call of a module's instance of its own callable class (`add = Adder()` or `gettz: _GetTZ` at
+  its top level, the name bound nowhere else, the class defined once there and not generic): what
+  its `__call__` declares, in another checked file or an installed package that declares its types
+  too (typeshed's `tz.gettz(name)` is a `tzinfo | None`), as a function declaring its return types
+  its calls;
 - `typing.cast(T, x)`, however `cast` is imported: `T`;
 - a call of one of the module's `NewType`s (`Ref = NewType("Ref", str)` at its top level, however
   `NewType` is imported, the name bound nowhere else): `Ref(name)` is a `Ref`, in another checked
@@ -642,7 +647,8 @@ the file imports that module to run (`core_schema.CoreSchema`, after
 `from pydantic_core import core_schema`; not through a name the file binds as a value somewhere),
 else imported where the type's file has it from, under `if TYPE_CHECKING:` (into the module's first
 top-level one, or a new one after its imports, with `from typing import TYPE_CHECKING` if it must
-be), so the import can't make an import cycle at run time. A name the file already imports, under
+be: an `import typing` the module has only further down, below a `try:` of other imports, isn't
+read yet there), so the import can't make an import cycle at run time. A name the file already imports, under
 any name and even for type checking alone, is reused; a module-level annotation using one imported
 for type checking alone is quoted (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.

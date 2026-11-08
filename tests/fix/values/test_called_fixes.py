@@ -273,3 +273,94 @@ def test_a_methods_own_class_by_its_attribute_is_typed_self() -> None:
         ("made", "Element"),
         ("kind", "type[Element]"),
     ]
+
+
+_INSTANCES: Final = """
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class Adder:
+    def __call__(self, x: int) -> int:
+        return x
+
+
+class Base:
+    def __call__(self) -> str:
+        return ""
+
+
+class Child(Base):
+    pass
+
+
+class Box(Generic[T]):
+    def __call__(self) -> bytes:
+        return b""
+
+
+class Twice:
+    def __call__(self) -> float:
+        return 0.0
+
+
+class Twice:
+    pass
+
+
+add = Adder()
+plain: Child
+boxed = Box()
+again = Twice()
+moved = Adder()
+moved = Base()
+
+
+def use() -> None:
+    a = add(1)
+    b = plain()
+    c = boxed()
+    d = again()
+    e = moved()
+"""
+_USING_INSTANCES: Final = """
+from pkg import callables
+from pkg.callables import add
+
+
+def use() -> None:
+    a = add(1)
+    b = callables.plain()
+    c = callables.boxed()
+"""
+
+
+def test_a_module_level_instance_is_called_by_its_class_call(tmp_path: Path) -> None:
+    """`add(1)`, by `add = Adder()` or `add: Adder`, is what `Adder.__call__` declares, as `gettz(name)`.
+
+    Its class's own `__call__` or one it inherits in the module; not a generic class's, a class
+    defined twice, nor a name bound twice. Another checked file's is typed as its function's call would be.
+    """
+    fixed: dict[str, tuple[str | None, bool]] = {
+        o.name: (o.fix, o.unsafe) for o in check_source(_INSTANCES) if len(o.name) == 1
+    }
+    assert fixed == {"a": ("int", False), "b": ("str", False)} | dict.fromkeys("cde", (None, False))
+    name: str
+    source: str
+    for name, source in {
+        "pkg/__init__.py": "",
+        "pkg/callables.py": _INSTANCES,
+        "using.py": _USING_INSTANCES,
+    }.items():
+        path: Path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(source, encoding="utf-8")
+    using: Path = tmp_path / "using.py"
+    catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
+    found: list[Offence] = check_source(_USING_INSTANCES, outside=across.outside(catalog, using, {}))
+    assert {o.name: (o.fix, o.unsafe) for o in found} == {
+        "a": ("int", False),
+        "b": ("str", False),
+        "c": (None, False),
+    }

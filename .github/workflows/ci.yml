@@ -159,9 +159,9 @@ jobs:
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/markdownlint-cli2
       - run: git ls-files -z '*.md' | xargs -0 .github/node_modules/.bin/prettier --check
       # the tools.txt pin, the same binary link-check.yml's weekly external sweep runs
-      - uses: ./.github/actions/setup-tool
+      - uses: ./.github/actions/setup-tools
         with:
-          tool: lychee
+          tools: lychee
       # Relative links and #fragments only; link-check.yml checks external links.
       - run: git ls-files -z '*.md' | xargs -0 lychee --offline --include-fragments --no-progress
 

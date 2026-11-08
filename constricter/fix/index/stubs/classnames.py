@@ -109,7 +109,8 @@ def declares(modules: Mapping[str, Module], origin: Origin, *, aliases: bool = F
 def as_module(modules: Mapping[str, Module], origin: Origin | None) -> Origin | None:
     """Take a name imported from a package that is its submodule (`from pkg import util`) as that module.
 
-    Unless the package itself binds the name another way.
+    Unless the package itself binds the name another way: its own `from pkg import util` (typeshed's
+    `dateutil`, numpy's `random`) binds the submodule.
 
     Returns:
       The module (`(name, None)`), or `origin` as it is.
@@ -119,5 +120,8 @@ def as_module(modules: Mapping[str, Module], origin: Origin | None) -> Origin | 
         return origin
     submodule: str = f"{origin[0]}.{origin[1]}"
     package: Module | None = modules.get(origin[0])
-    bound: bool = package is not None and package.names.get(origin[1], (submodule, None)) != (submodule, None)
+    bound: bool = package is not None and package.names.get(origin[1], (submodule, None)) not in {
+        (submodule, None),
+        origin,
+    }
     return (submodule, None) if submodule in modules and not bound else origin

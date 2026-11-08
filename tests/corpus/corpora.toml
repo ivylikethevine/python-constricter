@@ -33,6 +33,8 @@
 [sets]
 # Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
 # run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scratch/corpus_quadrants.py` reprints them).
+# requests, rich, trio, urllib3, langchain-core, sqlmodel and marshmallow: by their files alone, until
+# a run times them.
 fast-small = [
   "structlog",
   "attrs",
@@ -49,8 +51,25 @@ fast-small = [
   "botocore",
   "uvicorn",
   "mcp",
+  "requests",
+  "rich",
+  "urllib3",
+  "sqlmodel",
+  "marshmallow",
 ]
-fast-large = ["textual", "pdm", "pip", "twisted", "strawberry-graphql", "pygments", "streamlink", "sphinx", "tox"]
+fast-large = [
+  "textual",
+  "pdm",
+  "pip",
+  "twisted",
+  "strawberry-graphql",
+  "pygments",
+  "streamlink",
+  "sphinx",
+  "tox",
+  "trio",
+  "langchain-core",
+]
 slow-small = ["pydantic", "pint", "altair", "seaborn", "aiohttp", "websockets", "anyio", "zarr", "joblib"]
 slow-large = [
   "networkx",
@@ -73,6 +92,8 @@ slow-large = [
 original = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "twisted", "pip"]
 super = ["original", "fast-small", "fast-large"]
 mega = ["super", "slow-small", "slow-large"]
+# The corpora added last, to run apart (`runs/alt.toml`) before a mega run meets them.
+alt = ["requests", "rich", "trio", "urllib3", "langchain-core", "sqlmodel", "marshmallow"]
 
 # CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python
 # leaves out: the same 1,867 files on any interpreter, so long as it parses 3.14's syntax.
@@ -934,3 +955,149 @@ source = "joblib"
 install = ["pip -e . pytest pytest-timeout numpy"]
 tests = "joblib --timeout=120"
 checks = []
+
+[corpus.requests]
+why = "long-untyped code, typed in place"
+version = "2.34.2"
+
+[corpus.requests.sdist]
+where = "ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf"
+archive = "requests-2.34.2.tar.gz"
+sha256 = "f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed"
+package = "requests-2.34.2/src/requests"
+
+[corpus.requests.suite]
+repository = "https://github.com/psf/requests"
+tag = "v2.34.2"
+source = "src/requests"
+install = ["pip -e .[socks] --group test --group typecheck"]
+tests = "-n {workers} tests"
+checks = ["pyright src/requests/"]
+
+# Its CI installs it with Poetry: its dev dependencies as Poetry pins them, and Pygments as its
+# `poetry.lock` does (a later one highlights its syntax tests' code otherwise).
+[corpus.rich]
+why = "protocols and dataclasses, typed strictly"
+version = "15.0.0"
+environment = { TERM = "unknown" }
+
+[corpus.rich.sdist]
+where = "c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9"
+archive = "rich-15.0.0.tar.gz"
+sha256 = "edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36"
+package = "rich-15.0.0/rich"
+
+[corpus.rich.suite]
+repository = "https://github.com/Textualize/rich"
+tag = "v15.0.0"
+source = "rich"
+install = ["pip -e . 'pytest>=7,<8' attrs 'mypy>=1.11,<2' 'typing-extensions>=4,<5' pygments==2.19.2"]
+tests = "tests"
+checks = ["mypy -p rich --no-incremental"]
+
+# Its `ci.sh` and tox's `typing` (its Linux half): its tests live in the package. One process, as its
+# CI runs them.
+[corpus.trio]
+why = "async code that isn't `asyncio`"
+version = "0.34.0"
+
+[corpus.trio.sdist]
+where = "92/dc/a2d25ed73ad49cfd79bf18d262577c3731c98e382284e28d522f49a0df35"
+archive = "trio-0.34.0.tar.gz"
+sha256 = "63b9485408bdfdde544fced107045a8c0086cdc4bd0ef2f797b9e0dd111b964b"
+package = "trio-0.34.0/src/trio"
+
+[corpus.trio.suite]
+repository = "https://github.com/python-trio/trio"
+tag = "v0.34.0"
+source = "src/trio"
+install = ["pip -r test-requirements.txt --no-deps", "pip -e ."]
+tests = "--run-slow src/trio"
+checks = ["mypy --platform linux", "pyright src/trio/_tests/type_tests src/trio/_core/_tests/type_tests"]
+
+[corpus.trio.suite.differs]
+"src/trio/_tests/test_deprecate.py::test_warn_deprecated" = "it asserts the warning it raises is on the line above its own `_here()` call, which a declaration added between moves"
+
+# Its nox `test` session's pytest (its dummy servers on ports of their own) and its `mypy` session.
+[corpus.urllib3]
+why = "a strictly typed library"
+version = "2.8.0"
+
+[corpus.urllib3.sdist]
+where = "e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e"
+archive = "urllib3-2.8.0.tar.gz"
+sha256 = "63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63"
+package = "urllib3-2.8.0/src/urllib3"
+
+[corpus.urllib3.suite]
+repository = "https://github.com/urllib3/urllib3"
+tag = "2.8.0"
+source = "src/urllib3"
+install = ["sync --frozen --group dev --group mypy --extra socks --extra brotli --extra zstd --extra h2"]
+# Without pytest-memray, whose `limit_memory` mark reads the cache a run's pytest goes without.
+tests = "-p no:memray --disable-socket --allow-unix-socket --allow-hosts=localhost,127.0.0.1,::1,127.0.0.0,240.0.0.0 test"
+checks = ["mypy -p dummyserver -m noxfile -p urllib3 -p test"]
+
+# One package of the langchain monorepo, `libs/core`: its own lock, installed into the checkout's venv.
+[corpus.langchain-core]
+why = "pydantic models and generics, typed strictly"
+version = "1.7.0"
+environment = { UV_PROJECT_ENVIRONMENT = "../../.venv" }  # from `libs/core`: the checkout's
+
+[corpus.langchain-core.sdist]
+where = "64/cb/77d1dabe57d0dc0f96f65cba321366c341627295d1c09eefa58549e34391"
+archive = "langchain_core-1.7.0.tar.gz"
+sha256 = "c34e53358b103cd73f43c63f5f46f9b5c6c3467efdffcdf134892b89020494e4"
+package = "langchain_core-1.7.0/langchain_core"
+
+[corpus.langchain-core.suite]
+repository = "https://github.com/langchain-ai/langchain"
+tag = "langchain-core==1.7.0"
+source = "libs/core/langchain_core"
+install = ["sync --frozen --project libs/core --group test --group typing"]
+tests = "-n {workers} --benchmark-disable --disable-socket --allow-unix-socket libs/core/tests/unit_tests"
+checks = ["mypy --config-file libs/core/pyproject.toml libs/core/langchain_core"]
+
+# Its tests on SQLite, as its CI's default, with an empty pytest config: it has none, and pytest would
+# take this project's, above the checkout. One of its tests fails here, before and after a fix: it runs
+# pytest in a subprocess, which finds this project's config the same way. Its CI type-checks with ty,
+# whose output the runner doesn't read.
+[corpus.sqlmodel]
+why = "pydantic and SQLAlchemy generics together"
+version = "0.0.48"
+
+[corpus.sqlmodel.sdist]
+where = "dd/67/b2c0b771c89c023262dd8fb6ba2cdc6a004e5ff75dd5763051b38ccd133a"
+archive = "sqlmodel-0.0.48.tar.gz"
+sha256 = "5582e87e845e23bb1179a7d8b11a4f5e441b4494528a41ee2fe1d129ffe91543"
+package = "sqlmodel-0.0.48/sqlmodel"
+
+[corpus.sqlmodel.suite]
+repository = "https://github.com/fastapi/sqlmodel"
+tag = "0.0.48"
+source = "sqlmodel"
+install = ["sync --frozen --no-dev --group tests"]
+tests = "-c /dev/null --rootdir . tests"
+checks = []
+
+[corpus.sqlmodel.suite.differs]
+"tests/test_select_gen.py::test_select_gen" = "it asserts `sql/_expression_select_gen.py` is as its Jinja template renders it, which no annotated file is"
+
+# Its tox `py314` and `mypy` environments.
+[corpus.marshmallow]
+why = "schemas a metaclass builds"
+version = "4.3.1"
+
+[corpus.marshmallow.sdist]
+where = "4e/d7/611e68d57e6a903c29cb33b5afec0f93b4baecacc6c6c62e33cde9eb9dcb"
+archive = "marshmallow-4.3.1.tar.gz"
+sha256 = "fb6b8048af08d4ab061610d5b7d3696a7e4c95337dbda880edb9f95812cabc20"
+package = "marshmallow-4.3.1/src/marshmallow"
+
+[corpus.marshmallow.suite]
+repository = "https://github.com/marshmallow-code/marshmallow"
+tag = "4.3.1"
+source = "src/marshmallow"
+install = ["sync --frozen --no-dev --group tests --group mypy"]
+tests = ""
+checks = ["mypy --show-error-codes"]

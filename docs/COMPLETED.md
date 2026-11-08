@@ -735,6 +735,49 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`members._literal_list`), from `typing` where every Python the code runs on has it (3.11),
   else from `typing_extensions` under `if TYPE_CHECKING:`; mypy reads it as `str`. A `str`
   argument keeps the `str` overload's `list[str]`.
+- **A package's submodule bound by `from pkg import sub`, called through.** An installed package's
+  name bound by `from pkg import sub` is the submodule where the package's `__init__` binds `sub`
+  so too (`from pkg import sub`, `from . import sub`, as typeshed's `dateutil` does), not only
+  where it leaves it unbound (`classnames.as_module`, which the overloads' and installed classes'
+  lookups take): `from dateutil import parser`, then `parser.parse(text)`, is a `datetime`. A plain
+  function's call was already typed so (`spelling.resolved`). On `mega-11-06-2026-2039`
+  (`scratch/imported_reach.py`), 1,156 "imported" bindings with no fix call `sub.f()` after
+  `from pkg import sub`, 96 of them where the package binds `sub` itself: 87 the corpora's own
+  functions (networkx's `algorithms.bipartite`, optuna's `logging`), which this leaves as they
+  were, and 9 third-party (numpy's `ma` and `linalg`, psycopg2's `extensions`), none an overload.
+  `mega-fixes-11-08-2026-0815` (`77fe292` with it, 11 minutes on 16CPU/60GB), against
+  `mega-11-06-2026-2039` (`scratch/run_fixes_diff.py`): no fix withdrawn or added on the 47
+  corpora, no new type error; the tier moves it shows are `77fe292`'s `documented+returned`
+  (guesses now likely), and `multiprocessing/spawn.py`'s `opts`, a `returned` guess now certain,
+  not this change's: the standard library is checked, not installed.
+- **A callable instance's call.** A module's top-level name bound once, declared (`gettz: _GetTZ`)
+  or bound (`add = Adder()`) as an instance of a top-level class of that module defined once, not
+  generic, with a `__call__` declaring a return (its own or one it inherits in the module), is
+  typed as a function declaring that return (`tables._called_instances`, among the module's
+  `returns`): typeshed's `tz.gettz(name)` is a `tzinfo | None`, an installed or a checked module's
+  alike. Before it, the same module's `add(1)` was a guess and another's no fix. On
+  `mega-11-06-2026-2039` (`scratch/imported_reach.py`) 10 "imported" bindings with no fix call a
+  module-level instance whose class defines `__call__`: 9 declare no return (xarray's ufuncs,
+  dask's `ufunc.sqrt`), 1 does (`dateutil.tz.gettz`). Not reached: an instance whose class is
+  another module's, and a generic class's. `mega-fixes-11-08-2026-1051` (`686b2df`, 10 minutes on
+  16CPU/60GB), against `mega-fixes-11-08-2026-0815` (`scratch/run_fixes_diff.py`): one guess now
+  certain, textual's `value_tokens: dict[str, list[Token]]` (`css/tokenize.py`, by
+  `tokenize_value = ValueTokenizerState()`, whose `__call__` it inherits), no other fix withdrawn
+  or added on the 47 corpora, and the type errors the same.
+- **A new `if TYPE_CHECKING:` block reads `typing` only where it's imported by then.** The block
+  goes after the imports the module starts with (`imports._after`); it was spelled through any
+  `import typing` the module has (`Known.type_checking`), so in urllib3's `contrib/socks.py`
+  (`from __future__ import annotations`, a `try: import socks` block, then `import typing`) the
+  new `if typing.TYPE_CHECKING:` ran before `typing` was bound, and the fixed module raised
+  `NameError` on import (`alt-11-08-2026-1157`, every tier). Now an import bound after that line
+  isn't used, and the block comes with `from typing import TYPE_CHECKING` (or `import typing`
+  where that name is taken). On `alt-11-08-2026-1213` (`e095160`, 6 minutes on 16CPU/60GB)
+  urllib3's tests pass after every fix as released (2,418), and the other `alt` corpora's differ
+  only in the tests their `differs` lists. `mega-fixes-11-08-2026-1251` (`92ce706`, 10 minutes):
+  against `mega-fixes-11-08-2026-1051`, no fix withdrawn or added on the 47 corpora and no new type
+  error; against `alt-11-08-2026-1213`, the seven's fixes the same, and of their 16 type errors one
+  differs: langchain-core's `openai.py:586` (a `TypedDict` key that isn't a literal), found on
+  either run, traced to `url_citation: types.Citation` where `alt` traced it to `field: str`.
 
 ## Command and output
 

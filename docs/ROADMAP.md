@@ -27,10 +27,10 @@ The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), re
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
-all 47 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
-checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
-`mega-fixes-11-05-2026-0204`), which measures none of the bars: a guess's bars and the tests still
-wait on a mega run.
+all 54 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
+checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`, or the latest
+`alt` run's for its seven; `mega-fixes-11-08-2026-1251`, 10 minutes), which measures none of the bars: a guess's bars and the
+tests still wait on a mega run.
 
 1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
    one folder (`tests/corpus/stages.py`): built in `fixes`, `traced`, `tests` and `timed`,
@@ -52,28 +52,24 @@ wait on a mega run.
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run
    meets none of its steps measured only under a new `output`, and a new corpus or step is unmeasured
    within a measured run. Left: a run with a corpus new to its output, read against
-   `scratch/schedule_solve.py` on its own records, which every corpus of `corpora.toml` having records
-   under `corpus-runs/` leaves to the next corpus added (or a run under another `output` holding the
-   others' records). Done when it takes within a tenth of the shortest schedule of its own records. A
-   run in stages plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in
-   stages". About an hour beside the run; coverage unchanged.
+   `scratch/schedule_solve.py` on its own records: the first run of `alt`
+   (`tests/corpus/runs/alt.toml`) or the next super or mega run, which meets the seven corpora added
+   unmeasured (requests, rich, trio, urllib3, langchain-core, sqlmodel and marshmallow, grouped by
+   their files alone; their suites not yet run here). Done when it takes within a tenth of the
+   shortest schedule of its own records. A run in stages plans each stage's steps alone since
+   (`planning.ranks`'s `chosen`), read with "Runs in stages". About an hour beside the run; coverage
+   unchanged.
 
 ### Small: under 4 hours
 
-1. **A package's submodule bound by `from pkg import sub`, called through** (a finding). `from dateutil
-import parser`, then `parser.parse(text)`, gets no fix ("imported") where `import dateutil.parser`
-   and `dateutil.parser.parse(text)` is a `datetime`: `dateutil/__init__.pyi` binds `parser` by
-   `from dateutil import parser`, so the name resolves to the package's own binding and not to the
-   module. numpy's `from numpy import random`, then `random.default_rng()`, the same; a package whose
-   `__init__` leaves the submodule unbound (pydantic's `networks`) is typed by either form. Of the 135
-   third-party bindings with no fix into a package typeshed's bundled stubs cover
-   (`scratch/typeshed_reach.py` on `mega-10-30-2026-0857`), 69 are "imported". Measure first: how
-   many of a run's "imported" bindings call through a name bound so. About 2 hours.
-2. **A callable instance's call** (a finding). `gettz: _GetTZ` in typeshed's `dateutil/tz/tz.pyi`,
-   an instance whose class defines `__call__`, types no call (`tz.gettz(name)` is "imported"), as
-   no instance's call does. Measure first: the bindings with no fix whose callee is an instance a
-   stub or a checked file declares. About 2 hours.
-3. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+1. **A module's own class named as a typing generic** (a finding). numpy's `default_rng()` declares
+   `-> Generator`, its own `numpy.random.Generator`, and gets no fix ("imported"): a bare
+   `Generator` return is read as typing's, vague without its arguments (`source.annotations`), so
+   `_generator.pyi` gives no return at all (`declarations.returns`). On `mega-11-06-2026-2039` 75
+   `numpy.random.default_rng` bindings have no fix. Done when a return naming a class its module
+   defines, or imports from outside `typing` and `collections.abc`, isn't read as the generic of
+   that name. About 2 hours, for about 0.03%.
+2. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -92,6 +88,17 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    showing no dump on dask confirms it. The mega run of 2026-10-29 at 19:20 (`e793bc6`) had none,
    sized the same way. Decided 2026-11-06: not built until a run dumps again; then measure the dumps
    and dask's `infer-union` seconds on a mega run with it. About 2 hours; coverage unchanged.
+3. **A receiver typed in the same pass, its method's call left to a second** (a finding).
+   `alt-11-08-2026-1133` (`fix-certain`): a second pass would still fix 4 in trio and 1 in rich. In
+   trio's `_tests/test_highlevel_open_tcp_listeners.py`, the first pass declares
+   `listener: trio.SocketListener = listeners[0]` (itself `listeners: list[trio.SocketListener]` that
+   pass) but leaves `s1 = await listener.accept()`, which the second types `SocketStream`; in rich's
+   `jupyter.py`, the loop target `style` of `for text, style, control in Segment.simplify(...)` is
+   declared `Optional[Style]`, and only the second pass types `rule = style.get_html_style(theme)`
+   under `if style:`. Each is a method's call on a receiver whose type the first pass found but no
+   annotation yet stated; not yet traced (the rounds, `cli/rounds.py`, first). Done when one pass
+   leaves nothing for a second on the `alt` corpora (the runner's "a second pass would still fix").
+   About 3 hours; coverage about unchanged, its fixes made one pass sooner.
 
 ### Medium: 4 to 8 hours
 
@@ -171,6 +178,19 @@ import parser`, then `parser.parse(text)`, gets no fix ("imported") where `impor
    with no fix waited on the method now known, which a check's results don't name: their reasons are
    kinds (`member`, `receiver`), not the class and method.
    Each timing here predates the changes since 2026-10-28: time them again first.
+4. **A checked package's own stubs.** A package may ship a stub beside its source (`axes/_axes.pyi`
+   beside `axes/_axes.py`), which a type checker reads for every importer, and a stub alone for each
+   compiled module (`_path.pyi`). `--fix` reads stubs only for installed packages (stub before
+   source, `stubs.installed`); in a checked tree it reads the `.py` alone and never the `.pyi`. In
+   matplotlib 3.11.2's sdist (`scratch/stub_pairs.py`), 78 of its 179 modules (tests aside) have a
+   stub beside them and 9 compiled ones a stub alone; the 4,325 functions of those 78 declare 2
+   returns, and their stubs declare about 2,976 more by name. How: a checked module's stub taken
+   before its source for its importers' returns, classes and methods (as an installed module's is),
+   and the stub's declared returns read for the source's own calls, a lone stub as its compiled
+   module. Done when matplotlib, added as a corpus (its sdist alone at first: its build needs meson
+   and a C++ toolchain), types its importers' calls by its stubs and its fixes add no new type
+   error. Measure first: matplotlib's bindings with no fix that call a function its stub declares.
+   About 6 hours; coverage on the corpora small, its reach a stub-shipping package's users.
 
 ### Large: more than 8 hours
 
