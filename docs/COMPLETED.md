@@ -771,7 +771,9 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   new `if typing.TYPE_CHECKING:` ran before `typing` was bound, and the fixed module raised
   `NameError` on import (`alt-11-08-2026-1157`, every tier). Now an import bound after that line
   isn't used, and the block comes with `from typing import TYPE_CHECKING` (or `import typing`
-  where that name is taken). The urllib3 copy fixed again imports `TYPE_CHECKING` itself.
+  where that name is taken). On `alt-11-08-2026-1213` (`e095160`, 6 minutes on 16CPU/60GB)
+  urllib3's tests pass after every fix as released (2,418), and the other `alt` corpora's differ
+  only in the tests their `differs` lists.
 
 ## Command and output
 
