@@ -27,9 +27,9 @@ The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), re
 [COMPLETED.md](COMPLETED.md#corpus)). A basic run of the seven corpora, `basic-11-03-2026-2103`
 (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)), takes 35 minutes on 16CPU/60GB, from 0.3.8's
 58; a mega run's 85 buys the other 40 corpora. A change to what `--fix` offers or refuses is read on
-the 47 timed corpora in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix
-steps and type checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`;
-`mega-fixes-11-08-2026-1051`, 10 minutes), which measures none of the bars: a guess's bars and the
+all 54 in 10 minutes by `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type
+checks alone, against the latest mega run's records with `scratch/run_fixes_diff.py`, or the latest
+`alt` run's for its seven; `mega-fixes-11-08-2026-1251`, 10 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
 1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into

@@ -773,7 +773,11 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   isn't used, and the block comes with `from typing import TYPE_CHECKING` (or `import typing`
   where that name is taken). On `alt-11-08-2026-1213` (`e095160`, 6 minutes on 16CPU/60GB)
   urllib3's tests pass after every fix as released (2,418), and the other `alt` corpora's differ
-  only in the tests their `differs` lists.
+  only in the tests their `differs` lists. `mega-fixes-11-08-2026-1251` (`92ce706`, 10 minutes):
+  against `mega-fixes-11-08-2026-1051`, no fix withdrawn or added on the 47 corpora and no new type
+  error; against `alt-11-08-2026-1213`, the seven's fixes the same, and of their 16 type errors one
+  differs: langchain-core's `openai.py:586` (a `TypedDict` key that isn't a literal), found on
+  either run, traced to `url_citation: types.Citation` where `alt` traced it to `field: str`.
 
 ## Command and output
 
