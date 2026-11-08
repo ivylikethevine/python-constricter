@@ -647,7 +647,8 @@ the file imports that module to run (`core_schema.CoreSchema`, after
 `from pydantic_core import core_schema`; not through a name the file binds as a value somewhere),
 else imported where the type's file has it from, under `if TYPE_CHECKING:` (into the module's first
 top-level one, or a new one after its imports, with `from typing import TYPE_CHECKING` if it must
-be), so the import can't make an import cycle at run time. A name the file already imports, under
+be: an `import typing` the module has only further down, below a `try:` of other imports, isn't
+read yet there), so the import can't make an import cycle at run time. A name the file already imports, under
 any name and even for type checking alone, is reused; a module-level annotation using one imported
 for type checking alone is quoted (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.

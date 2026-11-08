@@ -764,6 +764,14 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   certain, textual's `value_tokens: dict[str, list[Token]]` (`css/tokenize.py`, by
   `tokenize_value = ValueTokenizerState()`, whose `__call__` it inherits), no other fix withdrawn
   or added on the 47 corpora, and the type errors the same.
+- **A new `if TYPE_CHECKING:` block reads `typing` only where it's imported by then.** The block
+  goes after the imports the module starts with (`imports._after`); it was spelled through any
+  `import typing` the module has (`Known.type_checking`), so in urllib3's `contrib/socks.py`
+  (`from __future__ import annotations`, a `try: import socks` block, then `import typing`) the
+  new `if typing.TYPE_CHECKING:` ran before `typing` was bound, and the fixed module raised
+  `NameError` on import (`alt-11-08-2026-1157`, every tier). Now an import bound after that line
+  isn't used, and the block comes with `from typing import TYPE_CHECKING` (or `import typing`
+  where that name is taken). The urllib3 copy fixed again imports `TYPE_CHECKING` itself.
 
 ## Command and output
 

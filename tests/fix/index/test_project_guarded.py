@@ -318,6 +318,54 @@ def test_a_type_the_file_doesnt_import_is_imported_for_type_checking(tmp_path: P
         assert user.read_text(encoding="utf-8") == textwrap.dedent(USER_FIXED)
 
 
+LATE_TYPING: Final = """
+from __future__ import annotations
+
+try:
+    import socks
+except ImportError:
+    raise
+
+import typing
+
+from pkg.handles import thing
+
+
+def f():
+    c = thing()
+    return c
+"""
+LATE_TYPING_FIXED: Final = """
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from pkg.other import Thing
+
+try:
+    import socks
+except ImportError:
+    raise
+
+import typing
+
+from pkg.handles import thing
+
+
+def f():
+    c: Thing = thing()
+    return c
+"""
+
+
+def test_a_new_block_reads_typing_only_where_its_imported_by_then(tmp_path: Path) -> None:
+    """Its `import typing` below a `try:` runs after the block, which imports `TYPE_CHECKING` itself."""
+    _package(tmp_path)
+    user: Path = _write(tmp_path / "user.py", LATE_TYPING)
+    for _ in range(2):  # the second run changes nothing
+        assert cli.main(["--fix", "-q", *_SELECT, str(tmp_path)]) == cli.EXIT_CLEAN
+        assert user.read_text(encoding="utf-8") == textwrap.dedent(LATE_TYPING_FIXED)
+
+
 @pytest.mark.parametrize(("source", "fixed"), [(BLOCK, BLOCK_FIXED), (LATE_BLOCK, LATE_FIXED)])
 def test_an_import_joins_the_files_type_checking_block(tmp_path: Path, source: str, fixed: str) -> None:
     """Indented as it is, anywhere; what it has is used, as it's named; nothing's quoted when postponed."""

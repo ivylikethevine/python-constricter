@@ -1059,9 +1059,9 @@ tests = "-n {workers} --benchmark-disable --disable-socket --allow-unix-socket l
 checks = ["mypy --config-file libs/core/pyproject.toml libs/core/langchain_core"]
 
 # Its tests on SQLite, as its CI's default, with an empty pytest config: it has none, and pytest would
-# take this project's, above the checkout. Two of its tests fail here, before and after a fix: each runs
-# its example in a subprocess outside the checkout. Its CI type-checks with ty, whose output the runner
-# doesn't read.
+# take this project's, above the checkout. One of its tests fails here, before and after a fix: it runs
+# pytest in a subprocess, which finds this project's config the same way. Its CI type-checks with ty,
+# whose output the runner doesn't read.
 [corpus.sqlmodel]
 why = "pydantic and SQLAlchemy generics together"
 version = "0.0.48"
@@ -1079,6 +1079,9 @@ source = "sqlmodel"
 install = ["sync --frozen --no-dev --group tests"]
 tests = "-c /dev/null --rootdir . tests"
 checks = []
+
+[corpus.sqlmodel.suite.differs]
+"tests/test_select_gen.py::test_select_gen" = "it asserts `sql/_expression_select_gen.py` is as its Jinja template renders it, which no annotated file is"
 
 # Its tox `py314` and `mypy` environments.
 [corpus.marshmallow]

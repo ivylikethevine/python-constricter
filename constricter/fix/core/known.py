@@ -190,11 +190,19 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     def type_checking(self) -> str | None:
         """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.
 
+        The block goes after `after`, so through an import the module has only where it binds the
+        name by then: an `import typing` below a `try:` of other imports isn't, and a new import
+        goes with the block.
+
         Returns:
           The name, or `None` if every way to write it is taken.
 
         """
-        return self.spell("typing.TYPE_CHECKING", runs=True)
+        qualified: str = "typing.TYPE_CHECKING"
+        found: str | None = self.named(qualified)
+        if found is not None and self.defined.get(found.partition(_DOT)[0], self.after + 1) <= self.after:
+            return found
+        return self._added(qualified, runs=True)
 
     def spell(self, qualified: str, *, runs: bool = False) -> str | None:
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
@@ -212,6 +220,15 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         found: str | None
         if (found := self.named(qualified) or (None if runs else self._checked(qualified))) is not None:
             return found
+        return self._added(qualified, runs=runs)
+
+    def _added(self, qualified: str, *, runs: bool) -> str | None:
+        """Name `qualified` by an import to add, as `spell` does past the module's own.
+
+        Returns:
+          The name, or `None` if every way to write it is taken.
+
+        """
         module: str
         name: str
         module, _, name = qualified.rpartition(".")

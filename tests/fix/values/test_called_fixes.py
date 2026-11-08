@@ -345,13 +345,7 @@ def test_a_module_level_instance_is_called_by_its_class_call(tmp_path: Path) -> 
     fixed: dict[str, tuple[str | None, bool]] = {
         o.name: (o.fix, o.unsafe) for o in check_source(_INSTANCES) if len(o.name) == 1
     }
-    assert fixed == {
-        "a": ("int", False),
-        "b": ("str", False),
-        "c": (None, False),
-        "d": (None, False),
-        "e": (None, False),
-    }
+    assert fixed == {"a": ("int", False), "b": ("str", False)} | dict.fromkeys("cde", (None, False))
     name: str
     source: str
     for name, source in {
