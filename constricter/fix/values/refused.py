@@ -52,7 +52,8 @@ def refused(value: ast.expr, known: Known, types: Mapping[str, str], untyped: fr
         return ""
     found: Inference | None
     if (found := inference(value, known, types)) is not None:
-        return _DECLINED if fits(found.annotation, known.limits.vague) else _VAGUE
+        own: frozenset[str] = frozenset() if known.names.plan is None else known.names.plan.own_names()
+        return _DECLINED if fits(found.annotation, known.limits.vague, own) else _VAGUE
     func: ast.expr = call.func
     callee: str | None = dotted(func)
     plan: ImportPlan | None = known.names.plan

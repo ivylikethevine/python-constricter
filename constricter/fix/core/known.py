@@ -16,7 +16,7 @@ from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.overrides import override
-from constricter.source.annotations import free_of, free_of_all, roots
+from constricter.source.annotations import GENERIC_HOMES, free_of, free_of_all, roots
 from constricter.source.declarations import GenericClass
 
 if TYPE_CHECKING:
@@ -186,6 +186,34 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
     # Names it imports from another checked file that re-exports a type's factory there (`Outside`).
     factories: frozenset[str] = frozenset()
+
+    def own_names(self) -> frozenset[str]:
+        """Name what the module binds, or is to import, other than from where typing's generics come.
+
+        Its own `class Generator`, `from numpy.random import Generator`, `import numpy as np`: a
+        generic's name written bare (`Generator`) or through one (`np.random.Generator`) is then
+        that, not the generic missing its arguments (see `annotations.is_vague`).
+
+        Returns:
+          Them.
+
+        """
+        found: set[str] = {
+            name
+            for name in self.defined
+            if name not in self.bound
+            or not {self.bound[name], self.bound[name].rpartition(_DOT)[0]} & GENERIC_HOMES
+        }
+        name: str
+        statement: str
+        for name, statement in self.added.items():
+            if statement.split()[1] not in GENERIC_HOMES:
+                found.add(name)
+        each: Guarded
+        for name, each in self.guarded.items():
+            if each.origin[0] not in GENERIC_HOMES:
+                found.add(name)
+        return frozenset(found)
 
     def type_checking(self) -> str | None:
         """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.

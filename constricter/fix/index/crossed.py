@@ -146,12 +146,21 @@ def _bound_members(module: Module, name: str, seen: set[str]) -> frozenset[str]:
     )
 
 
-def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mapping[str, Guarded]) -> Classes:
+def guarded_classes(
+    catalog: Index,
+    path: Path,
+    found: Imported,
+    guarded: Mapping[str, Guarded],
+    spelled: frozenset[str],
+) -> Classes:
     """Add the members of the classes `guarded` names that `found` hasn't taken, as the file names them.
 
     Those of the imports later steps add for type checking (an overloaded method's return):
     `df = pd.DataFrame(...).set_index("C")`, typed `DataFrame` by its import: `df.explode()` is one of
-    that class's methods in the same pass, not only once the import is written.
+    that class's methods in the same pass, not only once the import is written. And those `spelled`
+    names through a module the file imports, as the types those steps give write them
+    (`trio.SocketListener`, which `trio` re-exports): the file reads no such attribute until a fix
+    writes the type, so `found` took none of them.
 
     Returns:
       `found`'s classes, with theirs.
@@ -165,13 +174,24 @@ def guarded_classes(catalog: Index, path: Path, found: Imported, guarded: Mappin
         for name, each in guarded.items()
         if name not in found.guarded and name not in target.names and name not in found.classes.methods
     }
-    if not fresh:
+    through: dict[str, Origin] = {}
+    attributes: set[str] = set()
+    each: str
+    for each in spelled:
+        root: str = each.partition(".")[0]
+        if each not in found.classes.methods and root in target.names:
+            through[root] = target.names[root]
+            attributes.add(each.rpartition(".")[2])
+    if not fresh and not through:
         return found.classes
     taken: _Taken = _taking(
         {key: dict(each) for key, each in found.classes.attributes.items()},
         {key: dict(each) for key, each in found.classes.methods.items()},
     )
-    _take(catalog, target, (fresh, None), taken, dict(guarded))
+    if fresh:
+        _take(catalog, target, (fresh, None), taken, dict(guarded))
+    if through:
+        _take(catalog, target, (through, frozenset(attributes)), taken, dict(guarded))
     return Classes(taken.attributes, taken.methods)
 
 

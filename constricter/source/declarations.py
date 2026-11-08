@@ -11,12 +11,12 @@ from functools import lru_cache
 from typing import Final, NamedTuple, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
-from constricter.source.annotations import node_name, words
+from constricter.source.annotations import is_vague, node_name, words
 from constricter.source.concrete import binds_all, unbound_names
 from constricter.source.decorators import Held, passing, spelled
 from constricter.source.keys import key, keys
 from constricter.source.quoted import written
-from constricter.source.syntax import child_statements, top_level
+from constricter.source.syntax import child_statements, own_classes, top_level
 from constricter.source.usable import OVERLOADS, agreed, usable_return
 
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
@@ -385,7 +385,28 @@ def returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _declared_returns(tree.body, defined_type_vars(tree), vouched=_passing(tree))
+    return _declared_returns(tree.body, _names(tree), vouched=_passing(tree))
+
+
+class _Reading(NamedTuple):
+    """What a function's declared return is read against: the module's `type_vars` and its `own` classes.
+
+    A return naming one of the type variables is left out; a generic's name that's one of its own
+    classes isn't vague (see `own_classes`).
+    """
+
+    type_vars: frozenset[str]
+    own: frozenset[str] = _NO_NAMES
+
+
+def _names(tree: ast.Module) -> _Reading:
+    """Read the module's type variables and own classes, for its functions' returns.
+
+    Returns:
+      Them.
+
+    """
+    return _Reading(defined_type_vars(tree), own_classes(tree))
 
 
 @lru_cache(maxsize=4)  # asked for a module's functions, then its classes' methods
@@ -409,7 +430,7 @@ def held(tree: ast.Module) -> dict[str, Held]:
 
     """
     known: frozenset[str] = _passing(tree)
-    declared: dict[str, str] = _declared_returns(tree.body, defined_type_vars(tree), vouched=None)
+    declared: dict[str, str] = _declared_returns(tree.body, _names(tree), vouched=None)
     vouched: dict[str, str] = returns(tree)
     return {
         stmt.name: Held(
@@ -448,7 +469,7 @@ def partial_returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _partial_returns(tree.body, defined_type_vars(tree), vouched=_passing(tree))
+    return _partial_returns(tree.body, _names(tree), vouched=_passing(tree))
 
 
 def partial_method_returns(tree: ast.Module) -> dict[str, dict[str, str]]:
@@ -485,7 +506,7 @@ def _class_returns(
       Each class's name, mapped to those methods' names and return annotation text.
 
     """
-    type_vars: frozenset[str] = defined_type_vars(tree)
+    reading: _Reading = _names(tree)
     found: dict[str, dict[str, str]] = {}
     node: ast.ClassDef
     for node in _class_nodes(tree):
@@ -494,7 +515,7 @@ def _class_returns(
                 name: node.name if _is_self(annotation) else annotation
                 for name, annotation in (_partial_returns if partly else _declared_returns)(
                     node.body,
-                    type_vars,
+                    reading,
                     awaited=awaited,
                     decorators=decorators,
                     vouched=None if anything else _passing(tree),
@@ -631,7 +652,9 @@ def descriptors(tree: ast.Module) -> dict[str, str | None]:
             isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef) and stmt.name == _GET
             for stmt in node.body
         ):
-            returned: str | None = _declared_returns(node.body, type_vars).get(_GET)
+            returned: str | None = _declared_returns(node.body, _Reading(type_vars, own_classes(tree))).get(
+                _GET,
+            )
             found[node.name] = None if returned is None or _is_self(returned) else returned
     return found
 
@@ -676,9 +699,10 @@ def generic_members(tree: ast.Module, imported: frozenset[str] = _NO_NAMES) -> d
         if not params or counts[node.name] > 1:
             continue
         others: frozenset[str] = (type_vars | imported) - frozenset(params)
-        methods: dict[str, str] = _declared_returns(node.body, others, vouched=vouched)
+        reading: _Reading = _Reading(others, own_classes(tree))
+        methods: dict[str, str] = _declared_returns(node.body, reading, vouched=vouched)
         attributes: dict[str, str] = {
-            **_declared_returns(node.body, others, decorators=_PROPERTIES, vouched=vouched),
+            **_declared_returns(node.body, reading, decorators=_PROPERTIES, vouched=vouched),
             **_attributes(node),
         }
         found[node.name] = GenericClass(
@@ -821,12 +845,12 @@ def awaited_returns(tree: ast.Module) -> dict[str, str]:
       Each such function's name, and its return annotation as source text.
 
     """
-    return _declared_returns(tree.body, defined_type_vars(tree), awaited=True)
+    return _declared_returns(tree.body, _names(tree), awaited=True)
 
 
 def _declared_returns(
     body: Sequence[ast.stmt],
-    type_vars: frozenset[str],
+    names: "_Reading",
     *,
     awaited: bool = False,
     decorators: frozenset[str] = _UNDECORATED,
@@ -845,7 +869,7 @@ def _declared_returns(
     """
     found: dict[str, tuple[str, bool]] = _every_return(
         body,
-        type_vars,
+        names,
         awaited=awaited,
         decorators=decorators,
         vouched=vouched,
@@ -855,7 +879,7 @@ def _declared_returns(
 
 def _partial_returns(
     body: Sequence[ast.stmt],
-    type_vars: frozenset[str],
+    names: "_Reading",
     *,
     awaited: bool = False,
     decorators: frozenset[str] = _UNDECORATED,
@@ -871,7 +895,7 @@ def _partial_returns(
     """
     found: dict[str, tuple[str, bool]] = _every_return(
         body,
-        type_vars,
+        names,
         awaited=awaited,
         decorators=decorators,
         vouched=vouched,
@@ -881,7 +905,7 @@ def _partial_returns(
 
 def _every_return(
     body: Sequence[ast.stmt],
-    type_vars: frozenset[str],
+    names: "_Reading",
     *,
     awaited: bool,
     decorators: frozenset[str],
@@ -910,8 +934,18 @@ def _every_return(
             and _plain(defs[-1], decorators, vouched)
             and all(_plain(each, decorators, vouched, ignored=OVERLOADS) for each in defs[:-1])
         ):
-            found[name] = declared
-    return {name: read for name, read in found.items() if not type_vars & set(words(read[0]))}
+            found[name] = (declared[0], declared[1] and _vague(declared[0], names.own))
+    return {name: read for name, read in found.items() if not names.type_vars & set(words(read[0]))}
+
+
+def _vague(annotation: str, own: frozenset[str]) -> bool:
+    """Check a declared return already read as vague again, its module's own classes not generics.
+
+    Returns:
+      Whether it's vague still.
+
+    """
+    return not own or is_vague(ast.parse(annotation, mode="eval").body, own)
 
 
 def _accessor(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

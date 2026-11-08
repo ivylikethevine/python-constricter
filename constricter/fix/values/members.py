@@ -31,6 +31,7 @@ _METHOD: Final = "method"  # the fix kind of a method's return type
 _AWAIT: Final = "await"  # and of what awaiting a checked file's `async def` gives
 _RETURNED: Final = "returned"  # and of what `return`s alone decide
 _GENERIC: Final = "["  # in a base's text: a generic class's arguments
+_NO_NAMES: Final[frozenset[str]] = frozenset()  # a module's own names, where none is known
 _SLICE: Final = "slice"  # an index of this type slices
 _INT: Final = "int"
 _STR: Final = "str"
@@ -66,14 +67,14 @@ def parsed(annotation: str) -> ast.expr:
 
 
 @lru_cache(maxsize=4096)  # a module's fixes are a few types, each asked again and again
-def fits(annotation: str, level: int) -> bool:
-    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`).
+def fits(annotation: str, level: int, own: frozenset[str] = _NO_NAMES) -> bool:
+    """Check that a type, as text, is no vaguer than `level` allows (see `vague_fits`, and its `own`).
 
     Returns:
       Whether it is.
 
     """
-    return vague_fits(parsed(annotation), level)
+    return vague_fits(parsed(annotation), level, own)
 
 
 def class_of(receiver: str) -> str | None:

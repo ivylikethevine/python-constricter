@@ -3,9 +3,11 @@
 The runs' steps as `schedule_sim.read` has them (each's seconds, CPUs and memory as measured, or as
 the runner gave them with `--given`, and the steps of its corpus it waits for), scheduled by
 OR-Tools' CP-SAT as a resource-constrained project: the steps' CPUs and memory each held within the
-machine's at every moment (`AddCumulative`), a suite's tests one at a time per port, and each step
-after those it waits for. The timed steps follow, one at a time, alone. Prints, for each run, how
-long it took, the shortest schedule found and the bound the solver proved, and the order its first
+machine's at every moment (`AddCumulative`), a suite's tests one at a time per port, a suite's
+checkouts one step at a time each (as the runner locks them), and each step after those it waits
+for, as its records keep them (the runner orders more: `suite_steps.needs`, a test part after its
+`tests-infer-union` among them). The timed steps follow, one at a time, alone. Prints, for each run,
+how long it took, the shortest schedule found and the bound the solver proved, and the order its first
 steps start in: what the runner's own order could aim for.
 
 Needs OR-Tools, which the project doesn't depend on; `uv` installs it for one run, from releases
@@ -30,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 import schedule_sim  # noqa: E402  # the sibling script that reads a run's steps
 
-from tests.corpus import stages  # noqa: E402  # the runner's built-in stages, for `--staged`
+from tests.corpus import catalog, stages  # noqa: E402  # suites' `at-once`; the built-in stages, for `--staged`
 
 _TENTHS = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers
 
@@ -57,6 +59,36 @@ def staged(steps: list[schedule_sim.Step]) -> dict[tuple[str, str], int]:
             if needed and max(needed) > found[key]:
                 found[key], changed = max(needed), True
     return found
+
+
+_AT_ONCE: dict[str, int] = {
+    name: entry.suite.at_once for name, entry in catalog.load().entries.items() if entry.suite is not None
+}
+
+
+def _checkouts(step: schedule_sim.Step, steps: list[schedule_sim.Step]) -> tuple[str, ...]:
+    """Name the checkouts a suite step holds, one step at a time each, as `suite_checkouts.checkouts` does.
+
+    A test part one of its corpus's `at-once` (by its place among them; `tests-infer-union` the
+    first), `tests` every one, `traced` and the type checks' parts a checkout each kind.
+
+    Returns:
+      Them; none for a step that runs nothing of a suite's.
+
+    """
+    at_once: int = max(1, _AT_ONCE.get(step.corpus, 1))
+    tested: list[str] = sorted(
+        each.name for each in steps if each.corpus == step.corpus and each.name.startswith("tests-")
+    )
+    if step.name == "tests-infer-union":
+        return ("run0",)
+    if step.name in tested:
+        return (f"run{tested.index(step.name) % at_once}",)
+    if step.name == "tests":
+        return tuple(f"run{index}" for index in range(min(at_once, len(tested))))
+    if step.name == "traced":
+        return ("traced",)
+    return ("types",) if step.name.startswith("types-") else ()
 
 
 def solve(
@@ -113,6 +145,22 @@ def solve(
             bound.setdefault(ports[step.corpus], []).append(intervals[step.corpus, step.name])
     for each in bound.values():
         model.add_no_overlap(each)
+    held: dict[tuple[str, str], list[cp_model.IntervalVar]] = {}
+    for step in work:
+        for checkout in _checkouts(step, work):
+            held.setdefault((step.corpus, checkout), []).append(intervals[step.corpus, step.name])
+    for each in held.values():
+        model.add_no_overlap(each)
+    # A suite's other test parts after its `tests-infer-union`, whose patch may imply theirs (as the
+    # runner orders them: `suite_checkouts.checkouts`).
+    for step in work:
+        union: tuple[str, str] = (step.corpus, "tests-infer-union")
+        if (
+            step.name.startswith("tests-")
+            and step.name not in {union[1], "tests-released"}
+            and union in intervals
+        ):
+            model.add(starts[step.corpus, step.name] >= intervals[union].end_expr())
     end: cp_model.IntVar = model.new_int_var(0, horizon, "end")
     model.add_max_equality(end, [interval.end_expr() for interval in intervals.values()])
     model.minimize(end)

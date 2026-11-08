@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.empty import Empty
-from constricter.fix.core.imports import taken_names
+from constricter.fix.core.imports import BUILTINS, taken_names
 from constricter.fix.core.known import Origin, Passed, Returns, Takers, pickled, unpickled
 from constricter.fix.core.signatures import AWAIT
-from constricter.fix.index import annotated, used
+from constricter.fix.index import annotated, own_stubs, used
 from constricter.fix.index.origins import guarded_origins, inner_origins, origins_of, skipped, starred
 from constricter.fix.index.params import Param, open_functions
 from constricter.fix.index.stubs.declared import Declarations, Signature, declarations, kinds, overloads
@@ -31,7 +31,7 @@ from constricter.fix.values.stored import untouched
 from constricter.fix.values.tables import Tables, module_tables
 from constricter.overrides import override
 from constricter.source import parsed, quoted
-from constricter.source.annotations import dotted, is_composite, node_name
+from constricter.source.annotations import dotted, is_composite, node_name, roots
 from constricter.source.declarations import (
     GenericClass,
     awaited_returns,
@@ -492,18 +492,17 @@ def read(path: Path, name: str | None = None) -> Module | None:
         tree: ast.Module = parsed.parse(source, str(path))
     except (SyntaxError, ValueError):  # a null byte is a ValueError
         return None
-    own: Tables = module_tables(tree)
     assigned: Counter[str] = _assigned(tree.body)
     rebound: frozenset[str] = frozenset(bound for bound, count in assigned.items() if count > 1)
-    if not installed:
-        parsed.keep(source, (tree, own))  # for the check to take, rather than parse it and read it again
     named: str = name or module_name(path)
     is_package: bool = path.stem == PACKAGE
+    own: Tables
+    names: dict[str, Origin]
+    guarded: dict[str, Origin]
+    own, names, guarded = _own(path, (source, tree), named, installed=installed)
     aliases: dict[str, bool] = _aliases(tree)
     defaulted: frozenset[str] = defaulted_type_vars(tree)
     type_vars: frozenset[str] = defined_type_vars(tree)
-    names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
-    names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
     return Module(
         name=named,
         returns=own.returns,
@@ -511,7 +510,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         classes=own.classes,
         methods=own.order.flattened(own.methods),
         type_vars=type_vars,
-        guarded=guarded_origins(tree, named, is_package=is_package),
+        guarded=guarded,
         stars=starred(tree, named, is_package=is_package),
         unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
@@ -570,6 +569,44 @@ def read(path: Path, name: str | None = None) -> Module | None:
             if not installed and isinstance(stmt, ast.AsyncFunctionDef) and stmt.returns is None
         ),
     )
+
+
+def _own(
+    path: Path,
+    text: tuple[str, ast.Module],
+    named: str,
+    *,
+    installed: bool,
+) -> tuple[Tables, dict[str, Origin], dict[str, Origin]]:
+    """Read a module's own tables and names, a checked one's kept for its check (see `parsed.keep`).
+
+    With its own stub's, where it has one (see `own_stubs.beside`): its importers read every type the stub
+    declares, its check only those it can write as they are (its names', and the builtins').
+
+    Returns:
+      Its tables; what each name it binds refers to; and each name it imports for type checking
+      alone, its stub's imports among them.
+
+    """
+    source: str
+    tree: ast.Module
+    source, tree = text
+    is_package: bool = path.stem == PACKAGE
+    own: Tables = module_tables(tree)
+    names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
+    names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
+    guarded: dict[str, Origin] = guarded_origins(tree, named, is_package=is_package)
+    if installed:
+        return own, names, guarded
+    kept: Tables = own
+    beside: tuple[Tables, dict[str, Origin]] | None
+    if (beside := own_stubs.beside(path, named, is_package=is_package)) is not None:  # `mod.pyi`, read first
+        writable: frozenset[str] = frozenset(names).union(guarded, own.classes, BUILTINS)
+        kept = own_stubs.stubbed(own, beside[0], lambda each: roots(each) <= writable)
+        own = own_stubs.stubbed(own, beside[0])
+        guarded = {**{each: at for each, at in beside[1].items() if each not in names}, **guarded}
+    parsed.keep(source, (tree, kept))  # for the check to take, rather than parse it and read it again
+    return own, names, guarded
 
 
 def _loose(body: Sequence[ast.stmt]) -> frozenset[str]:

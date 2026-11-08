@@ -90,3 +90,29 @@ def test_vague_on_the_cli_and_in_pyproject(tmp_path: Path, monkeypatch: pytest.M
     _ = (tmp_path / "pyproject.toml").write_text("[tool.constricter]\nvague = 0\n", encoding="utf-8")
     assert config.config_defaults(tmp_path) == {"vague": 0}
     assert cli.main(arguments) == cli.EXIT_CLEAN
+
+
+_OWN: str = """
+import collections.abc
+import numpy as np
+from typing import Generator as Gen
+from numpy.random import Generator
+
+
+class Counter:
+    pass
+
+
+def f() -> None:
+    a: Generator = g()
+    b: np.random.Generator = g()
+    c: Counter = g()
+    d: Gen = g()
+    e: collections.abc.Generator = g()
+"""
+
+
+def test_a_generics_name_the_module_binds_otherwise_is_no_generic() -> None:
+    """A class the module defines, or imports from elsewhere (`np.random.Generator`), is no generic."""
+    vague: set[str] = {o.name for o in check_source(_OWN) if o.code == VAGUE_TYPE}
+    assert vague == {"e"}
