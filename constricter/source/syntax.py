@@ -547,9 +547,10 @@ def type_comment_span(lines: Sequence[str], stmt: Commented) -> tuple[int, int, 
 def own_classes(tree: ast.Module) -> frozenset[str]:
     """Name the module's own classes that share a typing generic's name: numpy's `Generator`.
 
-    A class it defines at its top level, or imports from outside `typing`, `typing_extensions`,
-    `collections` and `collections.abc` (`from numpy.random import Generator`): a return naming it
-    bare (`-> Generator`) is that class, not the generic missing its arguments.
+    A class it defines at its top level, not itself generic (see `generic_named`), or imports from
+    outside where typing's generics come from (`annotations.GENERIC_HOMES`: `from numpy.random import
+    Generator`): a return naming it bare (`-> Generator`) is that class, not the generic missing
+    its arguments.
 
     Returns:
       Them.
@@ -557,10 +558,31 @@ def own_classes(tree: ast.Module) -> frozenset[str]:
     """
     found: set[str] = {
         stmt.name for stmt in tree.body if isinstance(stmt, ast.ClassDef) and stmt.name in GENERICS
-    }
+    } - generic_named(tree)
     name: str
     origin: str
     for name, origin, _ in import_bindings(tree.body):
         if name in GENERICS and origin.rpartition(".")[0] not in GENERIC_HOMES:
             found.add(name)
     return frozenset(found)
+
+
+@lru_cache(maxsize=4)
+def generic_named(tree: ast.Module) -> frozenset[str]:
+    """Name the module's top-level classes of a typing generic's name that are generic themselves.
+
+    Derived from a generic, its parameters left open (`class OrderedDict(dict)`, `collections`' own;
+    `class Deque(deque)`; any subscripted base): written bare, it's missing its arguments as the
+    generic is (see `own_classes`).
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        stmt.name
+        for stmt in tree.body
+        if isinstance(stmt, ast.ClassDef)
+        and stmt.name in GENERICS
+        and any(isinstance(base, ast.Subscript) or node_name(base) in GENERICS for base in stmt.bases)
+    )

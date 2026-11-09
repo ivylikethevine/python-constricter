@@ -184,6 +184,9 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     checking: Checking = field(default_factory=Checking)
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
+    generic: frozenset[str] = (
+        frozenset()
+    )  # its classes of a generic's name, generic too (`syntax.generic_named`)
     # Names it imports from another checked file that re-exports a type's factory there (`Outside`).
     factories: frozenset[str] = frozenset()
 
@@ -200,7 +203,7 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         """
         found: set[str] = {
             name
-            for name in self.defined
+            for name in self.defined.keys() - self.generic
             if name not in self.bound
             or not {self.bound[name], self.bound[name].rpartition(_DOT)[0]} & GENERIC_HOMES
         }

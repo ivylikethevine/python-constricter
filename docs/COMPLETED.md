@@ -779,6 +779,26 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   differs: langchain-core's `openai.py:586` (a `TypedDict` key that isn't a literal), found on
   either run, traced to `url_citation: types.Citation` where `alt` traced it to `field: str`.
 
+- **A receiver typed in the same pass.** The members of the classes an awaited call's, an item's or
+  a union's type imports for type checking are taken after those types are found (`across.outside`,
+  its `classes` read last), and so are a class's spelled through a module the file imports that
+  re-exports it (`trio.SocketListener`; `crossed.guarded_classes`), which the file reads no
+  attribute of until a fix writes the type: trio's `listener.accept()` and rich's
+  `style.get_html_style(theme)` are typed in the first pass. `mega-fixes-11-08-2026-1354`
+  (`9fc15b6`, 12 minutes on 16CPU/60GB): no "a second pass would still fix" on any corpus, trio's 4
+  certain fixes now in the first pass, no new type error.
+- **A checked package's own stubs.** A checked module's `mod.pyi` beside its `mod.py` is read before
+  the source (`own_stubs`, in `modules._own`): its importers' calls are typed by the stub's declared
+  returns and its classes' members, the names it imports read as imported for type checking, and
+  the module's own calls where it can write the type as it is. In matplotlib 3.11.2's sdist
+  (`scratch/stub_pairs.py`) 78 of its 179 modules (tests aside) have one, their 4,325 functions
+  declaring 2 returns; of its 12,875 bindings with no fix, 3,553 call a function its stubs declare
+  by name (`scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379 to 6,528 certain),
+  and matplotlib's own mypy settings find no issue in its 108 checked files fixed either way (one
+  process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build needs meson and a C++
+  toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes. A stub
+  alone, for a compiled module, is still to read (the roadmap's Small items).
+
 ## Command and output
 
 - **Formats**: text, `full` (with the source line), JSON, GitHub annotations, SARIF (help text,

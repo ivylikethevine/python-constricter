@@ -116,3 +116,29 @@ def test_a_generics_name_the_module_binds_otherwise_is_no_generic() -> None:
     """A class the module defines, or imports from elsewhere (`np.random.Generator`), is no generic."""
     vague: set[str] = {o.name for o in check_source(_OWN) if o.code == VAGUE_TYPE}
     assert vague == {"e"}
+
+
+_GENERIC_OWN: str = """
+import re
+from collections import deque
+
+
+class Deque(deque):
+    pass
+
+
+class OrderedDict(dict):
+    pass
+
+
+def f() -> None:
+    a: Deque = g()
+    b: OrderedDict = g()
+    c: re.Pattern = g()
+"""
+
+
+def test_a_class_derived_from_a_generic_or_res_own_is_still_one() -> None:
+    """`class Deque(deque)`, `collections`' `OrderedDict(dict)`, `re.Pattern`: each lacks its arguments."""
+    vague: set[str] = {o.name for o in check_source(_GENERIC_OWN) if o.code == VAGUE_TYPE}
+    assert vague == {"a", "b", "c"}

@@ -26,10 +26,10 @@ The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), re
 `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes; [COMPLETED.md](COMPLETED.md#corpus)). A basic run of
 the seven corpora, `basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)),
 takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 85 buys the other 40 corpora. A change
-to what `--fix` offers or refuses is read on all 54 in 10 minutes by `mega-fixes`
+to what `--fix` offers or refuses is read on all 55 in 12 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
-run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its seven;
-`mega-fixes-11-08-2026-1251`, 10 minutes), which measures none of the bars: a guess's bars and the
+run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
+`mega-fixes-11-08-2026-1354`, 12 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
 1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
@@ -46,7 +46,51 @@ tests still wait on a mega run.
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-2. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+2. **A module's own class named as a typing generic.** Built: a bare `Generator`, `Type` or any
+   other generic's name the module binds itself (a class, or an import from outside `typing`,
+   `typing_extensions` and `collections`), or one written through a module it imports
+   (`np.random.Generator`), is that, not the generic missing its arguments: for its functions'
+   declared returns (`syntax.own_classes`, `declarations._Reading`), and for a fix and LVA005
+   (`ImportPlan.own_names`). numpy's `default_rng() -> Generator` types its calls; on
+   `mega-11-06-2026-2039` 75 `numpy.random.default_rng` bindings had no fix. pydantic gains 5
+   (`mypy.py`'s `Type`, mypy's class), none withdrawn. The standard library's tables are read the
+   new way, so `python -m stdlib_tables` makes them again first (`test_tables_current`).
+   `mega-fixes-11-08-2026-1354` (`9fc15b6`, 12 minutes on 16CPU/60GB), against
+   `mega-fixes-11-08-2026-1251`: no new type error; numpy's `Generator` 189 times (dask, xarray,
+   pandas, networkx, seaborn), mypy's `Type` over 1,000, `ast.Dict` and the like, dask's own
+   `List`, `Tuple` and `Dict`. Wrong there and fixed since (uncommitted): a bare `re.Pattern`
+   (`re` is now where generics come from), and a class of a generic's name derived from a
+   generic, `collections`' own `OrderedDict(dict)` or a test's `Deque(deque)`
+   (`syntax.generic_named`), each still missing its arguments. It loses pandas' 14 fixes of a
+   generator fixture's yield (Small, below). Left: the tables made again (`python -m stdlib_tables`)
+   and a `mega-fixes` run, read against `mega-fixes-11-08-2026-1354`. Done when it adds no new type
+   error and no bare `re.Pattern` or `OrderedDict`. About an hour beside the run; about 0.03%.
+
+### Small: under 4 hours
+
+1. **A generator fixture's type where `Generator` is another's** (a finding, a regression of
+   "A module's own class named as a typing generic"). On `mega-fixes-11-08-2026-1354` pandas'
+   `tests/io/test_sql.py` loses 14 likely fixes (`conn = sqlite_buildin`, `sqlite3.Connection`),
+   which the `sqlite_buildin` fixture's yield gave: the name `Generator` is taken in the file by
+   numpy's (`np.random.default_rng(2)`, typed in a chain), so the fixture's type, typing's
+   `Generator[sqlite3.Connection, None, None]`, can't be written there (`Known.spell` won't import
+   `collections.abc` to write it through) and `fixtures._typed` gets none. With numpy's
+   `Generator` read as typing's again the 14 come back (`own_classes` patched, pandas alone).
+   How: a generator's own exported type kept as the yield alone where its container can't be
+   written, or `collections.abc` imported to write it through. Done when that fixture is typed again
+   and pandas' fixes withdraw none of the 14. About 2 hours; coverage about unchanged, the 14 back.
+2. **A stub with no `.py` beside it, for a compiled module.** A checked package's compiled module
+   ships only its stub (matplotlib 3.11.2's `_path.pyi`, `_image.pyi`, `_qhull.pyi`, `_tri.pyi`,
+   `_c_internal_utils.pyi`, `ft2font.pyi` and `backends/_backend_agg.pyi`, `_macosx.pyi`,
+   `_tkagg.pyi`: 9 in all), which a type checker reads for the module; a checked tree's index takes
+   its `.py` files alone, so calls into one (`_path.points_in_path(...)`) get no fix unless the
+   package is installed too. How: a lone `.pyi` in a checked tree read as its module, as an
+   installed package's stub is (`modules.read` with a name), for its importers' calls; never
+   checked or fixed itself. Done when matplotlib's calls into its compiled modules are typed by
+   their stubs, sdist alone, and its fixes add no new type error under its own mypy settings.
+   Measure first: matplotlib's bindings with no fix that call into one of them. About 3 hours;
+   coverage small on the corpora, its reach a compiled package's users.
+3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run meets
@@ -69,44 +113,7 @@ tests still wait on a mega run.
    then read again; done when an `alt` run takes within a tenth of that shortest. A run in stages
    plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in stages".
    About 2 hours; coverage unchanged.
-
-3. **A module's own class named as a typing generic.** Built: a bare `Generator`, `Type` or any
-   other generic's name the module binds itself (a class, or an import from outside `typing`,
-   `typing_extensions` and `collections`), or one written through a module it imports
-   (`np.random.Generator`), is that, not the generic missing its arguments: for its functions'
-   declared returns (`syntax.own_classes`, `declarations._Reading`), and for a fix and LVA005
-   (`ImportPlan.own_names`). numpy's `default_rng() -> Generator` types its calls; on
-   `mega-11-06-2026-2039` 75 `numpy.random.default_rng` bindings had no fix. pydantic gains 5
-   (`mypy.py`'s `Type`, mypy's class), none withdrawn. The standard library's tables are read the
-   new way, so `python -m stdlib_tables` makes them again first (`test_tables_current`). Left: the
-   tables made again, and a `mega-fixes` run read against `mega-fixes-11-08-2026-1251`. Done when
-   it adds no new type error. About an hour beside the run; about 0.03%.
-4. **A receiver typed in the same pass.** Built: the members of the classes an awaited call's,
-   an item's or a union's type imports for type checking are taken after those types are found
-   (`across.outside`, its `classes` read last), and so are a class's spelled through a module the
-   file imports that re-exports it (`trio.SocketListener`; `crossed.guarded_classes`), which the
-   file reads no attribute of until a fix writes the type. trio's `listener.accept()` and rich's
-   `style.get_html_style(theme)` are typed in the first pass: trio gains 7 fixes, rich 1, pydantic
-   none, none withdrawn. Left: the same `mega-fixes` run, with no "a second pass would still fix"
-   on the `alt` corpora. About an hour beside the run; coverage about unchanged, its fixes made one
-   pass sooner.
-
-5. **A checked package's own stubs.** Built: a checked module's `mod.pyi` beside its `mod.py` is
-   read before the source (`own_stubs`, in `modules._own`): its importers' calls are typed by the
-   stub's declared returns and its classes' members, the names it imports read as imported for
-   type checking, and the module's own calls where it can write the type as it is. In matplotlib
-   3.11.2's sdist (`scratch/stub_pairs.py`) 78 of its 179 modules (tests aside) have one, their
-   4,325 functions declaring 2 returns; of its 12,875 bindings with no fix, 3,553 call a function
-   its stubs declare by name (`scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379
-   to 6,528 certain), and matplotlib's own mypy settings find no issue in its 108 checked files
-   fixed either way (one process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build
-   needs meson and a C++ toolchain), in `alt`. Not built: a stub alone for a compiled module
-   (`_path.pyi`), which a checked tree's index doesn't read (Small, below). Left: an `alt` run and a `mega-fixes`
-   run with it. About an hour beside the runs.
-
-### Small: under 4 hours
-
-1. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all
@@ -125,18 +132,6 @@ tests still wait on a mega run.
    showing no dump on dask confirms it. The mega run of 2026-10-29 at 19:20 (`e793bc6`) had none,
    sized the same way. Decided 2026-11-06: not built until a run dumps again; then measure the dumps
    and dask's `infer-union` seconds on a mega run with it. About 2 hours; coverage unchanged.
-
-2. **A stub with no `.py` beside it, for a compiled module.** A checked package's compiled module
-   ships only its stub (matplotlib 3.11.2's `_path.pyi`, `_image.pyi`, `_qhull.pyi`, `_tri.pyi`,
-   `_c_internal_utils.pyi`, `ft2font.pyi` and `backends/_backend_agg.pyi`, `_macosx.pyi`,
-   `_tkagg.pyi`: 9 in all), which a type checker reads for the module; a checked tree's index takes
-   its `.py` files alone, so calls into one (`_path.points_in_path(...)`) get no fix unless the
-   package is installed too. How: a lone `.pyi` in a checked tree read as its module, as an
-   installed package's stub is (`modules.read` with a name), for its importers' calls; never
-   checked or fixed itself. Done when matplotlib's calls into its compiled modules are typed by
-   their stubs, sdist alone, and its fixes add no new type error under its own mypy settings.
-   Measure first: matplotlib's bindings with no fix that call into one of them. About 3 hours;
-   coverage small on the corpora, its reach a compiled package's users.
 
 ### Medium: 4 to 8 hours
 

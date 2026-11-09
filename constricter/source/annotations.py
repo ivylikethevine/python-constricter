@@ -69,7 +69,7 @@ GENERICS: Final = ABSTRACT | frozenset(
 )
 # Where a generic of `GENERICS` comes from: a name imported from one is that generic.
 GENERIC_HOMES: Final = frozenset(
-    {"typing", "typing_extensions", "collections", "collections.abc", "builtins"},
+    {"typing", "typing_extensions", "collections", "collections.abc", "builtins", "re"},
 )
 _TUPLES: Final = frozenset({"tuple", "Tuple"})  # the annotations that list one type per element
 

@@ -12,7 +12,7 @@ from weakref import WeakKeyDictionary
 
 from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
 from constricter.source.annotations import dotted, roots
-from constricter.source.syntax import FunctionDef, Start, import_bindings
+from constricter.source.syntax import FunctionDef, Start, generic_named, import_bindings
 from constricter.source.walked import classes, of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
@@ -82,6 +82,7 @@ def plan(tree: ast.Module, imported_values: frozenset[str] = _NONE) -> ImportPla
         ),
         postponed=_postponed(tree),
         values=values,
+        generic=generic_named(tree),
     )
 
 
