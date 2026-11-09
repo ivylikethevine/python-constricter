@@ -56,5 +56,9 @@ def test_a_patch_binds_the_mock_it_makes() -> None:
 
 
 def test_a_module_that_cant_name_the_mocks_has_no_fix() -> None:
-    """One binding `MagicMock` another way."""
-    assert [o.fix for o in check_source(textwrap.dedent(_SHADOWED))] == [None]
+    """One binding `MagicMock` and `unittest` another way; `MagicMock` alone, through `unittest.mock`."""
+    shadowed: str = textwrap.dedent(_SHADOWED)
+    assert [o.fix for o in check_source(shadowed)] == ["unittest.mock.MagicMock | AsyncMock"]
+    assert [
+        o.fix for o in check_source(shadowed.replace("MagicMock = 1\n", "MagicMock = unittest = 1\n"))
+    ] == [None]

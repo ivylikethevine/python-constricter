@@ -58,28 +58,24 @@ tests still wait on a mega run.
    `mega-fixes-11-08-2026-1354` (`9fc15b6`, 12 minutes on 16CPU/60GB), against
    `mega-fixes-11-08-2026-1251`: no new type error; numpy's `Generator` 189 times (dask, xarray,
    pandas, networkx, seaborn), mypy's `Type` over 1,000, `ast.Dict` and the like, dask's own
-   `List`, `Tuple` and `Dict`. Wrong there and fixed since (uncommitted): a bare `re.Pattern`
-   (`re` is now where generics come from), and a class of a generic's name derived from a
-   generic, `collections`' own `OrderedDict(dict)` or a test's `Deque(deque)`
-   (`syntax.generic_named`), each still missing its arguments. It loses pandas' 14 fixes of a
-   generator fixture's yield (Small, below). Left: the tables made again (`python -m stdlib_tables`)
-   and a `mega-fixes` run, read against `mega-fixes-11-08-2026-1354`. Done when it adds no new type
-   error and no bare `re.Pattern` or `OrderedDict`. About an hour beside the run; about 0.03%.
+   `List`, `Tuple` and `Dict`. Wrong there and fixed since (`dc2bb52`): a bare `re.Pattern` (`re`
+   is now where generics come from), and a class of a generic's name derived from a generic,
+   `collections`' own `OrderedDict(dict)` or a test's `Deque(deque)` (`syntax.generic_named`), each
+   still missing its arguments. It lost pandas' 14 likely fixes of `tests/io/test_sql.py`'s
+   generator fixture (`conn = sqlite_buildin`, `sqlite3.Connection`): typing the chain
+   `np.random.default_rng(2).standard_normal(...)` took the name `Generator` for numpy's, and the
+   fixture's `collections.abc.Generator[...]` then had no way to be written, a dotted module never
+   imported whole. Fixed since (uncommitted): `ImportPlan.spell` adds `import collections.abc`
+   where `collections` is free and writes `collections.abc.Generator` (an added `import m.sub`
+   binds `m`, as `syntax.import_bindings` reads one in the source); that file alone gains 13 of
+   them back against `dc2bb52`, none withdrawn, pydantic unchanged. Left: a `mega-fixes` run, read
+   against `mega-fixes-11-08-2026-1354` (the tables are current). Done when it adds no new type
+   error, no bare `re.Pattern` or `OrderedDict`, and pandas withdraws none of the 14. About an hour
+   beside the run; about 0.03%.
 
 ### Small: under 4 hours
 
-1. **A generator fixture's type where `Generator` is another's** (a finding, a regression of
-   "A module's own class named as a typing generic"). On `mega-fixes-11-08-2026-1354` pandas'
-   `tests/io/test_sql.py` loses 14 likely fixes (`conn = sqlite_buildin`, `sqlite3.Connection`),
-   which the `sqlite_buildin` fixture's yield gave: the name `Generator` is taken in the file by
-   numpy's (`np.random.default_rng(2)`, typed in a chain), so the fixture's type, typing's
-   `Generator[sqlite3.Connection, None, None]`, can't be written there (`Known.spell` won't import
-   `collections.abc` to write it through) and `fixtures._typed` gets none. With numpy's
-   `Generator` read as typing's again the 14 come back (`own_classes` patched, pandas alone).
-   How: a generator's own exported type kept as the yield alone where its container can't be
-   written, or `collections.abc` imported to write it through. Done when that fixture is typed again
-   and pandas' fixes withdraw none of the 14. About 2 hours; coverage about unchanged, the 14 back.
-2. **A stub with no `.py` beside it, for a compiled module.** A checked package's compiled module
+1. **A stub with no `.py` beside it, for a compiled module.** A checked package's compiled module
    ships only its stub (matplotlib 3.11.2's `_path.pyi`, `_image.pyi`, `_qhull.pyi`, `_tri.pyi`,
    `_c_internal_utils.pyi`, `ft2font.pyi` and `backends/_backend_agg.pyi`, `_macosx.pyi`,
    `_tkagg.pyi`: 9 in all), which a type checker reads for the module; a checked tree's index takes
@@ -90,7 +86,7 @@ tests still wait on a mega run.
    their stubs, sdist alone, and its fixes add no new type error under its own mypy settings.
    Measure first: matplotlib's bindings with no fix that call into one of them. About 3 hours;
    coverage small on the corpora, its reach a compiled package's users.
-3. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
+2. **A run with no earlier run, held to the solver's shortest.** The runner's schedule is within a
    tenth of the solver's shortest for a super and a mega run sized by earlier runs, and a step no run
    measured is planned by its like corpora (`planning.like`; both in [COMPLETED.md](COMPLETED.md#corpus)).
    Every run file writes under `corpus-runs/`, whose reports keep each step's use, so a run meets
@@ -113,7 +109,7 @@ tests still wait on a mega run.
    then read again; done when an `alt` run takes within a tenth of that shortest. A run in stages
    plans each stage's steps alone since (`planning.ranks`'s `chosen`), read with "Runs in stages".
    About 2 hours; coverage unchanged.
-4. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
+3. **A hinted step's servers given what they held** (a proposal: it changes the runs' sizing).
    basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's
    share, never under `Server.memory`'s 600 MB), and each abort is a core dump the desktop reports
    as a crash. On the mega run of 2026-10-29 (`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all

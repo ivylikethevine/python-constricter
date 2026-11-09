@@ -239,8 +239,9 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
         Through an import it has (see `named`), for type checking alone too (`checking`, or one
-        `guarded` already), else a new `from io import BufferedReader`, else a new `import io`, but
-        only binding a name nothing in the module binds. Under `if TYPE_CHECKING:` for a module in
+        `guarded` already), else a new `from io import BufferedReader`, else a new `import io`
+        (`import collections.abc`, binding `collections`), but only binding a name nothing in the
+        module binds. Under `if TYPE_CHECKING:` for a module in
         `checking.lazy`, and not at all for one only some platforms have. With `runs`, only through
         an import that runs: the name is read as the module is imported (`TYPE_CHECKING` itself).
 
@@ -272,9 +273,9 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         if self._free(name, statement):
             self.added[name] = statement
             return name
-        statement = f"import {module}"
-        if _DOT not in module and self._free(module, statement):
-            self.added[module] = statement
+        statement = f"import {module}"  # `import collections.abc` binds `collections`
+        if self._free(top, statement):
+            self.added[top] = statement
             return qualified
         return None
 

@@ -756,3 +756,45 @@ def test_an_import_a_fix_wrote_to_run_is_one_the_file_has(tmp_path: Path) -> Non
     assert RUN_IMPORT in fixed
     assert COPIED in fixed
     assert cli.main(["--diff", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)]) == cli.EXIT_CLEAN
+
+
+GENERATING: Final = """
+import contextlib
+import sqlite3
+
+import pytest
+
+import pkg
+
+
+@pytest.fixture
+def connected():
+    with contextlib.closing(sqlite3.connect(":memory:")) as conn:
+        yield conn
+
+
+def helper():
+    return pkg.rng.default_rng(2).normal()
+"""
+OTHER_GENERATOR: Final = """
+class Generator:
+    def normal(self) -> float:
+        return 1.0
+
+
+def default_rng(seed: int) -> Generator:
+    return Generator()
+"""
+GENERATED_FIXED: Final = "    conn: sqlite3.Connection = connected\n"
+
+
+def test_a_generator_fixtures_type_is_written_where_another_generator_takes_the_name(
+    tmp_path: Path,
+) -> None:
+    """Typing the chain takes `Generator` for `pkg.rng`'s: the fixture's is `collections.abc.Generator`."""
+    _ = _write(tmp_path, "pkg/__init__.py", "from pkg import rng\n")
+    _ = _write(tmp_path, "pkg/rng.py", OTHER_GENERATOR)
+    _ = _write(tmp_path, "pkg/conftest.py", GENERATING)
+    tests: Path = _write(tmp_path, "pkg/test_it.py", "def test_it(connected):\n    conn = connected\n")
+    _ = cli.main(["--fix", "-q", "--unsafe-fixes", "--jobs=1", str(tmp_path)])
+    assert GENERATED_FIXED in tests.read_text(encoding="utf-8")

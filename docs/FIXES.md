@@ -556,7 +556,8 @@ private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or
-`import io` if `BufferedReader` is a name the module binds. A type the module imports under a
+`import io` if `BufferedReader` is a name the module binds (`import collections.abc`, binding
+`collections`, for a `collections.abc.Generator` where `Generator` is numpy's). A type the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
 module's functions import (`import decimal` in a function's body), or that it imports by

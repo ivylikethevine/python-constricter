@@ -112,7 +112,9 @@ def test_callable_is_imported_where_the_module_doesnt() -> None:
     imports: list[tuple[str, ...]] = [o.edit.imports for o in check_source(_NO_IMPORT) if o.edit is not None]
     assert imports == [("from collections.abc import Callable",)]
     taken: str = _NO_IMPORT.replace("import json\n", "import json\n\nCallable = 1\n")
-    assert [o.fix for o in check_source(taken) if o.name == _DUMP] == [None]  # no way to name it
+    assert [o.fix for o in check_source(taken) if o.name == _DUMP] == ["collections.abc.Callable[..., str]"]
+    both: str = taken.replace("Callable = 1\n", "Callable = 1\ncollections = 1\n")
+    assert [o.fix for o in check_source(both) if o.name == _DUMP] == [None]  # no way to name it
 
 
 _BODIES: Final = """

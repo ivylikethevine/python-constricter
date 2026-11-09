@@ -156,6 +156,8 @@ def unwritable(annotation: str, planned: ImportPlan, nested: Mapping[str, str]) 
 def added_origin(statement: str) -> Origin:
     """Read what an import `ImportPlan.spell` added binds: `from m import T`, or `import m`.
 
+    `import m.sub` binds `m`, as one in the source does (`syntax.import_bindings`).
+
     Returns:
       Its origin: `("m", "T")`, or `("m", None)`.
 
@@ -163,7 +165,7 @@ def added_origin(statement: str) -> Origin:
     module: str
     name: str
     module, _, name = statement.removeprefix("from ").removeprefix("import ").partition(" import ")
-    return module, name or None
+    return (module, name) if name else (module.partition(_DOT)[0], None)
 
 
 def added_dotted(statement: str) -> str:

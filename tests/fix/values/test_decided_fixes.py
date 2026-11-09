@@ -153,8 +153,9 @@ def test_iter_is_typed_where_the_module_can_name_an_iterator() -> None:
         "": "Iterator[str]",
         "from collections.abc import Iterator as Each": "Each[str]",
         "import collections.abc as abc": "abc.Iterator[str]",
-        "from typing import Iterator": None,
-        "Iterator = 1": None,
+        "from typing import Iterator": "collections.abc.Iterator[str]",
+        "Iterator = 1": "collections.abc.Iterator[str]",
+        "Iterator = 1\ncollections = 1": None,
     }
     assert {header: [o.fix for o in check_source(header + body) if o.name == NAME] for header in named} == {
         header: [fix] for header, fix in named.items()

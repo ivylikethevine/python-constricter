@@ -179,6 +179,7 @@ def test_the_generator_class_is_imported_for_the_fix() -> None:
 
 
 def test_a_module_that_cant_name_the_class_gets_no_fix() -> None:
-    """Its own `Generator` is in the way of the import."""
+    """Its own `Generator` and `collections` are in the way of the imports; `Generator` alone isn't."""
     source: str = "Generator = 1\n\n\ndef gen():\n    yield 1\n\n\ndef f() -> None:\n    made = gen()\n"
-    assert _fixes(source) == {"made": (None, False)}
+    assert _fixes(source) == {"made": ("collections.abc.Generator[int, None, None]", False)}
+    assert _fixes("collections = 1\n" + source) == {"made": (None, False)}
