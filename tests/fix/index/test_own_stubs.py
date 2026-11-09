@@ -4,6 +4,8 @@ import textwrap
 from pathlib import Path
 from typing import Final
 
+import pytest
+
 from constricter.cli import command as cli
 
 SOURCE: Final = """
@@ -97,6 +99,21 @@ def test_a_module_without_a_stub_is_read_from_its_source_alone(tmp_path: Path) -
     """No `.pyi` beside it: its unannotated `gca()` gives its importers nothing."""
     _ = _write(tmp_path / "mpl" / "__init__.py", "")
     _ = _write(tmp_path / "mpl" / "axes.py", SOURCE)
+    user: Path = _write(tmp_path / "user.py", USER)
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    assert UNSTUBBED in user.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "stub",
+    [b"def gca( -> Axes: ...\n", b"\xff\xfe def gca() -> Axes: ...\n"],
+    ids=["unparsed", "undecoded"],
+)
+def test_a_stub_that_cant_be_read_is_left_out(tmp_path: Path, stub: bytes) -> None:
+    """One that doesn't parse, or decode: the module is read from its source alone."""
+    _ = _write(tmp_path / "mpl" / "__init__.py", "")
+    _ = _write(tmp_path / "mpl" / "axes.py", SOURCE)
+    _ = (tmp_path / "mpl" / "axes.pyi").write_bytes(stub)
     user: Path = _write(tmp_path / "user.py", USER)
     _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
     assert UNSTUBBED in user.read_text(encoding="utf-8")

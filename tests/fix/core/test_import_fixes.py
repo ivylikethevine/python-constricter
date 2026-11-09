@@ -80,6 +80,7 @@ def _plan(source: str) -> ImportPlan:
         ("", "os.path.PathLike", "PathLike", {"PathLike": "from os.path import PathLike"}),
         ("PathLike = 1\n", "os.path.PathLike", "os.path.PathLike", {"os": "import os.path"}),
         ("PathLike = 1\nos = 2\n", "os.path.PathLike", None, {}),
+        ("from other import PathLike\n", "os.path.PathLike", None, {}),  # the one meant, or the same
         (
             "",
             "files.open",

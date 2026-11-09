@@ -65,13 +65,23 @@ tests still wait on a mega run.
    generator fixture (`conn = sqlite_buildin`, `sqlite3.Connection`): typing the chain
    `np.random.default_rng(2).standard_normal(...)` took the name `Generator` for numpy's, and the
    fixture's `collections.abc.Generator[...]` then had no way to be written, a dotted module never
-   imported whole. Fixed since (uncommitted): `ImportPlan.spell` adds `import collections.abc`
-   where `collections` is free and writes `collections.abc.Generator` (an added `import m.sub`
-   binds `m`, as `syntax.import_bindings` reads one in the source); that file alone gains 13 of
-   them back against `dc2bb52`, none withdrawn, pydantic unchanged. Left: a `mega-fixes` run, read
-   against `mega-fixes-11-08-2026-1354` (the tables are current). Done when it adds no new type
-   error, no bare `re.Pattern` or `OrderedDict`, and pandas withdraws none of the 14. About an hour
-   beside the run; about 0.03%.
+   imported whole. Fixed since (`0718caa`): `ImportPlan.spell` adds `import collections.abc` where
+   `collections` is free and writes `collections.abc.Generator` (an added `import m.sub` binds `m`,
+   as `syntax.import_bindings` reads one in the source). `mega-fixes-11-08-2026-1741` (12 minutes on
+   16CPU/60GB), against `1354`: pandas' 14 back; celery's `re.Pattern` and the standard library's
+   `OrderedDict`, `Counter` and `Deque` withdrawn; 125 `fix-unsafe` fixes added, most a
+   `collections.abc.Callable[...]` in a module that imports `typing`'s `Callable` (rich, sqlalchemy,
+   websockets, textual's 49). But one new type error, streamlink's
+   `child: xml.etree.ElementTree.Element[str]` (`fix-unsafe`: its parameter guessed the standard
+   library's `Element` where the file imports lxml's), and four fixes written through a new import
+   where the module imports the class already, re-exported (twisted's
+   `from distutils.core import Distribution` written `distutils.dist.Distribution`; `InputSource`,
+   `FeedParser`). So the dotted import is now refused where the module imports a class of the name,
+   the one meant or the same (uncommitted): `test_sql.py` alone keeps its 13 against `dc2bb52`, none
+   withdrawn, pydantic unchanged, the old spellings and streamlink's refusal come back, and most of
+   the 125 go again (`typing`'s `Callable` is such an import). Left: a `mega-fixes` run, read
+   against `mega-fixes-11-08-2026-1741`. Done when it adds no new type error and withdraws only what
+   the dotted import added there. About an hour beside the run; about 0.03%.
 
 ### Small: under 4 hours
 
