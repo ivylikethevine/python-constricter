@@ -784,3 +784,45 @@ def test_an_installed_instances_call_is_typed_by_its_class(
     assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN  # both fixed
     fixed: str = main.read_text(encoding="utf-8")
     assert all(line in fixed for line in ZONED_FIXED), fixed
+
+
+RANDOM: Final = {
+    "rand/py.typed": "",
+    "rand/__init__.pyi": "from rand._generator import Generator as Generator, default_rng as default_rng\n",
+    "rand/_generator.pyi": """
+        class Generator:
+            def random(self) -> float: ...
+
+        def default_rng(seed: int | None = None) -> Generator: ...
+    """,
+}
+RANDOMED: Final = """
+import rand
+from rand import default_rng
+
+
+def run():
+    a = default_rng(0)
+    b = rand.default_rng()
+    return a, b
+"""
+RANDOMED_FIXED: Final = (
+    "    a: rand.Generator = default_rng(0)\n",
+    "    b: rand.Generator = rand.default_rng()\n",
+)
+
+
+def test_a_return_naming_the_modules_own_class_isnt_typings_generic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `default_rng() -> Generator` naming its module's own class isn't typing's missing its arguments."""
+    site: Path = _site(tmp_path, RANDOM)
+    monkeypatch.setattr(sys, "path", [str(site), *sys.path])
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    main: Path = tmp_path / "project" / "main.py"
+    main.parent.mkdir()
+    _ = main.write_text(textwrap.dedent(RANDOMED), encoding="utf-8", newline="\n")
+    assert cli.main(["--fix", "-q", str(main)]) == cli.EXIT_CLEAN  # both fixed
+    fixed: str = main.read_text(encoding="utf-8")
+    assert all(line in fixed for line in RANDOMED_FIXED), fixed

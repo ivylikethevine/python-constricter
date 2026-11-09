@@ -4,10 +4,11 @@ import ast
 import bisect
 import re
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from functools import lru_cache
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import at
-from constricter.source.annotations import node_name
+from constricter.source.annotations import GENERIC_HOMES, GENERICS, node_name
 from constricter.source.walked import children as child_nodes
 from constricter.source.walked import classes, of_type
 
@@ -540,3 +541,48 @@ def type_comment_span(lines: Sequence[str], stmt: Commented) -> tuple[int, int, 
     if (after := raw.find(b"#", found.end())) >= 0:
         return line, found.start(), after
     return line, len(raw[: found.start()].rstrip()), len(raw.rstrip(b"\r\n"))
+
+
+@lru_cache(maxsize=4)  # asked for a module's functions, then its classes' methods
+def own_classes(tree: ast.Module) -> frozenset[str]:
+    """Name the module's own classes that share a typing generic's name: numpy's `Generator`.
+
+    A class it defines at its top level, not itself generic (see `generic_named`), or imports from
+    outside where typing's generics come from (`annotations.GENERIC_HOMES`: `from numpy.random import
+    Generator`): a return naming it bare (`-> Generator`) is that class, not the generic missing
+    its arguments.
+
+    Returns:
+      Them.
+
+    """
+    found: set[str] = {
+        stmt.name for stmt in tree.body if isinstance(stmt, ast.ClassDef) and stmt.name in GENERICS
+    } - generic_named(tree)
+    name: str
+    origin: str
+    for name, origin, _ in import_bindings(tree.body):
+        if name in GENERICS and origin.rpartition(".")[0] not in GENERIC_HOMES:
+            found.add(name)
+    return frozenset(found)
+
+
+@lru_cache(maxsize=4)
+def generic_named(tree: ast.Module) -> frozenset[str]:
+    """Name the module's top-level classes of a typing generic's name that are generic themselves.
+
+    Derived from a generic, its parameters left open (`class OrderedDict(dict)`, `collections`' own;
+    `class Deque(deque)`; any subscripted base): written bare, it's missing its arguments as the
+    generic is (see `own_classes`).
+
+    Returns:
+      Them.
+
+    """
+    return frozenset(
+        stmt.name
+        for stmt in tree.body
+        if isinstance(stmt, ast.ClassDef)
+        and stmt.name in GENERICS
+        and any(isinstance(base, ast.Subscript) or node_name(base) in GENERICS for base in stmt.bases)
+    )

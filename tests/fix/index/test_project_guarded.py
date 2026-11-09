@@ -862,3 +862,64 @@ def test_a_class_a_package_takes_by_a_star_import_is_the_one_it_names(tmp_path: 
     )
     catalog: project.Index = project.index(sorted(tmp_path.rglob("*.py")))
     assert spelling.calls(catalog, use, {}) == {"make": "type[Model]"}
+
+
+SOCKETS: Final = {
+    "pkg/__init__.py": (
+        "from pkg._sock import Listener as Listener\nfrom pkg._open import open_listeners as open_listeners\n"
+    ),
+    "pkg/_sock.py": """
+        class Stream:
+            pass
+
+
+        class Listener:
+            async def accept(self) -> Stream:
+                return Stream()
+    """,
+    "pkg/_open.py": """
+        import pkg
+        from pkg._sock import Listener
+
+
+        async def open_listeners() -> list[Listener]:
+            return [Listener()]
+
+
+        async def reexported() -> list[pkg.Listener]:
+            return [Listener()]
+    """,
+}
+SERVING: Final = """
+import pkg
+from pkg import open_listeners
+from pkg._open import reexported
+
+
+async def serve():
+    listeners = await open_listeners()
+    listener = listeners[0]
+    s1 = await listener.accept()
+    others = await reexported()
+    other = others[0]
+    s2 = await other.accept()
+    return s1, s2
+"""
+
+
+SERVED: Final = ("    s1: Stream = await listener.accept()\n", "    s2: Stream = await other.accept()\n")
+
+
+def test_a_receiver_typed_by_an_awaited_call_has_its_methods_in_the_same_pass(tmp_path: Path) -> None:
+    """Its class imported for type checking by that fix, or spelled through a module that re-exports it."""
+    name: str
+    source: str
+    for name, source in SOCKETS.items():
+        _ = _write(tmp_path / name, source)
+    user: Path = _write(tmp_path / "serving.py", SERVING)
+    assert (
+        cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(user), str(tmp_path / "pkg")])
+        == cli.EXIT_CLEAN
+    )
+    fixed: str = user.read_text(encoding="utf-8")
+    assert all(line in fixed for line in SERVED), fixed

@@ -33,8 +33,8 @@
 [sets]
 # Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
 # run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scratch/corpus_quadrants.py` reprints them).
-# requests, rich, trio, urllib3, langchain-core, sqlmodel and marshmallow: by their files alone, until
-# a run times them.
+# requests, rich, trio, urllib3, langchain-core, sqlmodel, marshmallow and matplotlib: by their files
+# alone, until a run times them.
 fast-small = [
   "structlog",
   "attrs",
@@ -69,6 +69,7 @@ fast-large = [
   "tox",
   "trio",
   "langchain-core",
+  "matplotlib",
 ]
 slow-small = ["pydantic", "pint", "altair", "seaborn", "aiohttp", "websockets", "anyio", "zarr", "joblib"]
 slow-large = [
@@ -93,7 +94,7 @@ original = ["standard library", "django", "sqlalchemy", "pydantic", "pandas", "t
 super = ["original", "fast-small", "fast-large"]
 mega = ["super", "slow-small", "slow-large"]
 # The corpora added last, to run apart (`runs/alt.toml`) before a mega run meets them.
-alt = ["requests", "rich", "trio", "urllib3", "langchain-core", "sqlmodel", "marshmallow"]
+alt = ["requests", "rich", "trio", "urllib3", "langchain-core", "sqlmodel", "marshmallow", "matplotlib"]
 
 # CPython's own source release (PSF-2.0), whose `Lib` has the `test` package a prebuilt Python
 # leaves out: the same 1,867 files on any interpreter, so long as it parses 3.14's syntax.
@@ -1101,3 +1102,16 @@ source = "src/marshmallow"
 install = ["sync --frozen --no-dev --group tests --group mypy"]
 tests = ""
 checks = ["mypy --show-error-codes"]
+
+# Its own stubs beside its source (`axes/_axes.pyi` beside `axes/_axes.py`), which declares next to
+# nothing: what `--fix` reads of a checked package's `.pyi`.
+[corpus.matplotlib]
+why = "its own stubs beside its source"
+version = "3.11.2"
+alone = "its build needs meson and a C++ toolchain"
+
+[corpus.matplotlib.sdist]
+where = "e7/c8/9aa712a0afb882649424dd8de8ad9aa6235e796e84c6052e8f6dc1598d0d"
+archive = "matplotlib-3.11.2.tar.gz"
+sha256 = "cec596316640f2b394b8f0daa0ea61a8eae82d017b620b9f202befb972a59ea4"
+package = "matplotlib-3.11.2/lib/matplotlib"

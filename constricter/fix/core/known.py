@@ -16,7 +16,7 @@ from constricter.fix.core.inherited import Beyond, Lineage
 from constricter.fix.core.signatures import Expansion, ReadSignature
 from constricter.offences import MAX_LENGTH, VAGUE
 from constricter.overrides import override
-from constricter.source.annotations import free_of, free_of_all, roots
+from constricter.source.annotations import GENERIC_HOMES, free_of, free_of_all, roots
 from constricter.source.declarations import GenericClass
 
 if TYPE_CHECKING:
@@ -184,8 +184,39 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
     checking: Checking = field(default_factory=Checking)
     postponed: bool = False
     values: frozenset[str] = frozenset()  # names it binds as values somewhere (see `imports.taken_names`)
+    generic: frozenset[str] = (
+        frozenset()
+    )  # its classes of a generic's name, generic too (`syntax.generic_named`)
     # Names it imports from another checked file that re-exports a type's factory there (`Outside`).
     factories: frozenset[str] = frozenset()
+
+    def own_names(self) -> frozenset[str]:
+        """Name what the module binds, or is to import, other than from where typing's generics come.
+
+        Its own `class Generator`, `from numpy.random import Generator`, `import numpy as np`: a
+        generic's name written bare (`Generator`) or through one (`np.random.Generator`) is then
+        that, not the generic missing its arguments (see `annotations.is_vague`).
+
+        Returns:
+          Them.
+
+        """
+        found: set[str] = {
+            name
+            for name in self.defined.keys() - self.generic
+            if name not in self.bound
+            or not {self.bound[name], self.bound[name].rpartition(_DOT)[0]} & GENERIC_HOMES
+        }
+        name: str
+        statement: str
+        for name, statement in self.added.items():
+            if statement.split()[1] not in GENERIC_HOMES:
+                found.add(name)
+        each: Guarded
+        for name, each in self.guarded.items():
+            if each.origin[0] not in GENERIC_HOMES:
+                found.add(name)
+        return frozenset(found)
 
     def type_checking(self) -> str | None:
         """Name `typing.TYPE_CHECKING` for a new block, by an import that runs: the module reads it.
@@ -208,9 +239,11 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         """Name `qualified` (`io.BufferedReader`) in this module, adding an import if it has to.
 
         Through an import it has (see `named`), for type checking alone too (`checking`, or one
-        `guarded` already), else a new `from io import BufferedReader`, else a new `import io`, but
-        only binding a name nothing in the module binds. Under `if TYPE_CHECKING:` for a module in
-        `checking.lazy`, and not at all for one only some platforms have. With `runs`, only through
+        `guarded` already), else a new `from io import BufferedReader`, else a new `import io`
+        (`import collections.abc`, binding `collections`, unless the module imports the name or
+        defines a class of it), but only binding a name nothing in the module binds. Under
+        `if TYPE_CHECKING:` for a module in `checking.lazy`, and not at all for one only some
+        platforms have. With `runs`, only through
         an import that runs: the name is read as the module is imported (`TYPE_CHECKING` itself).
 
         Returns:
@@ -241,9 +274,14 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
         if self._free(name, statement):
             self.added[name] = statement
             return name
-        statement = f"import {module}"
-        if _DOT not in module and self._free(module, statement):
-            self.added[module] = statement
+        statement = f"import {module}"  # `import collections.abc` binds `collections`
+        # What the module imports or defines a class of the name as, anywhere (`from distutils.core
+        # import Distribution`, `_collections_abc`'s own `Iterator`), is the one meant, or the same:
+        # no new import beside it, past a module of one name.
+        if _DOT in module and name in self.taken and name not in self.values:
+            return None
+        if self._free(top, statement):
+            self.added[top] = statement
             return qualified
         return None
 

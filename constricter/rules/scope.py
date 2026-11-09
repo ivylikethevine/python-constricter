@@ -730,7 +730,7 @@ class Scope:
           Whether it is.
 
         """
-        return fits(fix.annotation, self.settings.checks.vague)
+        return fits(fix.annotation, self.settings.checks.vague, _own(self.settings))
 
     def _first(
         self,
@@ -872,10 +872,7 @@ class Scope:
         Vague as far as `vague` allows (see `vague_fits`) isn't LVA005, nor is a widening's own
         (`marked`: see `widened`).
         """
-        if not marked and not vague_fits(
-            annotation,
-            self.settings.checks.vague,
-        ):
+        if not marked and not vague_fits(annotation, self.settings.checks.vague, _own(self.settings)):
             self.offences.append(Offence(*at(annotation), name, VAGUE_TYPE))
         if depth(annotation) >= self.settings.checks.nesting:
             self.offences.append(Offence(*at(annotation), name, NESTED_TYPE))
@@ -947,9 +944,24 @@ def certain_type(
     )
     if isinstance(value, _READS) and annotation is not None and len(members(annotation) or ()) > 1:
         return None  # a read of a union is narrowed where the code checks it, which value flow can't see
-    if unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
+    if (
+        unsafe
+        or annotation is None
+        or not vague_fits(parsed(annotation), scope.settings.checks.vague, _own(scope.settings))
+    ):
         return None
     return annotation
+
+
+def _own(settings: Settings) -> frozenset[str]:
+    """Name what the module binds itself under a typing generic's name (see `ImportPlan.own_generics`).
+
+    Returns:
+      Them; none for a module read without its imports.
+
+    """
+    plan: ImportPlan | None = settings.known.names.plan
+    return frozenset() if plan is None else plan.own_names()
 
 
 def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
@@ -964,6 +976,10 @@ def guessed_type(scope: Scope, value: ast.expr) -> Late | None:
     unsafe: bool
     origins: frozenset[str]
     unsafe, origins = guesses_in(scope, [value])
-    if not unsafe or annotation is None or not vague_fits(parsed(annotation), scope.settings.checks.vague):
+    if (
+        not unsafe
+        or annotation is None
+        or not vague_fits(parsed(annotation), scope.settings.checks.vague, _own(scope.settings))
+    ):
         return None
     return annotation, origins

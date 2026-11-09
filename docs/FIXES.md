@@ -556,7 +556,10 @@ private names' use will say. `tarfile.open` gives a `tarfile.TarFile`.
 A type the module can't name yet gets an import. One it already has is reused (with `import io`,
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or
-`import io` if `BufferedReader` is a name the module binds. A type the module imports under a
+`import io` if `BufferedReader` is a name the module binds (`import collections.abc`, binding
+`collections`, for a `collections.abc.Generator` where a fix's import took `Generator` for numpy's;
+never beside the module's own import or class of the name, the one meant or the same). A type
+the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
 module's functions import (`import decimal` in a function's body), or that it imports by
@@ -566,6 +569,13 @@ another platform finds no such class. A type written with a builtin the module s
 function or a value (`locale`'s `def str`; `from .compat import str`, a Python 2 shim's `str = str`) is
 no fix: a type checker reads the module's own name there. A class of the name it defines or imports
 (django's `Warning`, `enum`'s `property`) is named as any class is.
+
+A checked module's own stub, `mod.pyi` beside `mod.py` (matplotlib ships one for most of its modules,
+its source declaring next to nothing), is read before the source, as a type checker reads it: its
+functions' and its classes' methods' and attributes' declared types type its importers' calls
+(`fig, ax = plt.subplots()`, `ax.legend()`), the names it imports read as imported for type
+checking; and the module's own calls where it can write the type as it is (its own names', and the
+builtins'). A stub alone for a compiled module (`_path.pyi`) isn't read in a checked tree.
 
 An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
 package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
@@ -652,6 +662,9 @@ read yet there), so the import can't make an import cycle at run time. A name th
 any name and even for type checking alone, is reused; a module-level annotation using one imported
 for type checking alone is quoted (`top: "IOHandles[str]" = get_handle()`), unless the module has
 `from __future__ import annotations`. A generic class another file defines is never written bare.
+A class a fix's type imports for type checking, or names through a module the file imports that
+re-exports it (`trio.SocketListener`), has its members read in the same pass:
+`listener = listeners[0]`, then `s1 = await listener.accept()`, needs no second.
 
 A chained assignment's names (`i = j = 0`), which can't be annotated where they're bound, are each
 declared before it (`i: int`), as an unpacking's are; not as `Final`, which needs its value.
@@ -660,7 +673,10 @@ An added import never binds a name the module binds anywhere, or a builtin's; wi
 there's no fix. In a notebook, which has no import block, such a fix is reported but not applied.
 
 A fix is never vaguer than `vague` (`--vague LEVEL`) lets an annotation be, which LVA005 reports
-past: by default (-1) it has no `Any`, `object` or generic without its parameters in it. At 0 it may
+past: by default (-1) it has no `Any`, `object` or generic without its parameters in it (a name the
+module binds itself, or imports from outside `typing` and `collections`, is no generic: numpy's
+`default_rng() -> Generator` is its own `Generator`, mypy's `Type` its own class, and so is
+`np.random.Generator`, through a module it imports). At 0 it may
 have one, inside a type that says the rest (`dict[str, Any]`, `tuple[Row, Any]`); at a level N from
 1, N + 1 of them (`tuple[Any, Any]` at 1), or one alone (`Any`, `Any | None`). Every source answers
 to it: a declared return (a function's, a method's, another checked file's), a copy, a loop's

@@ -12,7 +12,7 @@ from weakref import WeakKeyDictionary
 
 from constricter.fix.core.known import Checking, Guarded, ImportPlan, Origin, Returns
 from constricter.source.annotations import dotted, roots
-from constricter.source.syntax import FunctionDef, Start, import_bindings
+from constricter.source.syntax import FunctionDef, Start, generic_named, import_bindings
 from constricter.source.walked import classes, of_type
 
 _TYPE_CHECKING: Final = "TYPE_CHECKING"
@@ -82,6 +82,7 @@ def plan(tree: ast.Module, imported_values: frozenset[str] = _NONE) -> ImportPla
         ),
         postponed=_postponed(tree),
         values=values,
+        generic=generic_named(tree),
     )
 
 
@@ -155,6 +156,8 @@ def unwritable(annotation: str, planned: ImportPlan, nested: Mapping[str, str]) 
 def added_origin(statement: str) -> Origin:
     """Read what an import `ImportPlan.spell` added binds: `from m import T`, or `import m`.
 
+    `import m.sub` binds `m`, as one in the source does (`syntax.import_bindings`).
+
     Returns:
       Its origin: `("m", "T")`, or `("m", None)`.
 
@@ -162,7 +165,7 @@ def added_origin(statement: str) -> Origin:
     module: str
     name: str
     module, _, name = statement.removeprefix("from ").removeprefix("import ").partition(" import ")
-    return module, name or None
+    return (module, name) if name else (module.partition(_DOT)[0], None)
 
 
 def added_dotted(statement: str) -> str:

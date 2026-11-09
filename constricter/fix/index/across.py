@@ -4,9 +4,11 @@ Each file is checked knowing what the files it imports declare and return, the h
 checker gave it, and what the index's other readers say of the names it imports (see `Outside`).
 """
 
+import re
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from constricter.fix.core.known import Guarded, Hints, Origin, Outside, Passed
 from constricter.fix.index import (
@@ -38,6 +40,10 @@ if TYPE_CHECKING:
     from constricter.fix.core.signatures import ReadSignature
 
 
+# A dotted name in a type (`trio.SocketListener`): a class spelled through a module.
+_DOTTED: Final = re.compile(r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
+
+
 def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hints, ...]]) -> Outside:
     """Find what's known of a file from outside it: what it imports from the others, and its hints.
 
@@ -66,10 +72,8 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         **methods.signatures,
         **own_methods.overloaded(modules, path, guarded),
     }
-    return Outside(
+    found: Outside = Outside(
         calls={**imported.calls, **side_calls, **decorated.own(modules, path)},
-        # With those of the classes the overloaded methods' returns import.
-        classes=crossed.guarded_classes(modules, path, imported, guarded),
         hints=hints,
         type_vars=project.type_vars(modules, path),
         defaulted=project.defaulted(modules, path),
@@ -113,6 +117,26 @@ def outside(modules: project.Index, path: Path, hinted: Mapping[Path, tuple[Hint
         emptied=beyond.emptied(modules, path),
         factories=factories(modules, path),
     )
+    # With those of the classes the types above import for type checking (an overloaded method's
+    # return, an awaited call's, an item's): read last, as each of them adds to `guarded`.
+    return replace(found, classes=crossed.guarded_classes(modules, path, imported, guarded, _spelled(found)))
+
+
+def _spelled(found: Outside) -> frozenset[str]:
+    """Find the dotted names in the types found of a file from outside it: `trio.SocketListener`.
+
+    Returns:
+      Them.
+
+    """
+    types: list[str] = [
+        *found.calls.values(),
+        *found.awaits.values(),
+        *found.tuples.values(),
+        *found.unions.values(),
+        *found.returned.calls.values(),
+    ]
+    return frozenset(match.group() for each in types for match in _DOTTED.finditer(each))
 
 
 def factories(modules: project.Index, path: Path) -> frozenset[str]:

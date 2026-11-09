@@ -13,6 +13,7 @@ from typing import Final
 from constricter.source.quoted import parsed
 
 _VAGUE: Final = frozenset({"Any", "object"})
+_NO_NAMES: Final[frozenset[str]] = frozenset()  # a module's own names, where none is known
 _UNIONS: Final = frozenset({"Optional", "Union"})  # a union's members, as a subscript's arguments
 # `collections.abc`'s generic classes (`typing` has each too).
 ABSTRACT: Final = frozenset(
@@ -66,6 +67,10 @@ GENERICS: Final = ABSTRACT | frozenset(
         "type",
     },
 )
+# Where a generic of `GENERICS` comes from: a name imported from one is that generic.
+GENERIC_HOMES: Final = frozenset(
+    {"typing", "typing_extensions", "collections", "collections.abc", "builtins", "re"},
+)
 _TUPLES: Final = frozenset({"tuple", "Tuple"})  # the annotations that list one type per element
 
 
@@ -118,8 +123,12 @@ def dotted(node: ast.expr) -> str | None:
             return None
 
 
-def is_vague(annotation: ast.expr) -> bool:
+def is_vague(annotation: ast.expr, own: frozenset[str] = _NO_NAMES) -> bool:
     """Check an annotation for vague types.
+
+    `own`: names the module binds other than to typing's generics or their modules (see
+    `syntax.own_classes`, `ImportPlan.own_names`): a generic's name written bare as one of them
+    (`Generator`, numpy's), or through one (`np.random.Generator`), is no generic.
 
     Returns:
       Whether it has `Any`, `object` or a generic without its parameters in it.
@@ -130,13 +139,26 @@ def is_vague(annotation: ast.expr) -> bool:
     node: ast.AST
     for node in ast.walk(root):
         name: str = node_name(node)
-        if name in _VAGUE or (name in GENERICS and id(node) not in subscripted):
+        if name in _VAGUE or (name in GENERICS and id(node) not in subscripted and not _owned(node, own)):
             return True
     return False
 
 
-def vague_parts(annotation: ast.expr) -> tuple[int, bool]:
-    """Count an annotation's vague parts (see `is_vague`), and say whether one stands alone.
+def _owned(node: ast.AST, own: frozenset[str]) -> bool:
+    """Check whether a generic's name is written as one of `own`, or through one (see `is_vague`).
+
+    Returns:
+      Whether it is.
+
+    """
+    root: str | None = (
+        node.id if isinstance(node, ast.Name) else dotted(node) if isinstance(node, ast.Attribute) else None
+    )
+    return root is not None and root.split(".", 1)[0] in own
+
+
+def vague_parts(annotation: ast.expr, own: frozenset[str] = _NO_NAMES) -> tuple[int, bool]:
+    """Count an annotation's vague parts (see `is_vague`, and its `own`), and say whether one stands alone.
 
     Alone: the annotation itself or a member of its union (`Any`, `Any | None`, `Optional[object]`),
     where it says nothing at all. Anywhere else it's inside a type that says the rest
@@ -149,7 +171,8 @@ def vague_parts(annotation: ast.expr) -> tuple[int, bool]:
     root: ast.expr = parsed(annotation)
     subscripted: set[int] = {id(node.value) for node in ast.walk(root) if isinstance(node, ast.Subscript)}
     count: int = sum(
-        node_name(node) in _VAGUE or (node_name(node) in GENERICS and id(node) not in subscripted)
+        node_name(node) in _VAGUE
+        or (node_name(node) in GENERICS and id(node) not in subscripted and not _owned(node, own))
         for node in ast.walk(root)
     )
     return count, any(node_name(member) in _VAGUE for member in _union_members(root))
@@ -176,11 +199,12 @@ def _union_members(node: ast.expr) -> list[ast.expr]:
             return [node]
 
 
-def vague_fits(annotation: ast.expr, level: int) -> bool:
+def vague_fits(annotation: ast.expr, level: int, own: frozenset[str] = _NO_NAMES) -> bool:
     """Check whether an annotation is no vaguer than `level` allows (`vague`, LVA005's).
 
     Below 0, no vague part at all. At 0, one, inside a type that says the rest (`tuple[str, Any]`).
-    From 1, `level + 1` of them (`tuple[Any, Any]` at 1), and one alone (`Any`).
+    From 1, `level + 1` of them (`tuple[Any, Any]` at 1), and one alone (`Any`). `own`: as `is_vague`
+    takes it.
 
     Returns:
       Whether it is.
@@ -188,7 +212,7 @@ def vague_fits(annotation: ast.expr, level: int) -> bool:
     """
     count: int
     alone: bool
-    count, alone = vague_parts(annotation)
+    count, alone = vague_parts(annotation, own)
     return not count or (count <= level + 1 and (level > 0 or not alone))
 
 

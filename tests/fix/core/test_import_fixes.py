@@ -78,7 +78,11 @@ def _plan(source: str) -> ImportPlan:
         ("BytesIO = 1\nio = 2\n", "io.BytesIO", None, {}),
         ("Path = 1\n", "pathlib.Path", "pathlib.Path", {"pathlib": "import pathlib"}),
         ("", "os.path.PathLike", "PathLike", {"PathLike": "from os.path import PathLike"}),
-        ("PathLike = 1\n", "os.path.PathLike", None, {}),  # a dotted module is never imported whole
+        ("PathLike = 1\n", "os.path.PathLike", "os.path.PathLike", {"os": "import os.path"}),
+        ("PathLike = 1\nos = 2\n", "os.path.PathLike", None, {}),
+        ("from other import PathLike\n", "os.path.PathLike", None, {}),  # the one meant, or the same
+        ("def f():\n  from other import PathLike\n", "os.path.PathLike", None, {}),
+        ("class PathLike:\n  pass\n", "os.path.PathLike", None, {}),
         (
             "",
             "files.open",
