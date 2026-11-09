@@ -76,12 +76,18 @@ tests still wait on a mega run.
    library's `Element` where the file imports lxml's), and four fixes written through a new import
    where the module imports the class already, re-exported (twisted's
    `from distutils.core import Distribution` written `distutils.dist.Distribution`; `InputSource`,
-   `FeedParser`). So the dotted import is now refused where the module imports a class of the name,
-   the one meant or the same (uncommitted): `test_sql.py` alone keeps its 13 against `dc2bb52`, none
-   withdrawn, pydantic unchanged, the old spellings and streamlink's refusal come back, and most of
-   the 125 go again (`typing`'s `Callable` is such an import). Left: a `mega-fixes` run, read
-   against `mega-fixes-11-08-2026-1741`. Done when it adds no new type error and withdraws only what
-   the dotted import added there. About an hour beside the run; about 0.03%.
+   `FeedParser`). So the dotted import was refused where the module imports a class of the name.
+   `mega-fixes-11-08-2026-1805` (12 minutes on 16CPU/60GB), against `1354`: no new type error
+   (langchain-core's one differs only in the order mypy lists a `TypedDict`'s keys), pandas' 14
+   back, the old spellings back, streamlink's refusal back, and what's left of the dotted import
+   `collections.abc.Callable[...]`, `unittest.mock.MagicMock | AsyncMock` and the like where the
+   name is a value or free. But still two: `_collections_abc.py`'s
+   `type[collections.abc.Iterator[int]]`, an `import collections.abc` in the module it imports from,
+   where the module defines `Iterator` itself, and pip's `distutils.dist.Distribution` where a
+   function imports `Distribution`. So the refusal now covers a name the module binds anywhere by an
+   import or a `class` statement, a value aside (uncommitted): both give their old offers back.
+   Left: a `mega-fixes` run, read against `mega-fixes-11-08-2026-1805`. Done when it adds no new
+   type error and withdraws only those two. About an hour beside the run; about 0.03%.
 
 ### Small: under 4 hours
 

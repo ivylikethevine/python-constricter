@@ -240,9 +240,10 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
 
         Through an import it has (see `named`), for type checking alone too (`checking`, or one
         `guarded` already), else a new `from io import BufferedReader`, else a new `import io`
-        (`import collections.abc`, binding `collections`, unless the module imports a class of the
-        name), but only binding a name nothing in the module binds. Under `if TYPE_CHECKING:` for a module in
-        `checking.lazy`, and not at all for one only some platforms have. With `runs`, only through
+        (`import collections.abc`, binding `collections`, unless the module imports the name or
+        defines a class of it), but only binding a name nothing in the module binds. Under
+        `if TYPE_CHECKING:` for a module in `checking.lazy`, and not at all for one only some
+        platforms have. With `runs`, only through
         an import that runs: the name is read as the module is imported (`TYPE_CHECKING` itself).
 
         Returns:
@@ -274,9 +275,10 @@ class ImportPlan:  # pylint: disable=too-many-instance-attributes
             self.added[name] = statement
             return name
         statement = f"import {module}"  # `import collections.abc` binds `collections`
-        # A class of the name the module imports (`from distutils.core import Distribution`) is the
-        # one meant, or the same re-exported: no new import beside it, past a module of one name.
-        if _DOT in module and self.bound.get(name, "").rpartition(_DOT)[2] == name:
+        # What the module imports or defines a class of the name as, anywhere (`from distutils.core
+        # import Distribution`, `_collections_abc`'s own `Iterator`), is the one meant, or the same:
+        # no new import beside it, past a module of one name.
+        if _DOT in module and name in self.taken and name not in self.values:
             return None
         if self._free(top, statement):
             self.added[top] = statement
