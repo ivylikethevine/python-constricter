@@ -798,6 +798,26 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build needs meson and a C++
   toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes. A stub
   alone, for a compiled module, is still to read (the roadmap's Small items).
+- **A module's own class named as a typing generic.** A bare `Generator`, `Type` or any other
+  generic's name the module binds itself (a class, or an import from outside `typing`,
+  `typing_extensions`, `collections` and `re`), or one written through a module it imports
+  (`np.random.Generator`), is that, not the generic missing its arguments: for its functions'
+  declared returns (`syntax.own_classes`, `declarations._Reading`), and for a fix and LVA005
+  (`ImportPlan.own_names`); a class of a generic's name derived from a generic (`collections`' own
+  `OrderedDict(dict)`, a test's `Deque(deque)`) still is one (`syntax.generic_named`). numpy's
+  `default_rng() -> Generator` types its calls (189 on the mega corpora), mypy's `Type` over 1,000,
+  pydantic 5. A generic whose short name the module has taken by an import a fix adds is written
+  through its dotted module instead (`import collections.abc`, `collections.abc.Generator`;
+  `ImportPlan.spell`), never beside a name the module itself binds by an import or a `class`
+  statement, the one meant or the same: pandas' generator fixture `sqlite_buildin`, whose
+  `Generator` numpy's took, types its 14 uses. `mega-fixes-11-08-2026-1820` (12 minutes on
+  16CPU/60GB), against `mega-fixes-11-08-2026-1354`: no new type error; pandas 14 added; celery's
+  bare `re.Pattern` and the standard library's `OrderedDict`, `Counter`, `ChainMap`, `Deque` and
+  bare `List` withdrawn; 5 written through `collections.abc`. On the way, `1741` showed the dotted
+  import beside the module's own name (streamlink's lxml `Element` guessed the standard library's, a
+  new type error; twisted's `from distutils.core import Distribution` written
+  `distutils.dist.Distribution`) and `1805` beside a class it defines (`_collections_abc`'s
+  `Iterator`) or a function's import, each refused since.
 
 ## Command and output
 

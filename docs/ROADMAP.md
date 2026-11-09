@@ -29,7 +29,7 @@ takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 85 buys the other 
 to what `--fix` offers or refuses is read on all 55 in 12 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
 run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
-`mega-fixes-11-08-2026-1354`, 12 minutes), which measures none of the bars: a guess's bars and the
+`mega-fixes-11-08-2026-1820`, 12 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
 1. **Runs in stages.** Built in `88e0dda`: a run's steps fall into stages run one at a time into
@@ -46,48 +46,6 @@ tests still wait on a mega run.
    super run (`46bdc27`) ran them with 90s between: `fixes` 16.5 minutes, `traced` 11, `tests`
    20.5, `timed` 4, each exiting 0 and joining, the report naming one commit for all four. Left:
    stages hours apart, with other work between. About an hour beside the runs.
-2. **A module's own class named as a typing generic.** Built: a bare `Generator`, `Type` or any
-   other generic's name the module binds itself (a class, or an import from outside `typing`,
-   `typing_extensions` and `collections`), or one written through a module it imports
-   (`np.random.Generator`), is that, not the generic missing its arguments: for its functions'
-   declared returns (`syntax.own_classes`, `declarations._Reading`), and for a fix and LVA005
-   (`ImportPlan.own_names`). numpy's `default_rng() -> Generator` types its calls; on
-   `mega-11-06-2026-2039` 75 `numpy.random.default_rng` bindings had no fix. pydantic gains 5
-   (`mypy.py`'s `Type`, mypy's class), none withdrawn. The standard library's tables are read the
-   new way, so `python -m stdlib_tables` makes them again first (`test_tables_current`).
-   `mega-fixes-11-08-2026-1354` (`9fc15b6`, 12 minutes on 16CPU/60GB), against
-   `mega-fixes-11-08-2026-1251`: no new type error; numpy's `Generator` 189 times (dask, xarray,
-   pandas, networkx, seaborn), mypy's `Type` over 1,000, `ast.Dict` and the like, dask's own
-   `List`, `Tuple` and `Dict`. Wrong there and fixed since (`dc2bb52`): a bare `re.Pattern` (`re`
-   is now where generics come from), and a class of a generic's name derived from a generic,
-   `collections`' own `OrderedDict(dict)` or a test's `Deque(deque)` (`syntax.generic_named`), each
-   still missing its arguments. It lost pandas' 14 likely fixes of `tests/io/test_sql.py`'s
-   generator fixture (`conn = sqlite_buildin`, `sqlite3.Connection`): typing the chain
-   `np.random.default_rng(2).standard_normal(...)` took the name `Generator` for numpy's, and the
-   fixture's `collections.abc.Generator[...]` then had no way to be written, a dotted module never
-   imported whole. Fixed since (`0718caa`): `ImportPlan.spell` adds `import collections.abc` where
-   `collections` is free and writes `collections.abc.Generator` (an added `import m.sub` binds `m`,
-   as `syntax.import_bindings` reads one in the source). `mega-fixes-11-08-2026-1741` (12 minutes on
-   16CPU/60GB), against `1354`: pandas' 14 back; celery's `re.Pattern` and the standard library's
-   `OrderedDict`, `Counter` and `Deque` withdrawn; 125 `fix-unsafe` fixes added, most a
-   `collections.abc.Callable[...]` in a module that imports `typing`'s `Callable` (rich, sqlalchemy,
-   websockets, textual's 49). But one new type error, streamlink's
-   `child: xml.etree.ElementTree.Element[str]` (`fix-unsafe`: its parameter guessed the standard
-   library's `Element` where the file imports lxml's), and four fixes written through a new import
-   where the module imports the class already, re-exported (twisted's
-   `from distutils.core import Distribution` written `distutils.dist.Distribution`; `InputSource`,
-   `FeedParser`). So the dotted import was refused where the module imports a class of the name.
-   `mega-fixes-11-08-2026-1805` (12 minutes on 16CPU/60GB), against `1354`: no new type error
-   (langchain-core's one differs only in the order mypy lists a `TypedDict`'s keys), pandas' 14
-   back, the old spellings back, streamlink's refusal back, and what's left of the dotted import
-   `collections.abc.Callable[...]`, `unittest.mock.MagicMock | AsyncMock` and the like where the
-   name is a value or free. But still two: `_collections_abc.py`'s
-   `type[collections.abc.Iterator[int]]`, an `import collections.abc` in the module it imports from,
-   where the module defines `Iterator` itself, and pip's `distutils.dist.Distribution` where a
-   function imports `Distribution`. So the refusal now covers a name the module binds anywhere by an
-   import or a `class` statement, a value aside (uncommitted): both give their old offers back.
-   Left: a `mega-fixes` run, read against `mega-fixes-11-08-2026-1805`. Done when it adds no new
-   type error and withdraws only those two. About an hour beside the run; about 0.03%.
 
 ### Small: under 4 hours
 

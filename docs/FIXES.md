@@ -557,7 +557,9 @@ A type the module can't name yet gets an import. One it already has is reused (w
 `io.BufferedReader`); otherwise `from io import BufferedReader` is added after the module's
 docstring and its leading imports (below a shebang or coding line when it has neither), or
 `import io` if `BufferedReader` is a name the module binds (`import collections.abc`, binding
-`collections`, for a `collections.abc.Generator` where `Generator` is numpy's). A type the module imports under a
+`collections`, for a `collections.abc.Generator` where a fix's import took `Generator` for numpy's;
+never beside the module's own import or class of the name, the one meant or the same). A type
+the module imports under a
 top-level `if TYPE_CHECKING:` is named by that import (quoted in a module body, as above). A
 standard-library type's import goes under `if TYPE_CHECKING:` only for a module nothing but the
 module's functions import (`import decimal` in a function's body), or that it imports by
