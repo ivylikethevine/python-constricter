@@ -55,7 +55,7 @@ def own(catalog: project.Index, path: Path) -> Own:
     origin: Origin
     for name, origin in target.guarded.items():
         generic: bool | None = _class(catalog, origin)
-        if generic is not None and name not in target.names:
+        if generic is not None and name not in target.names and name not in target.stub_names:
             found[name] = Guarded(origin, None)
             if generic:
                 generics.add(name)

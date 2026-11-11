@@ -386,6 +386,16 @@ class LibraryNames(NamedTuple):
     written: frozenset[str] = frozenset()
 
 
+class Echo(NamedTuple):
+    """The parameter a method returns as it's given: its call is what's passed for it (see `echoed`).
+
+    `position`: its place among a call's positional arguments, `None` for a keyword-only one.
+    """
+
+    position: int | None
+    name: str
+
+
 class Returned(NamedTuple):
     """Return types read from unannotated functions' own `return` statements (see `returned`).
 
@@ -394,13 +404,15 @@ class Returned(NamedTuple):
     whose `return`s are themselves guesses, what they rest on (`FIX_KINDS`), which its calls do too.
     `attributes`: its classes' unannotated instance attributes typed by their every `self.x = value`,
     by class (guesses: a subclass or outside code may assign one too); a guessed value's origins are
-    in `guesses` as `C.x`.
+    in `guesses` as `C.x`. `echoes`: its classes' methods whose every `return` gives one parameter
+    as it's given, by class (see `Echo`).
     """
 
     calls: Mapping[str, str] = MappingProxyType({})
     methods: Mapping[str, Mapping[str, str]] = MappingProxyType({})
     guesses: Mapping[str, frozenset[str]] = MappingProxyType({})
     attributes: Mapping[str, Mapping[str, str]] = MappingProxyType({})
+    echoes: Mapping[str, Mapping[str, Echo]] = MappingProxyType({})
 
 
 class Partial(NamedTuple):

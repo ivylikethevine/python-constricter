@@ -6,6 +6,16 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A call of a method whose every `return` gives one of its parameters as it's given is typed by
+  what the call passes for it, a guess (`echoed`): `chosen = self.pick(3)` an `int`, where `pick`
+  ends `return fallback`. Not a method a class under its own defines again in the module.
+- A fix no longer names a class its file doesn't import, in two cases. The type a method returns,
+  where its class reached the file through an overload's return or another late step
+  (`line1: Line2D`, from `ax.plot(...)` after `fig, ax = plt.subplots()`), is imported for type
+  checking, and that class's own methods are read in the same pass. And in a module with its own
+  stub, a name only the stub imports (`trans: Transform`) is imported where a fix writes it in the
+  source, the file checked again in the same run (matplotlib: 52 unbound names in its fixes, now
+  none).
 - A checked tree's stub with no source beside it, a compiled module's (`_path.pyi`, with no
   `_path.py`), is read as the module for the calls into it, as an installed package's stub is, and
   before an installed copy: under the nearest checked package above it, or beside the checked

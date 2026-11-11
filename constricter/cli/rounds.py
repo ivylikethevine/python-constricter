@@ -106,7 +106,9 @@ def _imports_read(modules: project.Index, path: Path, run: FileRun) -> bool:
     """Check whether a round of `--fix` imported a checked file's class whose members the file reads.
 
     What's read of them had no type while the file didn't spell the class (`f: TextIO`, from the
-    standard-library tables, then `f.encoding`, on a corpus that checks `typing.py`).
+    standard-library tables, then `f.encoding`, on a corpus that checks `typing.py`). Or a name only
+    the file's own stub imported, for type checking too: the stub's types naming it had none in the
+    file's own check till then (`crossed.binds_stubbed`).
 
     Returns:
       Whether it did.
@@ -114,7 +116,14 @@ def _imports_read(modules: project.Index, path: Path, run: FileRun) -> bool:
     """
     return _changed(path, run) and any(
         isinstance(made.offence.edit, Fix)
-        and crossed.reads_imported(modules, path, made.offence.edit.imports)
+        and (
+            crossed.reads_imported(modules, path, made.offence.edit.imports)
+            or crossed.binds_stubbed(
+                modules,
+                path,
+                (*made.offence.edit.imports, *made.offence.edit.guarded),
+            )
+        )
         for made in cast("CheckRun", run).made
     )
 

@@ -117,3 +117,64 @@ def test_a_stub_that_cant_be_read_is_left_out(tmp_path: Path, stub: bytes) -> No
     user: Path = _write(tmp_path / "user.py", USER)
     _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
     assert UNSTUBBED in user.read_text(encoding="utf-8")
+
+
+LEGEND: Final = """
+class Legend:
+    pass
+
+
+def make() -> Legend:
+    return Legend()
+"""
+MAKING: Final = """
+from mpl.legend import make
+
+
+class Axes:
+    def legend(self):
+        return make()
+
+    def own(self):
+        mine = self.legend()
+        return mine
+
+
+def local_make():
+    made = make()
+    return made
+"""
+MADE: Final = """
+from mpl.legend import make
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from mpl.legend import Legend
+
+
+class Axes:
+    def legend(self):
+        return make()
+
+    def own(self):
+        mine: Legend = self.legend()
+        return mine
+
+
+def local_make():
+    made: Legend = make()
+    return made
+"""
+
+
+def test_a_name_only_the_stub_imports_is_imported_where_the_source_writes_it(tmp_path: Path) -> None:
+    """The stub's `Legend` isn't the source's: a fix there naming it adds its import for type checking.
+
+    And the source is checked again in the same run: its own method the stub declares a `Legend`
+    has that type once the name is imported, a second pass left nothing.
+    """
+    _ = _write(tmp_path / "mpl" / "__init__.py", "")
+    _ = _write(tmp_path / "mpl" / "legend.py", LEGEND)
+    axes: Path = _write(tmp_path / "mpl" / "axes.py", MAKING)
+    _ = _write(tmp_path / "mpl" / "axes.pyi", STUB)
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    assert axes.read_text(encoding="utf-8") == textwrap.dedent(MADE)

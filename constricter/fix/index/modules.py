@@ -214,6 +214,9 @@ class Module:  # pylint: disable=too-many-instance-attributes
     # Those they leave bare (see `constricter.fix.index.consistent`).
     annotated: Mapping[str, tuple[str, ...]] = field(default_factory=dict[str, tuple[str, ...]])
     bare: frozenset[str] = frozenset()
+    # Those of `guarded` only its own stub imports (see `_own`): its stub's types are written with
+    # them, but its source binds none, so a fix there imports each one it writes.
+    stub_names: frozenset[str] = frozenset()
 
     @override
     def __getstate__(self) -> dict[str, object]:
@@ -495,11 +498,11 @@ def read(path: Path, name: str | None = None) -> Module | None:
     assigned: Counter[str] = _assigned(tree.body)
     rebound: frozenset[str] = frozenset(bound for bound, count in assigned.items() if count > 1)
     named: str = name or module_name(path)
-    is_package: bool = path.stem == PACKAGE
     own: Tables
     names: dict[str, Origin]
     guarded: dict[str, Origin]
-    own, names, guarded = _own(path, (source, tree), named, installed=installed)
+    stub_names: frozenset[str]
+    own, names, guarded, stub_names = _own(path, (source, tree), named, installed=installed)
     aliases: dict[str, bool] = _aliases(tree)
     defaulted: frozenset[str] = defaulted_type_vars(tree)
     type_vars: frozenset[str] = defined_type_vars(tree)
@@ -511,7 +514,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         methods=own.order.flattened(own.methods),
         type_vars=type_vars,
         guarded=guarded,
-        stars=starred(tree, named, is_package=is_package),
+        stars=starred(tree, named, is_package=path.stem == PACKAGE),
         unannotated=unannotated(tree.body, passing(tree, type_vars)),
         decorated=held_back(tree.body),
         called=used.called(tree, names),
@@ -536,7 +539,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         passes=own.passes,
         aliases={alias: generic for alias, generic in aliases.items() if alias not in rebound},
         rebound=rebound,
-        inner={} if installed else inner_origins(tree, named, is_package=is_package),
+        inner={} if installed else inner_origins(tree, named, is_package=path.stem == PACKAGE),
         variables=_variables(tree.body).difference(own.classes.keys()),  # a frozenset: `- keys()` is a `set`
         assigned=frozenset(assigned).difference(aliases.keys(), type_vars),
         shadowed=frozenset() if installed else frozenset(names) & taken_names(tree)[1],
@@ -563,6 +566,7 @@ def read(path: Path, name: str | None = None) -> Module | None:
         annotated={} if installed else annotated.annotations(tree),
         bare=frozenset() if installed else annotated.bare(tree),
         kinds=None if installed else kinds(tree, aliases.keys() - rebound),
+        stub_names=stub_names,
         unawaited=frozenset(
             stmt.name
             for stmt in tree.body
@@ -577,15 +581,15 @@ def _own(
     named: str,
     *,
     installed: bool,
-) -> tuple[Tables, dict[str, Origin], dict[str, Origin]]:
+) -> tuple[Tables, dict[str, Origin], dict[str, Origin], frozenset[str]]:
     """Read a module's own tables and names, a checked one's kept for its check (see `parsed.keep`).
 
     With its own stub's, where it has one (see `own_stubs.beside`): its importers read every type the stub
     declares, its check only those it can write as they are (its names', and the builtins').
 
     Returns:
-      Its tables; what each name it binds refers to; and each name it imports for type checking
-      alone, its stub's imports among them.
+      Its tables; what each name it binds refers to; each name it imports for type checking alone,
+      its stub's imports among them; and those of them only its stub imports.
 
     """
     source: str
@@ -597,16 +601,18 @@ def _own(
     names.update(skipped(tree, names))  # `pa = pytest.importorskip("pyarrow")`, as `import pyarrow as pa`
     guarded: dict[str, Origin] = guarded_origins(tree, named, is_package=is_package)
     if installed:
-        return own, names, guarded
+        return own, names, guarded, frozenset()
     kept: Tables = own
+    only: frozenset[str] = frozenset()
     beside: tuple[Tables, dict[str, Origin]] | None
     if (beside := own_stubs.beside(path, named, is_package=is_package)) is not None:  # `mod.pyi`, read first
         writable: frozenset[str] = frozenset(names).union(guarded, own.classes, BUILTINS)
         kept = own_stubs.stubbed(own, beside[0], lambda each: roots(each) <= writable)
         own = own_stubs.stubbed(own, beside[0])
+        only = frozenset(each for each in beside[1] if each not in names and each not in guarded)
         guarded = {**{each: at for each, at in beside[1].items() if each not in names}, **guarded}
     parsed.keep(source, (tree, kept))  # for the check to take, rather than parse it and read it again
-    return own, names, guarded
+    return own, names, guarded, only
 
 
 def _loose(body: Sequence[ast.stmt]) -> frozenset[str]:

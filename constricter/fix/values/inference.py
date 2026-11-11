@@ -17,7 +17,7 @@ from constricter.fix.libraries.library import (
     library_variable,
 )
 from constricter.fix.libraries.opened import opened, opened_path
-from constricter.fix.values import called, decided, displays, operated, shapes
+from constricter.fix.values import called, decided, displays, echoed, operated, shapes
 from constricter.fix.values.documented import KIND as DOCUMENTED
 from constricter.fix.values.loops import comprehended, dict_view, looped, rebased
 from constricter.fix.values.members import (
@@ -228,6 +228,8 @@ def _member_of(
             defined: tuple[str, str] | None = (
                 returned_method(receiver, attr, known) if found is None else None
             )
+            if found is None and defined is None:
+                return echoed.result(receiver, attr, value, known, infer)
             return (
                 found
                 if defined is None

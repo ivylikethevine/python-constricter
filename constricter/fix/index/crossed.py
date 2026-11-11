@@ -150,7 +150,7 @@ def guarded_classes(
     catalog: Index,
     path: Path,
     found: Imported,
-    guarded: Mapping[str, Guarded],
+    guarded: dict[str, Guarded],
     spelled: frozenset[str],
 ) -> Classes:
     """Add the members of the classes `guarded` names that `found` hasn't taken, as the file names them.
@@ -160,7 +160,9 @@ def guarded_classes(
     that class's methods in the same pass, not only once the import is written. And those `spelled`
     names through a module the file imports, as the types those steps give write them
     (`trio.SocketListener`, which `trio` re-exports): the file reads no such attribute until a fix
-    writes the type, so `found` took none of them.
+    writes the type, so `found` took none of them. What their members' types need imported is added
+    to `guarded`, and is a receiver's class in turn: `line, = ax.plot(...)`, `ax` an `Axes` by an
+    overload, is a `Line2D` the file imports for it, and `line.get_xdata()` one of its methods.
 
     Returns:
       `found`'s classes, with theirs.
@@ -169,11 +171,8 @@ def guarded_classes(
     target: Module | None
     if (target := module_at(catalog, path)) is None:
         return found.classes
-    fresh: dict[str, Origin] = {
-        name: each.origin
-        for name, each in guarded.items()
-        if name not in found.guarded and name not in target.names and name not in found.classes.methods
-    }
+    known: set[str] = {*found.guarded, *target.names, *found.classes.methods}
+    fresh: dict[str, Origin] = {name: each.origin for name, each in guarded.items() if name not in known}
     through: dict[str, Origin] = {}
     attributes: set[str] = set()
     each: str
@@ -188,10 +187,12 @@ def guarded_classes(
         {key: dict(each) for key, each in found.classes.attributes.items()},
         {key: dict(each) for key, each in found.classes.methods.items()},
     )
-    if fresh:
-        _take(catalog, target, (fresh, None), taken, dict(guarded))
     if through:
-        _take(catalog, target, (through, frozenset(attributes)), taken, dict(guarded))
+        _take(catalog, target, (through, frozenset(attributes)), taken, guarded)
+    for _ in range(HOPS):  # as `imported` follows them: each hop's classes are receivers' too
+        fresh = {name: each.origin for name, each in guarded.items() if name not in known}
+        _take(catalog, target, (fresh, None), taken, guarded)
+        known.update(fresh)
     return Classes(taken.attributes, taken.methods)
 
 
@@ -278,6 +279,28 @@ def reads_imported(catalog: Index, path: Path, statements: Iterable[str]) -> boo
                 and not _declared_members(catalog, defined).isdisjoint(target.attributes)
             ):
                 return True
+    return False
+
+
+def binds_stubbed(catalog: Index, path: Path, statements: Iterable[str]) -> bool:
+    """Check whether `statements` import into a file a name only its own stub imported (`Module.stub_names`).
+
+    Its stub's types naming it had none in the file's own check while its source didn't bind it:
+    `aspect = self.get_aspect()`, declared `float | Literal["auto"]`, has one once `Literal` is imported.
+
+    Returns:
+      Whether they do; not for a file `catalog` doesn't have.
+
+    """
+    target: Module | None
+    if (target := module_at(catalog, path)) is None or not target.stub_names:
+        return False
+    statement: str
+    for statement in statements:
+        node: ast.stmt = ast.parse(statement).body[0]
+        names: list[ast.alias] = node.names if isinstance(node, ast.Import | ast.ImportFrom) else []
+        if any((alias.asname or alias.name).partition(".")[0] in target.stub_names for alias in names):
+            return True
     return False
 
 

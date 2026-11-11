@@ -294,7 +294,13 @@ the value decides it, for a plain `name = value` in a function or module body:
   a tuple display of as many. Only where every `return` gives a value, of no known type or one the
   type takes (a class's own, not a subclass's), none without `None` named where one is
   `return None`, and no number in a module importing numpy, whose scalars (`np.int64`) a checker
-  takes for none. A generator function counts by
+  takes for none. A method whose every `return` gives one of its parameters as it's given
+  (`def pick(self, fallback): return fallback`) types each call by what that call passes for it, by
+  its place or its name, a guess (`echoed`): `chosen = self.pick(3)` is an `int`. Only a plain,
+  undecorated method declaring no return, the parameter unannotated and bound nowhere else in it,
+  and no class under its own in the module defining the method again (a hook whose default gives
+  its argument back); not a call that leaves the parameter its default or passes a `*` or a `**`.
+  A generator function counts by
   its `yield`s instead: each a statement of its own
   (nothing is sent in), all of one type `T`, and no `return` of a value, give a
   `Generator[T, None, None]`, imported from `collections.abc` if it has to be; `yield from` gives
@@ -1153,6 +1159,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `filled`        | an empty container, then only what the function adds to it (a guess)                          |
 | `returned`      | an unannotated function's own `return`s, or a generator's `yield`s (a method's: a guess)      |
 | `documented`    | an unannotated function's docstring's named return type (a guess)                             |
+| `echoed`        | a method that returns one of its parameters as given: what its call passes it (a guess)       |
 | `assigned`      | an unannotated instance attribute's every `self.x = value` in its class (a guess)             |
 | `member`        | a plain class's variable, by its value in the class's body (a guess)                          |
 | `alias`         | a module's type alias, a subscript or a union of types: `TypeAlias`                           |

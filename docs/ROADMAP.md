@@ -65,10 +65,17 @@ check of the tree does, and so do the checkers a hinted step starts under the co
 7,472, and from 8,751 to 10,245 with guesses; pandas's from 17,361 to 17,867 and from 43,213 to
 43,348, 545 of its fixes a tier up, its own checks' new errors the same 3, 3 and 8 after each fix.
 No other corpus's fixes moved but one guess of the standard library's, as between the two runs
-before. Left: matplotlib's 6 that a second pass would still fix, with guesses or without, a member
-of a receiver its stub's type gives in the first pass: `xx = line.get_xdata()` after `line: Line2D`
-(`tests/test_agg.py`), and `conn: ConnectionPatch` from `InsetIndicator.connectors`
-(`tests/test_inset.py`). Done when no second pass is left on it.
+before. The run left matplotlib 6 fixes for a second pass, with guesses or without, and its fixes
+52 names no import binds (`ruff check --select F821` on the fixed copy; none as released), which a
+run only compiles: `line1: Line2D` after `fig, ax = plt.subplots()`, and `trans: Transform` in
+`axes/_axes.py`, whose stub alone imports `Transform`. Built since ([COMPLETED.md](COMPLETED.md#--fix)):
+the types a late-found class's methods return are imported, and a name only a module's stub imports
+is imported where a fix writes it in the source. A copy fixed in one process has no such name and
+nothing for a second pass. basedpyright, in standard mode on the copy with its certain fixes, finds
+92 errors the released copy hasn't, 141 before: the 52 unbound names gone, the same 89 others (35
+an argument's type, 25 an assignment's), and 3 by `aspect: float | Literal['auto']`, which its
+stub declares and its body contradicts, and by `cycler`, not installed there. Done when a `mega-fixes` run shows no second pass left on matplotlib and
+no new type error on the suites' own checks.
 
 ### Small: under 4 hours
 
@@ -231,7 +238,14 @@ unannotated parameter (26 nothing else), and in none of those classes does every
 call pass it a literal: typing a method's parameters by its callers, as `callers` types a plain
 top-level function's (3 fixes on pandas), reaches almost none of them. What's left is the values
 themselves: the tuple's parts, the call, the local. Done when a method returning its parameter types
-its calls. About 14 hours, for about 0.3% (some 800 guesses).
+its calls. About 14 hours, for about 0.3% (some 800 guesses). Built: a call of a method whose every
+`return` gives one parameter as it's given is what the call passes for it, a guess of its own kind
+(`echoed`: `returned._echo`, `fix/values/echoed.py`), not a method a class under its own defines
+again in the module, most often a hook (`Field.to_python`). Its reach is small: by syntax alone
+(`scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have 365 such methods, 44
+with a `self` call bound to a name, 71 bindings in all, and pydantic's fixes are the same 1,150
+with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this mechanism's. Left: a mega run
+for its bars ([LIKELY.md](LIKELY.md)), and the values themselves, each to measure before building.
 
 #### 9. Annotations held to a run
 

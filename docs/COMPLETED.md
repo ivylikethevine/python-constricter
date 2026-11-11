@@ -812,6 +812,20 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   was `mpl.ft2font.FT2Font`, and `foreground: int | None` where a call taken to construct a class
   guessed `_c_internal_utils.Win32_GetForegroundWindow`. matplotlib's own mypy settings find no
   issue in its 108 checked files as released, with the certain fixes or with every fix.
+- **A type's import, for a class found late or named by a stub alone.** Two fixes wrote a name no
+  import bound, which a corpus run, compiling a fix's files, never saw: 52 on matplotlib 3.11.2
+  (`ruff check --select F821` on a copy fixed at `bcdc702`; none as released), and 6 of its fixes
+  left for a second pass. A class the file names only once a later step imports it for type
+  checking (an overload's return: `fig, ax = plt.subplots()`) had its members taken with the
+  imports their types need thrown away, so `line1, = ax.plot(...)` was `line1: Line2D` with no
+  import of `Line2D`, and `line.get_xdata()` waited for a second pass: those imports are kept, and
+  each class they name is a receiver's in turn (`crossed.guarded_classes`). And a module with its
+  own stub took the stub's imports for its source's (`trans: Transform` in `axes/_axes.py`,
+  `v: Version` in `__init__.py`): a name only the stub imports (`Module.stub_names`) is imported
+  under `if TYPE_CHECKING:` where a fix writes it (`spelling._import_for`), and the file is checked
+  again in the same run once one is, the stub's types naming it writable from then
+  (`crossed.binds_stubbed`, in `rounds._imports_read`). A copy of matplotlib fixed in one process
+  on 16CPU/60GB has no unbound name and nothing for a second pass.
 - **A module's own class named as a typing generic.** A bare `Generator`, `Type` or any other
   generic's name the module binds itself (a class, or an import from outside `typing`,
   `typing_extensions`, `collections` and `re`), or one written through a module it imports

@@ -19,7 +19,7 @@ from typing import Final, NamedTuple, TypeAlias
 
 from constricter.fix.core.imports import bound_within
 from constricter.fix.core.inherited import Lineage
-from constricter.fix.core.known import Returned, Returns
+from constricter.fix.core.known import Echo, Returned, Returns
 from constricter.fix.core.signatures import AWAIT
 from constricter.fix.values import entered
 from constricter.fix.values.bodies import is_generator, plain, terminates
@@ -87,15 +87,17 @@ def returned(
         if origins:
             guesses[name] = origins
     attributes: dict[str, dict[str, str]] = {}
+    echoes: dict[str, dict[str, Echo]] = {}
     node: ast.ClassDef
     for node in classes(tree):
         for name, annotation, origins in _typed(tree, node.body, recorded, known):
             methods.setdefault(node.name, {})[name] = annotation
             if origins:
                 guesses[f"{node.name}.{name}"] = origins
+        echoes[node.name] = _echoes(tree, node, methods.get(node.name, {}), known[0])
         if class_names(tree)[node.name] == 1:  # its attributes are looked up by its name
             _attributes(tree, node, (assigned, used), (attributes, guesses))
-    return Returned(calls, methods, guesses, attributes)
+    return Returned(calls, methods, guesses, attributes, echoes)
 
 
 def _attributes(
@@ -296,6 +298,7 @@ class _Tables(NamedTuple):
     methods: dict[str, dict[str, str]]
     guesses: dict[str, frozenset[str]]
     attributes: dict[str, dict[str, str]]
+    echoes: dict[str, dict[str, Echo]]
 
 
 class Table:
@@ -327,7 +330,7 @@ class Table:
         self.assigned: dict[int, list[Assigned]] = {}  # each checked function's `self.x = value`s
         self.used: dict[int, list[Used]] = {}  # each checked function's reads of `self`'s empty containers
         methods: dict[str, dict[str, str]] = {owner: dict(typed) for owner, typed in imported.methods.items()}
-        self.tables: _Tables = _Tables(dict(imported.calls), methods, dict(imported.guesses), {})
+        self.tables: _Tables = _Tables(dict(imported.calls), methods, dict(imported.guesses), {}, {})
         self.returned: Returned = Returned(*self.tables)
         self.entries: list[tuple[Slot, str]] = []
         self.stamps: dict[int, int] = {}
@@ -351,6 +354,11 @@ class Table:
         found: tuple[str, frozenset[str]] | None
         found = None if slot is None else _return_type(self.module, func, returns, self.named[0])
         if slot is None or (found := found or _documented(self.module, func, returns, self.named)) is None:
+            own: ast.ClassDef | None = owners(self.module).get(id(func))
+            echo: Echo | None = None if own is None else _echo(self.module, own, func, self.named[0])
+            if slot is not None and slot.owner is not None and echo is not None:
+                self.tables.echoes.setdefault(slot.owner, {})[slot.name] = echo
+                self.entries.append((slot, echo.name))  # what called it before is checked again
             return
         annotation: str
         origins: frozenset[str]
@@ -498,6 +506,67 @@ def _ends_by_returning(module: ast.Module, func: FunctionDef) -> bool:
         and not is_generator(module, func)
         and terminates(func.body)
         and all(each.value is not None for each in own_returns(func.body))
+    )
+
+
+def _echoes(
+    module: ast.Module,
+    owner: ast.ClassDef,
+    typed: Mapping[str, str],
+    vouched: frozenset[str],
+) -> dict[str, Echo]:
+    """Find a class's methods that return a parameter as it's given (see `_echo`), none of them `typed`.
+
+    Returns:
+      Each one's parameter, by the method's name.
+
+    """
+    found: dict[str, Echo] = {}
+    func: FunctionDef
+    for func in plain(owner.body):
+        echo: Echo | None
+        if func.name not in typed and (echo := _echo(module, owner, func, vouched)) is not None:
+            found[func.name] = echo
+    return found
+
+
+def _echo(module: ast.Module, owner: ast.ClassDef, func: FunctionDef, vouched: frozenset[str]) -> Echo | None:
+    """Find the parameter a plain method returns as it's given: every `return` of it that one name.
+
+    Undecorated and unannotated, as `_return_type` takes one, and ending by a `return`. The
+    parameter is unannotated, not its first (`self`), nor `*args` or `**kwargs`, and bound nowhere
+    in the method. Not a method a class under `owner` in the module defines again: a hook whose
+    default gives its argument back (`to_python(self, value)`), which the others convert.
+
+    Returns:
+      It; `None` for any other function.
+
+    """
+    if _decorated(func, vouched) or func.returns is not None or func.type_comment:
+        return None
+    if not _ends_by_returning(module, func) or any(
+        isinstance(stmt, ast.FunctionDef | ast.AsyncFunctionDef) and stmt.name == func.name
+        for under in subclasses(module, owner)
+        for stmt in under.body
+    ):
+        return None
+    given: set[str | None] = {
+        stmt.value.id if isinstance(stmt.value, ast.Name) else None for stmt in own_returns(func.body)
+    }
+    name: str | None = next(iter(given)) if len(given) == 1 else None
+    if name is None or any(
+        isinstance(node, ast.Name) and node.id == name and not isinstance(node.ctx, ast.Load)
+        for node in ast.walk(func)
+    ):
+        return None
+    position: int
+    arg: ast.arg
+    for position, arg in enumerate([*func.args.posonlyargs, *func.args.args][1:]):
+        if arg.arg == name:
+            return Echo(position, name) if arg.annotation is None else None
+    return next(
+        (Echo(None, name) for arg in func.args.kwonlyargs if arg.arg == name and arg.annotation is None),
+        None,
     )
 
 
