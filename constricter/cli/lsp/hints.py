@@ -190,7 +190,7 @@ def _start(files: Mapping[Path, str], checkers: Sequence["Checker"]) -> None:
     for checker in checkers:
         # None for no files: its heap is set as its first server starts.
         if wanted := checker.wanted(files):
-            checker.share(wanted)
+            checker.share(wanted, sum(len(text) for text in files.values()))
         starting += [checker] * (wanted - len(checker.servers))
     if not starting:
         return
@@ -252,15 +252,17 @@ class Checker:  # pylint: disable=too-many-instance-attributes
         self.abandoned: set[Path] = set()  # the files a server hung on twice: never asked about again
         self.environment: dict[str, str] | None = None  # its servers', where their heap is capped (`share`)
 
-    def share(self, servers: int) -> None:
+    def share(self, servers: int, size: int) -> None:
         """Cap each server's heap at its share of the memory, as the first starts, where they run on Node.
 
-        Of `servers`' share, a tenth is left for what isn't the heap; never under a server's own
-        (`Server.memory`). Past the cap, basedpyright empties its caches, and else exits: restarted
-        then, its files asked about alone (`_alone`).
+        Of `servers`' share, a tenth is left for what isn't the heap; never under what one server
+        takes for files of `size` bytes together (`Server.memory`, and `per_byte` for each). Past
+        the cap, basedpyright empties its caches, and else exits: restarted then, its files asked
+        about alone (`_alone`).
         """
         if self.server.node and self.environment is None:
-            heap: int = max(self.server.memory, self.memory // servers * _HEAP // _WHOLE) >> 20
+            one: int = self.server.memory + self.server.per_byte * size
+            heap: int = max(one, self.memory // servers * _HEAP // _WHOLE) >> 20
             given: str = os.environ.get(_NODE_OPTIONS, "")
             self.environment = {**os.environ, _NODE_OPTIONS: f"{given} --max-old-space-size={heap}".strip()}
 

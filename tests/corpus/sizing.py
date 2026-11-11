@@ -27,12 +27,12 @@ CPUs they want are free, or `_MOST_SHARE` of the machine's, and take as many mor
 with as many workers, and the memory for each (`Slots.take`). A step that asks the type checkers
 for hints starts with as few CPUs as hold, by their share of its memory, one server of each of its
 checkers for the corpus (`Plan._hinted`), its servers then given that share of `hints.MEMORY`,
-rounded up to whole servers of its largest checker, one a CPU held (`--infer-memory`,
-`Wanted.hinted`); with all it wants, the default. Only one whose last run took `_BRIEF` seconds at
-most starts short: it keeps what it started with, so a long one on one CPU would hold the run's end
-(stripe's basedpyright, 36 minutes). The timed steps (`timing`,
-`profile`) want every CPU, so nothing runs beside the check timed: the run starts them last, one at
-a time.
+rounded up to whole servers of its largest checker, one a CPU held, and never under what the step
+held in its last run (`--infer-memory`, `Wanted.hinted`); with all it wants, the default. Only one
+whose last run took `_BRIEF` seconds at most starts short: it keeps what it started with, so a long
+one on one CPU would hold the run's end (stripe's basedpyright, 36 minutes). The timed steps
+(`timing`, `profile`) want every CPU, so nothing runs beside the check timed: the run starts them
+last, one at a time.
 
 Of the steps waiting, the one with the most seconds still to come starts first: its own and those
 of its corpus's suite's steps after it, which wait for it. One that has waited `_PATIENCE` seconds
@@ -671,20 +671,23 @@ class Wanted(NamedTuple):
     workers: int = 0  # a suite's tests' processes, where they're more than its CPUs (`started`)
     servers: int = 0  # a hinted step's servers' bytes with every CPU it wants: `hints.MEMORY` (`hinted`)
     server: int = 0  # one of its largest checker's servers, for the corpus's files (`Plan._hinted`)
+    before: int = 0  # a hinted step's bytes in its last run (`Before.memory`): its servers' least (`hinted`)
 
     def hinted(self, held: int) -> int:
         """Size the memory a hinted step's servers may use, holding `held` CPUs (`--infer-memory`).
 
         Returns:
           Its `servers`' bytes, as many fewer as it holds fewer CPUs, but whole servers for each CPU
-          held, as many as all of them hold: a share between two leaves one, a CPU idle. 0 where it
-          holds all it wants, or isn't hinted: its checkers' own default.
+          held, as many as all of them hold: a share between two leaves one, a CPU idle. And never
+          under what the step held in its last run (`before`), within `servers`: its servers hold
+          the program whatever its CPUs, and one capped under that exits. 0 where it holds all it
+          wants, or isn't hinted: its checkers' own default.
 
         """
         if not self.servers or held >= self.cpus:
             return 0
         whole: int = min(held, self.servers // self.server) * self.server if self.server else 0
-        return max(self.servers * held // self.cpus, whole)
+        return max(self.servers * held // self.cpus, whole, min(self.before, self.servers))
 
     def started(self, held: int) -> int:
         """Count the processes a suite's tests start with, holding `held` CPUs.
@@ -765,6 +768,7 @@ class Plan(NamedTuple):
             seconds=seconds,
             servers=hints.MEMORY if least else 0,
             server=server,
+            before=known.memory if least and known is not None else 0,
         )
 
     def _hinted(self, tree: Tree, step: str, cpus: int) -> tuple[int, int]:

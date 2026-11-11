@@ -2,7 +2,8 @@
 
 `with_installed` adds to the cross-file index the modules the checked files import from installed
 packages that declare their types: a stub package (`numpy-stubs`), a `py.typed` package's stubs
-(`.pyi`) or source, or a lone stub module; of packages that declare none, typeshed's third-party
+(`.pyi`) or source, or a lone stub module; before those, the checked tree's own stub for a module
+it has no source of (see `lone`); of packages that declare none, typeshed's third-party
 stubs bundled with basedpyright (`bundled`), as a stub package where the installed version is the
 stub set's and as guesses where not; and, as guesses (`declared`, see `as_untyped`), those of
 packages with neither, read for their own annotations. Each is found on the search path (the
@@ -37,6 +38,7 @@ from constricter.empty import Empty
 from constricter.fix.core.known import Returns
 from constricter.fix.index.modules import DECLARED, PACKAGE, STUB, SUFFIX, Index, Memo, Module, read, settled
 from constricter.fix.index.project import HOPS, STDLIB
+from constricter.fix.index.stubs import lone
 from constricter.fix.index.stubs.declared import Class, Declarations
 
 LIMIT: Final = 2000  # the most installed modules one run reads
@@ -107,6 +109,7 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
     wanted: list[str] = _imported(catalog.modules.values())  # grows as it's walked
     found: dict[str, Module] = {}
     seen: set[str] = set(catalog.modules)
+    tops: tuple[Path, ...] = lone.roots(catalog.modules)
     name: str
     for name in wanted:
         if len(found) >= LIMIT:
@@ -114,10 +117,11 @@ def with_installed(catalog: Index, search: Sequence[Path]) -> Index:
         if name in seen:
             continue
         seen.add(name)
-        path: Path | None
+        # The checked tree's own stub for a compiled module first, as a type checker run there finds it.
+        path: Path | None = lone.within(catalog.modules, tops, name) or locate(name, tuple(search))
         module: Module | None
         stub: tuple[Path, bool] | None
-        if (path := locate(name, tuple(search))) is not None:
+        if path is not None:
             module = cached(path, name)
         elif name.partition(".")[0] in _FORMS:  # typeshed's: its classes are special forms
             module = None

@@ -75,7 +75,7 @@ def test_a_node_servers_heap_is_capped_at_its_share_of_the_memory(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Nine tenths of each server's share, never under a server's own; no other checker's is capped."""
+    """Nine tenths of each server's share, never under one's for its files; no other checker's is capped."""
     _fake(monkeypatch)
     monkeypatch.setenv("NODE_OPTIONS", "--trace-warnings")
     path: Path = tmp_path / "heavy.py"
@@ -88,9 +88,14 @@ def test_a_node_servers_heap_is_capped_at_its_share_of_the_memory(
         assert session.checkers[1].environment is None
     assert [each.types for each in found] == [{(1, 1): "int"}, {(1, 1): "int"}]
     small: hints.Checker = hints.Checker(_CHECKER, tmp_path, 1, 256 << 20)
-    small.share(1)
+    small.share(1, 0)
     assert small.environment is not None
     assert small.environment["NODE_OPTIONS"].endswith("--max-old-space-size=600")
+    # 600 MB and 130 bytes for each byte of the files: 1,900 MB for 10 MB of them.
+    large: hints.Checker = hints.Checker(_CHECKER, tmp_path, 1, 256 << 20)
+    large.share(1, 10 << 20)
+    assert large.environment is not None
+    assert large.environment["NODE_OPTIONS"].endswith("--max-old-space-size=1900")
 
 
 def test_a_file_past_a_capped_servers_heap_has_no_hints(

@@ -1,27 +1,30 @@
 """Find the shortest schedule of finished corpus runs' steps with a solver, beside how long each took.
 
 The runs' steps as `schedule_sim.read` has them (each's seconds, CPUs and memory as measured, or as
-the runner gave them with `--given`, and the steps of its corpus it waits for), scheduled by
-OR-Tools' CP-SAT as a resource-constrained project: the steps' CPUs and memory each held within the
+the runner gave them with `--given`), scheduled by OR-Tools' CP-SAT as a resource-constrained
+project under what the runner itself keeps: the steps' CPUs and memory each held within the
 machine's at every moment (`AddCumulative`), a suite's tests one at a time per port, a suite's
-checkouts one step at a time each (as the runner locks them), and each step after those it waits
-for, as its records keep them (the runner orders more: `suite_steps.needs`, a test part after its
-`tests-infer-union` among them). The timed steps follow, one at a time, alone. Prints, for each run,
-how long it took, the shortest schedule found and the bound the solver proved, and the order its first
-steps start in: what the runner's own order could aim for.
+checkouts one step at a time each (`suite_checkouts.checkouts`, as the runner locks them), and each
+step after those it waits for, by `suite_steps.needs` of the run's own file, read as the run read
+it: of the runs before it alone. The tests as released an earlier run's record stood for are a step
+of no seconds, so what waits for them still waits for the traced tests that confirmed it. The
+timed steps follow, one at a time, alone, unless the run file's `timing-beside` runs them as any
+other. Prints, for each run, how long it took, the shortest schedule found and the bound the solver
+proved, the order its first steps start in, and what of that model the run itself broke (`broken`):
+with `--given` nothing, where the model is the runner's.
 
-Needs OR-Tools, which the project doesn't depend on; `uv` installs it for one run, from releases
-older than a week:
+Needs OR-Tools, which the dev group installs:
 
-    uv run --exclude-newer "$(date -d '7 days ago' +%F)" --with ortools python scratch/schedule_solve.py \\
-        FOLDER... [--cpus 16] [--memory 36] [--given [--only cpus|memory]] [--seconds 60]
-        [--staged [--pauses SECONDS]]
+    local/.venv/bin/python scratch/schedule_solve.py FOLDER... [--cpus 16] [--memory 36]
+        [--given [--only cpus|memory]] [--seconds 60] [--staged [--pauses SECONDS]]
 
 `--staged` holds each of the runner's built-in stages to start once the one before it has ended, as
-a run in stages does; `--pauses` leaves the seconds between them out of the recorded time.
+a run in stages does; `--pauses` leaves the seconds between them out of the recorded time. About
+the `--seconds` given for each run, 2 workers on 16CPU/60GB.
 """
 
 import argparse
+import functools
 import math
 import sys
 from pathlib import Path
@@ -32,9 +35,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(1, str(Path(__file__).parent.parent))
 import schedule_sim  # noqa: E402  # the sibling script that reads a run's steps
 
-from tests.corpus import catalog, stages  # noqa: E402  # suites' `at-once`; the built-in stages, for `--staged`
+from tests.corpus import archive, catalog, run_config, sizing, stages, suite_checkouts, suite_steps  # noqa: E402
+from tests.corpus.pipeline import Job, Store  # noqa: E402
+from tests.corpus.trees import Tree  # noqa: E402
 
 _TENTHS = 10  # memory in tenths of a gigabyte: the solver's demands are whole numbers
+_SLACK = 1.0  # seconds a recorded start may come before what it waits for ends: both are rounded
 
 
 def staged(steps: list[schedule_sim.Step]) -> dict[tuple[str, str], int]:
@@ -61,54 +67,148 @@ def staged(steps: list[schedule_sim.Step]) -> dict[tuple[str, str], int]:
     return found
 
 
-_AT_ONCE: dict[str, int] = {
-    name: entry.suite.at_once for name, entry in catalog.load().entries.items() if entry.suite is not None
-}
+class Kept:
+    """What the runner keeps of a run's steps beside the machine's CPUs and memory: its file's."""
+
+    def __init__(self, folder: Path) -> None:
+        """Read the run file in `folder`, and each of its suites' jobs as the run made them."""
+        self.run: run_config.Run = run_config.read(folder / "run.toml")
+        known: catalog.Catalog = catalog.load()
+        names: list[str] = known.names(list(self.run.include), list(self.run.minus))
+        self.entries: dict[str, catalog.Entry] = {
+            run_config.directory(name): known.entry(name) for name in names
+        }
+        self.jobs: dict[str, Job] = {
+            corpus: Job(
+                self.run,
+                Store(folder),
+                Tree(entry.name, entry.version, Path(), suite=entry.suite),
+                run_config.DEV,
+            )
+            for corpus, entry in self.entries.items()
+            if entry.suite is not None
+        }
+        # The runs a step's wait may hang on (`suite_steps.earlier`) are those before this one.
+        # Each of their reports is read once, not once a suite.
+        before = run_config.started(folder)
+        every, read = archive.runs, archive.kept
+        archive.runs = lambda output: [each for each in every(output) if run_config.started(each) < before]
+        archive.kept = functools.cache(read)
+        try:
+            self.needs: dict[str, dict[str, frozenset[str]]] = {
+                corpus: suite_steps.needs(job) for corpus, job in self.jobs.items()
+            }
+        finally:
+            archive.runs, archive.kept = every, read
+        self.last: frozenset[str] = sizing.held_last(self.run)
+
+    def waits(self, steps: list[schedule_sim.Step]) -> None:
+        """Give each step the steps of its corpus the runner starts it after (`Runner._versioned`)."""
+        for step in steps:
+            step.after = set(self.needs.get(step.corpus, {}).get(step.name, frozenset()))
+
+    def locks(self, step: schedule_sim.Step) -> tuple[tuple[str, str], ...]:
+        """Name the locks a step holds as it runs (`Runner.locks`): its checkouts', and its tests' port's.
+
+        Returns:
+          Them; none for a step of no seconds, which never started.
+
+        """
+        entry: catalog.Entry | None = self.entries.get(step.corpus)
+        if entry is None or not step.seconds:
+            return ()
+        held: list[tuple[str, str]] = [
+            (step.corpus, each)
+            for each in (
+                suite_checkouts.checkouts(self.jobs[step.corpus], step.name)
+                if step.corpus in self.jobs
+                else ()
+            )
+        ]
+        if suite_checkouts.binds(step.name) and entry.port:
+            held.append(("port", str(entry.port)))
+        return tuple(held)
 
 
-def _checkouts(step: schedule_sim.Step, steps: list[schedule_sim.Step]) -> tuple[str, ...]:
-    """Name the checkouts a suite step holds, one step at a time each, as `suite_checkouts.checkouts` does.
-
-    A test part one of its corpus's `at-once` (by its place among them; `tests-infer-union` the
-    first), `tests` every one, `traced` and the type checks' parts a checkout each kind.
+def broken(steps: list[schedule_sim.Step], kept: Kept, cpus: int, memory: float) -> list[str]:
+    """Check the run as recorded against the model: what the solver is held to and the run wasn't.
 
     Returns:
-      Them; none for a step that runs nothing of a suite's.
+      A line for each: a step started before one it waits for ended, two steps held a lock at once,
+      or the steps running held more than the machine's CPUs or memory.
 
     """
-    at_once: int = max(1, _AT_ONCE.get(step.corpus, 1))
-    tested: list[str] = sorted(
-        each.name for each in steps if each.corpus == step.corpus and each.name.startswith("tests-")
-    )
-    if step.name == "tests-infer-union":
-        return ("run0",)
-    if step.name in tested:
-        return (f"run{tested.index(step.name) % at_once}",)
-    if step.name == "tests":
-        return tuple(f"run{index}" for index in range(min(at_once, len(tested))))
-    if step.name == "traced":
-        return ("traced",)
-    return ("types",) if step.name.startswith("types-") else ()
+    by: dict[tuple[str, str], schedule_sim.Step] = {(step.corpus, step.name): step for step in steps}
+    ends: dict[tuple[str, str], float] = {}
+
+    def end(step: schedule_sim.Step) -> float:
+        key: tuple[str, str] = (step.corpus, step.name)
+        if key not in ends:
+            waited: list[float] = [
+                end(by[step.corpus, name]) for name in step.after if (step.corpus, name) in by
+            ]
+            ends[key] = step.started + step.seconds if step.seconds else max(waited, default=0.0)
+        return ends[key]
+
+    found: list[str] = []
+    ran: list[schedule_sim.Step] = [step for step in steps if step.seconds]
+    for step in ran:
+        for name in sorted(step.after):
+            other: schedule_sim.Step | None = by.get((step.corpus, name))
+            if other is not None and step.started + _SLACK < end(other):
+                found.append(
+                    f"{step.corpus}/{step.name} started {end(other) - step.started:.0f}s before {name} ended"
+                )
+    holding: dict[tuple[str, str], list[schedule_sim.Step]] = {}
+    for step in ran:
+        for lock in kept.locks(step):
+            holding.setdefault(lock, []).append(step)
+    for lock, held in holding.items():
+        held.sort(key=lambda step: step.started)
+        for first, second in zip(held, held[1:]):
+            if second.started + _SLACK < end(first):
+                found.append(
+                    f"{second.corpus}/{second.name} started {end(first) - second.started:.0f}s before"
+                    f" {first.corpus}/{first.name} freed {'/'.join(lock)}"
+                )
+    beside: list[schedule_sim.Step] = [step for step in ran if step.name not in kept.last]
+    most: tuple[int, float] = (0, 0.0)
+    for step in beside:
+        running: list[schedule_sim.Step] = [
+            other for other in beside if other.started <= step.started < end(other) - _SLACK
+        ]
+        most = (
+            max(most[0], sum(min(other.cpus, cpus) for other in running)),
+            max(most[1], sum(min(other.memory, memory) for other in running)),
+        )
+    if most[0] > cpus:
+        found.append(f"its steps held {most[0]} CPUs at once, of {cpus}")
+    if most[1] > memory:
+        found.append(f"its steps held {most[1]:.1f} GB at once, of {memory:g}")
+    return found
 
 
 def solve(
     steps: list[schedule_sim.Step],
-    cpus: int,
-    memory: float,
+    kept: Kept,
+    machine: tuple[int, float],
     seconds: float,
     in_stages: bool = False,
 ) -> tuple[float, float, list[str]]:
     """Schedule the steps with CP-SAT, `seconds` at most; `in_stages`, each stage after the one before it ends.
 
     Returns:
-      The shortest schedule found and the least the solver proved, both in seconds with the timed
-      steps after; and the steps by when the schedule starts them.
+      The shortest schedule found and the least the solver proved, both in seconds with the steps
+      held to the end after; and the steps by when the schedule starts them.
 
     """
-    work: list[schedule_sim.Step] = [step for step in steps if step.name not in schedule_sim._TIMED]
-    timed: float = sum(step.seconds for step in steps if step.name in schedule_sim._TIMED)
+    cpus: int
+    memory: float
+    cpus, memory = machine
+    work: list[schedule_sim.Step] = [step for step in steps if step.name not in kept.last]
+    timed: float = sum(step.seconds for step in steps if step.name in kept.last)
     model: cp_model.CpModel = cp_model.CpModel()
-    horizon: int = math.ceil(sum(step.seconds for step in work)) + 1
+    horizon: int = math.ceil(sum(step.seconds for step in work)) + len(work) + 1
     starts: dict[tuple[str, str], cp_model.IntVar] = {}
     intervals: dict[tuple[str, str], cp_model.IntervalVar] = {}
     step: schedule_sim.Step
@@ -132,35 +232,23 @@ def solve(
                 model.add(starts[key] >= ends[index - 1])
         for index in range(1, len(ends)):
             model.add(ends[index] >= ends[index - 1])
-    model.add_cumulative(list(intervals.values()), [min(step.cpus, cpus) for step in work], cpus)
+    running: list[schedule_sim.Step] = [step for step in work if step.seconds]
     model.add_cumulative(
-        list(intervals.values()),
-        [min(math.ceil(step.memory * _TENTHS), math.floor(memory * _TENTHS)) for step in work],
+        [intervals[step.corpus, step.name] for step in running],
+        [min(step.cpus, cpus) for step in running],
+        cpus,
+    )
+    model.add_cumulative(
+        [intervals[step.corpus, step.name] for step in running],
+        [min(math.ceil(step.memory * _TENTHS), math.floor(memory * _TENTHS)) for step in running],
         math.floor(memory * _TENTHS),
     )
-    ports: dict[str, str] = schedule_sim.ports()
-    bound: dict[str, list[cp_model.IntervalVar]] = {}
-    for step in work:
-        if schedule_sim.binds(step.name) and step.corpus in ports:
-            bound.setdefault(ports[step.corpus], []).append(intervals[step.corpus, step.name])
-    for each in bound.values():
-        model.add_no_overlap(each)
     held: dict[tuple[str, str], list[cp_model.IntervalVar]] = {}
-    for step in work:
-        for checkout in _checkouts(step, work):
-            held.setdefault((step.corpus, checkout), []).append(intervals[step.corpus, step.name])
+    for step in running:
+        for lock in kept.locks(step):
+            held.setdefault(lock, []).append(intervals[step.corpus, step.name])
     for each in held.values():
         model.add_no_overlap(each)
-    # A suite's other test parts after its `tests-infer-union`, whose patch may imply theirs (as the
-    # runner orders them: `suite_checkouts.checkouts`).
-    for step in work:
-        union: tuple[str, str] = (step.corpus, "tests-infer-union")
-        if (
-            step.name.startswith("tests-")
-            and step.name not in {union[1], "tests-released"}
-            and union in intervals
-        ):
-            model.add(starts[step.corpus, step.name] >= intervals[union].end_expr())
     end: cp_model.IntVar = model.new_int_var(0, horizon, "end")
     model.add_max_equality(end, [interval.end_expr() for interval in intervals.values()])
     model.minimize(end)
@@ -177,7 +265,7 @@ def solve(
 
 
 def main() -> None:
-    """Print each run's minutes, its shortest schedule's, and the order that schedule starts steps in."""
+    """Print each run's minutes, its shortest schedule's, the order that starts steps in, and what it broke."""
     parser = argparse.ArgumentParser()
     parser.add_argument("folders", type=Path, nargs="+")
     parser.add_argument("--cpus", type=int, default=16)
@@ -192,18 +280,30 @@ def main() -> None:
     args = parser.parse_args()
     folder: Path
     for folder in args.folders:
-        steps: list[schedule_sim.Step] = schedule_sim.read(folder, given=args.given, only=args.only)
-        first: float = min(step.started for step in steps)
-        recorded: float = max(step.started + step.seconds for step in steps) - first - args.pauses
+        kept: Kept = Kept(folder)
+        steps: list[schedule_sim.Step] = schedule_sim.read(
+            folder, given=args.given, only=args.only, taken=True
+        )
+        kept.waits(steps)
+        ran: list[schedule_sim.Step] = [step for step in steps if step.seconds]
+        first: float = min(step.started for step in ran)
+        recorded: float = max(step.started + step.seconds for step in ran) - first - args.pauses
         found: float
         least: float
         order: list[str]
-        found, least, order = solve(steps, args.cpus, args.memory, args.seconds, args.staged)
-        print(f"{folder.name}: {len(steps)} steps, {args.cpus} CPUs, {args.memory:g} GB")
+        found, least, order = solve(steps, kept, (args.cpus, args.memory), args.seconds, args.staged)
+        print(f"{folder.name}: {len(ran)} steps, {args.cpus} CPUs, {args.memory:g} GB")
         print(
             f"  recorded {recorded / 60:.1f} min; solver {found / 60:.1f} min, proved at least {least / 60:.1f}"
         )
         print(f"  first to start: {', '.join(order[:12])}")
+        breaks: list[str] = broken(steps, kept, args.cpus, args.memory)
+        print(
+            f"  the run broke {len(breaks)} of the model's holds"
+            + ("" if breaks else ": the model is the runner's")
+        )
+        for line in breaks[:20]:
+            print(f"    {line}")
 
 
 if __name__ == "__main__":
