@@ -60,8 +60,15 @@ the directories a check walks (`launch.copied`; all 87 of matplotlib's), so a fi
 check of the tree does, and so do the checkers a hinted step starts under the copy. Done when a
 `mega-fixes` run (12 minutes on 16CPU/60GB) is read against `mega-11-10-2026-1742`
 (`scratch/run_fixes_diff.py`): the fixes by a stub's declared type on matplotlib and on pandas's
-`_libs`, and no new type error by a suite's own checks. Coverage up on the corpora that ship stubs,
-unknown until measured.
+`_libs`, and no new type error by a suite's own checks. Read on `mega-fixes-11-10-2026-2038`
+(`bcdc702`, 11 minutes on 16CPU/60GB, no step failed): matplotlib's certain fixes went from 6,252 to
+7,472, and from 8,751 to 10,245 with guesses; pandas's from 17,361 to 17,867 and from 43,213 to
+43,348, 545 of its fixes a tier up, its own checks' new errors the same 3, 3 and 8 after each fix.
+No other corpus's fixes moved but one guess of the standard library's, as between the two runs
+before. Left: matplotlib's 6 that a second pass would still fix, with guesses or without, a member
+of a receiver its stub's type gives in the first pass: `xx = line.get_xdata()` after `line: Line2D`
+(`tests/test_agg.py`), and `conn: ConnectionPatch` from `InsetIndicator.connectors`
+(`tests/test_inset.py`). Done when no second pass is left on it.
 
 ### Small: under 4 hours
 
