@@ -1182,6 +1182,25 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
   `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
   pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
+- **A corpus's stubs in the copy a fix checks.** A fix step checked a copy of a corpus's `.py` files
+  alone, so no corpus run read a checked package's stubs, beside a source or alone: matplotlib's
+  8,751 fixes with guesses on `mega-11-10-2026-1742` were `mega-fixes-11-08-2026-1820`'s, none by a
+  stub's declared type. The copy takes the stubs in the directories a check walks (`launch.copied`;
+  all 87 of matplotlib's), so a fix reads them as a check of the tree does, and so do the checkers
+  a hinted step starts under the copy. On `mega-fixes-11-10-2026-2038` (`bcdc702`, 11 minutes on
+  16CPU/60GB, no step failed), against `mega-11-10-2026-1742` (`scratch/run_fixes_diff.py`):
+  matplotlib's certain fixes went from 6,252 to 7,472, and from 8,751 to 10,245 with guesses;
+  pandas's from 17,361 to 17,867 and from 43,213 to 43,348, 545 of its fixes a tier up, its own
+  checks' new errors the same 3, 3 and 8 after each fix; no other corpus's fixes moved but one
+  guess of the standard library's. That run left matplotlib 6 fixes for a second pass and 52 names
+  no import bound, fixed since (under [`--fix`](#--fix)): on `mega-fixes-11-10-2026-2205`
+  (`d5881ce`, 12 minutes, no step failed) its certain fixes leave no second pass, and no suite's
+  own checks gained an error by them. basedpyright, in standard mode on a copy with its certain
+  fixes, finds 92 errors the released copy hasn't, 141 before: the 52 unbound names gone, the same
+  89 others (35 an argument's type, 25 an assignment's), and 3 by
+  `aspect: float | Literal['auto']`, which its stub declares and its body contradicts, and by
+  `cycler`, not installed there. The 6 fixes its guesses still leave a second pass are the
+  roadmap's.
 - **A hinted step's servers given what they held.** basedpyright's servers abort past their heap
   cap, and each abort is a core dump the desktop reports as a crash: four in 90 seconds on the mega
   run of 2026-10-29 (`f7d53b2`, 16CPU/60GB), all inside dask's `infer-union`, given 2.47 GB (a heap

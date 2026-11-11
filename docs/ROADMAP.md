@@ -31,7 +31,7 @@ takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 85 buys the other 
 to what `--fix` offers or refuses is read on all 55 in 12 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
 run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
-`mega-fixes-11-08-2026-1820`, 12 minutes), which measures none of the bars: a guess's bars and the
+`mega-fixes-11-10-2026-2205`, 12 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
 #### 1. Runs in stages
@@ -51,33 +51,19 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
 
-#### 2. A corpus's stubs in the copy a fix checks
-
-A fix step checked a copy of a corpus's `.py` files alone, so no corpus run read a checked package's
-stubs, beside a source or alone: matplotlib's 8,751 fixes with guesses on `mega-11-10-2026-1742` are
-`mega-fixes-11-08-2026-1820`'s, none by a stub's declared type. Built: the copy takes the stubs in
-the directories a check walks (`launch.copied`; all 87 of matplotlib's), so a fix reads them as a
-check of the tree does, and so do the checkers a hinted step starts under the copy. Done when a
-`mega-fixes` run (12 minutes on 16CPU/60GB) is read against `mega-11-10-2026-1742`
-(`scratch/run_fixes_diff.py`): the fixes by a stub's declared type on matplotlib and on pandas's
-`_libs`, and no new type error by a suite's own checks. Read on `mega-fixes-11-10-2026-2038`
-(`bcdc702`, 11 minutes on 16CPU/60GB, no step failed): matplotlib's certain fixes went from 6,252 to
-7,472, and from 8,751 to 10,245 with guesses; pandas's from 17,361 to 17,867 and from 43,213 to
-43,348, 545 of its fixes a tier up, its own checks' new errors the same 3, 3 and 8 after each fix.
-No other corpus's fixes moved but one guess of the standard library's, as between the two runs
-before. The run left matplotlib 6 fixes for a second pass, with guesses or without, and its fixes
-52 names no import binds (`ruff check --select F821` on the fixed copy; none as released), which a
-run only compiles: `line1: Line2D` after `fig, ax = plt.subplots()`, and `trans: Transform` in
-`axes/_axes.py`, whose stub alone imports `Transform`. Built since ([COMPLETED.md](COMPLETED.md#--fix)):
-the types a late-found class's methods return are imported, and a name only a module's stub imports
-is imported where a fix writes it in the source. A copy fixed in one process has no such name and
-nothing for a second pass. basedpyright, in standard mode on the copy with its certain fixes, finds
-92 errors the released copy hasn't, 141 before: the 52 unbound names gone, the same 89 others (35
-an argument's type, 25 an assignment's), and 3 by `aspect: float | Literal['auto']`, which its
-stub declares and its body contradicts, and by `cycler`, not installed there. Done when a `mega-fixes` run shows no second pass left on matplotlib and
-no new type error on the suites' own checks.
-
 ### Small: under 4 hours
+
+#### 2. Six guesses matplotlib leaves a second pass
+
+With guesses, `--fix` leaves matplotlib 3.11.2 six fixes a second pass would still make
+(`mega-fixes-11-10-2026-2205`, `d5881ce`; in one process too), where its certain fixes leave none.
+Each rests on a parameter no annotation types: `ny, nx = shape`, `xlast` and `ylast` in
+`streamplot._gen_starting_points`, and `wnew` and `hnew` in `animation.adjusted_figsize`. The first
+pass doesn't know those parameters' types and the second does. To find first: why. Perhaps the
+callers' arguments have a type only in a later round of the run, after `callers` read them
+(`rounds._called_again`), which nothing has checked. Done when a `mega-fixes` run (12 minutes on
+16CPU/60GB) shows no second pass left on matplotlib. About 2 hours to find the cause, the fix sized
+then; coverage unchanged.
 
 #### 3. A run with no earlier run, held to the solver's shortest
 
@@ -244,8 +230,12 @@ its calls. About 14 hours, for about 0.3% (some 800 guesses). Built: a call of a
 again in the module, most often a hook (`Field.to_python`). Its reach is small: by syntax alone
 (`scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have 365 such methods, 44
 with a `self` call bound to a name, 71 bindings in all, and pydantic's fixes are the same 1,150
-with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this mechanism's. Left: a mega run
-for its bars ([LIKELY.md](LIKELY.md)), and the values themselves, each to measure before building.
+with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this mechanism's. On
+`mega-fixes-11-10-2026-2205` it made 20 fixes on the 55 corpora (matplotlib 5, joblib, networkx and
+the standard library 4 each, pandas 3), and pandas's own checks blame 2 new errors on them:
+`npvalue = self._validate_setitem_value(value)`, a hook classes in other files define again, and
+`op: ast.cmpop` in `core/computation/expr.py`. Decided 2026-11-10: kept for now, at 2 errors in
+20 fixes. Left: the values themselves, each to measure before building.
 
 #### 9. Annotations held to a run
 
