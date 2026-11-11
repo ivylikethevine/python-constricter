@@ -312,13 +312,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
+      # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks.
       # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
-      # (3.14t).
-      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
+      # (3.14t). The two on port 80 are where Windows asks whether a certificate is revoked.
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
+          egress-policy: block
           allowed-endpoints: >
             github.com:443
             raw.githubusercontent.com:443
@@ -327,6 +326,8 @@ jobs:
             downloads.python.org:443
             release-assets.githubusercontent.com:443
             pypi.org:443
+            ocsp.sectigo.com:80
+            crl.microsoft.com:80
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -361,15 +362,18 @@ jobs:
     permissions:
       contents: read
     steps:
-      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
+      # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks,
+      # and the two on port 80 are where Windows asks whether a certificate is revoked.
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
+          egress-policy: block
           allowed-endpoints: >
             github.com:443
             raw.githubusercontent.com:443
             releases.astral.sh:443
             files.pythonhosted.org:443
+            ocsp.sectigo.com:80
+            crl.microsoft.com:80
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
