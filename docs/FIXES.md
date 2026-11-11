@@ -575,7 +575,10 @@ its source declaring next to nothing), is read before the source, as a type chec
 functions' and its classes' methods' and attributes' declared types type its importers' calls
 (`fig, ax = plt.subplots()`, `ax.legend()`), the names it imports read as imported for type
 checking; and the module's own calls where it can write the type as it is (its own names', and the
-builtins'). A stub alone for a compiled module (`_path.pyi`) isn't read in a checked tree.
+builtins'). A stub alone, for a compiled module (`_path.pyi`, with no `_path.py`), is read as the
+module for the calls into it, as an installed package's stub is below, and never checked or fixed:
+under the nearest checked package above it (a stub-only subpackage's `__init__.pyi` too), or beside
+the checked files' top-level packages and modules, and before an installed copy of the package.
 
 An installed package that declares its types (a `py.typed` package, its stubs first, or a namespace
 package's subpackage with one; a stub package, `pkg-stubs`; a lone `mod.pyi`) is read the same way
@@ -979,7 +982,8 @@ hold what they're asked about (pandas: 1.2 GB in one `ty` server and 2.5 GB in f
 GB for pyrefly). `--infer-memory GB` (`infer-memory`) caps what a checker's servers use together: by
 default 8 GB, or half the memory available if that's less; set, never more than is available. One
 server a checker always gets. basedpyright's heap is capped at nine tenths of each server's share
-(`NODE_OPTIONS=--max-old-space-size`, never under 600 MB): near the cap it empties its caches, and
+(`NODE_OPTIONS=--max-old-space-size`, never under what one server takes for the files asked
+about, 600 MB and 130 bytes for each byte of them): near the cap it empties its caches, and
 past it exits, so it's restarted and asked about its files one at a time, as a hung one is, a file
 it exits on again left without hints (and asked about again in a later run, where a larger share
 may fit it). `--infer-in-turn` asks the checkers one after another, each one's

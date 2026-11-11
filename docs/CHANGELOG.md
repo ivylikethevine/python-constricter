@@ -6,6 +6,14 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A checked tree's stub with no source beside it, a compiled module's (`_path.pyi`, with no
+  `_path.py`), is read as the module for the calls into it, as an installed package's stub is, and
+  before an installed copy: under the nearest checked package above it, or beside the checked
+  files' top-level packages and modules (matplotlib's sdist alone: 72 more fixes, guesses included).
+- `--infer-with basedpyright` caps a server's Node heap no lower than what one server takes for the
+  files asked about (600 MB and 130 bytes for each byte of them), where the floor was 600 MB.
+- The corpus runner gives a hinted step that starts with fewer CPUs than it wants at least the
+  memory it held in its last run for its servers, within the 8 GB default (`Wanted.hinted`).
 - A `str` literal's `split()`, `rsplit()` or `splitlines()` with literal arguments is fixed
   `list[LiteralString]`: typeshed's `LiteralString` overload, which basedpyright held invariant
   against the `list[str]` written before (django's `MONTHS`, textual's `DIGITS3X3`). It's imported

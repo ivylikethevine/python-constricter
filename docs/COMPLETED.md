@@ -796,8 +796,21 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   by name (`scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379 to 6,528 certain),
   and matplotlib's own mypy settings find no issue in its 108 checked files fixed either way (one
   process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build needs meson and a C++
-  toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes. A stub
-  alone, for a compiled module, is still to read (the roadmap's Small items).
+  toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes.
+- **A checked tree's stub alone, for a compiled module.** A `.pyi` with no `.py` beside it
+  (matplotlib's `_path.pyi`, `ft2font.pyi` and seven more) is read as its module for the calls the
+  checked files make into it, as an installed package's stub is, before any installed copy, and
+  never checked or fixed (`stubs.lone`, in `installed.with_installed`): under the nearest checked
+  package above it, a stub-only subpackage's `__init__.pyi` too, or beside the checked files'
+  top-level packages and modules. Measured first on matplotlib 3.11.2's sdist, matplotlib not
+  installed (`scratch/lone_stub_reach.py`): of its 11,567 bindings with no fix, 10 call straight
+  into one of its 9 lone stubs' modules, and 26 more had a fix already.
+  With it (`scratch/fix_diff.py --source`, guesses included, 1 worker on 16CPU/60GB), its fixes
+  went from 9,613 to 9,685: what `FT2Font`'s methods and attributes give (`glyph: Glyph`,
+  `sfnt: dict[tuple[int, int, int, int], bytes]`), `FT2Font` spelled `ft2font.FT2Font` where it
+  was `mpl.ft2font.FT2Font`, and `foreground: int | None` where a call taken to construct a class
+  guessed `_c_internal_utils.Win32_GetForegroundWindow`. matplotlib's own mypy settings find no
+  issue in its 108 checked files as released, with the certain fixes or with every fix.
 - **A module's own class named as a typing generic.** A bare `Generator`, `Type` or any other
   generic's name the module binds itself (a class, or an import from outside `typing`,
   `typing_extensions`, `collections` and `re`), or one written through a module it imports
@@ -1440,6 +1453,23 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   group's seconds), on the same three runs: 1,187 minutes over the 18 replays against 1,213 unranked,
   pandas on the 22:41 run 67.5 against 72.5, the standard library and mypy on the 11:39 run 73.4 and
   74.0 against 78.7 and 79.6, the most lost 0.8 (the standard library on the 19:20 run).
+- **The solver, held to the waits the runner keeps.** `scratch/schedule_solve.py` takes each step's
+  waits from `suite_steps.needs` of the run's own file, read against the runs before it alone, its
+  locks from `suite_checkouts.checkouts` and its suite's port, and the timed steps as the run file's
+  `timing-beside` says; the released tests an earlier run's record stood for are a step of no
+  seconds, so what waits for them still waits for the traced tests that confirmed it. It checks the
+  run as recorded against that model (`broken`): with what the runner gave each step (`--given`),
+  `alt-11-08-2026-1157` and `alt-11-08-2026-1213` break none of it, so the model is the runner's.
+  Before, its waits were `schedule_sim.read`'s, kept by hand, without `infer-union`'s for the traced
+  tests, and its shortest was under what a run could do. Read again (16 CPUs and 36 GB, 60 seconds
+  each, 2 workers on 16CPU/60GB): `alt-11-08-2026-1157` took 5.2 minutes to a proved shortest of
+  5.2 and `alt-11-08-2026-1213` 5.5 to 5.5, trio's chain the bound in both; `alt-11-08-2026-1133`,
+  with none of its steps measured, 7.2 to 6.0, 20% over, by measured use or by what it was given.
+  Its 72 seconds went at the head of trio's chain: `infer-basedpyright` waited 65 seconds for
+  memory (it wanted 6.6 GB with 3.2 free), each unmeasured hinted step holding a third of the run's
+  memory between its CPUs (`sizing._UNSIZED_SHARE`). `mega-11-06-2026-2039` breaks none of the
+  model's waits or locks either, and took 85.9 minutes to the 74.3 the solver finds in 45 seconds
+  (proved at least 36.8), 16% over.
 - **`method`'s two blamed guesses, read** (`scratch/guess_report.py --blamed method`, on
   `mega-10-30-2026-0857`): nibabel's `magic_number: bytes` (`streamlines/tck.py`) is right, all 51 of
   its values `bytes`, and mypy's `str-bytes-safe` is on the package's own f-string, which only a true

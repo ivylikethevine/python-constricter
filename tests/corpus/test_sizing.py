@@ -220,7 +220,7 @@ def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checke
     tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
     run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
     before: dict[tuple[str, str], sizing.Before] = {
-        ("dask", "infer-basedpyright"): sizing.Before(4.0, 120.0, 10 * sizing.GIB),
+        ("dask", "infer-basedpyright"): sizing.Before(4.0, 120.0, 5 * sizing.GIB),
         ("dask", "infer-ty"): sizing.Before(4.0, 60.0, 4 * sizing.GIB),
     }
     plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, before)
@@ -228,6 +228,15 @@ def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checke
     assert (hinted.cpus, hinted.least, hinted.servers, hinted.server) == (4, 2, hints.MEMORY, one)
     # Half of 8 GiB holds one server, a CPU left idle: the two the CPUs and the default hold, then.
     assert (hinted.hinted(2), hinted.hinted(3), hinted.hinted(4)) == (2 * one, 2 * one, 0)
+    # One that held more than that in its last run has what it held, within the default.
+    held: list[sizing.Wanted] = [
+        plan._replace(
+            before={("dask", "infer-basedpyright"): sizing.Before(4.0, 120.0, memory * sizing.GIB)},
+        ).wanted(tree, "infer-basedpyright")
+        for memory in (7, 10)
+    ]
+    assert [each.hinted(2) for each in held] == [7 * sizing.GIB, hints.MEMORY]
+    assert [each.hinted(4) for each in held] == [0, 0]
     assert plan.wanted(tree, "infer-ty").least == 1  # its servers share the files: 1.2 GiB for one
     assert plan.wanted(tree, "infer-ty").hinted(2) == hints.MEMORY // 2  # its share, over two servers
     assert plan.wanted(tree, "infer-union").least == hinted.least  # its largest checker's one server

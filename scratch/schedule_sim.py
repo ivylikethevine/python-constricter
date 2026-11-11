@@ -57,16 +57,23 @@ class Step:
     after: set[str] = field(default_factory=set)  # this corpus's steps it waits for
 
 
-def read(folder: Path, *, given: bool = False, only: str = "") -> list[Step]:
+def read(folder: Path, *, given: bool = False, only: str = "", taken: bool = False) -> list[Step]:
     """Read a run's steps, each with the steps of its corpus it waits for.
 
     With `given`, a step holds the CPUs and memory the runner gave it, not what it used; `only`
-    ("cpus" or "memory") takes that one of them alone, to see which the run lost time to.
+    ("cpus" or "memory") takes that one of them alone, to see which the run lost time to. With
+    `taken`, the tests as released an earlier run's record stood for are kept too, as a step of no
+    seconds that holds nothing and started at 0 (what waits for it then waits for what it waited
+    for), and a step whose record names that run (`tests`) is read as it ran.
     """
     steps: list[Step] = []
     for (corpus, _, name), read in sorted(archive.kept(folder).items()):
         used = read.get("used") or {}
-        if not used.get("seconds") or "from" in read:  # taken from an earlier run, not run here
+        if taken and "from" in read and name == "tests-released":
+            steps.append(Step(corpus, name, 0.0, 0, 0.0, 0.0))
+            continue
+        # Taken from an earlier run, not run here.
+        if not used.get("seconds") or ("from" in read and not taken):
             continue
         seconds = float(used["seconds"])
         cpu = float(used.get("cpu", 0))
@@ -294,7 +301,10 @@ def main() -> None:
         "--unmeasured", action="store_true", help="also the runner's order with nothing measured"
     )
     parser.add_argument(
-        "--new", action="append", default=[], help="a corpus new to the output: its steps unranked, and estimated"
+        "--new",
+        action="append",
+        default=[],
+        help="a corpus new to the output: its steps unranked, and estimated",
     )
     args = parser.parse_args()
     if args.timing_beside:
@@ -322,10 +332,17 @@ def main() -> None:
         for corpus in args.new:
             guessed = chain(steps, estimated(steps, corpus))
             for how, key in (
-                ("unranked", lambda step, corpus=corpus: 1e12 + step.started if step.corpus == corpus else -longest[id(step)]),
+                (
+                    "unranked",
+                    lambda step, corpus=corpus: (
+                        1e12 + step.started if step.corpus == corpus else -longest[id(step)]
+                    ),
+                ),
                 ("by its group", lambda step, guessed=guessed: -guessed[id(step)]),
             ):
-                minutes = simulate(steps, args.cpus, args.memory, key, patience=_PATIENCE, beside=_BESIDE) / 60
+                minutes = (
+                    simulate(steps, args.cpus, args.memory, key, patience=_PATIENCE, beside=_BESIDE) / 60
+                )
                 print(f"  {corpus + ' new, ' + how:<44} {minutes:6.1f} min")
     if args.sweep:
         print(f"best over {len(runs)} run(s), minutes summed:")
