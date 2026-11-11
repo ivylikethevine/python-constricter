@@ -13,7 +13,8 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from fnmatch import fnmatch
 from functools import cache
 from pathlib import Path
 from typing import Final, NamedTuple, cast
@@ -27,6 +28,7 @@ _SETTINGS: Final = ("pyproject.toml", "pyrightconfig.json", "pyrefly.toml")
 _INSTALLING: Final = threading.Lock()
 _PROBE: Final = "def f():\n    a = 1\n"
 _FIXED: Final = '"fixed":'  # in `--fix --format=json`'s output, where it says what it fixed
+_STUB: Final = ".pyi"
 
 
 class Place(NamedTuple):
@@ -60,8 +62,9 @@ def place(tree: Tree, neutral: Path) -> Place:
 def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
     """Copy `tree`'s Python files under `to`, fresh, laid out as they are under its checkout.
 
-    With the checkout's settings (`pyproject.toml`, and the type checkers' own files, which
-    `--infer-with` starts them under), so the copy is checked as the tree is.
+    With its stubs (`_stubs`), which a check reads for a module beside its source or, for a compiled
+    one, alone, and the checkout's settings (`pyproject.toml`, and the type checkers' own files,
+    which `--infer-with` starts them under), so the copy is checked as the tree is.
 
     Returns:
       The copy's place, and each copied file that compiles.
@@ -77,12 +80,34 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
         _ = shutil.copyfile(source, copy)
         if corpus_table.compiles(copy):
             valid.append(copy)
+    for source in _stubs(tree.root):
+        copy = target / source.relative_to(tree.root)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        _ = shutil.copyfile(source, copy)
     to.mkdir(parents=True, exist_ok=True)
     name: str
     for name in _SETTINGS if tree.base else ():
         if (cast("Path", tree.base) / name).is_file():
             _ = shutil.copyfile(cast("Path", tree.base) / name, to / name)
     return Place(to, target, tree.environment), valid
+
+
+def _stubs(root: Path) -> Iterator[Path]:
+    """Find the stubs under `root`, in the directories a check's walk enters (`paths.python_files`).
+
+    Yields:
+      Each `.pyi` file.
+
+    """
+    directory: str
+    inner: list[str]
+    names: list[str]
+    for directory, inner, names in os.walk(root):
+        inner[:] = [name for name in inner if not any(fnmatch(name, glob) for glob in paths.DEFAULT_EXCLUDES)]
+        name: str
+        for name in names:
+            if name.endswith(_STUB):
+                yield Path(directory, name)
 
 
 def python(version: str) -> str:

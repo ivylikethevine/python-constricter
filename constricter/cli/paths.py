@@ -12,7 +12,7 @@ from constricter import notebook
 
 # Skipped in a directory walk unless `--exclude` says otherwise: hidden directories, and common
 # tool/vendor ones. Merged with `exclude`'s globs (matched per directory name), not replaced by them.
-_DEFAULT_EXCLUDES: Final = (".*", "__pycache__", "node_modules", "venv", "site-packages", "build", "dist")
+DEFAULT_EXCLUDES: Final = (".*", "__pycache__", "node_modules", "venv", "site-packages", "build", "dist")
 STDIN: Final = Path("-")
 _KINDS: Final = ("*.py", f"*{notebook.SUFFIX}")  # the files a directory walk finds
 
@@ -36,7 +36,7 @@ def python_files(
 ) -> Iterator[Path]:
     """Find the files to check.
 
-    A directory walk skips `_DEFAULT_EXCLUDES` and `exclude`'s globs by directory name, and `exclude`
+    A directory walk skips `DEFAULT_EXCLUDES` and `exclude`'s globs by directory name, and `exclude`
     by whole path or file name; a file named directly is checked regardless. With `tracked`, a
     directory in a git checkout has only what git tracks there or would (`_listed`), so nothing its
     `.gitignore` files name.
@@ -45,7 +45,7 @@ def python_files(
       Each file given, and each `*.py` under each directory given.
 
     """
-    globs: tuple[str, ...] = (*_DEFAULT_EXCLUDES, *exclude)
+    globs: tuple[str, ...] = (*DEFAULT_EXCLUDES, *exclude)
     path: Path
     found: Path
     for path in paths:

@@ -796,7 +796,8 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   by name (`scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379 to 6,528 certain),
   and matplotlib's own mypy settings find no issue in its 108 checked files fixed either way (one
   process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build needs meson and a C++
-  toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes.
+  toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes,
+  none by a stub: a fix's copy held no `.pyi` then (`launch.copied`).
 - **A checked tree's stub alone, for a compiled module.** A `.pyi` with no `.py` beside it
   (matplotlib's `_path.pyi`, `ft2font.pyi` and seven more) is read as its module for the calls the
   checked files make into it, as an installed package's stub is, before any installed copy, and
@@ -1167,6 +1168,24 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
   `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
   pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
+- **A hinted step's servers given what they held.** basedpyright's servers abort past their heap
+  cap, and each abort is a core dump the desktop reports as a crash: four in 90 seconds on the mega
+  run of 2026-10-29 (`f7d53b2`, 16CPU/60GB), all inside dask's `infer-union`, given 2.47 GB (a heap
+  cap of about 2.1 GiB) where the step held 4.5 GB. The cause: a share comes from the per-byte
+  estimate of one server (`Plan._hinted`: 600 MB and 130 bytes for each byte of source, 1.3 GiB for
+  dask's 5.9 MB), which holds for sqlalchemy (1.2 GB for 8 MB) and undershoots dask's by about three
+  times. A measured step that starts with fewer CPUs than it wants gives its servers at least what
+  it held in its last run, within the 8 GB default (`Wanted.before`, in `Wanted.hinted`), and
+  basedpyright's heap floor is one server's estimate for the files asked about, where it was the
+  bare 600 MB (`Checker.share`). The step's own hold is still its share by the CPUs it holds, until
+  it's seen to use more (`Plan.fitted`). On `mega-11-10-2026-1742` (`d072990`, 82 minutes on
+  16CPU/60GB, no step failed) none of basedpyright's servers dumped, on any corpus, where the three
+  mega runs before it had 3, 2 and 1 (`mega-11-05-2026-0219`, `mega-11-06-2026-0949`,
+  `mega-11-06-2026-2039`), each inside an `infer-union` or `infer-basedpyright` started on one CPU
+  with 0.2 to 1.9 GB for a step that held 2.2 to 4.9 (xarray's, networkx's, twisted's, textual's,
+  stripe's). dask's `infer-union` took 246s, 251s on `mega-11-06-2026-2039`, holding 8.2 GB on 3
+  CPUs; xarray's held 7.3 GB and networkx's 5.4. That each abort was the heap cap is still
+  unconfirmed: the servers' standard error isn't kept.
 
 - **The witness, past a test's own classes**: a value of a class a test module defines, a mock or
   a `mock.sentinel` object, or a `SimpleNamespace` tells nothing of the annotation, nor does an

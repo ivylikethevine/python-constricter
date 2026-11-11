@@ -19,9 +19,11 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest run is `mega-11-06-2026-2039` (`edcaba3`, 87 minutes, 16CPU/60GB), read for
-`documented`'s bars and the `LiteralString` splits, with `vague-11-06-2026-2206` beside it for the
-`vague = 0` census (both in [COMPLETED.md](COMPLETED.md#corpus)); before them
+The latest run is `mega-11-10-2026-1742` (`d072990`, 82 minutes, 16CPU/60GB), read for the hinted
+steps' servers alone ([COMPLETED.md](COMPLETED.md#corpus)). Before it `mega-11-06-2026-2039`
+(`edcaba3`, 87 minutes), read for `documented`'s bars and the `LiteralString` splits, with
+`vague-11-06-2026-2206` beside it for the `vague = 0` census (both in
+[COMPLETED.md](COMPLETED.md#corpus)); before them
 `mega-lva013-11-06-2026-1718` (`2843438`, 56 minutes) for LVA013; the latest read in full is
 `mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes; [COMPLETED.md](COMPLETED.md#corpus)). A basic run of
 the seven corpora, `basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)),
@@ -49,25 +51,17 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
 
-#### 2. A hinted step's servers given what they held
+#### 2. A corpus's stubs in the copy a fix checks
 
-basedpyright's servers abort past their heap cap (`Checker.share`: nine tenths of a server's share),
-and each abort is a core dump the desktop reports as a crash. On the mega run of 2026-10-29
-(`f7d53b2`, 16CPU/60GB) four came in 90 seconds, all inside dask's `infer-union`, given 2.47 GB (a
-heap cap of about 2.1 GiB) where the step held 4.5 GB; dask's `infer-basedpyright` held 7.6 GB that
-run. The first mega run of 2026-10-28 had three, its dask `infer-union` given 2.39 GB; the second
-gave it 5.5 GB and had none, nor had the mega run of 2026-10-29 at 19:20 (`e793bc6`), sized the same
-way. The cause: a share comes from the per-byte estimate of one server (`Plan._hinted`: 600 MB and
-130 bytes for each byte of source, 1.3 GiB for dask's 5.9 MB), which holds for sqlalchemy (1.2 GB
-for 8 MB) and undershoots dask's by about three times. Built: a measured step that starts with fewer
-CPUs than it wants gives its servers at least what it held in its last run, within the 8 GB default
-(`Wanted.before`, in `Wanted.hinted`), which keeps dask's at 4.5 GB or more; and basedpyright's heap
-floor is one server's estimate for the files asked about, where it was the bare 600 MB
-(`Checker.share`), for a corpus the estimate fits whose share is split among several servers. The
-step's own hold is still its share by the CPUs it holds, until it's seen to use more
-(`Plan.fitted`). Unconfirmed: that each abort is the heap cap (the servers' standard error isn't
-kept). Done when a mega run with it shows no dump on dask, read with dask's `infer-union` seconds: a
-restarted server asks its files one at a time, so the step takes longer as well. Coverage unchanged.
+A fix step checked a copy of a corpus's `.py` files alone, so no corpus run read a checked package's
+stubs, beside a source or alone: matplotlib's 8,751 fixes with guesses on `mega-11-10-2026-1742` are
+`mega-fixes-11-08-2026-1820`'s, none by a stub's declared type. Built: the copy takes the stubs in
+the directories a check walks (`launch.copied`; all 87 of matplotlib's), so a fix reads them as a
+check of the tree does, and so do the checkers a hinted step starts under the copy. Done when a
+`mega-fixes` run (12 minutes on 16CPU/60GB) is read against `mega-11-10-2026-1742`
+(`scratch/run_fixes_diff.py`): the fixes by a stub's declared type on matplotlib and on pandas's
+`_libs`, and no new type error by a suite's own checks. Coverage up on the corpora that ship stubs,
+unknown until measured.
 
 ### Small: under 4 hours
 

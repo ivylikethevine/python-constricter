@@ -14,6 +14,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   files asked about (600 MB and 130 bytes for each byte of them), where the floor was 600 MB.
 - The corpus runner gives a hinted step that starts with fewer CPUs than it wants at least the
   memory it held in its last run for its servers, within the 8 GB default (`Wanted.hinted`).
+- The corpus runner's fix steps check a copy with the corpus's stubs (`.pyi`), as a check of its
+  tree reads them; before, a copy held its `.py` files alone, and no run read a package's stubs.
 - A `str` literal's `split()`, `rsplit()` or `splitlines()` with literal arguments is fixed
   `list[LiteralString]`: typeshed's `LiteralString` overload, which basedpyright held invariant
   against the `list[str]` written before (django's `MONTHS`, textual's `DIGITS3X3`). It's imported
