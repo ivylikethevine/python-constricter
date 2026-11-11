@@ -19,8 +19,10 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest run is `mega-11-10-2026-1742` (`d072990`, 82 minutes, 16CPU/60GB), read for the hinted
-steps' servers alone ([COMPLETED.md](COMPLETED.md#corpus)). Before it `mega-11-06-2026-2039`
+The latest run is `mega-11-10-2026-2235` (`565ac6c`, 80 minutes, 16CPU/60GB), read for `echoed`,
+the hinted steps' fixes with a corpus's stubs in the copy, and the suites' tests and checks
+([COMPLETED.md](COMPLETED.md#corpus)); before it `mega-11-10-2026-1742` (`d072990`, 82 minutes),
+for the hinted steps' servers alone. Before them `mega-11-06-2026-2039`
 (`edcaba3`, 87 minutes), read for `documented`'s bars and the `LiteralString` splits, with
 `vague-11-06-2026-2206` beside it for the `vague = 0` census (both in
 [COMPLETED.md](COMPLETED.md#corpus)); before them
@@ -31,7 +33,7 @@ takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 85 buys the other 
 to what `--fix` offers or refuses is read on all 55 in 12 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
 run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
-`mega-fixes-11-10-2026-2205`, 12 minutes), which measures none of the bars: a guess's bars and the
+`mega-fixes-11-11-2026-1033`, 14 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
 #### 1. Runs in stages
@@ -51,21 +53,158 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
 
-### Small: under 4 hours
+#### 2. A module's own stub, in every check of the file
 
-#### 2. Six guesses matplotlib leaves a second pass
-
-With guesses, `--fix` leaves matplotlib 3.11.2 six fixes a second pass would still make
+With guesses, `--fix` left matplotlib 3.11.2 six fixes a second pass would still make
 (`mega-fixes-11-10-2026-2205`, `d5881ce`; in one process too), where its certain fixes leave none.
 Each rests on a parameter no annotation types: `ny, nx = shape`, `xlast` and `ylast` in
 `streamplot._gen_starting_points`, and `wnew` and `hnew` in `animation.adjusted_figsize`. The first
-pass doesn't know those parameters' types and the second does. To find first: why. Perhaps the
-callers' arguments have a type only in a later round of the run, after `callers` read them
-(`rounds._called_again`), which nothing has checked. Done when a `mega-fixes` run (12 minutes on
-16CPU/60GB) shows no second pass left on matplotlib. About 2 hours to find the cause, the fix sized
-then; coverage unchanged.
+pass doesn't know those parameters' types and the second does. Found 2026-11-11
+(`scratch/second_pass_copy.py`: the 6 again, one process): a module's own stub reaches its check
+only through the tables the index keeps for the text it read (`modules._own`, `parsed.keep`), and a
+check of any other text reads the module alone (`checker._parse`). A file in a cycle is checked
+again within a round of `--fix`, its first fixes written, so that check knows none of its stub's
+types: `self.dpi`, a `float` by `animation.pyi`, and `StreamMask.shape`. Its calls are the ones
+`callers` then reads (`runs.merged` keeps the later check's), so `adjusted_figsize`'s `dpi` and
+`_gen_starting_points`'s `shape` have no type; they have one again once the file is indexed again,
+but `callers` is asked once a run (`rounds._called_again`). Tried (`scratch/stub_kept_trial.py`:
+`checker._parse` patched to read the stub again for such a text, as `_own` does): no second pass
+left, 74 checks of 62 files reading their stub again, and 5 of the hinted steps' fixes beside the 6
+("The hinted steps' second pass" below). Built 2026-11-11: a check of a text the index kept nothing
+for reads the module's stub again (`modules.checkable`, in `checker.checked_source`), as the index
+does for the text it read: a file `--fix` wrote to since, one checked again as it was, one past the
+kept trees' budget, and, new to them, standard input under the file's name and the pylint plugin's
+check. A copy of matplotlib fixed with guesses in one process leaves a second pass none
+(`scratch/second_pass_copy.py`: 10,266 fixes, 61 seconds with 1 worker on 16CPU/60GB), and a stubbed
+file in a cycle is tested (`tests/fix/index/test_own_stubs.py`). Done on
+`mega-fixes-11-11-2026-1033` (`565ac6c` with this change uncommitted, 14 minutes on 16CPU/60GB, no
+step failed), against `mega-11-10-2026-2235` (`scratch/run_fixes_diff.py`,
+`scratch/type_errors_diff.py`): no fix step leaves a second pass a fix on any of the 55 corpora,
+where matplotlib's likely fixes left 5 and its guesses 6. The certain fixes are the same 123,576,
+the likely ones 179,941 from 179,936 and those with guesses 205,446 from 205,441, each change
+matplotlib's: `nx`, `ny`, `xlast` and `ylast` in `streamplot.py`, `x: str` in
+`tests/test_ticker.py`, `wnew` and `hnew` in `animation.py`, and one guess withdrawn, `box_aspect:
+str` for `aspect * self.get_data_ratio()` in `axes/_base.py`, whose `aspect` the stub declares
+`float | Literal["auto"]`. The standard library's `opts` (`multiprocessing/spawn.py`) is certain
+where the mega run has it a guess, as on each `mega-fixes` run before. The suites' own checks find
+the same 9, 29 and 40 new errors after the three steps. Coverage unchanged.
 
-#### 3. A run with no earlier run, held to the solver's shortest
+#### 3. A copy's checkers, held to the copy's own settings
+
+On `mega-11-10-2026-2235` pandas's own checks find 2 new errors after pyrefly's hints, both by one
+hint: `arr: Period` for `arr = self._data.asfreq(freq, how)` in `PeriodIndex.asfreq`
+(`core/indexes/period.py`), where `_data` is declared a `PeriodArray`, whose `asfreq` returns
+`Self`; basedpyright's and ty's hints there are `PeriodArray`, which the suite's tests bind all 62
+times. Found 2026-11-11: pyrefly isn't reading pandas's source there, and the cause reaches every
+hinted step. A fix step's copy lies under this checkout (`corpus-runs/<run>/work/`). A suite's
+checkout was given an empty `pyrefly.toml` only where its `pyproject.toml` has no `[tool.mypy]` or
+`[tool.pyright]` either, pyrefly being taken to read those (`corpus_suite._settled`), nothing for
+ty, and an sdist's copy had no settings at all. pyrefly 1.3.2 doesn't take such a `pyproject.toml`
+for its configuration: it walks up to this checkout's `[tool.pyrefly]` (`pyrefly dump-config`), so
+its import root is this checkout, its environment the dev venv and its Python 3.11. pandas's
+modules are then not the copy's but the `pandas-stubs` pyrefly bundles, whose `PeriodArray.asfreq`
+returns `Period`; `Period` itself resolved only once the copy carried `_libs/tslibs/period.pyi`,
+which is why the hint is new on that run. With an empty `pyrefly.toml` in the copy pyrefly reveals
+`PeriodArray`. Measured, one process, a single check with each checker's hints
+(`scratch/hint_config_trial.py`: the copy as a run makes it, then with an empty settings file of
+the checker's own):
+
+| Checker      | Corpus     | Fixes as a run copies it | Gone with its own settings | New with them | Typed otherwise |
+| ------------ | ---------- | -----------------------: | -------------------------: | ------------: | --------------: |
+| pyrefly      | pandas     |                   50,390 |                      1,291 |         1,628 |             350 |
+| ty           | pandas     |                   48,238 |                         12 |            30 |               0 |
+| basedpyright | matplotlib |                   11,235 |                         32 |           493 |               5 |
+
+ty's 12 name sqlalchemy's classes, installed in the dev venv and not in pandas's; matplotlib, an
+sdist, has no `pyrightconfig.json` in its copy, so basedpyright's server reads this checkout's. By
+the command-line tools (`scratch/checker_roots.py`), pyrefly takes this checkout's settings for 41
+of the 55 corpora and ty for 49 (`[tool.pyrefly]` is here since `e633731`, 2026-10-15, and
+`[tool.ty]` since `4a20971`, 2026-10-16); basedpyright's server likely for each of the 6 with no
+checkout, matplotlib's the one measured. basedpyright has a second way to the dev venv, with
+settings of its own or not: it asks the first `python` on `PATH` for its packages, not
+`VIRTUAL_ENV`, and a run puts the dev venv's directory first there for the checkers to be found
+(`launch.environment`). On pandas that moves 11 of 48,444 fixes (`--python-first`: sqlalchemy's
+classes again); on a dozen of django's test apps with django-stubs in the environment `VIRTUAL_ENV`
+names, its hints are 5, and 1,024 with that environment's `python` first
+([COMPLETED.md](COMPLETED.md#corpus), the framework plugins' types). So each hinted step's figures
+since then, pyrefly's most, are a checker's reading of other packages than the corpus's own, and the
+2 errors are that, not a hint `--fix` should have refused.
+
+Built 2026-11-11: a checkout and a fix's copy are given an empty `pyrightconfig.json`,
+`pyrefly.toml` and `ty.toml` where they have none of that checker's own, its file or its table in
+the `pyproject.toml` (`tests/corpus/checker_settings.py`), an sdist's copy too, and a checkout's own
+`ty.toml` is copied. A run's path starts with a directory holding the corpus's environment's Python
+alone (`launch.environment`), then the dev venv's: the environment's own would start the `ty` or
+`pyrefly` six corpora install for themselves (sphinx, streamlink, fastapi, altair, narwhals,
+sqlmodel). A round's stored hints rest on the `python` first on the path too (`stored.key`), so
+those basedpyright gave by the dev venv's packages are asked again. By `scratch/checker_roots.py`
+pyrefly's root is the copy on all 55 corpora and ty's on 54; tox's own `[tool.ty]` names a
+`typestubs` directory the copy lacks, which ty's command stops at and its server doesn't (1,392
+fixes on `mega-11-10-2026-2235`). Each checker is tested under a project whose settings name another
+environment (`tests/corpus/test_launch.py`): its hint is of a type only the copy's environment
+holds. A copy of pandas fixed with pyrefly's hints in one process (`scratch/second_pass_copy.py`:
+51,207 fixes, 192 seconds with 1 worker on 16CPU/60GB) now has `arr: PeriodArray`, by pyrefly's
+hint, and leaves a second pass 26 fixes, 29 before. Left as it was: the six corpora with no checkout
+(the standard library, twisted, pip, textual, stripe, matplotlib) have no environment, so their
+checkers read the dev venv's packages. Waits on a mega run (80 minutes on 16CPU/60GB), read against
+`mega-11-10-2026-2235`: done when its hinted steps' fixes and errors are recorded; they move, by how
+much unknown until it runs.
+
+### Small: under 4 hours
+
+#### 4. sqlalchemy's four `test_compare` failures after `infer-union`
+
+On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
+step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
+`test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
+`mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the six mega runs since
+2026-10-30 that aren't these, with 9, 13, 14 and 16 workers where it failed with 10 and 11. Found
+2026-11-11, and no fix's: the suite's own order. `test/sql/test_compare.py` registers `sqlite_foo`
+for `Insert` as it's imported (`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the
+process shares, and `test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after
+each of its tests (`Index._kw_registry.clear()`). Every worker imports both files to collect them,
+so a worker pytest-xdist gives `test_metadata.py` before `test_compare.py` (`--dist loadfile`: by
+which is free) refuses the argument in all four, as this run's one worker did: "Argument
+'sqlite_foo' is not accepted by dialect 'sqlite' on behalf of `Insert`", the message of 2026-11-05.
+On the checkout at its tag, no fix applied, registering the argument, clearing the registry and
+building the statement raises the same. In one process the suite's plugin sorts the tests, so
+`test_compare.py` always runs first. It's the union's step each time because that one always runs:
+its tests stand for each fix's where they're the released tests' (`suite_steps.union`), so the
+others ran only on the two of the eight kept runs where its four failed. A fixed step's failures run again before they're called new
+(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Left,
+each a proposal, since it changes what a run reports: the four named in the catalog
+(`[corpus.sqlalchemy.suite.differs]`), or the union's tests run again as a fixed step's are. About
+an hour for either; coverage unchanged.
+
+#### 5. The hinted steps' second pass, grown on matplotlib and pandas
+
+A run reports what a second pass would still fix after the certain fixes and the guesses
+(`render._CONVERGING`), not after a checker's hints, where it has long left some: 102, 76 and 84
+fixes after `infer-basedpyright`, `infer-ty` and `infer-pyrefly` on `mega-11-10-2026-1742`. On
+`mega-11-10-2026-2235` they leave 123, 90 and 109, every one of the 60 more on two corpora:
+matplotlib (15 from 4, 16 from 6, 21 from 0), whose copy first carries its stubs, and pandas (33
+from 23, 25 from 21, 29 from 25; 61 from 56 after `infer-union`). Found 2026-11-11, each in one
+process, which gives the run's counts (`scratch/second_pass_copy.py`: matplotlib 21 and pandas 29
+with pyrefly's hints). matplotlib's are two things. Eleven are a file's later checks without its
+stub ("A module's own stub" above, built since): with the stub read again pyrefly's 21 are 10
+and basedpyright's 15 are 8. The other ten rest
+on one fix, `get_size_in_points: Callable[..., float] = get_size` in `font_manager.py`: the files
+calling it know its type only from an index read after that fix, and with a checker's hints the
+files a round changed aren't indexed again (`rounds.settled`'s `onward`). pandas has no stub
+beside a source (its 41 are compiled modules'), so none of its are the first. Its 29 are 25 with
+eight rounds for `HINT_ROUNDS`' four, so not the rounds' cap: 17 of the 28 fixes are a hint pyrefly
+gives only when asked again of the fixed tree, where a round asks again only of the files it
+changed, and 11 rest on a method's declared return or an attribute of a name such a hint typed
+(`DataFrameGroupBy.filter`). Which of pandas's are new by its stubs isn't traced: pyrefly's hints
+there move by thousands with the settings it reads ("A copy's checkers" above), so they're read
+again on its run. The rest, each as old as its corpus's first hinted run (the standard library's 39
+after pyrefly's hints, pint's 15 to 20), are likely the same two. Left, a proposal, since it adds
+checks to every hinted run: the files a hinted round changed indexed again, and every file asked
+of again while a round brings a new hint. Done when a `mega-fixes` run (12 minutes on 16CPU/60GB)
+shows the hinted steps leaving matplotlib and pandas no more than `mega-11-10-2026-1742` did. About
+4 hours beside the stub's fix; coverage unchanged.
+
+#### 6. A run with no earlier run, held to the solver's shortest
 
 A run whose steps are measured is at the solver's shortest, read against the waits the runner keeps:
 `alt-11-08-2026-1157` took 5.2 minutes to a proved 5.2 and `alt-11-08-2026-1213` 5.5 to 5.5
@@ -82,7 +221,7 @@ shortest (`scratch/schedule_solve.py --given`). About an hour beside the run; co
 
 ### Medium: 4 to 8 hours
 
-#### 4. Mutation testing
+#### 7. Mutation testing
 
 Line coverage is held at 100% (`fail_under`), so it no longer says which lines run without a test
 checking what they do; a mutant the suite survives does. How: `mutmut` over `constricter/`, its
@@ -92,7 +231,7 @@ killed or recorded as equivalent. Written, not yet run: `scratch/mutation.py` (m
 worktree of HEAD under `local/mutation/`, the unit tests alone, the lines they cover, `--only` for a
 first pass). About 6 hours beside the run; coverage unchanged.
 
-#### 5. A check's peak, past the resumed files
+#### 8. A check's peak, past the resumed files
 
 The standard library's check in one process (2026-10-24, 16CPU/60GB, `scratch/peak_rss.py`) peaked
 at 2.65 GiB: every file's tree, and its whole finished check (scopes, bindings, inferences: 84,624
@@ -127,7 +266,7 @@ measured on 10-24), the listing identical. What's left is the resume kept from l
 check. Each timing here predates the changes since 2026-10-28: time it again first. About 6 hours;
 coverage unchanged.
 
-#### 6. A parallel check, past its longest chain
+#### 9. A parallel check, past its longest chain
 
 With every CPU the standard library checks in 13.5 and 13.9s and in 47.6s in one process
 (2026-10-27, 16CPU/60GB), pandas in 11.3s and 50s; 29s in two processes, 18s in four, 13.7s and
@@ -164,7 +303,7 @@ About 8 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
-#### 7. Types observed at run time, past what a parameter gives
+#### 10. Types observed at run time, past what a parameter gives
 
 `python -m constricter.trace` records what each binding of a function's locals held, by statement,
 through pytest-xdist's workers and django's `runtests.py`, and `--infer-from` takes it
@@ -215,29 +354,7 @@ built for now, the first the one worth building:
   by, which no rule here avoids, as for a written return (the signature codes,
   [COMPLETED.md](COMPLETED.md#corpus)).
 
-#### 8. A method's `return` of an untyped value
-
-Of the 11,959 `self.method()` bindings with no fix, 5,617 call a method the class doesn't define
-itself, and 5,436 one whose `return` gives a value `--fix` can't type: a tuple (1,858), a call
-(1,455), a local or another name (1,396), a subscript or attribute (272). Only 137 return an
-unannotated parameter (26 nothing else), and in none of those classes does every `self.method(...)`
-call pass it a literal: typing a method's parameters by its callers, as `callers` types a plain
-top-level function's (3 fixes on pandas), reaches almost none of them. What's left is the values
-themselves: the tuple's parts, the call, the local. Done when a method returning its parameter types
-its calls. About 14 hours, for about 0.3% (some 800 guesses). Built: a call of a method whose every
-`return` gives one parameter as it's given is what the call passes for it, a guess of its own kind
-(`echoed`: `returned._echo`, `fix/values/echoed.py`), not a method a class under its own defines
-again in the module, most often a hook (`Field.to_python`). Its reach is small: by syntax alone
-(`scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have 365 such methods, 44
-with a `self` call bound to a name, 71 bindings in all, and pydantic's fixes are the same 1,150
-with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this mechanism's. On
-`mega-fixes-11-10-2026-2205` it made 20 fixes on the 55 corpora (matplotlib 5, joblib, networkx and
-the standard library 4 each, pandas 3), and pandas's own checks blame 2 new errors on them:
-`npvalue = self._validate_setitem_value(value)`, a hook classes in other files define again, and
-`op: ast.cmpop` in `core/computation/expr.py`. Decided 2026-11-10: kept for now, at 2 errors in
-20 fixes. Left: the values themselves, each to measure before building.
-
-#### 9. Annotations held to a run
+#### 11. Annotations held to a run
 
 The corpora's witness holds each fix to the values its package's tests bind
 (`tests/corpus/witness/constricter_witness.py`): of the certain fixes a test could tell of, 99.4%
@@ -248,26 +365,40 @@ differs from reported as an offence with the type seen. It needs the witness in 
 as the tracer is), a container's elements held to its arguments, and a protocol's members looked for
 where `isinstance` can't. `typeguard` does the last two, as an optional extra there: the package has
 no dependency. Done when a traced run of this project's own tests reports no annotation of its own.
-About 14 hours; coverage unchanged: it finds wrong annotations, not missing ones.
+Built 2026-11-11 (`constricter/witness.py`, `--check` in `constricter/trace.py`): the corpus
+witness's `holds` is the package's, a protocol `isinstance` can't check held to its members' names
+without `typeguard`, and each annotated parameter, each local declared `name: T` at every
+statement that binds it and each `return` is held, a name the module imports under
+`if TYPE_CHECKING:` imported for its annotation; a differing binding is listed as LVA016, the
+report's own code, and the run exits 1. This project's suite traced (`python -m constricter.trace
+--check -m pytest -n 8`, 35 seconds on 16CPU/60GB) holds 17,998 annotated bindings: the 3 that
+differed in the package are corrected (`workers`' context is whichever one starts workers, not
+`DefaultContext`; `walked._Value` lacked a constant's `...`, `bytes` and `float`), 101 can't be
+told, and 11 differ in the tests and the corpus tools, each a narrower cast than the value: a JSON
+document read as the part a test uses (`_Sarif`, `_Nested`, `_Sources`, `_Group`, `_Written`), and
+OR-Tools' status enum cast to `int` (`planning.solved`). Traced, 8 more of the suite's tests fail
+than untraced, the tracer's own among them, not looked into. Left: those 11, each widened or the
+cast kept and the report given a way to pass one over, which is to decide; a `*args`' and a
+`**kwargs`' elements, a coroutine's return, and a class's and a module's annotated variables; and
+LVA016 named where the other codes are (`--explain`, the README's table) if it's to stay a code.
+About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 ### Measurement
 
 What to measure before building, smallest first.
 
-#### 10. Framework plugins' types
-
-django-stubs' and pydantic's mypy plugins type what the frameworks make at run time (a model's
-fields, a manager's querysets), but only inside a mypy run. About 0 calls in the corpora reach them.
-Done when measured on django's tests through mypy's `reveal_type` or a plugin's own output, or
-recorded as out of reach. About 3 hours; coverage unknown until measured.
-
-#### 11. Types from a model
+#### 12. Types from a model
 
 Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict types (TypyBench and
 TypeEvalPy score them), but none is deterministic, and each needs a model or an API. Only as a file
 `--infer-from` reads, through the hint filter and the witness, as any guess is. Done when one is
-measured on pydantic against the checkers' hints: the fixes, the new errors. About 6 hours; coverage
-unknown until measured.
+measured on pydantic against the checkers' hints: the fixes, the new errors. Not measured
+2026-11-11, for want of a model: `type4py` isn't on PyPI (its model is a container's, or its hosted
+API, which would be sent pydantic's source); HiTyper 1.0.3 installs, but its predictions are
+Type4Py's, passed in, and what's left without them is static; TypeT5 is a checkout with torch and a
+model to download, run on CPUs here. To decide first: which one, and whether a download of some
+gigabytes or a hosted API is wanted for it. About 6 hours once one runs; coverage unknown until
+measured.
 
 ## Ongoing
 

@@ -2,12 +2,14 @@
 
 import ast
 from collections.abc import Sequence
+from types import EllipsisType
 from typing import Final, TypeAlias, cast
 from weakref import WeakKeyDictionary
 
 _CTX: Final = "ctx"
-# What a node's field holds, as far as the walk cares: a node, a list (of nodes, or of names), or else.
-_Value: TypeAlias = ast.AST | list[ast.AST | str] | str | int | None
+# What a node's field holds: a node, a list (of nodes, of names, or of nothing where one's left out), or
+# a constant's value.
+_Value: TypeAlias = ast.AST | list[ast.AST | str | None] | str | bytes | complex | EllipsisType | None
 
 
 _Walk: TypeAlias = dict[type[ast.AST], list[ast.AST]]  # a module's nodes, by their type

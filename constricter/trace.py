@@ -1,6 +1,6 @@
 """Record the types a run binds its functions' locals to, for `--fix --infer-from` to read.
 
-  python -m constricter.trace [--output FILE] [--root DIR] (-m MODULE | -c CODE | SCRIPT) [ARG ...]
+  python -m constricter.trace [--output FILE] [--root DIR] [--check] (-m MODULE | -c CODE | SCRIPT) [ARG ...]
 
 Runs the module, code or script as `python` would (`-m pytest`), and each time a statement of a
 function defined in a file under DIR (default: the working directory; nothing installed there) ends,
@@ -12,6 +12,10 @@ pytest process the run starts (pytest-xdist's workers) records itself the same w
 this module in `PYTEST_PLUGINS`, and its trace has what each wrote as its session ended. A process
 the run forks (`multiprocessing`'s `fork` workers: Django's `--parallel`) records on as it did, and
 writes what it has as it ends. No other child process is recorded.
+
+With `--check` the run's values are held to the annotations those functions declare too
+(`constricter.witness`): each binding a value differed from is listed as the run ends, which then
+exits 1 where what ran left with 0, and the trace is written only where `--output` names a file.
 """
 
 import argparse
@@ -29,12 +33,14 @@ from functools import partial
 from multiprocessing import util as multiprocessing_util
 from pathlib import Path
 from types import CodeType, FrameType
-from typing import Final, Protocol, TypeAlias, cast
+from typing import Final, NamedTuple, Protocol, TypeAlias, cast
 
+from constricter import witness
 from constricter.recording import Found, Recorder, merged, write
 
 DEFAULT: Final = "constricter-trace.json"
-# What tells a pytest process a traced run started it: the run's process, its root, and where to write.
+# What tells a pytest process a traced run started it: the run's process, its root, where to write,
+# and whether it's to hold its values to their annotations (`--check`).
 ENVIRONMENT: Final = "CONSTRICTER_TRACE"
 _PLUGINS: Final = "PYTEST_PLUGINS"  # the modules every pytest process loads, by name
 _PLUGIN: Final = "constricter.trace"  # this one: `pytest_configure` and `pytest_unconfigure`
@@ -46,7 +52,8 @@ _TOOL: Final = "constricter"  # to `sys.monitoring`
 # Its ids no kind of tool has: this takes the first free. A profiler's is `cProfile`'s, which a run may start.
 _TOOLS: Final = (4, 3)
 _GETFRAME: Final = "_getframe"  # `sys`'s, which `inspect.currentframe` asks for each time
-_OPTIONS: Final = frozenset({"--output", "--root"})
+_OPTIONS: Final = frozenset({"--output", "--root"})  # those with a value
+_CHECKED: Final = "check"  # what `ENVIRONMENT` says last of a run with `--check`
 _MODULE: Final = "-m"
 _CODE: Final = "-c"
 _STRING: Final = "<string>"  # the file name `python -c` compiles its code under
@@ -255,7 +262,7 @@ def pytest_configure() -> None:
         return
     _WORKER.sessions += 1
     if _WORKER.recorder is None:
-        _WORKER.recorder = Recorder(Path(told[1]))
+        _WORKER.recorder = _recorder(Path(told[1]), check=told[3:] == [_CHECKED])
         _WORKER.follower = following(_WORKER.recorder)
         _WORKER.output = Path(told[2]) / f"{os.getpid()}.json"
         _WORKER.follower.start()
@@ -322,7 +329,17 @@ def _forking(recorder: Recorder | None, parts: Path) -> None:
         _FORKING.hooked = True
 
 
-def _announced(root: Path, parts: Path) -> dict[str, str | None]:
+def _recorder(root: Path, *, check: bool) -> Recorder:
+    """Make what records a process: a witness, where the run holds its values to their annotations.
+
+    Returns:
+      It.
+
+    """
+    return witness.Witness(root) if check else Recorder(root)
+
+
+def _announced(root: Path, parts: Path, *, check: bool) -> dict[str, str | None]:
     """Tell the pytest processes this one starts to record themselves, and write to `parts`.
 
     Returns:
@@ -330,7 +347,8 @@ def _announced(root: Path, parts: Path) -> dict[str, str | None]:
 
     """
     before: dict[str, str | None] = {name: os.environ.get(name) for name in (ENVIRONMENT, _PLUGINS)}
-    os.environ[ENVIRONMENT] = json.dumps([str(os.getpid()), str(root.resolve()), str(parts)])
+    told: list[str] = [str(os.getpid()), str(root.resolve()), str(parts), *([_CHECKED] if check else [])]
+    os.environ[ENVIRONMENT] = json.dumps(told)
     os.environ[_PLUGINS] = f"{before[_PLUGINS]},{_PLUGIN}" if before[_PLUGINS] else _PLUGIN
     return before
 
@@ -391,24 +409,33 @@ def _run(name: str, kind: str) -> None:
         _ = runpy.run_path(name, run_name=_MAIN)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run the module, code or script named on the command line, recording its functions' locals' types.
+class _Asked(NamedTuple):
+    """What a command line asks for: what to run, and how it's recorded."""
+
+    name: str  # a script, a module's name or code
+    kind: str  # `-m`, `-c`, or nothing for a script
+    root: Path  # whose files to record
+    output: Path | None  # where the trace is written, if it is
+    check: bool  # whether the run's values are held to their annotations
+
+
+def _asked(argv: Sequence[str] | None) -> _Asked:
+    """Read the command line (`argv`, or the process's), leaving `sys.argv` as what runs is to see it.
 
     Returns:
-      0: the exit status, where what ran doesn't exit itself.
+      What it asks for; a command line naming nothing to run ends the process, as `argparse` does.
 
     """
     parser: argparse.ArgumentParser = argparse.ArgumentParser(
         prog="python -m constricter.trace",
-        usage="%(prog)s [--output FILE] [--root DIR] (-m MODULE | -c CODE | SCRIPT) [ARG ...]",
+        usage="%(prog)s [--output FILE] [--root DIR] [--check] (-m MODULE | -c CODE | SCRIPT) [ARG ...]",
         description="Record the types a run binds its functions' locals to, for `constricter --infer-from`.",
     )
+    _ = parser.add_argument("--output", type=Path, metavar="FILE", help=f"where to write ({DEFAULT})")
     _ = parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path(DEFAULT),
-        metavar="FILE",
-        help="where to write",
+        "--check",
+        action="store_true",
+        help="hold the run's values to the annotations its functions declare, and list those that differ",
     )
     _ = parser.add_argument("--root", type=Path, default=Path(), metavar="DIR", help="whose files to record")
     own: list[str]
@@ -420,23 +447,65 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("nothing to run: name a script, a module after -m, or code after -c")
     name: str = target[bool(kind)]
     sys.argv = [_CODE if kind == _CODE else name, *target[bool(kind) + 1 :]]
-    recorder: Recorder = Recorder(cast("Path", args.root))
-    follower: Monitor | Tracer = following(recorder)
+    check: bool = cast("bool", args.check)
+    output: Path | None = cast("Path | None", args.output) or (None if check else Path(DEFAULT))
+    return _Asked(name, kind, cast("Path", args.root), output, check)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the module, code or script named on the command line, recording its functions' locals' types.
+
+    Returns:
+      0: the exit status, where what ran doesn't exit itself; 1 where `--check` found a binding
+      that differed from its annotation and what ran left with 0.
+
+    Raises:
+      SystemExit: with `--check`, what ran left with another status than 0: its own, once the
+        bindings that differed are listed.
+
+    """
+    asked: _Asked = _asked(argv)
+    recording: Recorder = _recorder(asked.root, check=asked.check)
+    follower: Monitor | Tracer = following(recording)
     # Not a `TemporaryDirectory`, whose finalizer a forked child runs too as it exits.
     parts: Path = Path(tempfile.mkdtemp(prefix=f"{_TOOL}-trace-"))
     started: int = os.getpid()
-    before: dict[str, str | None] = _announced(recorder.root, parts)
-    _forking(recorder, parts)
+    before: dict[str, str | None] = _announced(recording.root, parts, check=asked.check)
+    _forking(recording, parts)
     follower.start()
+    left: str | int | None = 0
+    differed: bool = False
     try:
-        _run(name, kind)
+        _run(asked.name, asked.kind)
+    except SystemExit as exited:
+        left = exited.code
+        if not asked.check or os.getpid() != started:
+            raise
     finally:
         follower.stop()
         _forking(None, Path())
         if os.getpid() == started:  # a forked child leaving this way writes its own part, as it exits
-            write(cast("Path", args.output), merged([recorder.found(), *_gathered(parts, before)]))
+            found: Found = merged([recording.found(), *_gathered(parts, before)])
+            if asked.output is not None:
+                write(asked.output, found)
+            if isinstance(recording, witness.Witness):
+                differed = _reported(recording, parts)
             shutil.rmtree(parts, ignore_errors=True)
-    return 0
+    if left is not None and left != 0:
+        raise SystemExit(left)
+    return int(differed)
+
+
+def _reported(recording: witness.Witness, parts: Path) -> bool:
+    """Print what a checked run's values differed from, this process's and those under `parts`.
+
+    Returns:
+      Whether any did.
+
+    """
+    lines: list[str] = witness.report(witness.gathered(parts, recording.judged()))
+    _ = sys.stdout.write("\n".join(lines) + "\n")
+    return len(lines) > 1
 
 
 if __name__ == "__main__":

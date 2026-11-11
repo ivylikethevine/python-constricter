@@ -1182,25 +1182,100 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
   `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
   pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
+- **Read on `mega-11-10-2026-2235`** (`565ac6c`, 80 minutes on 16CPU/60GB, no step failed, no
+  server dumped), against `mega-11-10-2026-1742`: the first mega run with a corpus's stubs in a
+  fix's copy, the imports for a class found late or named by a stub alone, and `echoed`. Certain
+  fixes 123,576 from 121,843; with guesses 205,441 from 203,767; `infer-basedpyright` 238,371 from
+  236,087, `infer-ty` 231,918 from 230,057, `infer-pyrefly` 235,977 from 234,152. New type errors
+  by the suites' own checks 870 from 856, the 14 all pandas's and none after the certain or the
+  likely fixes (9 and 29, as before): 2 in each step with guesses by `echoed`
+  (`npvalue = self._validate_setitem_value(value)`, and `binop` after `op: ast.cmpop`), and 2 more
+  after pyrefly's hints, by its `arr: Period` in `core/indexes/period.py`. The hinted steps leave
+  more for a second pass (`infer-basedpyright` 123 from 102, `infer-ty` 90 from 76, `infer-pyrefly`
+  109 from 84), and matplotlib's guesses their 6. Tests: sqlalchemy's four `test/sql/test_compare.py`
+  tests fail after `infer-union`, as they have come and gone before; nibabel's moved by two tests
+  each way after it, its randomised `test_mult` among them, and one of litestar's is gone. None is
+  looked into.
+- **A method's `return` of an untyped value: `echoed` built, the rest measured and closed.** Of the
+  11,959 `self.method()` bindings with no fix, 5,617 call a method the class doesn't define itself,
+  and 5,436 one whose `return` gives a value `--fix` can't type: a tuple (1,858), a call (1,455), a
+  local or another name (1,396), a subscript or attribute (272). Only 137 return an unannotated
+  parameter (26 nothing else), and in none of those classes does every `self.method(...)` call pass
+  it a literal: typing a method's parameters by its callers, as `callers` types a plain top-level
+  function's (3 fixes on pandas), reaches almost none of them. What's left is the values themselves:
+  the tuple's parts, the call, the local. Estimated at about 0.3% (some 800 guesses). Built: a call
+  of a method whose every `return` gives one parameter as it's given is what the call passes for it,
+  a guess of its own kind (`echoed`: `returned._echo`, `fix/values/echoed.py`), not a method a class
+  under its own defines again in the module, most often a hook (`Field.to_python`). Its reach is
+  small: by syntax alone (`scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have
+  365 such methods, 44 with a `self` call bound to a name, 71 bindings in all, and pydantic's fixes
+  are the same 1,150 with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this
+  mechanism's. On `mega-fixes-11-10-2026-2205` it made 20 fixes on the 55 corpora (matplotlib 5,
+  joblib, networkx and the standard library 4 each, pandas 3), and pandas's own checks blame 2 new
+  errors on them: `npvalue = self._validate_setitem_value(value)`, a hook classes in other files
+  define again, and `op: ast.cmpop` in `core/computation/expr.py`. Decided 2026-11-10: kept for now,
+  at 2 errors in 20 fixes. On `mega-11-10-2026-2235` the suites' tests told of 3 of its guesses: 2
+  held (`op`, 68 values, and pandas's `expected: pd.Series`, 26), and `npvalue` differed in all 251.
+  The values themselves, measured 2026-11-11 on that run's census by syntax
+  (`scratch/method_returns.py`): its 55 corpora have 14,525 `self.method()` bindings with no fix
+  (9,758 plain, 3,255 unpacked, 737 a `with`'s, 637 a loop's). The method is the class's own or a
+  base's in the file for 9,107, somewhere else for 4,560 and a class attribute for 822. Of the
+  9,107, 1,115 call a method that declares its return (`Self` 107, a vague one, a class the file
+  can't spell), 381 a decorated one (a context manager 257, a cache 60), 235 one that returns
+  nothing and 233 a generator: none a `return`'s value. Of the rest no kind of value is alone in the
+  way of more than 476 bindings (3%): a call of another method of `self` (476), of a module's or a
+  class's member (291), of an imported name or a builtin (281), of a method of an attribute of
+  `self` (270), of a local's method (185), a local bound to an empty list (176), a call of a
+  parameter (174); 1,539 wait on more than one kind. Each is a reason any call has none (`receiver`,
+  `member`, `imported`), not one a method's `return` adds. 236 have every `return` typed by its
+  shape or its local's fix and still no fix (92 unpacked, 49 a static or class method's). Of four
+  sampled, two are a name bound again later to a value of no type (the census's row is its first
+  binding's), one a method a class under its own defines again, refused on purpose, and one a method
+  whose `return`s are all inside a `while True:`, taken to end without one: 5 bindings in all.
+  Nothing here is worth a mechanism of its own: what types these is what types the same values
+  anywhere. Closed 2026-11-11, `echoed` kept as decided.
+- **Framework plugins' types: measured, nothing to build.** django-stubs' and pydantic's mypy
+  plugins type what the frameworks make at run time (a model's fields, a manager's querysets), but
+  only inside a mypy run. About 0 calls in the corpora reach them. Measured 2026-11-11
+  (`scratch/plugin_types.py`, a minute in one process on 16CPU/60GB) on a dozen of django 5.2.18's
+  own test apps (`basic`, `queries`, `aggregation` and nine more), where `--fix --unsafe-fixes`
+  leaves 1,545 bindings with no fix, 1,473 of them plain assignments, with `reveal_type` written
+  after each. mypy 2.4.1, checking unannotated bodies, reveals a type with no `Any` for 1,117 of
+  them with django-stubs 6.1.2 and its plugin, for 1,114 with the stubs alone, and for 7 with
+  neither. The plugin's own are 113 it alone types (a `values()` row as a `TypedDict`, an
+  `annotate()` as `Book@AnnotatedWith[...]`: nothing a fix could write), against 110 only the stubs
+  do, the plugin's holding an `Any`. So the plugin adds nothing here: the stubs do it, under any
+  checker that reads unannotated bodies, which `--infer-with` already asks. With django-stubs in the
+  environment and the checker reading it, basedpyright's hints type 1,024 of the bindings left and
+  ty's 1,039 (`QuerySet[Number, Number]`, `Article`), pyrefly's 15, why so few not looked into. As a
+  run starts basedpyright it typed 5: it read the dev venv, which has django and not its stubs (a
+  copy's checkers, held to the copy's own settings since: [ROADMAP.md](ROADMAP.md)). pydantic's
+  plugin isn't measured: what it documents is a model's `__init__` and `model_construct`, no
+  binding's value. Closed 2026-11-11 with nothing to build:
+  [FIXES.md](FIXES.md#a-type-checkers-types---infer-with) says a framework's stubs, installed, reach
+  `--fix` through `--infer-with`.
 - **A corpus's stubs in the copy a fix checks.** A fix step checked a copy of a corpus's `.py` files
   alone, so no corpus run read a checked package's stubs, beside a source or alone: matplotlib's
   8,751 fixes with guesses on `mega-11-10-2026-1742` were `mega-fixes-11-08-2026-1820`'s, none by a
   stub's declared type. The copy takes the stubs in the directories a check walks (`launch.copied`;
-  all 87 of matplotlib's), so a fix reads them as a check of the tree does, and so do the checkers
-  a hinted step starts under the copy. On `mega-fixes-11-10-2026-2038` (`bcdc702`, 11 minutes on
+  all 87 of matplotlib's), so a fix reads them as a check of the tree does, and so do the checkers a
+  hinted step starts under the copy. On `mega-fixes-11-10-2026-2038` (`bcdc702`, 11 minutes on
   16CPU/60GB, no step failed), against `mega-11-10-2026-1742` (`scratch/run_fixes_diff.py`):
   matplotlib's certain fixes went from 6,252 to 7,472, and from 8,751 to 10,245 with guesses;
   pandas's from 17,361 to 17,867 and from 43,213 to 43,348, 545 of its fixes a tier up, its own
-  checks' new errors the same 3, 3 and 8 after each fix; no other corpus's fixes moved but one
-  guess of the standard library's. That run left matplotlib 6 fixes for a second pass and 52 names
-  no import bound, fixed since (under [`--fix`](#--fix)): on `mega-fixes-11-10-2026-2205`
-  (`d5881ce`, 12 minutes, no step failed) its certain fixes leave no second pass, and no suite's
-  own checks gained an error by them. basedpyright, in standard mode on a copy with its certain
-  fixes, finds 92 errors the released copy hasn't, 141 before: the 52 unbound names gone, the same
-  89 others (35 an argument's type, 25 an assignment's), and 3 by
-  `aspect: float | Literal['auto']`, which its stub declares and its body contradicts, and by
-  `cycler`, not installed there. The 6 fixes its guesses still leave a second pass are the
-  roadmap's.
+  checks' new errors the same 3, 3 and 8 after each fix; no other corpus's fixes moved but one guess
+  of the standard library's. That run left matplotlib 6 fixes for a second pass and 52 names no
+  import bound, fixed since (under [`--fix`](#--fix)): on `mega-fixes-11-10-2026-2205` (`d5881ce`,
+  12 minutes, no step failed) its certain fixes leave no second pass, and no suite's own checks
+  gained an error by them. basedpyright, in standard mode on a copy with its certain fixes, finds 92
+  errors the released copy hasn't, 141 before: the 52 unbound names gone, the same 89 others (35 an
+  argument's type, 25 an assignment's), and 3 by `aspect: float | Literal['auto']`, which its stub
+  declares and its body contradicts, and by `cycler`, not installed there. The 6 fixes its guesses
+  still left a second pass were a file's later checks within a round, which read no stub: every
+  check of a file reads it since (`modules.checkable`), and on `mega-fixes-11-11-2026-1033`
+  (`565ac6c` with the change uncommitted, 14 minutes, no step failed) no fix step leaves a second
+  pass a fix on any of the 55 corpora, matplotlib's likely fixes 5 more and its guesses 6 more and 1
+  fewer (`box_aspect: str`), the suites' own checks' new errors the same 9, 29 and 40.
 - **A hinted step's servers given what they held.** basedpyright's servers abort past their heap
   cap, and each abort is a core dump the desktop reports as a crash: four in 90 seconds on the mega
   run of 2026-10-29 (`f7d53b2`, 16CPU/60GB), all inside dask's `infer-union`, given 2.47 GB (a heap

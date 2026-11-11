@@ -3,6 +3,7 @@
 import ast
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import Final, NamedTuple, cast
 
 from constricter.fix.core import imports
@@ -18,6 +19,7 @@ from constricter.fix.core.known import (
     Returned,
     Returns,
 )
+from constricter.fix.index.modules import checkable
 from constricter.fix.index.params import open_functions
 from constricter.fix.libraries import stdlib
 from constricter.fix.values import documented, returned, stored
@@ -86,7 +88,9 @@ def checked_source(
     tree: ast.Module
     own: Tables | None
     tree, own = _parse(source, filename)
-    found: Checked = checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=own)
+    # A text the index kept nothing for still reads its module's own stub.
+    read: Tables | None = own or checkable(Path(filename), tree)
+    found: Checked = checked_tree(tree, checks, lines=as_text(source).splitlines(), outside=outside, own=read)
     if own is not None and isinstance(source, str) and _KEPT in vars(tree):
         # Kept again with its check, which a second one resumes once callers type its parameters
         # (see `_resumed`). A file checked again for anything else (its cycle's files, or the

@@ -10,8 +10,9 @@ binding a fix annotates, then the name, to each annotation a fix gives it (the g
 checker's hints'), each with the import statements its fix adds.
 
 As a statement that binds such a name ends, each annotation is evaluated where the statement is (its
-function's globals and locals, with the fix's imports), once, and the value is held to it: it's an
-instance of the class, or of one of a union's. A builtin container is held to its annotation's
+function's globals and locals, with the fix's imports), once, and the value is held to it as
+`constricter.witness.holds` holds one: it's an instance of the class, or of one of a union's. A
+builtin container is held to its annotation's
 arguments too, by its first elements (`_elements`); any other subscripted class to the class alone.
 Each process writes, for each binding and annotation, how many times the value fit, didn't, and
 couldn't be told (`FIT`, `DIFFER`, `UNKNOWN`): an annotation that can't be evaluated there, a protocol no
@@ -26,73 +27,21 @@ made again, by a function at each call or by a module imported anew, is the anno
 its module and its qualified name are (`_redefined`).
 """
 
-import collections
-import collections.abc
-import io
-import itertools
 import json
 import os
 import sys
-import types
-import typing
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import CodeType, FrameType
-from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, TypeVar, cast
-from unittest import mock
+from typing import Final, Protocol, TypeAlias, cast
 
 from constricter import recording, trace
-
-if TYPE_CHECKING:
-    from typing_extensions import override
-else:
-    _F = TypeVar("_F")
-
-    def override(method: _F) -> _F:
-        """Mark a method as one of its base's: `typing.override`, where Python has none (3.11).
-
-        Returns:
-          It.
-
-        """
-        return method
-
+from constricter.overrides import override
+from constricter.witness import DIFFER, FIT, UNKNOWN, UNSET, fits, kind_of, module_of, patched, read
 
 WITNESS_VARIABLE: Final = "CORPUS_WITNESS"
-FIT: Final = 0
-DIFFER: Final = 1
-UNKNOWN: Final = 2
 _MOST: Final = 50  # how many times one binding is judged against one annotation
 _TOLD: Final = 3  # how many of a binding's differing values are told of, the first
-# What an annotation's class takes besides its own instances: a number's narrower numbers.
-_TAKEN: Final = {
-    float: (int, float),
-    complex: (int, float, complex),
-}
-# What `typing`'s file classes, which nothing is an instance of, take: a value that reads, writes
-# and closes (`tempfile.NamedTemporaryFile`'s wrapper, which is no `io.IOBase`); see `_file_class`.
-_FILE_METHODS: Final = ("read", "write", "close")
-# An in-memory file: a test's stand-in for the file a fix's annotation names (`open`'s
-# `TextIOWrapper`, `typing.IO`).
-_IN_MEMORY: Final = (io.StringIO, io.BytesIO)
-_FILE_MODULES: Final = frozenset({"io", "_io", "typing"})
-_UNSET: Final = object()
-# What a test passes in a value's place: a mock, and `mock.sentinel`'s named objects.
-_STAND_INS: Final = (mock.NonCallableMock, type(cast("object", mock.sentinel.witness)))
-_FIRST: Final = 100  # how many of an ordered container's elements are held to its annotation's arguments
-# The containers read without running anything of the value's own: these classes themselves, no subclass.
-_SETS: Final = (set, frozenset)
-_SEQUENCES: Final = (list, collections.deque)
-_MAPPINGS: Final = (dict, collections.defaultdict, collections.OrderedDict)
-_TUPLES: Final = (tuple,)
-_PAIR: Final = 2  # a mapping's arguments: its keys' type and its values'
-_ALIASED: Final = "__value__"  # where a `type` statement's alias keeps what it names
-# A test module's name, by any of its parts: pytest's and unittest's ways of naming them, and a
-# package's pytest plugin (`pdm.pytest`), whose classes stand in for the package's own.
-_TESTS: Final = frozenset({"test", "tests", "testing", "conftest", "pytest"})
-_CALLABLE: Final = collections.abc.Callable
-# What makes a union: `X | Y`, and `Union[X, Y]` where that's another thing (before Python 3.14).
-_UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"])})
 # What to expect of a file: by the line, then the name, each annotation with its fix's imports.
 _Expected: TypeAlias = dict[str, dict[str, list[list[str]]]]
 _Key: TypeAlias = tuple[str, int, str, str]  # a binding and an annotation: its file's path, line, name, text
@@ -125,179 +74,6 @@ def _settings() -> tuple[dict[str, _Expected], Path | None]:
     return expected, Path(told[1])
 
 
-def holds(value: object, hint: object) -> bool | None:
-    """Check whether `value` is what the evaluated annotation `hint` says.
-
-    Returns:
-      Whether it is; `None` where that can't be told.
-
-    """
-    if hint is typing.Any or hint is object:
-        return True
-    if isinstance(value, _STAND_INS):  # a test's stand-in: it says nothing of the annotation
-        return None
-    if hint is None or hint is types.NoneType:
-        return value is None
-    return _held(value, hint, typing.get_origin(hint), typing.get_args(hint))
-
-
-def _held(value: object, hint: object, origin: object, args: tuple[object, ...]) -> bool | None:
-    """Check `value` against `hint`, by what it subscripts (`origin`: `None` for no subscript) with `args`.
-
-    Returns:
-      As `holds` does.
-
-    """
-    if origin in _UNIONS:
-        found: list[bool | None] = [holds(value, each) for each in args]
-        return True if True in found else None if None in found else False
-    if origin is typing.Annotated or origin is typing.Final or origin is typing.ClassVar:
-        return holds(value, args[0]) if args else None
-    if origin is typing.Literal:
-        return value in args
-    if origin is type:
-        return isinstance(value, type)
-    if origin is _CALLABLE:
-        return callable(value)
-    found_class: bool | None = _instance(value, hint if origin is None else origin)
-    return _elements(value, origin, args) if found_class and origin is not None else found_class
-
-
-def _elements(value: object, origin: object, args: tuple[object, ...]) -> bool | None:
-    """Check a builtin container's elements against its annotation's arguments, `value` being of its class.
-
-    Its first `_FIRST`, in its order; a set's every one, whose order is no two runs'. A tuple's
-    parts one by one, where the annotation has them so. Not another class's (a subclass may run its
-    own code as it's read), nor one whose arguments aren't its elements' types.
-
-    Returns:
-      Whether they all are; `None` where one can't be told and none isn't, `True` for a container
-      this doesn't read.
-
-    """
-    found: list[bool | None]
-    if (
-        type(value) in _TUPLES and origin is tuple and args[-1:] != (Ellipsis,)
-    ):  # `tuple[()]` has no arguments
-        if len(cast("tuple[object, ...]", value)) != len(args):
-            return False
-        found = list(itertools.starmap(holds, zip(cast("tuple[object, ...]", value), args, strict=True)))
-    elif type(value) in _MAPPINGS and len(args) == _PAIR:
-        found = [
-            holds(each, arg)
-            for pair in itertools.islice(cast("dict[object, object]", value).items(), _FIRST)
-            for each, arg in zip(pair, args, strict=True)
-        ]
-    elif (
-        (type(value) in _SEQUENCES or type(value) in _SETS or type(value) in _TUPLES)
-        and args
-        and args[1:] in {(), (Ellipsis,)}
-    ):
-        most: int = len(cast("collections.abc.Sized", value)) if type(value) in _SETS else _FIRST
-        found = [
-            holds(each, args[0])
-            for each in itertools.islice(cast("collections.abc.Iterable[object]", value), most)
-        ]
-    else:
-        return True
-    return False if False in found else None if None in found else True
-
-
-def _stood_for(hint: object) -> object:
-    """Find what a type variable, a `type` statement's alias or a `NewType` stands for.
-
-    Returns:
-      Its bound (`None`: it has none), what it names, or its supertype; `_UNSET` for anything else.
-
-    """
-    if isinstance(hint, typing.TypeVar):
-        return cast("object", hint.__bound__)
-    if isinstance(hint, typing.NewType):
-        return cast("object", hint.__supertype__)
-    return cast("object", getattr(hint, _ALIASED, _UNSET))
-
-
-def _instance(value: object, hint: object) -> bool | None:
-    """Check whether `value` is an instance of what `hint` names, itself no subscript or union.
-
-    Returns:
-      Whether it is; `None` where that can't be told.
-
-    """
-    if _stood_for(hint) is not _UNSET:
-        return None if _stood_for(hint) is None else holds(value, _stood_for(hint))
-    if typing.is_typeddict(hint):
-        return isinstance(value, dict)
-    if _file_class(hint):
-        return all(hasattr(value, name) for name in _FILE_METHODS)
-    if not isinstance(hint, type):
-        return None
-    try:
-        fit: bool = isinstance(value, _TAKEN.get(hint, hint)) or _redefined(type(value), hint)
-    except TypeError:  # a protocol that isn't checked at run time
-        return None
-    return True if fit else None if _stand_in(type(value)) or _in_memory(type(value), hint) else False
-
-
-def _redefined(kind: type, hint: type) -> bool:
-    """Check whether `kind` or a base of it is `hint` made again: by a function, or a module imported anew.
-
-    Returns:
-      Whether one has `hint`'s module and qualified name.
-
-    """
-    return any(
-        (base.__module__, base.__qualname__) == (hint.__module__, hint.__qualname__) for base in kind.__mro__
-    )
-
-
-def _stand_in(kind: type) -> bool:
-    """Check whether `kind` is a test's stand-in, which says nothing of the annotation.
-
-    Returns:
-      Whether it's `SimpleNamespace`, or a test module's (`_testing`).
-
-    """
-    return kind is types.SimpleNamespace or _testing(kind.__module__)
-
-
-def _file_class(hint: object) -> bool:
-    """Check whether `hint` is one of `typing`'s file classes: `IO`, `TextIO` or `BinaryIO`.
-
-    Returns:
-      Whether it is.
-
-    """
-    return hint is typing.IO or hint is typing.TextIO or hint is typing.BinaryIO
-
-
-def _in_memory(kind: type, hint: type) -> bool:
-    """Check whether `kind` is an in-memory file held to a file class: a test's stand-in for the file.
-
-    Returns:
-      Whether it's a `StringIO` or `BytesIO` and `hint` is `io`'s or `typing`'s.
-
-    """
-    return issubclass(kind, _IN_MEMORY) and hint.__module__ in _FILE_MODULES
-
-
-def _testing(module: str) -> bool:
-    # Whether a part of a module's name is a test package's, or a test file's (`test_x`, `x_test`).
-    return any(
-        part in _TESTS or part.startswith("test_") or part.endswith("_test") for part in module.split(".")
-    )
-
-
-def patched(hint: object, module: str) -> bool:
-    """Check whether an annotation in `module` names a test's class: a name of the module's a test patched.
-
-    Returns:
-      Whether it does, `module` being no test module, whose own annotations name its classes.
-
-    """
-    return isinstance(hint, type) and _testing(hint.__module__) and not _testing(module)
-
-
 class Witness(recording.Recorder):
     """A recorder that holds what a statement bound to what a fix says of it, as it notes it."""
 
@@ -307,7 +83,7 @@ class Witness(recording.Recorder):
         self.expected: dict[str, _Expected]
         self.out: Path | None
         self.expected, self.out = _settings()
-        self.hints: dict[_Key, object] = {}  # each annotation, evaluated; `_UNSET`: it can't be
+        self.hints: dict[_Key, object] = {}  # each annotation, evaluated; `UNSET`: it can't be
         self.verdicts: dict[_Key, list[int]] = {}  # each key's counts: fit, differing, unknown
         self.differed: dict[_Key, list[str]] = {}  # the first values that differed: their type, the hint's
         # What's expected of each function's file (see `_told`), by the function's id, kept with it.
@@ -353,16 +129,14 @@ class Witness(recording.Recorder):
         if key[2] in bound:
             if key not in self.hints:
                 self.hints[key] = _evaluated(said, frame)
-            fits: bool | None = _fits(bound[key[2]], self.hints[key])
-            if patched(self.hints[key], _module(frame)):  # evaluated again once the test's done
-                fits = None
+            fit: bool | None = fits(bound[key[2]], self.hints[key])
+            if patched(self.hints[key], module_of(frame)):  # evaluated again once the test's done
+                fit = None
                 del self.hints[key]
-            self.verdicts.setdefault(key, [0, 0, 0])[
-                UNKNOWN if fits is None else FIT if fits else DIFFER
-            ] += 1
+            self.verdicts.setdefault(key, [0, 0, 0])[UNKNOWN if fit is None else FIT if fit else DIFFER] += 1
             told: list[str] = self.differed.setdefault(key, [])
-            if fits is False and len(told) < _TOLD:  # what to read a verdict by: the value's, the hint's
-                told.append(f"{kind_of(bound[key[2]])} against {self.hints.get(key, _UNSET)!r}")
+            if fit is False and len(told) < _TOLD:  # what to read a verdict by: the value's, the hint's
+                told.append(f"{kind_of(bound[key[2]])} against {self.hints.get(key, UNSET)!r}")
 
     @override
     def found(self) -> recording.Found:
@@ -381,49 +155,17 @@ class Witness(recording.Recorder):
         return super().found()
 
 
-def _fits(value: object, hint: object) -> bool | None:
-    """Hold `value` to `hint`, whatever its class raises of being asked: nothing of it reaches the run.
-
-    Returns:
-      As `holds` does; `None` for a `hint` that couldn't be evaluated.
-
-    """
-    try:
-        return None if hint is _UNSET else holds(value, hint)
-    except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
-        return None
-
-
-def kind_of(value: object) -> str:
-    """Name `value`'s class, as the trace spells it where it can, whatever the value raises of it.
-
-    Returns:
-      It: `module:qualified.name`; `?` where it can't be read.
-
-    """
-    try:
-        named: str = f"{type(value).__module__}:{type(value).__qualname__}"
-    except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
-        return "?"
-    return named
-
-
-def _module(frame: FrameType) -> str:
-    # The name of the module `frame` runs in.
-    return str(cast("object", frame.f_globals.get("__name__", "")))
-
-
 def _evaluated(said: list[str], frame: FrameType) -> object:
     """Evaluate a fix's annotation where its statement is: `said` is it, then the imports it adds.
 
     Returns:
-      What it names, or `_UNSET` where it can't be evaluated there.
+      What it names, or `UNSET` where it can't be evaluated there.
 
     """
     try:
-        return _read(said[0], _imported(dict(frame.f_globals), said[1:]), dict(frame.f_locals))
+        return read(said[0], _imported(dict(frame.f_globals), said[1:]), dict(frame.f_locals))
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
-        return _UNSET
+        return UNSET
 
 
 def _imported(scope: dict[str, object], imports: Sequence[str]) -> dict[str, object]:
@@ -437,26 +179,6 @@ def _imported(scope: dict[str, object], imports: Sequence[str]) -> dict[str, obj
     for statement in imports:
         exec(statement, scope)  # ruff: ignore[exec-builtin]  # pylint: disable=exec-used
     return scope
-
-
-def _read(text: object, scope: dict[str, object], local: dict[str, object]) -> object:
-    """Evaluate `text`, an annotation, among `scope`'s and `local`'s names; a quoted one's text too.
-
-    Returns:
-      What it names; `text` itself if it isn't text.
-
-    """
-    if not isinstance(text, str):
-        return text
-    return _read(_named(text, scope, local), scope, local)
-
-
-def _named(text: str, scope: dict[str, object], local: dict[str, object]) -> object:
-    # What the expression `text` gives there.
-    return cast(
-        "object",
-        eval(text, scope, local),  # ruff: ignore[suspicious-eval-usage]  # pylint: disable=eval-used
-    )
 
 
 # Every recorder `constricter.trace` makes in a process that has this module is a witness: the

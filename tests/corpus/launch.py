@@ -7,6 +7,7 @@ tree's layout, settings and environment, so a fix sees what a check of the tree 
 """
 
 import os
+import shlex
 import shutil
 import subprocess  # runs each version under test
 import sys
@@ -17,14 +18,16 @@ from collections.abc import Iterator, Sequence
 from fnmatch import fnmatch
 from functools import cache
 from pathlib import Path
-from typing import Final, NamedTuple, cast
+from typing import IO, Final, NamedTuple, cast
 
 from constricter.cli import paths
-from tests.corpus import corpus_table
+from tests.corpus import checker_settings, corpus_table
 from tests.corpus.run_config import DEV, NAMED, ROOT
 from tests.corpus.trees import Tree
 
-_SETTINGS: Final = ("pyproject.toml", "pyrightconfig.json", "pyrefly.toml")
+# In an environment: a directory with its Python alone, for a path (see `_interpreters`).
+_INTERPRETERS: Final = "corpus-suite-python"
+_PYTHONS: Final = ("python", "python3")
 _INSTALLING: Final = threading.Lock()
 _PROBE: Final = "def f():\n    a = 1\n"
 _FIXED: Final = '"fixed":'  # in `--fix --format=json`'s output, where it says what it fixed
@@ -64,7 +67,9 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
 
     With its stubs (`_stubs`), which a check reads for a module beside its source or, for a compiled
     one, alone, and the checkout's settings (`pyproject.toml`, and the type checkers' own files,
-    which `--infer-with` starts them under), so the copy is checked as the tree is.
+    which `--infer-with` starts them under), so the copy is checked as the tree is. A checker the
+    copy has no settings for is given empty ones, an sdist's copy too (`checker_settings.own`):
+    its root is then the copy, not this project above it.
 
     Returns:
       The copy's place, and each copied file that compiles.
@@ -86,9 +91,10 @@ def copied(tree: Tree, to: Path) -> tuple[Place, list[Path]]:
         _ = shutil.copyfile(source, copy)
     to.mkdir(parents=True, exist_ok=True)
     name: str
-    for name in _SETTINGS if tree.base else ():
+    for name in checker_settings.FILES if tree.base else ():
         if (cast("Path", tree.base) / name).is_file():
             _ = shutil.copyfile(cast("Path", tree.base) / name, to / name)
+    _ = checker_settings.own(to)
     return Place(to, target, tree.environment), valid
 
 
@@ -162,12 +168,48 @@ def environment(where: Place) -> dict[str, str]:
     """Return the environment a constricter runs in at `where`.
 
     Returns:
-      This one, with the place's environment as its `VIRTUAL_ENV`, and this Python's directory on
-      the path: `--infer-with`'s type checkers are found beside it.
+      This one, with the place's environment as its `VIRTUAL_ENV`, and on the path that
+      environment's Python (`_interpreters`), then this Python's directory: `--infer-with`'s type
+      checkers are found beside it.
 
     """
-    path: str = os.pathsep.join((str(Path(sys.executable).parent), os.environ.get("PATH", os.defpath)))
+    first: list[str] = [] if where.environment is None else _interpreters(where.environment)
+    path: str = os.pathsep.join(
+        (*first, str(Path(sys.executable).parent), os.environ.get("PATH", os.defpath)),
+    )
     return {**os.environ, "VIRTUAL_ENV": str(where.environment or sys.prefix), "PATH": path}
+
+
+def _interpreters(prefix: Path) -> list[str]:
+    """Make the directory that puts the environment at `prefix`'s Python, and nothing else of it, on a path.
+
+    basedpyright asks the first `python` on the path for its packages, whatever `VIRTUAL_ENV`
+    names; the environment's own directory there would put a corpus's type checkers before this
+    Python's too.
+
+    Returns:
+      The directory, in a list; none for an environment with no Python (one not installed).
+
+    """
+    interpreter: Path = prefix / "bin" / _PYTHONS[0]
+    if not interpreter.is_file():
+        return []
+    folder: Path = prefix / _INTERPRETERS
+    script: str = f'#!/bin/sh\nexec {shlex.quote(str(interpreter))} "$@"\n'
+    name: str
+    for name in _PYTHONS:
+        if not (folder / name).is_file() or (folder / name).read_text(encoding="utf-8") != script:
+            folder.mkdir(parents=True, exist_ok=True)
+            # Written whole, then named: another step of the run may be starting it.
+            handle: int
+            fresh: str
+            handle, fresh = tempfile.mkstemp(dir=folder)
+            stream: IO[str]
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                _ = stream.write(script)
+            Path(fresh).chmod(0o755)
+            _ = Path(fresh).replace(folder / name)
+    return [str(folder)]
 
 
 def run(version: str, where: Place, options: Sequence[str], jobs: int) -> Ran:

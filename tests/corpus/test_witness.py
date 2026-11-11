@@ -15,7 +15,7 @@ from unittest import mock
 
 import pytest
 
-from constricter import trace
+from constricter import trace, witness
 from tests.corpus import corpus_guesses, corpus_suite
 
 _Holds: TypeAlias = Callable[[object, object], bool | None]
@@ -65,17 +65,13 @@ class _Rows(list[object]):  # ruff: ignore[subclass-builtin]  # a subclass of th
 
 @pytest.fixture(name="holds", scope="module")
 def _holds() -> _Holds:
-    """Import the witness, which makes itself `constricter.trace`'s recorder, and undo that.
+    """Name what the corpus's witness holds a value to an annotation with.
 
     Returns:
-      Its `holds`.
+      `constricter.witness.holds`.
 
     """
-    with mock.patch.dict(trace.__dict__):
-        return typing.cast(
-            "_Holds",
-            importlib.import_module("tests.corpus.witness.constricter_witness").holds,
-        )
+    return witness.holds
 
 
 @pytest.mark.parametrize(("value", "hint", "held"), _HELD)

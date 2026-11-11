@@ -581,7 +581,8 @@ its source declaring next to nothing), is read before the source, as a type chec
 functions' and its classes' methods' and attributes' declared types type its importers' calls
 (`fig, ax = plt.subplots()`, `ax.legend()`), the names it imports read as imported for type
 checking; and the module's own calls where it can write the type as it is (its own names', and the
-builtins'). A stub alone, for a compiled module (`_path.pyi`, with no `_path.py`), is read as the
+builtins'), in every check of the file: one `--fix` has written to since, standard input's under
+the file's name, the pylint plugin's. A stub alone, for a compiled module (`_path.pyi`, with no `_path.py`), is read as the
 module for the calls into it, as an installed package's stub is below, and never checked or fixed:
 under the nearest checked package above it (a stub-only subpackage's `__init__.pyi` too), or beside
 the checked files' top-level packages and modules, and before an installed copy of the package.
@@ -887,6 +888,12 @@ types the name; where a later one's usable hint gives the same type, the fix res
 agreement too (kind `agreed`, beside `checker`): a set of its own, measured apart from one checker's
 alone, and likely, applied with `--likely` (see [LIKELY.md](LIKELY.md)).
 
+A checker reads the packages of the environment it finds, their stub packages too: ty and pyrefly
+`VIRTUAL_ENV`'s, basedpyright those of the `python` first on `PATH`. With a framework's stubs
+installed there (`django-stubs`), a hint types what the framework makes at run time
+(`Article.objects.filter(...)`, a `QuerySet[Article, Article]`); its mypy plugin adds nothing a fix
+could write.
+
 A hint is used only as an annotation the file can hold:
 
 - `Literal[...]` is widened to its values' types (`Literal[1] | None` is `int | None`,
@@ -999,7 +1006,8 @@ their sum, for their starts again every round.
 A round's hints are kept in the cache (`~/.cache/constricter/hints`, two weeks from their last use)
 and read from there while nothing they rest on has changed: the checker's build, the text of every
 file asked about, the workspace's settings files (`pyproject.toml`, `pyrightconfig.json`, `ty.toml`,
-...) and the installed distributions of the environments a checker may read. A project's first round
+...), the installed distributions of the environments a checker may read and the `python` first on
+`PATH`, which basedpyright asks for its packages. A project's first round
 at the same commit then starts no server. A file of the workspace that isn't asked about isn't
 counted: one only it changed, and that a checked file imports, can leave its hints a run behind.
 A run that reads a round from there says so on standard error, for each checker; `--infer-fresh`
@@ -1113,6 +1121,38 @@ Django, which has no type checker, is traced through `tests/runtests.py --parall
 and its tests the same after. On pandas's `tests/frame/methods`, which its checkers pass over,
 basedpyright finds 33 with 148 fixes (7% more), the same way (`df.join(other, how="foo")`, in a test
 of that error).
+
+## Annotations held to a run (`constricter.trace --check`)
+
+An annotation a type checker can't check (a value cast, a JSON document, a call it reads as `Any`)
+is held to what a run binds instead:
+
+```bash
+python -m constricter.trace --check -m pytest
+```
+
+`--check` runs the module or script as above, and holds each value to what its function declares
+of the name it's bound to: a parameter's annotation as the function returns (or a generator is
+suspended), a local's `name: T` at every statement that binds the name, and the `-> T` at each
+`return` (not a generator's or a coroutine's, nor a `*args` or a `**kwargs`). Each binding a value
+differed from is listed as the run ends, with the types seen (the first three), and the run exits
+1 where what ran left with 0:
+
+```text
+pkg/rows.py:41:5: error: LVA016 'row', annotated `dict[str, int]`, was bound to `dict[str, str]` in a traced run
+pkg/rows.py:57:1: error: LVA016 a function annotated to return `int` returned `None` in a traced run
+```
+
+A value is an annotation's when it's an instance of its class, or of one of a union's; a builtin
+container's first 100 elements are held to its arguments too, a `Literal` to its values, a
+`TypedDict` to `dict`, a `NewType` or a bound type variable to what it stands for, a protocol
+`isinstance` can't check to its members' names, and `float` takes an `int`. An annotation is
+evaluated where its function runs, a name the module imports under `if TYPE_CHECKING:` imported for
+it; one that can't be evaluated says nothing, nor does a type variable with no bound, a test's
+stand-in (a mock, a `SimpleNamespace`, a class a test module defines, an in-memory file for a file
+class) or a name a test patched. A binding is judged 50 times at most, and as a trace's are, no
+longer once its function returned 20 times with no new type. The trace itself is written only where
+`--output` names a file. LVA016 is this report's alone: `constricter` doesn't select or ignore it.
 
 ## Fix levels
 

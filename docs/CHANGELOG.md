@@ -6,6 +6,24 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace --check` holds a run's values to the annotations its functions
+  declare: each annotated parameter, each local declared `name: T` at every statement that binds
+  it, and each `return` to its `-> T`. A binding a value differed from is listed as an offence
+  (LVA016) with the types seen, and the run exits 1. A builtin container's elements are held to its
+  annotation's arguments, a protocol `isinstance` can't check to its members' names; a test's
+  stand-in and an annotation that can't be evaluated say nothing.
+- A trace no longer records Python 3.14's `__annotate__` functions as the `def` they're made for.
+- A module's own stub (`mod.pyi` beside `mod.py`) is read in every check of the file. Before, only
+  the first check of the text the run indexed read it: a file `--fix` checked again within a round,
+  its first fixes written, knew none of its stub's types, and neither did the pylint plugin or
+  standard input named for the file. With guesses, matplotlib's second pass is left nothing (6
+  fixes before).
+- A round's stored hints rest on the `python` first on `PATH` too: basedpyright asks it for the
+  installed packages, whatever `VIRTUAL_ENV` names, so hints kept under another one are asked again.
+- The corpus runner's fix steps give a copy an empty settings file of each checker it has none of
+  its own for (`pyrightconfig.json`, `pyrefly.toml`, `ty.toml`), an sdist's copy too, and put the
+  corpus's environment's Python first on the path. Before, pyrefly read this project's settings on
+  41 of the 55 corpora's copies and ty on 49, and basedpyright the dev venv's packages on all.
 - A call of a method whose every `return` gives one of its parameters as it's given is typed by
   what the call passes for it, a guess (`echoed`): `chosen = self.pick(3)` an `int`, where `pick`
   ends `return fallback`. Not a method a class under its own defines again in the module.

@@ -606,13 +606,47 @@ def _own(
     only: frozenset[str] = frozenset()
     beside: tuple[Tables, dict[str, Origin]] | None
     if (beside := own_stubs.beside(path, named, is_package=is_package)) is not None:  # `mod.pyi`, read first
-        writable: frozenset[str] = frozenset(names).union(guarded, own.classes, BUILTINS)
-        kept = own_stubs.stubbed(own, beside[0], lambda each: roots(each) <= writable)
+        kept = _spelled(own, beside[0], frozenset(names).union(guarded))
         own = own_stubs.stubbed(own, beside[0])
         only = frozenset(each for each in beside[1] if each not in names and each not in guarded)
         guarded = {**{each: at for each, at in beside[1].items() if each not in names}, **guarded}
     parsed.keep(source, (tree, kept))  # for the check to take, rather than parse it and read it again
     return own, names, guarded, only
+
+
+def _spelled(own: Tables, stub: Tables, names: frozenset[str]) -> Tables:
+    """Take a stub's types a module can write as they are: by `names`, its classes and the builtins.
+
+    Returns:
+      The module's tables, with those (see `own_stubs.stubbed`).
+
+    """
+    writable: frozenset[str] = names.union(own.classes, BUILTINS)
+    return own_stubs.stubbed(own, stub, lambda each: roots(each) <= writable)
+
+
+def checkable(path: Path, tree: ast.Module) -> Tables | None:
+    """Read what a module with its own stub is checked with, from a tree the index kept no tables for.
+
+    The index keeps them for the text it read (`_own`): a file checked as any other text, `--fix`'s
+    since, or once more as the same, would know none of its stub's types.
+
+    Returns:
+      Its tables with its stub's, as `_own` keeps them; `None` where it has no stub
+      (see `own_stubs.beside`).
+
+    """
+    if path.suffix != SUFFIX:  # a notebook, standard input, a text with no file
+        return None
+    is_package: bool = path.stem == PACKAGE
+    named: str = module_name(path)
+    beside: tuple[Tables, dict[str, Origin]] | None
+    if (beside := own_stubs.beside(path, named, is_package=is_package)) is None:
+        return None
+    names: dict[str, Origin] = origins_of(tree, named, is_package=is_package)
+    names.update(skipped(tree, names))
+    guarded: dict[str, Origin] = guarded_origins(tree, named, is_package=is_package)
+    return _spelled(module_tables(tree), beside[0], frozenset(names).union(guarded))
 
 
 def _loose(body: Sequence[ast.stmt]) -> frozenset[str]:

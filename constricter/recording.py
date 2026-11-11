@@ -62,10 +62,12 @@ _IDLE: Final = 20  # how many times with nothing new end a statement's recording
 _QUIET: Final = 50_000  # how many lines with nothing new end a function's: one that loops, and never returns
 _INSTALLED: Final = "site-packages"
 _MODULE: Final = "<module>"  # the name of a module body's code
+# The function Python 3.14 makes of a `def`'s annotations, at the `def`'s line: no function of the file's.
+_ANNOTATE: Final = "__annotate__"
 # A function that returns to its caller more than once, each a `return` to `sys.settrace`: `inspect`'s
 # `CO_GENERATOR`, `CO_COROUTINE`, `CO_ITERABLE_COROUTINE` and `CO_ASYNC_GENERATOR`.
-_SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200
-_Def: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
+SUSPENDS: Final = 0x20 | 0x80 | 0x100 | 0x200
+Def: TypeAlias = ast.FunctionDef | ast.AsyncFunctionDef
 _T = TypeVar("_T")
 SCOPES: Final = (  # what has names of its own
     ast.FunctionDef,
@@ -343,6 +345,7 @@ class _Function:
 
 
 Function: TypeAlias = _Function  # as what tells a recorder's `ended` more names it
+Statement: TypeAlias = _Statement  # as what reads the statement a frame is in names it
 
 
 def _plans(tree: ast.Module) -> dict[int, dict[int, _Statement]]:
@@ -355,11 +358,11 @@ def _plans(tree: ast.Module) -> dict[int, dict[int, _Statement]]:
     return {
         min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]): _planned(node)
         for node in ast.walk(tree)
-        if isinstance(node, _Def)
+        if isinstance(node, Def)
     }
 
 
-def _planned(function: _Def) -> dict[int, _Statement]:
+def _planned(function: Def) -> dict[int, _Statement]:
     """Plan a function: its own statements that bind names, each under every line it evaluates on.
 
     A compound statement is what it evaluates itself (`for x in xs:`, not its body). Statements
@@ -371,7 +374,7 @@ def _planned(function: _Def) -> dict[int, _Statement]:
     """
     lines: dict[int, _Statement] = {}
     statement: ast.stmt
-    for statement in _statements(function):
+    for statement in statements(function):
         evaluated: list[ast.AST] = list(_evaluated(statement))
         stores: list[tuple[int, str]] = [
             (node.lineno, node.id)
@@ -390,7 +393,7 @@ def _planned(function: _Def) -> dict[int, _Statement]:
     return lines
 
 
-def _statements(node: ast.AST) -> Iterator[ast.stmt]:
+def statements(node: ast.AST) -> Iterator[ast.stmt]:
     """Walk the statements of a function's own scope, each before those under it.
 
     Yields:
@@ -402,7 +405,7 @@ def _statements(node: ast.AST) -> Iterator[ast.stmt]:
         if isinstance(child, ast.stmt) and not isinstance(child, SCOPES):
             yield child
         if isinstance(child, _BLOCKS) and not isinstance(child, SCOPES):
-            yield from _statements(child)
+            yield from statements(child)
 
 
 def _evaluated(node: ast.AST) -> Iterator[ast.AST]:
@@ -494,10 +497,10 @@ class Recorder:
         function: _Function | None
         if (function := self._function(frame)) is None:
             return False
-        if not finished and frame.f_code.co_flags & _SUSPENDS:
+        if not finished and frame.f_code.co_flags & SUSPENDS:
             return True
         self.ended(frame, function)
-        if returned and not frame.f_code.co_flags & _SUSPENDS:
+        if returned and not frame.f_code.co_flags & SUSPENDS:
             _returning(frame, function, value)
         function.idle = 0 if function.fresh else function.idle + 1
         function.fresh = False
@@ -541,7 +544,8 @@ class Recorder:
             self.codes[id(code)] = code
             if code.co_name == _MODULE:
                 _ = self._file(code.co_filename)  # read as it's imported: its functions' calls needn't
-            file: _File | None = None if code.co_name.startswith("<") else self._file(code.co_filename)
+            unnamed: bool = code.co_name.startswith("<") or code.co_name == _ANNOTATE
+            file: _File | None = None if unnamed else self._file(code.co_filename)
             lines: dict[int, _Statement] | None = (
                 None if file is None else file.plans.get(code.co_firstlineno)
             )

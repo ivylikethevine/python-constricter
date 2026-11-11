@@ -155,6 +155,21 @@ def test_a_rounds_key_rests_on_the_code_that_writes_its_hints(
     assert stored.key("ty", ["ty", "server"], tmp_path, files) != before
 
 
+def test_a_rounds_key_rests_on_the_python_first_on_the_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The one basedpyright asks for its packages, whatever `VIRTUAL_ENV` names."""
+    files: dict[Path, str] = {tmp_path / "a.py": "x = 1\n"}
+    before: str = stored.key("ty", ["ty", "server"], tmp_path, files)
+    name: str
+    for name in ("python3", "python", "python.exe"):
+        _ = (tmp_path / name).write_text("", encoding="utf-8")
+        (tmp_path / name).chmod(0o755)
+    monkeypatch.setenv("PATH", os.pathsep.join((str(tmp_path), os.environ.get("PATH", os.defpath))))
+    assert stored.key("ty", ["ty", "server"], tmp_path, files) != before
+
+
 def _no_servers(_files: Mapping[Path, str], checkers: list[hints.Checker]) -> None:
     """Stand in for `hints._start` where no server may be started: none is needed."""
     assert not checkers
