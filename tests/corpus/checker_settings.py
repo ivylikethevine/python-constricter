@@ -6,7 +6,7 @@ fix's copy lie under this project, whose settings name its own source, environme
 
 import tomllib
 from pathlib import Path
-from typing import Final, TypeAlias, cast
+from typing import IO, Final, TypeAlias, cast
 
 # Each checker: its settings file, what an empty one holds, and the `pyproject.toml` tables that
 # are its settings too.
@@ -41,6 +41,15 @@ def own(root: Path) -> list[str]:
             _ = (root / name).write_text(empty, encoding="utf-8")
             written.append(name)
     return written
+
+
+def settled(root: Path) -> None:
+    """Keep each checker to checkout `root`'s settings (see `own`); git is told to pass over each file."""
+    name: str
+    for name in own(root):
+        stream: IO[str]
+        with (root / ".git" / "info" / "exclude").open("a", encoding="utf-8") as stream:
+            _ = stream.write(f"/{name}\n")
 
 
 def _tools(project: Path) -> frozenset[str]:

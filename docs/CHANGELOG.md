@@ -24,6 +24,9 @@ Notable changes, newest first. Each release's full notes are generated from its 
   its own for (`pyrightconfig.json`, `pyrefly.toml`, `ty.toml`), an sdist's copy too, and put the
   corpus's environment's Python first on the path. Before, pyrefly read this project's settings on
   41 of the 55 corpora's copies and ty on 49, and basedpyright the dev venv's packages on all.
+- The corpus runner gives a corpus with no checkout (the standard library, twisted, pip, textual,
+  stripe, matplotlib) an environment of its own, with what its catalog entry `requires`; before,
+  constricter and the checkers read the dev venv's packages for it.
 - A call of a method whose every `return` gives one of its parameters as it's given is typed by
   what the call passes for it, a guess (`echoed`): `chosen = self.pick(3)` an `int`, where `pick`
   ends `return fallback`. Not a method a class under its own defines again in the module.

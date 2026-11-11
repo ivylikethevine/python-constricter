@@ -2,7 +2,8 @@
 
 A suite's checkout at its pinned tag, whose settings (`pyproject.toml`) and environment (`.venv`)
 every constricter the run starts on it reads; or, for a corpus with no suite, its unpacked sdist's
-package (the standard library's: CPython's source release's `Lib`, whatever Python runs it).
+package (the standard library's: CPython's source release's `Lib`, whatever Python runs it), with an
+environment of what it requires beside it.
 """
 
 from pathlib import Path
@@ -28,8 +29,9 @@ def found(entry: Entry, *, install: bool = True, settle: bool = True) -> Tree:
     """Find a corpus on disk, cloning and installing its suite or fetching its sdist the first time.
 
     Without `install`, a suite is cloned alone: its source and settings, with no environment to read
-    installed packages' types from, and no suite to run. Without `settle`, a suite's checkout is
-    left as it is, not taken back to its tag's source: its tests may be running on a fix's patch.
+    installed packages' types from, and no suite to run; an sdist is unpacked alone. Without
+    `settle`, a suite's checkout is left as it is, not taken back to its tag's source: its tests may
+    be running on a fix's patch.
 
     Returns:
       Its tree.
@@ -55,6 +57,13 @@ def found(entry: Entry, *, install: bool = True, settle: bool = True) -> Tree:
         return Tree(entry.name, entry.version, source, base, base / ".venv", entry.suite, entry.environment)
     if entry.source is not None:
         sources: dict[str, corpus_sources.Source] = {entry.name: entry.source}
-        return Tree(entry.name, entry.version, corpus_sources.fetch(entry.name, sources=sources))
+        package: Path = corpus_sources.fetch(entry.name, sources=sources)
+        if not install:
+            return Tree(entry.name, entry.version, package)
+        venv: Path = corpus_suite.own_environment(
+            corpus_sources.unpacked(entry.name, entry.source),
+            entry.source.requires,
+        )
+        return Tree(entry.name, entry.version, package, environment=venv)
     message: str = f"{entry.name}: neither a suite nor an sdist"
     raise ValueError(message)

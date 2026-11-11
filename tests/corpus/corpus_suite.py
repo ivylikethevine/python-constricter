@@ -42,7 +42,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import IO, Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 # pytest's own reports, not a stranger's XML.
 from xml.etree import ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
@@ -283,18 +283,6 @@ def _own(check: Sequence[str]) -> list[str]:
     return [*check, *(("--project", ".") if check[0] in _PYRIGHTS and not named else ())]
 
 
-def _settled(root: Path) -> None:
-    """Keep the checkers' servers to checkout `root`'s settings (see `checker_settings.own`).
-
-    Git is told to pass each file written over.
-    """
-    name: str
-    for name in checker_settings.own(root):
-        stream: IO[str]
-        with (root / ".git" / "info" / "exclude").open("a", encoding="utf-8") as stream:
-            _ = stream.write(f"/{name}\n")
-
-
 def checkout(
     name: str,
     suite: Suite,
@@ -324,7 +312,7 @@ def checkout(
             ["git", "clone", "-q", "--depth", "1", "--branch", suite.tag, suite.repository, str(root)],
             WORK,
         )
-    _settled(root)
+    checker_settings.settled(root)
     if not install:
         return root
     marker: Path = root / _INSTALLED
@@ -350,6 +338,33 @@ def checkout(
     if done != wanted:
         _ = marker.write_text(wanted, encoding="utf-8")
     return root
+
+
+def own_environment(root: Path, requires: Sequence[str]) -> Path:
+    """Make (once for `requires`) the environment of a corpus with no checkout, in `root`.
+
+    A venv of its own with what the corpus requires, nothing where it requires nothing: constricter
+    and the checkers `--infer-with` starts read its packages, as a suite's, not this project's.
+
+    Returns:
+      The venv.
+
+    Raises:
+      RuntimeError: a command failed.
+
+    """
+    marker: Path = root / _INSTALLED
+    wanted: str = hashlib.sha256(repr(tuple(requires)).encode()).hexdigest()
+    if not marker.exists() or marker.read_text(encoding="utf-8") != wanted:
+        uv: str = os.environ.get("UV") or shutil.which("uv") or "uv"
+        command: tuple[str, ...]
+        for command in (catalog.VENV, *([("pip", "install", "-q", *requires)] if requires else [])):
+            ran: subprocess.CompletedProcess[str] = _completed([uv, *command], root)
+            if ran.returncode:
+                message: str = f"{root.name}: uv {' '.join(command)} failed:\n{ran.stdout}{ran.stderr}"
+                raise RuntimeError(message)
+        _ = marker.write_text(wanted, encoding="utf-8")
+    return root / ".venv"
 
 
 def installed(root: Path) -> str:

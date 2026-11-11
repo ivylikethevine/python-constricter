@@ -3,12 +3,13 @@
 import os
 import venv
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Final
 
 import pytest
 
 from constricter.cli.lsp import protocol
-from tests.corpus import checker_settings, launch
+from tests.corpus import catalog, checker_settings, corpus_suite, launch
 from tests.corpus.run_config import CHECKERS, DEV
 from tests.corpus.trees import Tree
 
@@ -103,6 +104,34 @@ def test_a_runs_path_starts_with_its_environments_python_alone(tmp_path: Path) -
     assert f"exec {python} " in (Path(first) / "python3").read_text(encoding="utf-8")
     assert launch.environment(place)["PATH"].split(os.pathsep)[0] == first  # as it is: not written again
     assert launch.environment(place._replace(environment=None))["PATH"].split(os.pathsep)[0] == tools
+
+
+def test_a_corpus_with_no_checkout_is_given_an_environment_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A venv, then what it requires; again only when that changes, or a command failed."""
+    ran: list[list[str]] = []
+    status: list[int] = [0]
+
+    def completed(args: list[str], cwd: Path) -> SimpleNamespace:
+        ran.append(args[1:])
+        (cwd / ".venv").mkdir(exist_ok=True)
+        return SimpleNamespace(returncode=status[0], stdout="", stderr="no such package")
+
+    monkeypatch.setattr(corpus_suite, "_completed", completed)
+    assert corpus_suite.own_environment(tmp_path, ()) == tmp_path / ".venv"
+    assert ran == [list(catalog.VENV)]
+    assert corpus_suite.own_environment(tmp_path, ()) == tmp_path / ".venv"
+    assert len(ran) == 1
+    _ = corpus_suite.own_environment(tmp_path, ("pkg==1", "other"))
+    assert ran[1:] == [list(catalog.VENV), ["pip", "install", "-q", "pkg==1", "other"]]
+    status[0] = 1
+    with pytest.raises(RuntimeError, match="no such package"):
+        _ = corpus_suite.own_environment(tmp_path, ("pkg==2",))
+    status[0] = 0
+    _ = corpus_suite.own_environment(tmp_path, ("pkg==2",))
+    assert ran[-1] == ["pip", "install", "-q", "pkg==2"]
 
 
 @pytest.mark.skipif(os.name == _WINDOWS, reason="a suite's environment is laid out as POSIX's")

@@ -7,13 +7,14 @@ from typing import Final, TypeAlias, cast
 import pytest
 
 from tests.corpus import __main__ as runner
-from tests.corpus import catalog, corpus_sources, trees
+from tests.corpus import catalog, corpus_sources, corpus_suite, trees
 from tests.corpus.corpus_sources import Source
 from tests.corpus.run_config import Run, read_command
 
 _GROUPS: Final = ("fast-small", "fast-large", "slow-small", "slow-large")  # by size and time
 _PIN: Final = "=="  # a `corpus` group entry pinned to one version
 _Group: TypeAlias = list[str | dict[str, str]]  # a dependency group: pins, and the groups it includes
+_Made: TypeAlias = tuple[Path, tuple[str, ...]]  # an environment made: where, and what it requires
 
 
 def test_the_catalog_expands_sets_and_refuses_a_name_it_hasnt() -> None:
@@ -79,7 +80,14 @@ def test_the_standard_library_is_cpythons_source(tmp_path: Path, monkeypatch: py
         fetched.append(name)
         return tmp_path / sources[name].package
 
+    made: list[_Made] = []
+
+    def environment(root: Path, requires: tuple[str, ...]) -> Path:
+        made.append((root, requires))
+        return root / ".venv"
+
     monkeypatch.setattr(corpus_sources, "fetch", fetch)
+    monkeypatch.setattr(corpus_suite, "own_environment", environment)
     tree: trees.Tree = trees.found(entry)
     assert (tree.root, tree.version, tree.base, fetched) == (
         tmp_path / source.package,
@@ -88,6 +96,19 @@ def test_the_standard_library_is_cpythons_source(tmp_path: Path, monkeypatch: py
         [entry.name],
     )
     assert corpus_sources.pinned()["pip"].url.startswith(corpus_sources.FILES)
+    # An environment of its own beside the unpacked source, with what it requires: nothing.
+    unpacked: Path = corpus_sources.WORK / f"{entry.name}-{entry.version}"
+    assert (tree.environment, made) == (unpacked / ".venv", [(unpacked, ())])
+    assert trees.found(entry, install=False).environment is None
+    assert len(made) == 1
+
+
+def test_a_corpus_with_no_checkout_requires_what_its_environment_installs() -> None:
+    """Itself, where it installs on this Python, which brings what it depends on; else those alone."""
+    pinned: dict[str, Source] = corpus_sources.pinned()
+    assert pinned["matplotlib"].requires == (f"matplotlib=={pinned['matplotlib'].version}",)
+    assert pinned["twisted"].requires == ("zope.interface",)
+    assert pinned["pip"].requires == ()
 
 
 def test_an_installed_corpus_is_the_version_the_corpus_group_pins() -> None:
