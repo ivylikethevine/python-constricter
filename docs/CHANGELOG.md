@@ -670,7 +670,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
   `corpus.py`, `corpus_fix.py`, `corpus_timing.py` and `corpus_coverage.py` are gone, and
   `corpus_table.py` and `corpus_untyped.py` have no command line: the census's report is a run's
   `census.md`, and every fix a suite's checks or traced tests judged is its `guesses.jsonl`, which
-  `scratch/guess_report.py --from FOLDER` reads; with the run file copied into the folder; the other
+  `scripts/scratch/guess_report.py --from FOLDER` reads; with the run file copied into the folder; the other
   corpus scripts still run what it doesn't. A suite's install ignores the user's uv settings. Every
   corpus, its pinned sdist and its suite are in `tests/corpus/corpora.toml` (the seven's, and the
   mega corpora's 40 that `mega_packages.json` held), which each corpus script reads;
@@ -718,7 +718,7 @@ sqlite`, `ArgumentError` from `ctypes`), and by a value typed `type[C]`, an
 - The corpora runs keep and show more. Each suite's fixed run keeps every fix it made, with its
   tier, and its traced step what each binding held as the tests ran: RUNS.md has each package's
   fixes by tier, with those a traced test reached and those every type seen fits
-  (`tests/corpus/corpus_guesses.py`), which `scratch/guess_census.py` reads where it fixed every
+  (`tests/corpus/corpus_guesses.py`), which `guess_census.py` (since deleted) read where it fixed every
   checkout again. `mega_corpora.py` traces its suites' tests too, as `super_corpora.py` does. The
   table has `--fix --likely`'s guesses, the typed share after it and what a second pass of it still
   fixes. And each suite's type checkers' versions are recorded beside their errors.

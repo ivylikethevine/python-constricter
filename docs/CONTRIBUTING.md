@@ -119,7 +119,7 @@ and `tables/*.csv` made from them. The folder is committed as two files: `report
 the run's facts, every step's record and every table, and `listings.jsonl.gz`, its guesses, the
 witness's verdicts, the types the trace saw and the released tests by name, a line each
 (`tests/corpus/archive.py`); its `.gitignore` leaves out the rest, which stays on disk. Each release's
-folder and the latest mega and super stay tracked: after keeping a run, `scratch/retire_runs.py` takes
+folder and the latest mega and super stay tracked: after keeping a run, `scripts/scratch/retire_runs.py` takes
 the one it replaces out of the index, leaving it on disk and in git's history. Its paths
 are written relative to the checkout or under `~`, and its user unnamed. A later run reads its records from its report (a stopped run's from `records/`), the latest by
 when each started, and its own output is no change to the tree its facts record. `--resume FOLDER` carries on a stopped run under its label, its
@@ -158,7 +158,7 @@ Run files name their corpora by `tests/corpus/corpora.toml`'s sets, which may na
 tiers hold each other: `original`, the seven corpora a release records; `super`, those and every
 fast corpus; `mega`, every corpus. Every corpus is in one of `fast-small`, `fast-large`,
 `slow-small` and `slow-large`, split at the medians of its files and of its steps' seconds in a
-super or mega run (`scratch/corpus_quadrants.py FOLDER...` prints them).
+super or mega run (`scripts/scratch/corpus_quadrants.py FOLDER...` prints them).
 
 On a pull request that touches what `--fix` does, the Corpus coverage workflow comments with
 pydantic's share of bindings typed as released, after `--fix`, and after `--fix --unsafe-fixes`,
@@ -198,8 +198,8 @@ type checker says so:
   (`known.pickled`).
 - A test that patches a module's global is marked `interpreted`: compiled callers call past it.
 
-`local/.venv-mypyc/bin/python -m scratch.mypyc_trial` compiles a copy in a few minutes (a C file a
-module, on every CPU, unoptimized) and runs the tests against it; `scratch/compiled_compare.py`
+`local/.venv-mypyc/bin/python -m scripts.scratch.mypyc_trial` compiles a copy in a few minutes (a C file a
+module, on every CPU, unoptimized) and runs the tests against it; `scripts/scratch/compiled_compare.py`
 compares a check by a compiled wheel with this checkout's.
 
 Markdown (markdownlint-cli2 and prettier, locked in `.github/package-lock.json`):

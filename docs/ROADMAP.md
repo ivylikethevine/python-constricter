@@ -32,7 +32,7 @@ the seven corpora, `basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/b
 takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 80 to 95 buys the other 48 corpora. A
 change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by `mega-fixes`
 (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
-run's records with `scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
+run's records with `scripts/scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
 `mega-fixes-11-11-2026-1033`, 14 minutes), which measures none of the bars: a guess's bars and the
 tests still wait on a mega run.
 
@@ -63,10 +63,10 @@ suite's corpus reads its own ([COMPLETED.md](COMPLETED.md#corpus), a copy's chec
 `trees.found`) with what its entry `requires` (`corpora.toml`): itself where it installs on this
 Python (textual, stripe, matplotlib), which brings what it depends on; `zope.interface` for twisted,
 whose 12.3.0 is Python 2's; nothing for pip, which vendors what it needs, or the standard library. A
-copy of matplotlib fixed with guesses in one process (`scratch/second_pass_copy.py`, 61 seconds with
+copy of matplotlib fixed with guesses in one process (`scripts/scratch/second_pass_copy.py`, 61 seconds with
 1 worker on 16CPU/60GB) has 10,287 fixes from 10,266, 4 gone and 25 new, the new ones by Pillow's
 types (`im: Image.Image`, `img: ImageFile.ImageFile`), and leaves a second pass none; by
-`scratch/checker_roots.py` ty reads each one's own environment. What a requirement brings isn't
+`scripts/scratch/checker_roots.py` ty reads each one's own environment. What a requirement brings isn't
 pinned: an environment holds what resolved the day it was made. Waits on a mega run (95 minutes on
 16CPU/60GB), read against `mega-11-11-2026-1113`: done when the six corpora's fixes, new errors and
 second passes are recorded. Coverage: the six corpora's fixes move, by how much unknown until it
@@ -139,7 +139,7 @@ each unmeasured hinted step holding a third of the run's memory between its CPUs
 first run's sizing): an unmeasured hinted step sized by its checkers' servers' estimate for the
 corpus's files (`Plan._hinted`'s, as a measured one's fewest CPUs are), then by what it's seen to
 use (`Plan.fitted`). Done when a first run of corpora no run measured takes within a tenth of its
-shortest (`scratch/schedule_solve.py --given`). A measured step can be as far off: on
+shortest (`scripts/scratch/schedule_solve.py --given`). A measured step can be as far off: on
 `mega-11-11-2026-1113` every checker was asked afresh, each step sized by a run that read its hints
 from the store, so pip's `infer-basedpyright` held 4.1 GB where it was given 0.64 and matplotlib's
 8.8 where 4.28, the load 28 on 16 CPUs, and the run took 95 minutes for 80; no server passed its
@@ -156,7 +156,7 @@ not after a checker's hints, where it has long left some: 102, 76 and 84 fixes a
 `infer-basedpyright`, `infer-ty` and `infer-pyrefly` on `mega-11-10-2026-1742`, and 142, 116 and 227
 (180 after `infer-union`) on `mega-11-11-2026-1113`, the first with that and with each checker held
 to the copy's own settings ([COMPLETED.md](COMPLETED.md#corpus)). Found 2026-11-11 on the run
-between them, each in one process, which gives a run's counts (`scratch/second_pass_copy.py`).
+between them, each in one process, which gives a run's counts (`scripts/scratch/second_pass_copy.py`).
 matplotlib's, the stub's apart, rest on one fix, `get_size_in_points: Callable[..., float] =
 get_size` in `font_manager.py`: the files calling it know its type only from an index read after
 that fix, and with a checker's hints the files a round changed aren't indexed again
@@ -207,26 +207,26 @@ About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 Line coverage is held at 100% (`fail_under`), so it no longer says which lines run without a test
 checking what they do; a mutant the suite survives does. How: `mutmut` over `constricter/`, its
-tests run without the corpus suites, in a `scratch/` script with its output under `local/`; triage
+tests run without the corpus suites, in a `scripts/scratch/` script with its output under `local/`; triage
 the survivors and write tests for those worth killing. Done when a full run's survivors are each
-killed or recorded as equivalent. Written, not yet run: `scratch/mutation.py` (mutmut 3.8 on a
+killed or recorded as equivalent. Written, not yet run: `scripts/scratch/mutation.py` (mutmut 3.8 on a
 worktree of HEAD under `local/mutation/`, the unit tests alone, the lines they cover, `--only` for a
 first pass). About 6 hours beside the run; coverage unchanged.
 
 #### 10. A check's peak, past the resumed files
 
-The standard library's check in one process (2026-10-24, 16CPU/60GB, `scratch/peak_rss.py`) peaked
+The standard library's check in one process (2026-10-24, 16CPU/60GB, `scripts/scratch/peak_rss.py`) peaked
 at 2.65 GiB: every file's tree, and its whole finished check (scopes, bindings, inferences: 84,624
 scopes), kept for a second round that resumes 242 of its 1,867 files. Both are now kept only for a
 module with an open function, the only one a resume can start from (the others checked again, 33,
 are parsed again), and a module's own node no longer keeps its tree in the shared walk: 2.03 GiB at
 41.2s, from 40.5s, findings the same on the standard library, pydantic and pandas
-(`scratch/equivalence.sh`). What's left, each weighed: no check kept at all, 1.97 GiB for 46.3s (the
+(`scripts/scratch/equivalence.sh`). What's left, each weighed: no check kept at all, 1.97 GiB for 46.3s (the
 resumed files start over); the index keeping only the resumable files' trees too, 2.00 GiB for 43.6s
 (the peak is the index's end, 1.59 GiB of trees, and what the check frees is reused, not returned);
 no tree kept anywhere, 3.43 GiB for 52.4s (each tree parsed again and the resumes lost). Also
 weighed and left: `msgspec` or `orjson` for the pickled index, more `__slots__`, `sys.intern` of the
-annotations' text. Measured by phase on 2026-10-24 (`scratch/peak_phases.py`, its memory sampled
+annotations' text. Measured by phase on 2026-10-24 (`scripts/scratch/peak_phases.py`, its memory sampled
 each quarter second, one process beside a mega run, so its seconds don't count): the index ends at
 1.59 GiB, the first check round at 2.00; with the index keeping no tree (`--no-index-trees`) the
 index ends at 0.57 GiB, but the first round still reaches 2.02, with no resume kept. Of what the
@@ -263,7 +263,7 @@ confirmed when its turn came (16.0s from 14.4s: most are checked twice, and 25 o
 then differed). Left to try: an edge only where the receiver's class is known to be the other
 module's; and a file checked again from where its first check ended when what it imports returns
 anew, as it is when its parameters are typed. Done when the standard library checks in under 9s with
-every CPU, its findings the same. Measured 2026-10-23 (`scratch/order_edges.py`, the check order
+every CPU, its findings the same. Measured 2026-10-23 (`scripts/scratch/order_edges.py`, the check order
 rebuilt as `order.plan` builds it): the method-name edges make every long chain, pandas's 224 files
 (39% of its bytes) and the standard library's 84, 6 and 14 without them; keeping one only where a
 class the file names has the method keeps 9,155 of pandas's 9,182 and 13,024 of the standard
@@ -348,7 +348,7 @@ each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own sett
 environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
 narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name ("A hint's name"
 above). Done when its guesses are read against that run's verdicts and type checks
-(`scratch/guess_report.py --step infer-union`): whether it still passes the bars, and with the two
+(`scripts/scratch/guess_report.py --step infer-union`): whether it still passes the bars, and with the two
 names above set aside. About an hour; if it fails a bar, `agreed` leaves the likely fixes, which is
 to decide.
 

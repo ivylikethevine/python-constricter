@@ -252,7 +252,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   overloaded method's return imports type what's read of it in the same pass: with every kind, a
   second `--fix --unsafe-fixes` pass leaves nothing on the seven corpora, from 12 bindings (pandas
   9, the standard library 2, pydantic 1), and pandas gets 25 fixes more without widening, pydantic
-  none (`scratch/second_pass.py --widen`, 4 workers on 16CPU/60GB).
+  none (`scripts/scratch/second_pass.py --widen`, 4 workers on 16CPU/60GB).
 - **Each checker's servers, by its own measure**: every checker gets up to four, and a server's
   memory is its checker's (`Server.fitting`). basedpyright's each hold the whole program (0.6 GB and
   130 bytes for each byte of the files); `ty`'s and pyrefly's each hold their share, so the files
@@ -278,7 +278,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   brought 381 new errors in the packages' own checkers (458 on 0.4.0-rc.3, 868 on rc.2): pyrefly's
   128, basedpyright's 110, ty's 107 and the trace's 36. For each hundred hint fixes past
   `--fix --unsafe-fixes`, every hinted step's together: pandas 0.54 (106 for 19,610), sqlalchemy
-  0.57 (12 for 2,092), pydantic 0.53 (3 for 564), from 0.9, 1.2 and 0.5 (`scratch/hint_errors.py`).
+  0.57 (12 for 2,092), pydantic 0.53 (3 for 564), from 0.9, 1.2 and 0.5 (`hint_errors.py`, since deleted).
   No fix: a hint naming a module bare, a well-known class's name the module binds to its own class,
   a builtin given type arguments, a private part of a dotted name, a function's class, `Never`,
   pyrefly's `Self` where the method's signature doesn't say `Self`, and a standard-library module's
@@ -308,7 +308,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   display widened by a value a test narrows where it's added. On the 0.4.0-rc.3 mega run, after
   `--fix --unsafe-fixes`, the packages' own checkers find 22 new errors, 14 of them mypy's over
   `lxml` (an `etree.Element` its environment can't follow), and 20 of the 33,448 guesses a checker
-  read are blamed for one: under one in each hundred on every package (`scratch/guess_report.py`).
+  read are blamed for one: under one in each hundred on every package (`scripts/scratch/guess_report.py`).
 - **Safe by construction**: touches no class body but a plain class's, and that as a guess (no
   decorator, no metaclass, every base plain, a test case or a builtin exception or value class),
   keeps line endings and encodings, edits notebooks' cells in place, nothing broken on any corpus,
@@ -331,24 +331,24 @@ What constricter does today and what was measured on the way, by scope. What's n
   once.
 - **Workers that start loaded, told once**: a fork server imports `constricter.cli.command`, its
   tables read, before it forks a worker (`workers._preload`; 38 MB): one worker starts in 9 ms, 8 in
-  14 ms, the server itself in 74 ms once a run (`scratch/worker_start.py --alone`). The index is
+  14 ms, the server itself in 74 ms once a run (`worker_start.py --alone`, since deleted). The index is
   pickled once and written once, to a file in a directory the `Workers` own, which each worker maps
   (`Workers.tell`): a pool pickled it again down each worker's pipe. Telling 16 workers the standard
   library's 8.3 MB index takes 0.28s, from 0.33s (0.18s for one), and the parent holds nothing more
-  as it tells, from up to 37 MB on pandas (`scratch/index_sent.py`); what's left is each worker's
+  as it tells, from up to 37 MB on pandas (`index_sent.py`, since deleted); what's left is each worker's
   own `pickle.loads`, 0.06s alone and 0.17s with 16 at once on 16 CPUs.
 - **A file checked again, by what's new**: a file whose functions' parameters every call types is
   checked again from where its first check ended (`checker._resumed`), and only the scopes that
   round checks anew are finished again (their late fixes), not those its first check finished. The
   second round costs, of the first, 5% on the standard library in one process, 3% on django, 7% on
-  pip and about none on pandas (`scratch/second_round.py`), from 6%, 4%, 11% and none; the findings
+  pip and about none on pandas (`second_round.py`, since deleted), from 6%, 4%, 11% and none; the findings
   and fixes are the same with one worker and with four.
 - **Only the classes a file uses**: a class spelled through a module a file imports
   (`test.test_x.C`, any of a package's) has its line of bases worked out when the check asks for it,
   and kept (`own_types.Lineages`); one whose members the file takes none of is known as a class only
   where the file writes it. What a check knows of a file from outside it is 8 MiB over the standard
   library's 1,869 files, from 54 MiB: a test file importing `test.support`, 77 KiB from 1,164
-  (`scratch/outside_size.py`), with the same fixes there and on pandas and pydantic, widened or not.
+  (`outside_size.py`, since deleted), with the same fixes there and on pandas and pydantic, widened or not.
 
 - **A compiled wheel**: mypyc compiles the `rules` and `fix` packages, all 93 of their modules, as
   they're annotated, into a wheel for each 64-bit platform and CPython 3.11 to 3.14 beside the pure
@@ -360,7 +360,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   workers are sent pickle by their fields. The whole suite runs on it in CI (Compiled), but for the
   six tests that patch a compiled module's globals (`interpreted`). On every corpus
   (`tests/corpus/runs/compiled.toml`, the pure and the compiled wheel each beside the same packages,
-  `scratch/compiled_venv.py`) the findings and the fixes are the same, the check 1.37 times as fast
+  `scripts/scratch/compiled_venv.py`) the findings and the fixes are the same, the check 1.37 times as fast
   in one process and 1.26 times with 4 workers (the medians of 47 corpora, on 16CPU/60GB). A wheel
   beside other packages fixes by their types too: against `dev`'s venv, which has the dev group's,
   five corpora differed (docutils's types for sphinx, click's for uvicorn).
@@ -517,7 +517,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   hold is what every other with those members is under (`datetime.date` for `year` and
   `strftime`; not `pathlib.PurePath` for `stem` and `suffix`, which `zipfile.Path` has too),
   through an import added. On django
-  (`scratch/signatures_measure.py django --modes unsafe --select LVA015`, one process on
+  (`signatures_measure.py django --modes unsafe --select LVA015`, since deleted, one process on
   16CPU/60GB): `--fix --unsafe-fixes` 5,428 from 5,408 with the tables' classes (+20 bindings),
   and with `--extend-select LVA015` 537 parameters typed from 525 with the index's members (+12);
   pydantic not measured. `reads.members` keeps every module's attributes since, and each file's
@@ -557,7 +557,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   with one, parameterised (74 of them sqlalchemy's), and 246 a member of `self` in one's own
   method (sqlalchemy 136, the standard library 77, pandas 30), about 0.1%.
 - **The mechanisms above, counted.** Counted on the 0.4.3-rc.1 mega run (`tables/mechanisms.csv`, 47 corpora; held by
-  `scratch/guess_report.py --from` on 42 packages): `text` 785 guesses, 136 a test told of, 99.3%
+  `scripts/scratch/guess_report.py --from` on 42 packages): `text` 785 guesses, 136 a test told of, 99.3%
   held and none blamed for an error, so it passes; `comment` 31 certain; `tested` 66 certain;
   `filled` 575 likely and 580 guesses (`defaultdict` and `Counter` not told apart from the older
   fills); `named` 11 guesses, none told of; `reads` 10, 5 told of, 2 held. LVA013, in a run of its
@@ -572,7 +572,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   class without its arguments is no LVA013 fix since, as it's none for a binding
   (`attributes.unannotated`). Traced on 2026-10-23 (`tests/corpus/runs/mega-lva013.toml`: the
   uncommitted tree past `15167da`, 51 minutes on 16CPU/60GB), held by
-  `scratch/guess_report.py --from` on 42 packages: `assigned`, LVA013's kind, 4,703 guesses, 867 a
+  `scripts/scratch/guess_report.py --from` on 42 packages: `assigned`, LVA013's kind, 4,703 guesses, 867 a
   test told of, 99.0% held and 2 blamed for an error (0.06 for each hundred), its set alone 3,147,
   134 told, 98.5% held and 1 blamed, so it passes [LIKELY.md](LIKELY.md)'s bars; `reads` 13, 5
   told, 2 held; `named` 6, none told. The two blamed: pydantic's
@@ -622,7 +622,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   (`get_backend(engine: str | type[BackendEntrypoint]) -> BackendEntrypoint`) is no overload
   (`own_overloads.spelled`), so a guessed argument leaves its declared return: xarray's 6 fixes in
   `backends/api.py`, `--likely` since the first `type[T]`, are certain again, its 9,598 otherwise the
-  same (`scratch/fix_diff.py`, one process on 16CPU/60GB).
+  same (`scripts/scratch/fix_diff.py`, one process on 16CPU/60GB).
 - **`self` in a generic class's own methods**: a member of `self` is written with the parameters the
   method binds (`members.own_instance`), only where `self` is the method's own (`OWN_SELF`), not a
   function's parameter of that name. `self.first()`, returning `T | None`, is a `T | None`, as a guess
@@ -632,7 +632,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   `__class_getitem__` to the class undecorated, so their first parameter is `type[C]`, as a
   classmethod's (`scoping._IMPLICIT_CLASSMETHODS`). pandas's `subarr = cls._simple_new(...)` in
   `DatetimeIndex.__new__` had been read on the base, `subarr: Index`, then mypy's error under
-  `-> Self`. pandas (`scratch/fix_diff.py --source`, `--all-scopes`, one process on 16CPU/60GB):
+  `-> Self`. pandas (`scripts/scratch/fix_diff.py --source`, `--all-scopes`, one process on 16CPU/60GB):
   42,715 fixes from 42,712, `subarr`'s withdrawn and 4 gained, `object.__new__(cls)` typed as the
   class (`PeriodDtype`, `MultiIndex`, `HolidayCalendarMetaClass`) and one fix resting on it. On
   `mega-11-06-2026-0441` `method` is at 1 of 1,110 read blamed (0.09 in each 100), nibabel's; but a
@@ -655,7 +655,7 @@ What constricter does today and what was measured on the way, by scope. What's n
   inert marks, or a variable bound to `None`, has no variable typed where a class in its line defines
   the name (`classvars.unshadowed`, over every plain class: `classvars.variables`, `plain._joined`),
   so a subclass's `@memoized_attribute` of the name no longer makes `_render_label_in_columns_clause:
-bool` an override error. Measured (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`,
+bool` an override error. Measured (`scripts/scratch/fix_diff.py`, `scripts/scratch/fix_errors.py --mode unsafe`,
   one process on 16CPU/60GB): sqlalchemy 11 `member` guesses withdrawn of 3,147, django 62 of 5,567,
   none added; the errors basedpyright finds after `--fix --unsafe-fixes` that the plain tree lacks,
   sqlalchemy 59 from 64 (`reportIncompatibleVariableOverride` 2 from 7), django 96 from 168 (5 from
@@ -671,7 +671,7 @@ bool` an override error. Measured (`scratch/fix_diff.py`, `scratch/fix_errors.py
   (`Module.variables`), imported at the file's top level or inside a function (`Module.inner`, which
   the installed index reads for), gets no constructor guess, as `linked.values` takes a checked
   module's assigned names; a call that makes a type (`NewType`, `namedtuple`, `Enum`; `_MAKERS`)
-  leaves its name a class. On werkzeug in its own environment (`scratch/fix_diff.py --python`, one
+  leaves its name a class. On werkzeug in its own environment (`scripts/scratch/fix_diff.py --python`, one
   process on 16CPU/60GB) it withdraws `self.observer: Observer` alone with LVA013 selected, and
   nothing without it. On the 47 corpora (`mega-fixes-11-04-2026-0756`, 10 minutes on 16CPU/60GB,
   against `mega-10-30-2026-0857`'s records) one `likely` guess withdrawn, pdm's
@@ -687,9 +687,9 @@ import str` (requests' Python 2 shim, vendored in pip; `compat` assigns `str = s
   backported `BaseExceptionGroup`), is named as any class is. First built over every top-level
   binding, which `mega-fixes-11-04-2026-1801` read against `mega-fixes-11-04-2026-0756` as 23
   `Warning` guesses lost on django, enum's `property` and pytest's `exc_info`; refined the same
-  evening, each back (`scratch/fix_diff.py --venv`, one process on 16CPU/60GB: django 5,505 fixes
-  from 5,482, pytest 1,688 from 1,687, enum's 1). pip (`scratch/fix_diff.py`,
-  `scratch/fix_errors.py --mode unsafe`, `--all-scopes`): 3,584 fixes from 3,615, the 31 withdrawn
+  evening, each back (`scripts/scratch/fix_diff.py --venv`, one process on 16CPU/60GB: django 5,505 fixes
+  from 5,482, pytest 1,688 from 1,687, enum's 1). pip (`scripts/scratch/fix_diff.py`,
+  `scripts/scratch/fix_errors.py --mode unsafe`, `--all-scopes`): 3,584 fixes from 3,615, the 31 withdrawn
   in requests' `auth.py`, `models.py` and `utils.py` (`str`, `bytes`, `re.Pattern[str]`, `str |
 None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-listed as `rebound`
   too; basedpyright's errors after `--fix --unsafe-fixes` that the plain copy lacks 131 from 163
@@ -704,7 +704,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   a name was already no edit (`offers._ambiguous`), but `hinted.hinted` takes the shown type first;
   now a hint showing a name the file binds, where a module it imports whole has a class of that name
   too, is dropped whole (`offers.vetted`). sqlalchemy with basedpyright's hints
-  (`scratch/fix_diff.py`, `scratch/fix_errors.py --mode unsafe`, `--all-scopes
+  (`scripts/scratch/fix_diff.py`, `scripts/scratch/fix_errors.py --mode unsafe`, `--all-scopes
 --infer-with=basedpyright`, one process on 16CPU/60GB): 4,103 fixes from 4,107, the two `Enum`
   guesses and two `Pattern[str]` in `compiler.py`, which binds `typing.Pattern` and imports `re`
   whole, an alias of one class the rule can't tell from two; basedpyright's errors after
@@ -718,7 +718,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   withdraw or change the fixes that rest on the last branch alone. The mega runs of 2026-10-29
   have one such fix, an error in each of six steps: optuna's `params: dict[str, int | float]`,
   filled from `param`, a `str` in its other branch. Measured on 2026-11-04
-  (`scratch/branch_copies.py` on `mega-10-30-2026-0857`): of 10,058 `copy` guesses on the 47
+  (`scripts/scratch/branch_copies.py` on `mega-10-30-2026-0857`): of 10,058 `copy` guesses on the 47
   corpora, 9 copy a name a statement before them binds in two or more of its arms (3 of them
   `rebound` too); 7 a test told of, 6 held, 1 differed once in 191 observations (zarr's
   `shard_dict: ShardMapping`), none blamed for an error. The optuna fix is a `dict` filled in
@@ -726,7 +726,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
 - **A `str` literal's `split()`.** `macros = """a b""".split()` was fixed `list[str]` (certain,
   `literal+method`), but typeshed's `LiteralString` overload gives a literal's `split()`
   `list[LiteralString]`, which basedpyright holds invariant against `list[str]` (5 of pygments'
-  errors with the class variables). Measured on `mega-11-06-2026-0949` (`scratch/literal_split.py`):
+  errors with the class variables). Measured on `mega-11-06-2026-0949` (`scripts/scratch/literal_split.py`):
   33 of its 110,349 certain fixes are a one-line literal's `split()` with literal arguments, 31 in
   tests (django's `MONTHS`, `imaplib.Months`), and about 3 a literal spanning lines (textual's
   `DIGITS3X3`). Decided 2026-11-06, of writing `list[LiteralString]` or no fix: the former, though
@@ -741,12 +741,12 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   where it leaves it unbound (`classnames.as_module`, which the overloads' and installed classes'
   lookups take): `from dateutil import parser`, then `parser.parse(text)`, is a `datetime`. A plain
   function's call was already typed so (`spelling.resolved`). On `mega-11-06-2026-2039`
-  (`scratch/imported_reach.py`), 1,156 "imported" bindings with no fix call `sub.f()` after
+  (`scripts/scratch/imported_reach.py`), 1,156 "imported" bindings with no fix call `sub.f()` after
   `from pkg import sub`, 96 of them where the package binds `sub` itself: 87 the corpora's own
   functions (networkx's `algorithms.bipartite`, optuna's `logging`), which this leaves as they
   were, and 9 third-party (numpy's `ma` and `linalg`, psycopg2's `extensions`), none an overload.
   `mega-fixes-11-08-2026-0815` (`77fe292` with it, 11 minutes on 16CPU/60GB), against
-  `mega-11-06-2026-2039` (`scratch/run_fixes_diff.py`): no fix withdrawn or added on the 47
+  `mega-11-06-2026-2039` (`scripts/scratch/run_fixes_diff.py`): no fix withdrawn or added on the 47
   corpora, no new type error; the tier moves it shows are `77fe292`'s `documented+returned`
   (guesses now likely), and `multiprocessing/spawn.py`'s `opts`, a `returned` guess now certain,
   not this change's: the standard library is checked, not installed.
@@ -756,11 +756,11 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   typed as a function declaring that return (`tables._called_instances`, among the module's
   `returns`): typeshed's `tz.gettz(name)` is a `tzinfo | None`, an installed or a checked module's
   alike. Before it, the same module's `add(1)` was a guess and another's no fix. On
-  `mega-11-06-2026-2039` (`scratch/imported_reach.py`) 10 "imported" bindings with no fix call a
+  `mega-11-06-2026-2039` (`scripts/scratch/imported_reach.py`) 10 "imported" bindings with no fix call a
   module-level instance whose class defines `__call__`: 9 declare no return (xarray's ufuncs,
   dask's `ufunc.sqrt`), 1 does (`dateutil.tz.gettz`). Not reached: an instance whose class is
   another module's, and a generic class's. `mega-fixes-11-08-2026-1051` (`686b2df`, 10 minutes on
-  16CPU/60GB), against `mega-fixes-11-08-2026-0815` (`scratch/run_fixes_diff.py`): one guess now
+  16CPU/60GB), against `mega-fixes-11-08-2026-0815` (`scripts/scratch/run_fixes_diff.py`): one guess now
   certain, textual's `value_tokens: dict[str, list[Token]]` (`css/tokenize.py`, by
   `tokenize_value = ValueTokenizerState()`, whose `__call__` it inherits), no other fix withdrawn
   or added on the 47 corpora, and the type errors the same.
@@ -791,9 +791,9 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   the source (`own_stubs`, in `modules._own`): its importers' calls are typed by the stub's declared
   returns and its classes' members, the names it imports read as imported for type checking, and
   the module's own calls where it can write the type as it is. In matplotlib 3.11.2's sdist
-  (`scratch/stub_pairs.py`) 78 of its 179 modules (tests aside) have one, their 4,325 functions
+  (`scripts/scratch/stub_pairs.py`) 78 of its 179 modules (tests aside) have one, their 4,325 functions
   declaring 2 returns; of its 12,875 bindings with no fix, 3,553 call a function its stubs declare
-  by name (`scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379 to 6,528 certain),
+  by name (`scripts/scratch/stub_reach.py`). Its fixes went from 7,593 to 8,934 (5,379 to 6,528 certain),
   and matplotlib's own mypy settings find no issue in its 108 checked files fixed either way (one
   process on 16CPU/60GB). matplotlib is a corpus, its sdist alone (its build needs meson and a C++
   toolchain), in `alt`; on `mega-fixes-11-08-2026-1354`, its first run, 6,252 certain fixes,
@@ -804,9 +804,9 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   never checked or fixed (`stubs.lone`, in `installed.with_installed`): under the nearest checked
   package above it, a stub-only subpackage's `__init__.pyi` too, or beside the checked files'
   top-level packages and modules. Measured first on matplotlib 3.11.2's sdist, matplotlib not
-  installed (`scratch/lone_stub_reach.py`): of its 11,567 bindings with no fix, 10 call straight
+  installed (`scripts/scratch/lone_stub_reach.py`): of its 11,567 bindings with no fix, 10 call straight
   into one of its 9 lone stubs' modules, and 26 more had a fix already.
-  With it (`scratch/fix_diff.py --source`, guesses included, 1 worker on 16CPU/60GB), its fixes
+  With it (`scripts/scratch/fix_diff.py --source`, guesses included, 1 worker on 16CPU/60GB), its fixes
   went from 9,613 to 9,685: what `FT2Font`'s methods and attributes give (`glyph: Glyph`,
   `sfnt: dict[tuple[int, int, int, int], bytes]`), `FT2Font` spelled `ft2font.FT2Font` where it
   was `mpl.ft2font.FT2Font`, and `foreground: int | None` where a call taken to construct a class
@@ -941,7 +941,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   be told of its container. Five more of sqlalchemy's certain fixes differ so (20 of 1,026, from
   15), each a declaration of its own its tests contradict (`tables: set[TableClause]`, holding a
   `Subquery`); none more of pydantic's 482. `typeguard` and `beartype` were weighed for it
-  (`scratch/witness_checkers.py`): of the 50,957 fixes pydantic's, pandas's, sqlalchemy's and
+  (`witness_checkers.py`, since deleted): of the 50,957 fixes pydantic's, pandas's, sqlalchemy's and
   django's suites judge, 3,333 are containers their tests bind, and 315 of those hold an element the
   annotation doesn't name outright. `beartype` checks one element, chosen at random, and calls a
   container's own `__len__`; `typeguard` checks them all, and is kept for annotations held to a run
@@ -967,7 +967,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   most (`t/unit/concurrency`; 5.8 GB traced), the same 3,521 passed and 3 failed, in 107s from 131s.
   The parts' traces are joined (`recording.merged`).
 - **A traced suite's time, by its parts**: a run's `traced` table has each suite's traced tests'
-  seconds beside its released tests' untraced, and `scratch/traced_share.py` times them under the
+  seconds beside its released tests' untraced, and `traced_share.py`, since deleted times them under the
   tracer alone. pygments's 5,346 tests take 9s untraced, 12s under `constricter.trace` and 17s under
   the witness told its 960 fixes, from 121s and 184s: its lexers are generators, whose returns
   weren't counted, so none was ever followed no more. A function is now, whatever it is, once 20
@@ -997,18 +997,18 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
 - **The timed checks beside the other steps** (`timing-beside`, a run file's `[steps]` key, set in
   `super.toml` and `mega.toml`): the timed checks once ran last, alone and one at a time, since
   three corpora at once on disjoint 5-CPU sets ran 4 to 5% slower in one process and 10 to 17% with
-  jobs (`scratch/timed_tail_trial.py`); that tail took 5.3 to 6.2 minutes of a mega run. But their
+  jobs (`timed_tail_trial.py`, since deleted); that tail took 5.3 to 6.2 minutes of a mega run. But their
   instructions didn't move side by side (0.04 to 0.15%, 0.00% with jobs across runs at one commit,
-  `scratch/timing_noise.py`), so the timing table compares instructions across runs (its
+  `scripts/scratch/timing_noise.py`), so the timing table compares instructions across runs (its
   `beside other steps` column, RUNS.md's intro) and the checks run sized as measured, not held to
   the end (`sizing.held_last`). Replayed on the super run of 2026-10-26
-  (`scratch/schedule_sim.py --timing-beside`): 42.0 minutes from 43.5. On the mega runs of
+  (`scripts/scratch/schedule_sim.py --timing-beside`): 42.0 minutes from 43.5. On the mega runs of
   2026-10-26 and 2026-10-27 (16CPU/60GB) the 47 timed steps ran beside the suites and ended an hour
-  before the run. The profile on the way (`py-spy`, `scratch/profile_diff.py`, 2026-10-23) took the
+  before the run. The profile on the way (`py-spy`, `scripts/scratch/profile_diff.py`, 2026-10-23) took the
   standard library's check from 50.9s to 40.6s and pandas's from 57.5s to 46.9s in one process:
   `reads.members` walked every method each check, a function's body was walked again for each
   parameter, and `overloads._agreed` was hot.
-- **RightTyper, measured and declined** (`scratch/righttyper_measure.py`): a sampled run's
+- **RightTyper, measured and declined** (`righttyper_measure.py`, since deleted): a sampled run's
   signatures as a corpus step. On pydantic (2026-10-24, `--ignore-annotations`, its tests in
   25.9s) the 23 parameters and 22 returns it added brought 3 more certain fixes and 45 pyright
   errors, the sampled types narrower than the functions take (`**kwargs: None`, `Self` in a
@@ -1025,7 +1025,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   a corpus at `--jobs` 1 and the run's `jobs`, under `hyperfine` where it's installed (one run to
   warm up, the exit status ignored) and in a loop of its own otherwise, keeping each run's seconds
   and, by `hyperfine`, the instructions it took, its workers' included. Their relative deviation, 10
-  runs each way in one process and with every worker (`scratch/timing_trial.py`): on pandas, 12
+  runs each way in one process and with every worker (`timing_trial.py`, since deleted): on pandas, 12
   workers on 16CPU/60GB, the seconds' 3.52% and 3.58% by the loop, 3.66% and 1.10% by `hyperfine`
   and 2.58% and 1.02% by `pyperf command`, the instructions' 0.08% and 0.04%; on the standard
   library, 8 workers on 8CPU/60GB, 0.53% and 0.89%, 0.27% and 0.60%, 0.50% and 0.51%, and 0.06% and
@@ -1051,7 +1051,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   on the six Python 3 corpora (19.8% of their untyped bindings fixed, then 20.8%), since it
   annotates 8% of the unannotated parameters, most of the returns it adds are `-> None`, and it left
   one of pydantic's files unparsable; and the same from mypy's daemon (`dmypy suggest`,
-  `scratch/dmypy_suggest.py`, 500 functions of each corpus but the standard library, which mypy
+  `dmypy_suggest.py`, since deleted, 500 functions of each corpus but the standard library, which mypy
   won't check as a project's own): it stops on every one of sqlalchemy's and pandas's, takes 30s to
   90s a function on 16CPU/60GB with 14 daemons, and on django, the one with no type comments, brings
   19 certain fixes for 415 new basedpyright errors, most an `X | None` read without a check; and an
@@ -1138,7 +1138,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `test_imv_returning_datatypes[...LargeBinary1/2]` skipped where they passed: so it stood for none,
   and six fixed trees ran the suite apart, 83 to 111s on 7 to 15 CPUs each, 6,229 CPU seconds more
   than rc.3, on one checkout one after another, while 22 steps wanting 8 CPUs waited up to 15
-  minutes: the `tests` stage 20.5 minutes from 12 (`scratch/stage_compare.py`). The flake is
+  minutes: the `tests` stage 20.5 minutes from 12 (`scripts/scratch/stage_compare.py`). The flake is
   sqlalchemy's test harness: a `testing.combinations` case's own requirement (`uuid_data_type`) is
   added at call time to the compound exclusion the test function already carries
   (`exclusions.compound.__call__` extends `fn._sa_exclusion_extend` in place), so once a UUID case
@@ -1190,7 +1190,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `self._data.asfreq(freq, how)`, a `PeriodArray`'s: pyrefly read the `pandas-stubs` it bundles, not
   the copy (`[tool.pyrefly]` is in this project since `e633731`, 2026-10-15, and `[tool.ty]` since
   `4a20971`, 2026-10-16). Measured before the change, a single check in one process
-  (`scratch/hint_config_trial.py`): with an empty settings file of its own, pyrefly's 50,390 fixes
+  (`scripts/scratch/hint_config_trial.py`): with an empty settings file of its own, pyrefly's 50,390 fixes
   on pandas lose 1,291, gain 1,628 and type 350 otherwise, ty's 48,238 lose 12 and gain 30, and
   basedpyright's 11,235 on matplotlib lose 32, gain 493 and type 5 otherwise. A checkout and a copy
   are given an empty `pyrightconfig.json`, `pyrefly.toml` and `ty.toml` where they have none of that
@@ -1198,7 +1198,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   environment's Python alone (`launch.environment`), and a round's stored hints rest on the `python`
   first on the path (`stored.key`). The environment's own directory isn't put there: six corpora
   install a `ty` or a `pyrefly` in it (sphinx, streamlink, fastapi, altair, narwhals, sqlmodel). By
-  `scratch/checker_roots.py` pyrefly's root is the copy on all 55 corpora and ty's on 54, tox's own
+  `scripts/scratch/checker_roots.py` pyrefly's root is the copy on all 55 corpora and ty's on 54, tox's own
   `[tool.ty]` naming a `typestubs` directory the copy lacks; each checker is tested under a project
   whose settings name another environment (`tests/corpus/test_launch.py`). The six corpora with no
   checkout (the standard library, twisted, pip, textual, stripe, matplotlib) had no environment
@@ -1207,10 +1207,10 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   step failed, every checker asked afresh but for 5 later rounds; basedpyright hung on one of
   pandas's test files), against `mega-11-10-2026-2235`: the hinted steps' fixes are 239,252 with
   basedpyright's hints (238,371), 234,121 with ty's (231,918), 247,731 with pyrefly's (235,977) and
-  162,299 with every source (161,736); by fix (`scratch/run_fixes_diff.py`) basedpyright's lose 193
+  162,299 with every source (161,736); by fix (`scripts/scratch/run_fixes_diff.py`) basedpyright's lose 193
   and gain 1,074 on 38 corpora, ty's 686 and 2,889 on 42, pyrefly's 2,511 and 14,265 on 42: xarray
   2,724 more, matplotlib 1,687, textual 1,036, twisted 811, stripe 706, pandas 1,976 fewer and 1,702
-  more. The suites' own checks find 802 new errors from 870 (`scratch/type_errors_diff.py`), the
+  more. The suites' own checks find 802 new errors from 870 (`scripts/scratch/type_errors_diff.py`), the
   certain, likely and guessed fixes' the same 9, 29 and 40: 146 from 147 after basedpyright's hints,
   133 from 144 after ty's, 161 from 166 after pyrefly's, 233 from 284 after the union. pandas's are
   158 from 230, pyrefly's `arr: Period` now `PeriodArray`, and streamlink's 0 from 49, each by ty's
@@ -1250,9 +1250,9 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   of a method whose every `return` gives one parameter as it's given is what the call passes for it,
   a guess of its own kind (`echoed`: `returned._echo`, `fix/values/echoed.py`), not a method a class
   under its own defines again in the module, most often a hook (`Field.to_python`). Its reach is
-  small: by syntax alone (`scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have
+  small: by syntax alone (`scripts/scratch/echoed_reach.py`), the 55 corpora of `mega-11-10-2026-1742` have
   365 such methods, 44 with a `self` call bound to a name, 71 bindings in all, and pydantic's fixes
-  are the same 1,150 with it (`scratch/fix_diff.py`). The bar is met; the 0.3% isn't this
+  are the same 1,150 with it (`scripts/scratch/fix_diff.py`). The bar is met; the 0.3% isn't this
   mechanism's. On `mega-fixes-11-10-2026-2205` it made 20 fixes on the 55 corpora (matplotlib 5,
   joblib, networkx and the standard library 4 each, pandas 3), and pandas's own checks blame 2 new
   errors on them: `npvalue = self._validate_setitem_value(value)`, a hook classes in other files
@@ -1260,7 +1260,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   at 2 errors in 20 fixes. On `mega-11-10-2026-2235` the suites' tests told of 3 of its guesses: 2
   held (`op`, 68 values, and pandas's `expected: pd.Series`, 26), and `npvalue` differed in all 251.
   The values themselves, measured 2026-11-11 on that run's census by syntax
-  (`scratch/method_returns.py`): its 55 corpora have 14,525 `self.method()` bindings with no fix
+  (`scripts/scratch/method_returns.py`): its 55 corpora have 14,525 `self.method()` bindings with no fix
   (9,758 plain, 3,255 unpacked, 737 a `with`'s, 637 a loop's). The method is the class's own or a
   base's in the file for 9,107, somewhere else for 4,560 and a class attribute for 822. Of the
   9,107, 1,115 call a method that declares its return (`Self` 107, a vague one, a class the file
@@ -1280,7 +1280,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
 - **Framework plugins' types: measured, nothing to build.** django-stubs' and pydantic's mypy
   plugins type what the frameworks make at run time (a model's fields, a manager's querysets), but
   only inside a mypy run. About 0 calls in the corpora reach them. Measured 2026-11-11
-  (`scratch/plugin_types.py`, a minute in one process on 16CPU/60GB) on a dozen of django 5.2.18's
+  (`scripts/scratch/plugin_types.py`, a minute in one process on 16CPU/60GB) on a dozen of django 5.2.18's
   own test apps (`basic`, `queries`, `aggregation` and nine more), where `--fix --unsafe-fixes`
   leaves 1,545 bindings with no fix, 1,473 of them plain assignments, with `reveal_type` written
   after each. mypy 2.4.1, checking unannotated bodies, reveals a type with no `Any` for 1,117 of
@@ -1301,7 +1301,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   too), where its certain fixes leave none. Each rests on a parameter no annotation types:
   `ny, nx = shape`, `xlast` and `ylast` in `streamplot._gen_starting_points`, and `wnew` and `hnew`
   in `animation.adjusted_figsize`. The first pass doesn't know those parameters' types and the
-  second does. Found 2026-11-11 (`scratch/second_pass_copy.py`: the 6 again, one process): a
+  second does. Found 2026-11-11 (`scripts/scratch/second_pass_copy.py`: the 6 again, one process): a
   module's own stub reaches its check only through the tables the index keeps for the text it read
   (`modules._own`, `parsed.keep`), and a check of any other text reads the module alone
   (`checker._parse`). A file in a cycle is checked again within a round of `--fix`, its first fixes
@@ -1309,18 +1309,18 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   and `StreamMask.shape`. Its calls are the ones `callers` then reads (`runs.merged` keeps the later
   check's), so `adjusted_figsize`'s `dpi` and `_gen_starting_points`'s `shape` have no type; they
   have one again once the file is indexed again, but `callers` is asked once a run
-  (`rounds._called_again`). Tried (`scratch/stub_kept_trial.py`: `checker._parse` patched to read
+  (`rounds._called_again`). Tried (`scripts/scratch/stub_kept_trial.py`: `checker._parse` patched to read
   the stub again for such a text, as `_own` does): no second pass left, 74 checks of 62 files
   reading their stub again, and 5 of the hinted steps' fixes beside the 6 (on the roadmap). Since
   2026-11-11 a check of a text the index kept nothing for reads the module's stub again
   (`modules.checkable`, in `checker.checked_source`), as the index does for the text it read: a file
   `--fix` wrote to since, one checked again as it was, one past the kept trees' budget, and, new to
   them, standard input under the file's name and the pylint plugin's check. A copy of matplotlib
-  fixed with guesses in one process leaves a second pass none (`scratch/second_pass_copy.py`: 10,266
+  fixed with guesses in one process leaves a second pass none (`scripts/scratch/second_pass_copy.py`: 10,266
   fixes, 61 seconds with 1 worker on 16CPU/60GB), and a stubbed file in a cycle is tested
   (`tests/fix/index/test_own_stubs.py`). On `mega-fixes-11-11-2026-1033` (`565ac6c` with this change
   uncommitted, 14 minutes on 16CPU/60GB, no step failed), against `mega-11-10-2026-2235`
-  (`scratch/run_fixes_diff.py`, `scratch/type_errors_diff.py`): no fix step leaves a second pass a
+  (`scripts/scratch/run_fixes_diff.py`, `scripts/scratch/type_errors_diff.py`): no fix step leaves a second pass a
   fix on any of the 55 corpora, where matplotlib's likely fixes left 5 and its guesses 6. The
   certain fixes are the same 123,576, the likely ones 179,941 from 179,936 and those with guesses
   205,446 from 205,441, each change matplotlib's: `nx`, `ny`, `xlast` and `ylast` in
@@ -1335,7 +1335,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   stub's declared type. The copy takes the stubs in the directories a check walks (`launch.copied`;
   all 87 of matplotlib's), so a fix reads them as a check of the tree does, and so do the checkers a
   hinted step starts under the copy. On `mega-fixes-11-10-2026-2038` (`bcdc702`, 11 minutes on
-  16CPU/60GB, no step failed), against `mega-11-10-2026-1742` (`scratch/run_fixes_diff.py`):
+  16CPU/60GB, no step failed), against `mega-11-10-2026-1742` (`scripts/scratch/run_fixes_diff.py`):
   matplotlib's certain fixes went from 6,252 to 7,472, and from 8,751 to 10,245 with guesses;
   pandas's from 17,361 to 17,867 and from 43,213 to 43,348, 545 of its fixes a tier up, its own
   checks' new errors the same 3, 3 and 8 after each fix; no other corpus's fixes moved but one guess
@@ -1393,8 +1393,8 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   starts the one planned first; a step no run measured on its corpus is planned for what its like
   corpora took (`planning.like`), one no corpus ran keeps the rules (the longest chain first,
   `_PATIENCE`, backfilling), and a stage plans its own steps alone (`planning.ranks`'s `chosen`).
-  `scratch/run_timeline.py` lays a run out from its records, `scratch/schedule_sim.py` replays it,
-  and `scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
+  `scripts/scratch/run_timeline.py` lays a run out from its records, `scripts/scratch/schedule_sim.py` replays it,
+  and `scripts/scratch/schedule_solve.py` plans a finished run's steps the same way and proves how short any
   schedule of them can be. Read against the solver with 16 CPUs and 36 GB: the 0.4.3-rc.1 mega run
   95.2 minutes against a shortest 85.2 (11.7% over), rc.5 81.3 against 66.0 (23%), rc.6 64.3 against
   55.6 (16%), rc.7 67.7 against 57.9 (17%), rc.8 69.6 against 58.9 (18%), and the 0.4.3-rc.1
@@ -1432,7 +1432,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   kept them (`report_tables._released`): the mega run of 2026-10-27 took sqlalchemy's from a super
   run's `super+dev`, and its columns were blank until then; written again from its records, none of
   sqlalchemy's skips moved.
-- **What stub packages add to the corpora, measured** (`scratch/stubs_measure.py`, 2026-10-28, one
+- **What stub packages add to the corpora, measured** (`stubs_measure.py`, since deleted, 2026-10-28, one
   process on 16CPU/60GB): pandas-stubs 3.0.5.260914, scipy-stubs 1.18.1.1, pyarrow-stubs
   20.0.0.20260819 and types-PyYAML 6.0.12.20260906, each put on `PYTHONPATH` alone, then together,
   against each environment as installed and against pyrefly's `stubgen` stubs of the same package.
@@ -1459,9 +1459,9 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   keeps its classes-alone read. The corpus runs find the bundle through the interpreter running
   constricter (`local/.venv`), behind the corpus's `VIRTUAL_ENV`; a constricter installed without
   basedpyright reads no set. dateutil's `isoparse` and overloaded `parse` and six's `ensure_str`
-  are typed in a probe; on dask in its own environment (`scratch/fix_diff.py --venv`, one process
+  are typed in a probe; on dask in its own environment (`scripts/scratch/fix_diff.py --venv`, one process
   on 16CPU/60GB) 5,921 fixes both ways, its yaml calls `Any`. Reach measured on
-  `mega-10-30-2026-0857` (`scratch/typeshed_reach.py`): 135 of 7,381 third-party bindings with no
+  `mega-10-30-2026-0857` (`scripts/scratch/typeshed_reach.py`): 135 of 7,381 third-party bindings with no
   fix, 69 of them "imported", mostly a submodule called through `from pkg import sub` (a roadmap
   finding). On the 47 corpora (`mega-fixes-11-04-2026-1801` against `mega-fixes-11-04-2026-0756`,
   10 minutes on 16CPU/60GB): certain fixes gained, botocore 5 (`datetime.datetime`, jmespath's
@@ -1474,7 +1474,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
 - **pyrefly's `stubgen` for untyped packages, measured and set aside** (decided 2026-11-04): stubs
   pyrefly writes from what it infers for an installed package with no types (experimental;
   `Incomplete` where it can't tell), read as an installed package's stubs are. Measured on
-  2026-10-28 (`scratch/stubgen_measure.py`, pyrefly 1.3.2, one process on 16CPU/60GB): each untyped
+  2026-10-28 (`stubgen_measure.py`, since deleted, pyrefly 1.3.2, one process on 16CPU/60GB): each untyped
   package stubbed as a `-stubs` package (pandas 23,928 returns concrete and 1,176 `Incomplete`,
   pyarrow 2,881 and 441, fsspec 596 and 266, toolz, tlz, yaml), and `--unsafe-fixes --show-fixes`
   listed with and without them. dask 5,864 fixes from 5,815 (certain 3,152 from 3,120, likely 1,867
@@ -1528,7 +1528,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `_lazy_re_compile`'s `-> SimpleLazyObject`, a `constructor`); and a signature written reaches the
   other files in the same run (`rounds._reaching`: the file indexed again, its callers checked
   again), so what a declared return makes certain needs no second pass. Measured on django
-  (`scratch/signatures_measure.py django --select LVA014,LVA015 --modes certain,likely,unsafe,signed`:
+  (`signatures_measure.py django --select LVA014,LVA015 --modes certain,likely,unsafe,signed`, since deleted:
   a copy fixed pass after pass until a pass fixes nothing, one process on 16CPU/60GB, 6 to 21s a
   pass; `--coverage`'s first bindings, of 17,181):
 
@@ -1599,7 +1599,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
 - **Read on the mega runs of 2026-10-29** (`mega-10-29-2026-1139` on `f7d53b2`, 89 minutes,
   `mega-10-29-2026-1920` on `e793bc6`, 65 minutes, and `mega-10-29-2026-2241` on `d160aa8`, 76
   minutes, all on 16CPU/60GB), against `mega-10-28-2026-0826` and each other by
-  `scratch/type_errors_diff.py` and `scratch/guess_report.py --from`:
+  `scripts/scratch/type_errors_diff.py` and `scripts/scratch/guess_report.py --from`:
   - Bindings typed of 474,291 on `d160aa8`: `--fix` 164,036, `--likely` 217,161, `--unsafe-fixes`
     241,719 (161,113, 211,064 and 228,999 on 2026-10-28's `6b0ab18`); `infer-trace` 146,385 of
     292,568 (134,815). Bindings with no fix 232,959 from 245,708 on `f7d53b2`: pygments 2,313 from
@@ -1629,7 +1629,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   - basedpyright's servers aborted four times in dask's `infer-union` on `f7d53b2`, none on
     `e793bc6`.
 - **Read on `mega-10-30-2026-0857`** (`a8de20a`, 70 minutes, 16CPU/60GB), against the 22:41 run by
-  `scratch/type_errors_diff.py` and `scratch/run_fixes_diff.py`: new type errors 461 from 462, none
+  `scripts/scratch/type_errors_diff.py` and `scripts/scratch/run_fixes_diff.py`: new type errors 461 from 462, none
   gained (nibabel's `file_map`). `type[T]` and a `@classmethod`'s
   receiver hold. New failures: sphinx's `test_html5_rubric` in 4 steps of 8 with its fixes
   the same as the 22:41 run's, and nibabel's randomised `test_mult` and `test_euler_mat_2`, none blamed
@@ -1637,7 +1637,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   leaves the planning of an unmeasured step ("A run with no earlier run, held to the solver's shortest")
   ungated.
 - **A step no run measured, planned by its like corpora.** Replayed on 2026-10-30
-  (`scratch/schedule_sim.py --timing-beside --unmeasured`, 16 CPUs and 36 GB, each step's true seconds
+  (`scripts/scratch/schedule_sim.py --timing-beside --unmeasured`, 16 CPUs and 36 GB, each step's true seconds
   and use), the runner's rules with nothing measured, the waiting steps taken as they came, against its
   order on measured seconds (the longest chain first): the mega runs of 2026-10-29 at 22:41, 19:20 and
   11:39 in 75.3, 68.6 and 89.1 minutes against 65.0, 56.5 and 73.7 (16% to 21% over), and 67.3, 57.7
@@ -1652,7 +1652,7 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   group's seconds), on the same three runs: 1,187 minutes over the 18 replays against 1,213 unranked,
   pandas on the 22:41 run 67.5 against 72.5, the standard library and mypy on the 11:39 run 73.4 and
   74.0 against 78.7 and 79.6, the most lost 0.8 (the standard library on the 19:20 run).
-- **The solver, held to the waits the runner keeps.** `scratch/schedule_solve.py` takes each step's
+- **The solver, held to the waits the runner keeps.** `scripts/scratch/schedule_solve.py` takes each step's
   waits from `suite_steps.needs` of the run's own file, read against the runs before it alone, its
   locks from `suite_checkouts.checkouts` and its suite's port, and the timed steps as the run file's
   `timing-beside` says; the released tests an earlier run's record stood for are a step of no
@@ -1669,7 +1669,7 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   memory between its CPUs (`sizing._UNSIZED_SHARE`). `mega-11-06-2026-2039` breaks none of the
   model's waits or locks either, and took 85.9 minutes to the 74.3 the solver finds in 45 seconds
   (proved at least 36.8), 16% over.
-- **`method`'s two blamed guesses, read** (`scratch/guess_report.py --blamed method`, on
+- **`method`'s two blamed guesses, read** (`scripts/scratch/guess_report.py --blamed method`, on
   `mega-10-30-2026-0857`): nibabel's `magic_number: bytes` (`streamlines/tck.py`) is right, all 51 of
   its values `bytes`, and mypy's `str-bytes-safe` is on the package's own f-string, which only a true
   type shows. pandas's `subarr: Index` is the fix's: every one of its 650 values an `Index`, but a
@@ -1695,17 +1695,17 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   every fix step `manager`, a `ClassManager[_O]` then `manager.original_init(...)`, which the class
   declares `Optional`; the other three corpora with a type check at the mega run's errors exactly, and
   none of django's, sqlalchemy's, pydantic's or pandas's tests failing anew after any step. The
-  2026-11-04 run against `mega-10-30-2026-0857` (`scratch/run_fixes_diff.py`,
-  `scratch/type_errors_diff.py`): new type errors over every step 440 from 461 (sqlalchemy's after each
+  2026-11-04 run against `mega-10-30-2026-0857` (`scripts/scratch/run_fixes_diff.py`,
+  `scripts/scratch/type_errors_diff.py`): new type errors over every step 440 from 461 (sqlalchemy's after each
   fix step 1 from 0, `manager`'s; pandas's and strawberry's hinted steps fewer), certain fixes gained
   on 19 corpora (textual 55, sqlalchemy 27, xarray 17, anyio 13), and two losses: pandas's 55 certain
-  `read_csv(...)` fixes (`DataFrame`, from its overloads), lost in `10ee8ab` (`scratch/file_bisect.py`:
+  `read_csv(...)` fixes (`DataFrame`, from its overloads), lost in `10ee8ab` (`scripts/scratch/file_bisect.py`:
   `stubs/signatures.py` alone), where a parameter every overload shares stopped taking any argument
   once it named a type variable a checked file imports (`**kwds: Unpack[_read_shared[HashableT]]`),
   and the hinted steps' 2,654 basedpyright and 3,622 pyrefly fixes on pandas, withdrawn by the
   ambiguous-name rule where `pandas` imported whole re-exports the class the file binds. Both mended in
   `866d2e2`: a shared parameter's type variable is read only where a signature returns it
-  (`signatures.read_all`; `scratch/fix_diff.py` from `92a0983`, one process on 16CPU/60GB: 42,712
+  (`signatures.read_all`; `scripts/scratch/fix_diff.py` from `92a0983`, one process on 16CPU/60GB: 42,712
   fixes from 42,556, 6 withdrawn, all the override exclusion's `member` guesses), and the ambiguous
   name is judged by where its class is defined (`--infer-with=basedpyright`, one process: 48,264 fixes
   from 45,762). `mega-fixes-11-05-2026-0204` (10 minutes) read the three changes against
@@ -1729,17 +1729,17 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   though it asked the checkers afresh on 138 of its 141 hinted steps where that run took stored hints
   on all 141), the changes since `mega-11-05-2026-0219`: the witness's verdict by annotation, the
   union's own verdicts and type check (`types-infer-union`), and a `__new__`'s `cls` (under
-  [`--fix`](#--fix)). **Two checkers agreeing** (`scratch/guess_report.py --step infer-union`):
+  [`--fix`](#--fix)). **Two checkers agreeing** (`scripts/scratch/guess_report.py --step infer-union`):
   `agreed+checker` passes [LIKELY.md](LIKELY.md)'s bars, 14,445 guesses, 97.9% of 9,149 told held, 8
   of 10,081 read blamed (0.08 in each 100); `checker` alone misses two, 88.4% of 6,434 held and 75 of
-  8,207 blamed (0.91). By name the two had held 86.2% and 73.7% (`scratch/agreed_seen.py`), the rest a
+  8,207 blamed (0.91). By name the two had held 86.2% and 73.7% (`scripts/scratch/agreed_seen.py`), the rest a
   subclass or a protocol. The union's fixes, read against the verdicts as it's made: certain 99.3% of
   36,794 told held, likely 99.5% of 25,700, other guesses 95.0% of 21,388; 3,751 fixes, all but one
   guesses, have an annotation no step's tests were told (`unasked`). Its type check: 227 new errors,
   blamed on 23 certain fixes (0.05 in each 100 read), 26 likely guesses and 99 others. `fix-unsafe`'s
   sets passing the bars: 62, 40,602 of 56,021 guesses (72.5%), `method` among them again and `call`
   not (2 of 544 read blamed, 0.37), both its blamed the `__new__` change's. Against
-  `mega-11-05-2026-0219` (`scratch/run_fixes_diff.py`, `scratch/type_errors_diff.py`): no certain fix
+  `mega-11-05-2026-0219` (`scripts/scratch/run_fixes_diff.py`, `scripts/scratch/type_errors_diff.py`): no certain fix
   withdrawn and 90 gained (the standard library's 69, `test/test_enum.py`'s enum members the most); the hinted steps' guesses down by up to 24 a corpus, asked afresh; new type
   errors outside the union's step 454 from 450, each of the 19 new the `__new__` change's (pandas's
   certain `result: MultiIndex` on all 7 steps, sphinx's `sentinel` and sqlalchemy's `self` on 6). Tests:
@@ -1839,7 +1839,7 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   21.14.12 (GHSA-cx6f-vjhg-g3cc), which pip-audit had passed, so `uv.lock` moved to 21.14.13; the
   shared `osv-scanner.toml` dropped its braces entry, withdrawn upstream. Every workflow is green on
   pull request #70 and on `main` at `be2b279`. Each job's `allowed-endpoints` read against the hosts
-  harden-runner's log says it called (`scratch/egress_read.py`, on #70): `api.github.com` is gone from
+  harden-runner's log says it called (`egress_read.py`, since deleted, on #70): `api.github.com` is gone from
   the Dependency audit's, Secrets' and Docs', none of whose steps call it (the three green on pull
   request #74, merged 2026-11-01). `release-assets.githubusercontent.com` stays, a cold tool cache's download, and
   `api.securityscorecards.dev`, the Dependency review's when a dependency changes.
@@ -1943,18 +1943,18 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
 - **`docs/RUNS.md` split**: it's the index now, with the test suites' prose; each run's record is a
   file under `docs/runs/`, a version's (`0.4.3.md`) or a run's own (`mega-corpora.md`), which a run
   file's `[publish]` writes and links (`corpus_table.written`).
-- **`COMPLETED.md`, `CHANGELOG.md` and `FIXES.md` read against each other** (`scratch/doc_overlap.py`):
+- **`COMPLETED.md`, `CHANGELOG.md` and `FIXES.md` read against each other** (`doc_overlap.py`, since deleted):
   each measurement told twice now lives here alone, the changelog keeping what a release changed;
   docs/README.md says which doc holds what. What's left in common, 4,541 words of the three's 59,556
   in runs of 8 or more, is rules in a release's words beside the reference's, which that split allows.
-- **`scratch/` tidied**: `README.md` is its rule alone, the docstrings the index; `widen_pass` went into
+- **`scripts/scratch/` tidied**: `README.md` is its rule alone, the docstrings the index; `widen_pass` went into
   `second_pass --widen`, `widen_one` into `widen_suites --keep`, and `run_tick` into `watch_run`, which
   takes an `HH:MM` mark and a cap and stops on a `Traceback` or a new `problem:` line. Read and kept
   apart: `fix_diff` (two trees, live), `fixes_diff` (two saved listings), `run_fixes_diff` (two runs'
   records), `second_round` (a check's timing, despite its name), `hinted_second_pass` (a checkout's
   layout) and `widen_census`.
 - **`corpus-runs/` down to what's read**: HEAD tracks each release's folder and the latest mega and
-  super, 41.5 MB in 7 files from 434 MB in 41; `scratch/retire_runs.py` takes out what a new run
+  super, 41.5 MB in 7 files from 434 MB in 41; `scripts/scratch/retire_runs.py` takes out what a new run
   replaces, and the older folders stay on disk and in git's history. Later runs read every folder on
   disk (`suite_steps.earlier`, the released tests' samples), so a fresh clone has fewer samples of a
   suite's flaky tests than a machine that kept them, until its own runs add some.

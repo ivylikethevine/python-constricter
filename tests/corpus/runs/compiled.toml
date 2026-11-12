@@ -1,7 +1,7 @@
 # Every corpus checked and fixed by this checkout's pure wheel and by its compiled one (mypyc's build),
-# each in a venv of its own beside the same packages (`scratch/compiled_venv.py`), each check timed
+# each in a venv of its own beside the same packages (`scripts/scratch/compiled_venv.py`), each check timed
 # once: the same findings and fixes from both, and how much faster the compiled one is.
-# `scratch/version_diff.py FOLDER` compares the two. Nothing's published.
+# `scripts/scratch/version_diff.py FOLDER` compares the two. Nothing's published.
 
 [run]
 label = "compiled"
