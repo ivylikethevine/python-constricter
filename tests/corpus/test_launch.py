@@ -137,7 +137,7 @@ def test_a_corpus_with_no_checkout_is_given_an_environment_once(
 
 @pytest.mark.skipif(os.name == _WINDOWS, reason="a suite's environment is laid out as POSIX's")
 @pytest.mark.parametrize("checker", CHECKERS)
-def test_a_copys_checker_reads_the_copys_settings_and_its_environments_packages(
+def test_a_checker_in_a_copy_reads_its_settings_and_its_environments_packages(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     checker: str,

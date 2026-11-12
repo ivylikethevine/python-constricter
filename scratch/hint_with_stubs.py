@@ -6,7 +6,7 @@ FILE is relative to the directory checked (`core/indexes/period.py`). The corpus
 run's fix step copies it (`launch.copied`: its `.py` files, its stubs, its settings), and FILE alone
 is checked there with `--show-fixes --unsafe-fixes --infer-with=CHECKER` at `suffocate`, the checker
 reading the whole copy; then every `.pyi` of the copy is removed and it's checked again. Prints the
-fixes only one side lists, or with NAMEs those bindings' lines on each side. Both listings are kept
+fixes only one side lists, or each NAME binding's lines on each side. Both listings are kept
 under `local/scratch/hint-with-stubs/CORPUS/`. Runs in a sandbox, one process: under a minute a side
 on pandas with pyrefly, 16CPU/60GB.
 """
