@@ -1308,7 +1308,7 @@ they're joined and returned, where what it couldn't type at all it left a `str`.
 loop's target (`for base in reversed(cls.__mro__):`, then
 `if not dataclasses.is_dataclass(base): continue`): declared `Any`, it's narrowed to a dataclass or
 an instance of one, where the `type` the checker inferred was narrowed to the class
-(`scratch/widen_census.py`).
+(`scripts/scratch/widen_census.py`).
 
 ```python
 def load(reader, count):

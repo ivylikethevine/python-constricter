@@ -110,8 +110,8 @@ constricter = "constricter.__main__:run"
 LVA = "constricter.plugins.flake8:ConstricterChecker"
 
 [tool.constricter]
-# `scratch/`: held to no standard (see [tool.ruff]); the pre-commit hook names its files directly.
-exclude = ["scratch/*"]
+# `scripts/scratch/`: held to no standard (see [tool.ruff]); the pre-commit hook names its files directly.
+exclude = ["scripts/scratch/*"]
 
 [build-system]
 requires = ["hatch-vcs>=0.5,<1", "hatchling>=1.27,<2"]
@@ -161,8 +161,8 @@ indent-width = 4
 target-version = "py311"
 cache-dir = "local/.ruff_cache"
 # `.claude/worktrees/`: other checkouts of this repository, made by Claude Code's agents.
-# `scratch/`: one-off measuring scripts kept to run again, held to no standard.
-extend-exclude = [".claude", "scratch"]
+# `scripts/scratch/`: one-off measuring scripts kept to run again, held to no standard.
+extend-exclude = [".claude", "scripts/scratch"]
 
 [tool.ruff.lint]
 select = ["ALL"]

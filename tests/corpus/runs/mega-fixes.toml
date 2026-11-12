@@ -1,5 +1,5 @@
 # Every corpus's fixes and type checks alone, against the mega run at the same records: for a change
-# to what `--fix` offers or refuses, read with `scratch/run_fixes_diff.py` against the latest mega run's
+# to what `--fix` offers or refuses, read with `scripts/scratch/run_fixes_diff.py` against the latest mega run's
 # records. No hints, census, timing, tests or traced tests. Not published.
 
 [run]

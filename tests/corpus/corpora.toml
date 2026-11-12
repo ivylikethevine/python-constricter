@@ -34,7 +34,7 @@
 
 [sets]
 # Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
-# run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scratch/corpus_quadrants.py` reprints them).
+# run on 16CPU/60GB, the medians of the 2026-10-14 runs (`scripts/scratch/corpus_quadrants.py` reprints them).
 # requests, rich, trio, urllib3, langchain-core, sqlmodel, marshmallow and matplotlib: by their files
 # alone, until a run times them.
 fast-small = [

@@ -12,7 +12,7 @@
 records/
 work/
 logs/
-# Past each release's and the latest mega's and super's: on disk, not tracked (`scratch/retire_runs.py`).
+# Past each release's and the latest mega's and super's: on disk, not tracked (`scripts/scratch/retire_runs.py`).
 /0.3.6-rc.1-10-12-2026-1224/
 /0.3.7-rc.1-10-16-2026-0747/
 /0.3.8-rc.1-10-16-2026-1604/
