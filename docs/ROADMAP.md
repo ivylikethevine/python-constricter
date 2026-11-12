@@ -370,6 +370,7 @@ measured.
 - **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
   2026-10-31: `ossf/scorecard-action` v2.5.0 is taken, so zizmor's `self-repository` now waits on
   actionlint, whose newest, 1.7.12, rejects `$/`; harden-runner's block policy on macOS and Windows
-  is on in `ci.yml` and waits, for `build.yml`'s wheels, on a run outside a release; astroid 4.3.4
+  is on in `ci.yml` and in `build.yml`'s wheels, the latter unproven until `build.yml` is run by
+  hand on a branch; astroid 4.3.4
   still ships no `py.typed`, and fastjsonschema 2.22.2 is as before; reuse 6.3.0 ships a wheel at
   last, and `reuse lint` is back on). About an hour a pass.
