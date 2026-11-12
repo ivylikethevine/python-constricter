@@ -4,7 +4,8 @@ A file's hints rest on the whole program the checker reads, so a round's are kep
 they rest on (`key`): the checker and its build (see `remembered.build`), the text of every file
 asked about, the workspace's settings files (`pyproject.toml`, `pyrightconfig.json`, ...), the
 installed distributions of the environments a checker may read (the interpreter's, `VIRTUAL_ENV`'s
-and the workspace's own `.venv`), and the code here that asks and reads. Not a file of the
+and the workspace's own `.venv`), the interpreters first on `PATH` (the one basedpyright asks for
+its packages), and the code here that asks and reads. Not a file of the
 workspace's that isn't asked about: walking a tree costs as much as a round can save, and a
 project's files are asked about together. The first round of a project at the
 same commit asks again only when one of those changed; a later round's texts are `--fix`'s, so it's
@@ -19,6 +20,7 @@ import contextlib
 import hashlib
 import json
 import os
+import shutil
 import time
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
@@ -36,6 +38,7 @@ _SETTINGS: Final = frozenset(
 )
 _LOCAL_ENVIRONMENT: Final = ".venv"
 _VARIABLES: Final = ("VIRTUAL_ENV", "CONDA_PREFIX", "PYTHONPATH")
+_INTERPRETERS: Final = ("python3", "python")  # what a checker with none named starts, to ask for its packages
 _SUFFIX: Final = ".json"
 _WHERE: Final = ":"  # between a hint's line and column, in an entry
 # One file's hints as an entry holds them: by `line:column`, the text and the edits' text and imports.
@@ -58,6 +61,7 @@ def key(checker: str, command: Sequence[str], root: Path, files: Mapping[Path, s
     """
     build: str = remembered.build(checker, Path(command[0]))
     texts: list[str] = [checker, *command, build, *(os.environ.get(name, "") for name in _VARIABLES)]
+    texts += [shutil.which(name) or "" for name in _INTERPRETERS]
     # The code that asks and reads them, `edits` the one that writes what the store keeps.
     parts: list[bytes] = [
         Path(cast("str", code.__file__)).read_bytes() for code in (connection, protocol, edits)

@@ -21,7 +21,7 @@ from constricter.source import parsed
 
 if TYPE_CHECKING:  # slow to import, and only needed for many files
     from concurrent.futures import Future, ProcessPoolExecutor
-    from multiprocessing.context import DefaultContext
+    from multiprocessing.context import BaseContext
 
 # A worker's answers, one per file of its share: what it read (to index), and what it found.
 _Reading: TypeAlias = "Future[list[project.Module | None]]"
@@ -237,11 +237,11 @@ def _preload() -> None:
     would import constricter itself as it starts. Once the server runs, this changes nothing; a
     forked worker has the parent's imports, and a spawned one imports its own whatever this says.
     """
-    get_context: Callable[[], DefaultContext] = cast(
-        "Callable[[], DefaultContext]",
+    get_context: Callable[[], BaseContext] = cast(
+        "Callable[[], BaseContext]",
         importlib.import_module("multiprocessing").get_context,
     )
-    context: DefaultContext = get_context()
+    context: BaseContext = get_context()
     if context.get_start_method() == _FORKSERVER:
         context.set_forkserver_preload(_PRELOADED)
 

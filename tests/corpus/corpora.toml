@@ -7,7 +7,9 @@
 #                       other suite runs beside them.
 # [corpus.NAME.sdist]   its sdist, hash-pinned: on PyPI's file host, `where` (the directory under
 #                       https://files.pythonhosted.org/packages) and `archive`, or elsewhere, `url`;
-#                       its `sha256`, and `package`, the directory checked in it.
+#                       its `sha256`, and `package`, the directory checked in it. `requires`:
+#                       what its environment installs (`uv pip install`), itself among them
+#                       where it installs on this Python; nothing, an empty environment.
 # [corpus.NAME.suite]   its own tests and type checks, read from its CI: the `repository` and `tag` to
 #                       clone, its `source` there, and the `uv` commands that `install` it (`pip ...`
 #                       for `uv pip install`, into a venv made first; `sync ...` for `uv sync`); its
@@ -28,7 +30,7 @@
 # [sets]                each set's corpora, or other sets, which stand for theirs.
 #
 # A corpus with a suite is checked in its checkout, with its settings and environment; one with an
-# sdist alone, in the unpacked sdist.
+# sdist alone, in the unpacked sdist, with an environment of what it `requires`.
 
 [sets]
 # Each corpus by its size and its time: files over 124, and over 315s of steps in a super or mega
@@ -190,6 +192,7 @@ where = "source/T/Twisted"
 archive = "Twisted-12.3.0.tar.bz2"
 sha256 = "d4d1afcfa7ca40a7da26832cba653851eb147a06bd3f7f6fae89af3d5cd295c6"
 package = "Twisted-12.3.0/twisted"
+requires = ["zope.interface"]
 
 # The last pip for Python 2 (MIT): 2/3-era code whose `# type:` comments sit in modules importing
 # Python 2 `__future__` features, the path those comments count on automatically. A dependency
@@ -503,6 +506,7 @@ where = "00/21/39a76b01bd5eea82a04baaca7580e105d8c59450df03998345bb2cfb307b"
 archive = "textual-8.2.8.tar.gz"
 sha256 = "3f106a9fbc73e39dd266c9712432087de78a6d644084c7c241d6a25c3169115b"
 package = "textual-8.2.8/src/textual"
+requires = ["textual==8.2.8"]
 
 [corpus.mcp]
 why = "`asyncio` code"
@@ -791,6 +795,7 @@ where = "0b/a7/4a8546b293a09f39a2b55ca8a11539ae9654126df59065868c5d3993f0dd"
 archive = "stripe-16.0.0.tar.gz"
 sha256 = "5016068d54aebb43e61b3c377ef45bede4e0b4eb1817d7a12af81630c55a23d2"
 package = "stripe-16.0.0/stripe"
+requires = ["stripe==16.0.0"]
 
 [corpus.strawberry-graphql]
 why = "its own `TypedDict`s and overloads"
@@ -1115,3 +1120,4 @@ where = "e7/c8/9aa712a0afb882649424dd8de8ad9aa6235e796e84c6052e8f6dc1598d0d"
 archive = "matplotlib-3.11.2.tar.gz"
 sha256 = "cec596316640f2b394b8f0daa0ea61a8eae82d017b620b9f202befb972a59ea4"
 package = "matplotlib-3.11.2/lib/matplotlib"
+requires = ["matplotlib==3.11.2"]

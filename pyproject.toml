@@ -323,7 +323,13 @@ layers = [
 name = "the rules and the fixes import neither the command nor the plugins"
 type = "forbidden"
 source_modules = ["constricter.rules", "constricter.fix", "constricter.source", "constricter.offences"]
-forbidden_modules = ["constricter.cli", "constricter.plugins", "constricter.recording", "constricter.trace"]
+forbidden_modules = [
+    "constricter.cli",
+    "constricter.plugins",
+    "constricter.recording",
+    "constricter.trace",
+    "constricter.witness",
+]
 
 [[tool.importlinter.contracts]]
 name = "the rules read the fixes, and both what a module's source says, which reads neither"

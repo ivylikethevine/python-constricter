@@ -6,6 +6,37 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace --check` holds a run's values to the annotations its functions
+  declare: each annotated parameter, each local declared `name: T` at every statement that binds
+  it, and each `return` to its `-> T`. A binding a value differed from is listed as an offence
+  (LVA016) with the types seen, and the run exits 1. A builtin container's elements are held to its
+  annotation's arguments, a protocol `isinstance` can't check to its members' names; a test's
+  stand-in and an annotation that can't be evaluated say nothing.
+- A trace no longer records Python 3.14's `__annotate__` functions as the `def` they're made for.
+- A module's own stub (`mod.pyi` beside `mod.py`) is read in every check of the file. Before, only
+  the first check of the text the run indexed read it: a file `--fix` checked again within a round,
+  its first fixes written, knew none of its stub's types, and neither did the pylint plugin or
+  standard input named for the file. With guesses, matplotlib's second pass is left nothing (6
+  fixes before).
+- A round's stored hints rest on the `python` first on `PATH` too: basedpyright asks it for the
+  installed packages, whatever `VIRTUAL_ENV` names, so hints kept under another one are asked again.
+- The corpus runner's fix steps give a copy an empty settings file of each checker it has none of
+  its own for (`pyrightconfig.json`, `pyrefly.toml`, `ty.toml`), an sdist's copy too, and put the
+  corpus's environment's Python first on the path. Before, pyrefly read this project's settings on
+  41 of the 55 corpora's copies and ty on 49, and basedpyright the dev venv's packages on all.
+- The corpus runner gives a corpus with no checkout (the standard library, twisted, pip, textual,
+  stripe, matplotlib) an environment of its own, with what its catalog entry `requires`; before,
+  constricter and the checkers read the dev venv's packages for it.
+- A call of a method whose every `return` gives one of its parameters as it's given is typed by
+  what the call passes for it, a guess (`echoed`): `chosen = self.pick(3)` an `int`, where `pick`
+  ends `return fallback`. Not a method a class under its own defines again in the module.
+- A fix no longer names a class its file doesn't import, in two cases. The type a method returns,
+  where its class reached the file through an overload's return or another late step
+  (`line1: Line2D`, from `ax.plot(...)` after `fig, ax = plt.subplots()`), is imported for type
+  checking, and that class's own methods are read in the same pass. And in a module with its own
+  stub, a name only the stub imports (`trans: Transform`) is imported where a fix writes it in the
+  source, the file checked again in the same run (matplotlib: 52 unbound names in its fixes, now
+  none).
 - A checked tree's stub with no source beside it, a compiled module's (`_path.pyi`, with no
   `_path.py`), is read as the module for the calls into it, as an installed package's stub is, and
   before an installed copy: under the nearest checked package above it, or beside the checked
@@ -14,6 +45,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   files asked about (600 MB and 130 bytes for each byte of them), where the floor was 600 MB.
 - The corpus runner gives a hinted step that starts with fewer CPUs than it wants at least the
   memory it held in its last run for its servers, within the 8 GB default (`Wanted.hinted`).
+- The corpus runner's fix steps check a copy with the corpus's stubs (`.pyi`), as a check of its
+  tree reads them; before, a copy held its `.py` files alone, and no run read a package's stubs.
 - A `str` literal's `split()`, `rsplit()` or `splitlines()` with literal arguments is fixed
   `list[LiteralString]`: typeshed's `LiteralString` overload, which basedpyright held invariant
   against the `list[str]` written before (django's `MONTHS`, textual's `DIGITS3X3`). It's imported

@@ -7,6 +7,7 @@ from typing import Final
 import pytest
 
 from constricter.cli import command as cli
+from constricter.rules.checker import check_source
 
 SOURCE: Final = """
 class Axes:
@@ -117,3 +118,131 @@ def test_a_stub_that_cant_be_read_is_left_out(tmp_path: Path, stub: bytes) -> No
     user: Path = _write(tmp_path / "user.py", USER)
     _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
     assert UNSTUBBED in user.read_text(encoding="utf-8")
+
+
+LEGEND: Final = """
+class Legend:
+    pass
+
+
+def make() -> Legend:
+    return Legend()
+"""
+MAKING: Final = """
+from mpl.legend import make
+
+
+class Axes:
+    def legend(self):
+        return make()
+
+    def own(self):
+        mine = self.legend()
+        return mine
+
+
+def local_make():
+    made = make()
+    return made
+"""
+MADE: Final = """
+from mpl.legend import make
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from mpl.legend import Legend
+
+
+class Axes:
+    def legend(self):
+        return make()
+
+    def own(self):
+        mine: Legend = self.legend()
+        return mine
+
+
+def local_make():
+    made: Legend = make()
+    return made
+"""
+
+
+def test_a_name_only_the_stub_imports_is_imported_where_the_source_writes_it(tmp_path: Path) -> None:
+    """The stub's `Legend` isn't the source's: a fix there naming it adds its import for type checking.
+
+    And the source is checked again in the same run: its own method the stub declares a `Legend`
+    has that type once the name is imported, a second pass left nothing.
+    """
+    _ = _write(tmp_path / "mpl" / "__init__.py", "")
+    _ = _write(tmp_path / "mpl" / "legend.py", LEGEND)
+    axes: Path = _write(tmp_path / "mpl" / "axes.py", MAKING)
+    _ = _write(tmp_path / "mpl" / "axes.pyi", STUB)
+    _ = cli.main(["--fix", "-q", "--jobs=1", "--select=LVA001", str(tmp_path)])
+    assert axes.read_text(encoding="utf-8") == textwrap.dedent(MADE)
+
+
+ANIMATION: Final = """
+from mpl import figure
+
+
+def adjusted(w, dpi):
+    wnew = w * dpi
+    return wnew
+
+
+def frames():
+    return 1
+
+
+class Writer:
+    def setup(self, dpi):
+        self.dpi = dpi
+
+    def size(self):
+        count = 1
+        shown = figure.shown()
+        return adjusted(2.0, self.dpi), shown, count
+"""
+ANIMATION_STUB: Final = """
+class Writer:
+    dpi: float
+"""
+FIGURE: Final = """
+from mpl import animation
+
+
+def shown():
+    return animation.frames()
+"""
+ADJUSTED: Final = "    wnew: float = w * dpi\n"
+SHOWN: Final = "    shown: int = figure.shown()\n"
+
+
+def test_a_file_checked_again_within_a_round_still_reads_its_stub(tmp_path: Path) -> None:
+    """Two files calling each other's functions: the first is checked again, its first fixes written.
+
+    That check's calls are what types `adjusted`'s `dpi` by its callers: `self.dpi` is a `float` by
+    the stub alone, so a check without it left `wnew` to a second pass.
+    """
+    _ = _write(tmp_path / "mpl" / "__init__.py", "")
+    animation: Path = _write(tmp_path / "mpl" / "animation.py", ANIMATION)
+    _ = _write(tmp_path / "mpl" / "animation.pyi", ANIMATION_STUB)
+    _ = _write(tmp_path / "mpl" / "figure.py", FIGURE)
+    _ = cli.main(["--fix", "--unsafe-fixes", "-q", "--jobs=1", "--all-scopes", str(tmp_path)])
+    fixed: str = animation.read_text(encoding="utf-8")
+    assert SHOWN in fixed  # known only once `figure.py` is checked
+    assert ADJUSTED in fixed
+
+
+def test_a_text_checked_with_no_index_reads_its_files_stub(tmp_path: Path) -> None:
+    """As a plugin checks it, or the command a second time: by the file's name, where it's a `.py` file's."""
+    axes: Path = _write(tmp_path / "mpl" / "axes.py", SOURCE)
+    _ = _write(tmp_path / "mpl" / "axes.pyi", STUB)
+    source: str = axes.read_text(encoding="utf-8")
+    assert _annotations(source, str(axes)) == ["Axes"]
+    assert not _annotations(source, "<unknown>")
+    assert not _annotations(source, str(axes.with_suffix(".txt")))
+
+
+def _annotations(source: str, filename: str) -> list[str]:
+    return [each.edit.annotation for each in check_source(source, filename) if each.edit is not None]

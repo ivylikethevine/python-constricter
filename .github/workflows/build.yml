@@ -86,18 +86,20 @@ jobs:
       id-token: write # sign the attestation
       attestations: write # store the attestation
     steps:
-      # block on Linux; macOS and Windows audit until each has an allowlist from its audit runs.
-      # The hosts: the build's artifact, cibuildwheel, its manylinux images and its release
-      # downloads (github.com redirects them to objects.githubusercontent.com), the hash-checked
-      # build dependencies, AlmaLinux's packages (clang), Sigstore and the attestation.
-      # One step: an action's `pre` (where harden-runner starts its agent) ignores the step's `if:`.
+      # block on every leg, each off its own audit runs. The hosts: the build's artifact,
+      # cibuildwheel, its manylinux images and its release downloads (github.com redirects them to
+      # objects.githubusercontent.com, and on macOS and Windows to release-assets), the hash-checked
+      # build dependencies, AlmaLinux's packages (clang), the CPython cibuildwheel takes from NuGet
+      # on Windows, Sigstore and the attestation. The three on port 80 are where Windows asks
+      # whether a certificate is revoked.
       - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
-          egress-policy: ${{ runner.os == 'Linux' && 'block' || 'audit' }}
+          egress-policy: block
           allowed-endpoints: >
             github.com:443
             api.github.com:443
             objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
             pypi.org:443
             files.pythonhosted.org:443
             quay.io:443
@@ -105,6 +107,11 @@ jobs:
             cdn02.quay.io:443
             cdn03.quay.io:443
             repo.almalinux.org:443
+            api.nuget.org:443
+            dist.nuget.org:443
+            ocsp.digicert.com:80
+            crl.microsoft.com:80
+            oneocsp.microsoft.com:80
             fulcio.sigstore.dev:443
             rekor.sigstore.dev:443
             *.actions.githubusercontent.com:443

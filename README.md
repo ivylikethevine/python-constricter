@@ -251,7 +251,9 @@ and `--show-fixes` lists each fix and how its value decided it, and after `--fix
 `--infer-with basedpyright` (or `ty`, or `pyrefly`, or several: `basedpyright,ty`; each installed
 alongside) asks those type checkers for what `--fix` can't type itself, as guesses;
 `--infer-from FILE` takes the types a run bound each name to, recorded by
-`python -m constricter.trace -m pytest`, the same way. The full list is in
+`python -m constricter.trace -m pytest`, the same way; `python -m constricter.trace --check -m pytest`
+holds the run's values to the annotations already written, and lists those that differ. The full
+list is in
 [docs/FIXES.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/FIXES.md).
 
 ### Installing and running

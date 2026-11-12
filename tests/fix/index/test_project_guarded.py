@@ -923,3 +923,73 @@ def test_a_receiver_typed_by_an_awaited_call_has_its_methods_in_the_same_pass(tm
     )
     fixed: str = user.read_text(encoding="utf-8")
     assert all(line in fixed for line in SERVED), fixed
+
+
+# A class reached through an overload, whose method returns another class the file doesn't name.
+PLOTS: Final = {
+    "plot/__init__.py": "",
+    "plot/lines.py": """
+        class Line:
+            def data(self) -> bytes:
+                return b""
+    """,
+    "plot/axes.py": """
+        from plot.lines import Line
+
+
+        class Axes:
+            def plot(self) -> list[Line]:
+                return [Line()]
+    """,
+    "plot/pyplot.py": """
+        from typing import overload
+
+        from plot.axes import Axes
+
+
+        @overload
+        def subplots(count: int) -> list[Axes]: ...
+        @overload
+        def subplots() -> Axes: ...
+        def subplots(count: int | None = None) -> Axes | list[Axes]:
+            return Axes() if count is None else [Axes()] * count
+    """,
+}
+PLOTTING: Final = """
+from plot import pyplot as plt
+
+
+def run() -> None:
+    ax = plt.subplots()
+    lines = ax.plot()
+    for line in lines:
+        data = line.data()
+"""
+PLOTTED: Final = """
+from plot import pyplot as plt
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from plot.axes import Axes
+    from plot.lines import Line
+
+
+def run() -> None:
+    ax: Axes = plt.subplots()
+    lines: list[Line] = ax.plot()
+    line: Line
+    for line in lines:
+        data: bytes = line.data()
+"""
+
+
+def test_a_receiver_typed_by_an_overload_has_its_methods_types_imported_in_the_same_pass(
+    tmp_path: Path,
+) -> None:
+    """What its method returns is imported for type checking too, and is a receiver's class in turn."""
+    name: str
+    source: str
+    for name, source in PLOTS.items():
+        _ = _write(tmp_path / name, source)
+    user: Path = _write(tmp_path / "plotting.py", PLOTTING)
+    assert cli.main(["--fix", "-q", "--jobs=1", str(user), str(tmp_path / "plot")]) == cli.EXIT_CLEAN
+    assert user.read_text(encoding="utf-8") == textwrap.dedent(PLOTTED)

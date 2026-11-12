@@ -28,6 +28,7 @@ class Source(NamedTuple):
     url: str
     sha256: str
     package: str  # relative to the unpacked sdist
+    requires: tuple[str, ...] = ()  # what its environment installs (`corpus_suite.own_environment`)
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-sources"
@@ -55,17 +56,29 @@ def pinned(among: str | None = None) -> dict[str, Source]:
         entry: _Table = entries[name]
         if _SDIST in entry:
             sdist: dict[str, str] = cast("dict[str, str]", entry[_SDIST])
+            requires: list[str] = cast("dict[str, list[str]]", entry[_SDIST]).get("requires", [])
             found[name] = Source(
                 str(entry["version"]),
                 sdist.get("url") or f"{FILES}/{sdist['where']}/{sdist['archive']}",
                 sdist["sha256"],
                 sdist["package"],
+                tuple(requires),
             )
     return found
 
 
 # The seven corpora's: the standard library's, and Twisted's and pip's last lines for Python 2.
 SOURCES: Final = pinned("original")
+
+
+def unpacked(name: str, source: Source, work: Path = WORK) -> Path:
+    """Name the directory source `name` is unpacked into, under `work`.
+
+    Returns:
+      It: the sdist's own directory is under it, and its environment beside that.
+
+    """
+    return work / f"{name}-{source.version}"
 
 
 def fetch(name: str, work: Path = WORK, sources: Mapping[str, Source] | None = None) -> Path:
@@ -79,7 +92,7 @@ def fetch(name: str, work: Path = WORK, sources: Mapping[str, Source] | None = N
 
     """
     source: Source = (SOURCES if sources is None else sources)[name]
-    root: Path = work / f"{name}-{source.version}"
+    root: Path = unpacked(name, source, work)
     package: Path = root / source.package
     if package.is_dir():
         return package

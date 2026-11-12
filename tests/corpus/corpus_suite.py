@@ -17,8 +17,8 @@ module's, of a name on its line or in its message), and named by the mechanisms 
 fix (`--format=json`'s `kinds`), a guess's marked `(likely)` or `(guess)`. A trace is by line, not
 by cause: a certain fix can be blamed for what a guess beside it brought.
 
-A checkout with no settings for Pyright or pyrefly is given empty ones (`_settled`), or the
-checkers' servers `--infer-with` starts read this project's, above it.
+A checkout with no settings for Pyright, pyrefly or ty is given empty ones (`checker_settings.own`), as a
+fix's copy of it is, or the checkers `--infer-with` starts read this project's, above it.
 
 The tests are traced under `python -m constricter.trace` (this checkout's, which the package's
 environment is given the path of), where pytest runs them, `python -c` does (Django's `runtests.py`,
@@ -42,14 +42,14 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import IO, Final, NamedTuple, TypeAlias, cast
+from typing import Final, NamedTuple, TypeAlias, cast
 
 # pytest's own reports, not a stranger's XML.
 from xml.etree import ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 
 from constricter import recording
 from constricter.offences import Tier
-from tests.corpus import catalog, jsonl
+from tests.corpus import catalog, checker_settings, jsonl
 from tests.corpus.run_config import scrubbed
 
 Suite: TypeAlias = catalog.Suite
@@ -119,12 +119,6 @@ _MEMORY_SHARE: Final = 2  # the tests' workers' part of the machine's memory: a 
 SUITES: Final = catalog.load().suites(catalog.ORIGINAL)  # the seven corpora's, as `corpora.toml` has them
 # Written once every install command has succeeded: a hash of them, so changed ones are run again.
 _INSTALLED: Final = ".venv/corpus-suite-installed"
-# Each checker's settings file, what an empty one holds, and the `pyproject.toml` sections that stand
-# for it: pyrefly reads mypy's or Pyright's where it has none of its own.
-_SETTINGS: Final = (
-    ("pyrightconfig.json", "{}\n", ("pyright", "basedpyright")),
-    ("pyrefly.toml", "", ("pyrefly", "mypy", "pyright")),
-)
 _PYRIGHTS: Final = frozenset({"pyright", "basedpyright"})
 _PROJECT: Final = frozenset({"-p", "--project"})  # Pyright's option naming its settings
 # pytest's `-rfE` lines (the test, then ` - ` and why; a parametrized id may hold a space), and
@@ -289,27 +283,6 @@ def _own(check: Sequence[str]) -> list[str]:
     return [*check, *(("--project", ".") if check[0] in _PYRIGHTS and not named else ())]
 
 
-def _settled(root: Path) -> None:
-    """Keep the checkers' servers to checkout `root`'s settings: an empty file of them, where it has none.
-
-    With none in its workspace, Pyright's server reads the nearest above it, and pyrefly takes the
-    project above that has some (this one) for the root it resolves imports from. Git is told to
-    pass each file over.
-    """
-    project: Path = root / "pyproject.toml"
-    own: str = project.read_text(encoding="utf-8") if project.is_file() else ""
-    name: str
-    empty: str
-    tools: tuple[str, ...]
-    for name, empty, tools in _SETTINGS:
-        if (root / name).exists() or any(f"[tool.{tool}]" in own for tool in tools):
-            continue
-        _ = (root / name).write_text(empty, encoding="utf-8")
-        stream: IO[str]
-        with (root / ".git" / "info" / "exclude").open("a", encoding="utf-8") as stream:
-            _ = stream.write(f"/{name}\n")
-
-
 def checkout(
     name: str,
     suite: Suite,
@@ -339,7 +312,7 @@ def checkout(
             ["git", "clone", "-q", "--depth", "1", "--branch", suite.tag, suite.repository, str(root)],
             WORK,
         )
-    _settled(root)
+    checker_settings.settled(root)
     if not install:
         return root
     marker: Path = root / _INSTALLED
@@ -365,6 +338,33 @@ def checkout(
     if done != wanted:
         _ = marker.write_text(wanted, encoding="utf-8")
     return root
+
+
+def own_environment(root: Path, requires: Sequence[str]) -> Path:
+    """Make (once for `requires`) the environment of a corpus with no checkout, in `root`.
+
+    A venv of its own with what the corpus requires, nothing where it requires nothing: constricter
+    and the checkers `--infer-with` starts read its packages, as a suite's, not this project's.
+
+    Returns:
+      The venv.
+
+    Raises:
+      RuntimeError: a command failed.
+
+    """
+    marker: Path = root / _INSTALLED
+    wanted: str = hashlib.sha256(repr(tuple(requires)).encode()).hexdigest()
+    if not marker.exists() or marker.read_text(encoding="utf-8") != wanted:
+        uv: str = os.environ.get("UV") or shutil.which("uv") or "uv"
+        command: tuple[str, ...]
+        for command in (catalog.VENV, *([("pip", "install", "-q", *requires)] if requires else [])):
+            ran: subprocess.CompletedProcess[str] = _completed([uv, *command], root)
+            if ran.returncode:
+                message: str = f"{root.name}: uv {' '.join(command)} failed:\n{ran.stdout}{ran.stderr}"
+                raise RuntimeError(message)
+        _ = marker.write_text(wanted, encoding="utf-8")
+    return root / ".venv"
 
 
 def installed(root: Path) -> str:

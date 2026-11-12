@@ -329,11 +329,12 @@ def _import_for(target: Module, origin: Origin, name: str, known: Mapping[str, G
     `known`: those other types' names take already.
 
     Returns:
-      It: the file's own (no statement), or one to add; `None` for a name an import it runs binds,
-      or one written through a module it imports (`m.Row`).
+      It: the file's own (no statement), or one to add, as for a name only its own stub imports
+      (`Module.stub_names`); `None` for a name an import it runs binds, or one written through a
+      module it imports (`m.Row`).
 
     """
-    if name in target.guarded:
+    if name in target.guarded and name not in target.stub_names:
         return Guarded(target.guarded[name], None)
     if DOT in name or name in target.names:
         return None

@@ -53,6 +53,7 @@ FIX_KINDS: dict[str, str] = {
     "filled": "an empty container, then only what the function adds to it (a guess)",
     "returned": "an unannotated function's own `return`s (a method's: a guess)",
     "documented": "an unannotated function's docstring's named return type (a guess)",
+    "echoed": "a method that returns one of its parameters as given: what its call passes it (a guess)",
     "assigned": "an unannotated instance attribute's every `self.x = value` in its class (a guess)",
     "callers": "an unannotated parameter every call in the checked files passes one type (a guess)",
     "reads": "an unannotated parameter: the one class with every member read of it (a guess)",

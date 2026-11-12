@@ -273,6 +273,27 @@ def test_steps_on_one_checkout_take_one_lock(tmp_path: Path) -> None:
     assert running.locks(entry, job, "tests-fix-certain") == first
 
 
+def test_a_fix_copies_a_trees_stubs_with_its_python_files(tmp_path: Path) -> None:
+    """Beside a source or alone, from the directories a check walks; only the Python files are to compile."""
+    root: Path = tmp_path / "tree" / "pkg"
+    name: str
+    for name in ("__init__.py", "both.py", "both.pyi", "_fast.pyi", "ext/__init__.pyi", "build/left.pyi"):
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        _ = (root / name).write_text("", encoding="utf-8")
+    where: launch.Place
+    valid: list[Path]
+    where, valid = launch.copied(Tree("pkg", "1", root), tmp_path / "copy")
+    assert where.target == tmp_path / "copy" / "pkg"
+    assert sorted(path.relative_to(where.target).as_posix() for path in where.target.rglob("*.py*")) == [
+        "__init__.py",
+        "_fast.pyi",
+        "both.py",
+        "both.pyi",
+        "ext/__init__.pyi",
+    ]
+    assert sorted(path.name for path in valid) == ["__init__.py", "both.py"]
+
+
 def test_a_runs_facts_are_written_as_toml_values() -> None:
     """Numbers stay numbers, floats among them, as TOML reads them back."""
     facts: Record = {"label": 'a "b"', "jobs": 4, "seconds": 1.5, "dry": False, "versions": ["dev"]}

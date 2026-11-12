@@ -10,7 +10,7 @@ from constricter.fix.libraries import stdlib, walks
 from constricter.fix.libraries.library import library_class
 from constricter.fix.libraries.opened import opened, opened_path
 from constricter.fix.libraries.overloads import TEXT
-from constricter.fix.values import called, decided, displays, shapes
+from constricter.fix.values import called, decided, displays, echoed, shapes
 from constricter.fix.values.inference import (
     CONTAINER_BUILDERS,
     OPERAND,
@@ -330,7 +330,8 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
 
     Returns:
       A method typed by its `return`s: `returned`, and what those rest on; a function whose
-      `return`s are guesses: what they rest on; anything else: `constructor`.
+      `return`s are guesses: what they rest on; a method that returns its parameter as given:
+      `echoed`; anything else: `constructor`.
 
     """
     func: ast.expr
@@ -351,6 +352,10 @@ def _guessed_by(call: ast.Call, known: Known, declared: Mapping[str, str]) -> fr
             typed := _receiving(receiver, method, known, declared)
         ) is not None and (defined := returned_method(typed, method, known)) is not None:
             return frozenset({RETURNED}) | known.returned.guesses.get(f"{defined[0]}.{method}", frozenset())
+        case ast.Call(func=ast.Attribute(value=receiver, attr=method)) if (
+            typed := _receiving(receiver, method, known, declared)
+        ) is not None and echoed.echo(typed, method, known) is not None:
+            return frozenset({echoed.KIND})
         case _:
             return frozenset({CONSTRUCTOR})
 
