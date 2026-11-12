@@ -9,7 +9,7 @@ import sys
 import typing
 from pathlib import Path
 from types import FrameType, ModuleType
-from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, NoReturn, Protocol, TypeAlias, cast
 
 import pytest
 
@@ -368,7 +368,8 @@ def test_an_annotation_is_evaluated_where_its_function_runs() -> None:
     module: ModuleType = ModuleType("pkg.core")
     odd: type[_Fake] = _Fake
     vars(module)["Odd"] = odd
-    exec("import sys\nframe = sys._getframe()\n", vars(module))  # ruff: ignore[exec-builtin]  # pylint: disable=exec-used
+    source: str = "import sys\nframe = sys._getframe()\n"
+    exec(source, vars(module))  # ruff: ignore[exec-builtin]  # pylint: disable=exec-used
     frame: FrameType = cast("FrameType", vars(module)["frame"])
     assert witness.patched(odd, witness.module_of(frame))
     assert witness.evaluated("Odd", frame, ()) is odd
@@ -400,7 +401,7 @@ class _Refusing(type):
     """A class's class that can't say what its instances are, or what module it's of."""
 
     @override
-    def __instancecheck__(cls, instance: object) -> bool:
+    def __instancecheck__(cls, instance: object) -> NoReturn:
         """Refuse to say.
 
         Raises:
@@ -429,7 +430,7 @@ class _Failing(type):
     """A class's class whose check of an instance fails."""
 
     @override
-    def __instancecheck__(cls, instance: object) -> bool:
+    def __instancecheck__(cls, instance: object) -> NoReturn:
         """Fail.
 
         Raises:
