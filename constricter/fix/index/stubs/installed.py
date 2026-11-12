@@ -56,6 +56,8 @@ _UNREAD: Final[Mapping[str, str]] = Empty()  # an untyped package's class's attr
 _PARTIAL: Final = "partial"  # in a stub package's `py.typed`: it types some of the package alone
 _UNDERSCORE: Final = "_"
 _VIRTUAL_ENV: Final = "VIRTUAL_ENV"
+# Where a POSIX environment keeps its packages: CPython's, then PyPy's.
+_SITES: Final = ("lib/python3*/site-packages", "lib/pypy3*/site-packages")
 _CACHE_HOME: Final = "XDG_CACHE_HOME"
 _LOCAL_APP_DATA: Final = "LOCALAPPDATA"  # Windows'
 _CACHE: Final = "constricter"
@@ -88,7 +90,7 @@ def search_path() -> tuple[Path, ...]:
     active: str | None = os.environ.get(_VIRTUAL_ENV)
     extra: list[str] = []
     if active is not None:
-        extra = [str(p) for p in sorted(Path(active).glob("lib/python3*/site-packages"))]
+        extra = [str(p) for pattern in _SITES for p in sorted(Path(active).glob(pattern))]
         extra.append(str(Path(active) / "Lib" / "site-packages"))  # Windows
     found: dict[Path, None] = {}
     entry: str

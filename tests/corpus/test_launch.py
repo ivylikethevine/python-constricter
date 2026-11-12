@@ -1,6 +1,7 @@
 """A fix's copy of a corpus: the checkers `--infer-with` starts read the copy's settings and environment."""
 
 import os
+import shlex
 import venv
 from pathlib import Path
 from types import SimpleNamespace
@@ -101,7 +102,7 @@ def test_a_runs_path_starts_with_its_environments_python_alone(tmp_path: Path) -
     first, second = launch.environment(place)["PATH"].split(os.pathsep)[:2]
     assert second == tools
     assert sorted(path.name for path in Path(first).iterdir()) == ["python", "python3"]
-    assert f"exec {python} " in (Path(first) / "python3").read_text(encoding="utf-8")
+    assert f"exec {shlex.quote(str(python))} " in (Path(first) / "python3").read_text(encoding="utf-8")
     assert launch.environment(place)["PATH"].split(os.pathsep)[0] == first  # as it is: not written again
     assert launch.environment(place._replace(environment=None))["PATH"].split(os.pathsep)[0] == tools
 
@@ -157,7 +158,7 @@ def test_a_copys_checker_reads_the_copys_settings_and_its_environments_packages(
     _ = (checkout / "pkg" / "calling.py").write_text(_CALLING, encoding="utf-8")
     venv.create(above / "elsewhere", symlinks=True)
     venv.create(checkout / ".venv", symlinks=True)
-    package: Path = next((checkout / ".venv" / "lib").glob("python*")) / "site-packages" / "onlythere"
+    package: Path = next((checkout / ".venv" / "lib").glob("*/site-packages")) / "onlythere"
     package.mkdir(parents=True)
     _ = (package / "__init__.py").write_text(_PACKAGE, encoding="utf-8")
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))

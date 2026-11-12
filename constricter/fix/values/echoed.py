@@ -40,8 +40,8 @@ def result(receiver: str, name: str, call: ast.Call, known: Known, infer: Infer)
     if (defined := echo(receiver, name, known)) is None:
         return None
     given: ast.expr | None = _argument(call, defined[1])
-    typed: Inference | None = None if given is None else infer(given)
-    if typed is None:
+    typed: Inference | None
+    if (typed := None if given is None else infer(given)) is None:
         return None
     reason: str = f"what it passes `{defined[0]}.{name}`, which returns its `{defined[1].name}`"
     return Inference(typed.annotation, reason, typed.kinds | {KIND})

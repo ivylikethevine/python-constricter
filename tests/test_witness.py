@@ -239,6 +239,7 @@ def spun(tell, leave, value: int):
     yield (tell(), value)[1]
 """
 _Functions: TypeAlias = "Mapping[str, Callable[..., object]]"  # a script's, by name
+_Spun: TypeAlias = "GeneratorType[str, None, None]"  # what a call of `spun` answers
 
 
 class _Told:
@@ -337,7 +338,7 @@ def test_a_binding_is_judged_a_few_times_and_told_of_by_its_first_values(
 def test_a_generators_parameters_are_held_as_its_suspended_too(tmp_path: Path) -> None:
     """A follower that can't tell a `yield` from a return (`sys.settrace`) tells of each."""
     told: _Told = _Told(tmp_path)
-    made: GeneratorType[str, None, None] = cast("GeneratorType[str, None, None]", told.call("spun", _TEXT))
+    made: _Spun = cast("_Spun", told.call("spun", _TEXT))
     assert told.witness.left(cast("FrameType", made.gi_frame))
     assert told.witness.left(cast("FrameType", made.gi_frame), finished=True)
     assert told.judged() == {"value": (31, [0, 2, 0], ["str"])}

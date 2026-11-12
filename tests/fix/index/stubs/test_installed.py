@@ -94,14 +94,16 @@ def test_calls_into_typed_installed_packages_are_typed(
 
 
 def test_the_virtual_environment_is_searched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`VIRTUAL_ENV`'s site-packages (POSIX or Windows), before the interpreter's own directories."""
+    """`VIRTUAL_ENV`'s site-packages (CPython's, PyPy's or Windows'), before the interpreter's own."""
     posix: Path = tmp_path / "venv" / "lib" / "python3.99" / "site-packages"
+    pypy: Path = tmp_path / "venv" / "lib" / "pypy3.99" / "site-packages"
     windows: Path = tmp_path / "venv" / "Lib" / "site-packages"
     posix.mkdir(parents=True)
+    pypy.mkdir(parents=True)
     windows.mkdir(parents=True)
     monkeypatch.setenv("VIRTUAL_ENV", str(tmp_path / "venv"))
     found: tuple[Path, ...] = installed.search_path()
-    assert found[:2] == (posix.resolve(), windows.resolve())
+    assert found[:3] == (posix.resolve(), pypy.resolve(), windows.resolve())
     monkeypatch.delenv("VIRTUAL_ENV")
     assert posix.resolve() not in installed.search_path()
 
