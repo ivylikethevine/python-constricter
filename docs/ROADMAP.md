@@ -45,7 +45,8 @@ to run left for it; the report is written from the records so far, naming the st
 published once every stage is in. A stage on another commit, other uncommitted changes or another
 run file than the folder's earlier stages is refused, naming both, unless `--join-anyway`, and the
 report then gives each stage's commit. Done when a super run made in four stages at separate times
-gives the report one sitting does. Coverage unchanged. The 0.4.3-rc.3 super run (`ac48774`,
+gives the report one sitting does. Coverage unchanged. Its timings are of 2026-10-22 and 10-24,
+before the changes since. The 0.4.3-rc.3 super run (`ac48774`,
 16CPU/60GB) ran its four stages back to back into one folder: `fixes` 17 minutes, `traced` 15,
 `tests` 12, `timed` 4, 48 in all as rc.2's one sitting took; each joined, and the report and RUNS.md
 were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them with 90s between:
@@ -72,9 +73,43 @@ pinned: an environment holds what resolved the day it was made. Waits on a mega 
 second passes are recorded. Coverage: the six corpora's fixes move, by how much unknown until it
 runs.
 
+#### 3. A hint's name, held to what the file binds it to
+
+A checker's hint names a class by its bare name, and a fix wrote that name where the file binds it,
+to whatever. On `mega-11-11-2026-1113`, the first run whose checkers read each corpus's own
+packages, sphinx's `img: Image` (`builders/_epub_base.py`) is the class `PIL.Image.Image` where the
+file's `Image` is the module (`from PIL import Image`), and httpx's `resp: Response`
+(`_transports/default.py`) httpcore's class where the file's `Response` is httpx's own: 24 of
+sphinx's 37 new type errors and 12 of httpx's 16, by all three checkers, and likely where two agree
+(`agreed`). Built 2026-11-16 (`offers._misbound`): a hint writing bare a name the file binds to a
+module, or one its edits import from where the index defines another class than the file's (a
+checked file's own against the standard library's too), is dropped whole; where only what it shows
+does, its edit's spelling is judged in its place (`datetime.datetime`, where the file imports the
+module). Not respelled through the module (`Image.Image`): no edit writes it so. Of the hints the
+store holds for seven corpora, every checker's and round's, it drops httpx's 6 of 2,131, sphinx's 10
+of 23,572, mcp's 4 of 7,074, pydantic's none of 12,865, sqlalchemy's 55 of 76,509, django's 207 of
+78,737 and pandas's 43 of 398,023 (`scripts/scratch/misbound_hints.py`), each naming another thing
+than the file's name: most a bare `datetime` where the file imports the module, the rest read by
+hand (jsonschema's `ValidationError` against pydantic's, `forms.CharField` against the model
+field's, `email.charset` imported as `Charset`, numpy's `Generator` against `collections.abc`'s). Waits on a
+mega run (95 minutes on 16CPU/60GB): done when it shows those errors gone and no new ones. Coverage
+unchanged, some hundreds of guesses withdrawn.
+
+#### 4. A generic alias hinted without its arguments
+
+mcp's `outcome: ElicitationResult` and `dep_outcome: ElicitationResult`
+(`server/mcpserver/resolve.py`, by pyrefly's hint) name a generic alias with no arguments, one made
+by a call (`ElicitationResult = TypeAliasType("ElicitationResult", ..., type_params=(T,))`): its own
+Pyright asks for them (`reportMissingTypeArgument`), 12 of mcp's 26 new type errors on
+`mega-11-11-2026-1113`, where the run before had 10 in all. Built 2026-11-16: such an alias is a
+generic one (`declarations.generic_alias_types`, read into `modules._aliases`), so neither a hint
+nor a fix writes it bare; on mcp's checkout the index has `ElicitationResult` generic where
+`resolve.py` imports it. Waits on a mega run (95 minutes on 16CPU/60GB): done when mcp's 12 errors
+are gone. Coverage unchanged.
+
 ### Small: under 4 hours
 
-#### 3. sqlalchemy's four `test_compare` failures after `infer-union`
+#### 5. sqlalchemy's four `test_compare` failures after `infer-union`
 
 On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
 step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
@@ -98,33 +133,6 @@ eight kept runs where its four failed. A fixed step's failures run again before 
 a proposal, since it changes what a run reports: the four named in the catalog
 (`[corpus.sqlalchemy.suite.differs]`), or the union's tests run again as a fixed step's are. About
 an hour for either; coverage unchanged.
-
-#### 4. A generic alias hinted without its arguments
-
-mcp's `outcome: ElicitationResult` and `dep_outcome: ElicitationResult`
-(`server/mcpserver/resolve.py`, by pyrefly's hint) name a generic alias with no arguments, one made
-by a call (`ElicitationResult = TypeAliasType("ElicitationResult", ..., type_params=(T,))`): its own
-Pyright asks for them (`reportMissingTypeArgument`), 12 of mcp's 26 new type errors on
-`mega-11-11-2026-1113`, where the run before had 10 in all. A generic class and a `type X[T] = ...`
-alias aren't written bare (`Module.generics`, `modules._aliases`); an alias `TypeAliasType` makes
-with `type_params` is read as a plain type (`modules._MAKERS`). Done when such an alias counts as
-generic where a hint or a fix would write it bare: refused, or written with the arguments the
-checker gives. About 2 hours; coverage unchanged.
-
-#### 5. A hint's name, held to what the file binds it to
-
-A checker's hint names a class by its bare name, and a fix writes that name where the file binds it,
-to whatever. On `mega-11-11-2026-1113`, the first run whose checkers read each corpus's own
-packages, sphinx's `img: Image` (`builders/_epub_base.py`) is the class `PIL.Image.Image` where the
-file's `Image` is the module (`from PIL import Image`), and httpx's `resp: Response`
-(`_transports/default.py`) httpcore's class where the file's `Response` is httpx's own: 24 of
-sphinx's 37 new type errors and 12 of httpx's 16, by all three checkers, and likely where two agree
-(`agreed`). A hint's name is to be the class the checker means, by where the hint says its type is
-defined (`edits.offered`), before it's spelled for the file (`hinted._spelled`): refused where the
-file binds the name to a module or to another class, or written by a name of the file's that is the
-class (`Image.Image`). Done when neither hint is written as it is, and a mega run (95 minutes on
-16CPU/60GB) shows those errors gone and no hint withdrawn that named its class. About 3 hours;
-coverage unchanged, some dozens of guesses withdrawn or respelled.
 
 #### 6. A run with no earlier run, held to the solver's shortest
 
@@ -196,7 +204,7 @@ differed in the package are corrected (`workers`' context is whichever one start
 `DefaultContext`; `walked._Value` lacked a constant's `...`, `bytes` and `float`), 101 can't be
 told, and 11 differ in the tests and the corpus tools, each a narrower cast than the value: a JSON
 document read as the part a test uses (`_Sarif`, `_Nested`, `_Sources`, `_Group`, `_Written`), and
-OR-Tools' status enum cast to `int` (`planning.solved`). Traced, 8 more of the suite's tests fail
+OR-Tools' status enum cast to `int` (`planning._solved`). Traced, 8 more of the suite's tests fail
 than untraced, the tracer's own among them, not looked into. Left: those 11, each widened or the
 cast kept and the report given a way to pass one over, which is to decide; a `*args`' and a
 `**kwargs`' elements, a coroutine's return, and a class's and a module's annotated variables; and
@@ -346,11 +354,11 @@ A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026
 [LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
 each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
 environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
-narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name ("A hint's name"
-above). Done when its guesses are read against that run's verdicts and type checks
-(`scripts/scratch/guess_report.py --step infer-union`): whether it still passes the bars, and with the two
-names above set aside. About an hour; if it fails a bar, `agreed` leaves the likely fixes, which is
-to decide.
+narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name ("A hint's name,
+held to what the file binds it to" above). Done when its guesses are read against that run's
+verdicts and type checks (`scripts/scratch/guess_report.py --step infer-union`): whether it still
+passes the bars, and with the two names above set aside. About an hour; if it fails a bar, `agreed`
+leaves the likely fixes, which is to decide.
 
 #### 14. Types from a model
 

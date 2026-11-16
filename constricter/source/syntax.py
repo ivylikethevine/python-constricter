@@ -332,6 +332,27 @@ def top_level(body: Sequence[ast.stmt]) -> Iterator[ast.stmt]:
             yield from top_level(child_statements(stmt))
 
 
+def made(tree: ast.Module, makers: frozenset[str]) -> Iterator[tuple[str, list[ast.keyword]]]:
+    """Walk the module-level names bound to a call of one of `makers` (`TypeVar`), under an `if` too.
+
+    Yields:
+      Each name, and the call's keywords.
+
+    """
+    stmt: ast.stmt
+    name: str
+    func: ast.expr
+    keywords: list[ast.keyword]
+    for stmt in top_level(tree.body):
+        match stmt:
+            case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func, keywords=keywords)) if (
+                node_name(func) in makers
+            ):
+                yield name, keywords
+            case _:
+                pass
+
+
 def own_returns(body: Sequence[ast.stmt]) -> list[ast.Return]:
     """Find a function's own `return` statements, in its `body`: not a nested function's or class's.
 

@@ -8,7 +8,7 @@ from typing import Final
 import pytest
 
 from constricter.fix.core.known import Guarded, Hints, Offered
-from constricter.fix.index import offers, project
+from constricter.fix.index import crossed, offers, project
 
 _SHAPES: Final = """
 from typing import Generic, TypeAlias, TypeVar
@@ -95,7 +95,6 @@ def _package(tmp_path: Path) -> list[Path]:
         (Offered("list[Box]", ("from .shapes import Box",)), "list[Box]", False),
         (Offered("shapes.Box[int]", ("from .shapes import Box",)), "Box", False),  # bare as it's shown
         (Offered("sizes", ("from .shapes import sizes",)), "sizes", False),  # not a class
-        (Offered("shapes", ("from . import shapes",)), "shapes", False),  # a module
         (Offered("Thing", ("from elsewhere import Thing",)), "Thing", False),  # not a checked file's
         (Offered("pkg.shapes.Shape", ("import pkg.shapes",)), "Shape", False),  # names no class
         (Offered("Shape", ("from v3.0.0.c import Shape",)), "Shape", False),  # no module's name
@@ -155,10 +154,12 @@ def test_a_hint_importing_a_namesake_of_a_guarded_class_is_dropped(tmp_path: Pat
     paths: list[Path] = _package(tmp_path)
     other: Path = paths[1].with_name("plane.py")
     _ = other.write_text("class Shape: ...\n", encoding="utf-8")
-    offered: Offered = Offered("Shape", ("from pkg.plane import Shape",))
-    hints: tuple[Hints, ...] = (Hints("ty", {_AT: "Shape", (2, 1): "int"}, {_AT: offered}),)
-    found: Hints = offers.vetted(project.index([*paths, other]), paths[-1], hints)[0]
-    assert (found.types, found.offered) == ({(2, 1): "int"}, {})
+    shown: str
+    for shown in ("Shape", "Shape["):  # read as the file's `Shape`, or as text that writes no name
+        offered: Offered = Offered(shown, ("from pkg.plane import Shape",))
+        hints: tuple[Hints, ...] = (Hints("ty", {_AT: shown, (2, 1): "int"}, {_AT: offered}),)
+        found: Hints = offers.vetted(project.index([*paths, other]), paths[-1], hints)[0]
+        assert (found.types, found.offered) == ({(2, 1): "int"}, {})
 
 
 def test_what_the_edits_import_is_each_name_one_statement_binds(tmp_path: Path) -> None:
@@ -185,6 +186,32 @@ def test_a_type_statement_is_an_alias(tmp_path: Path) -> None:
     path: Path = tmp_path / "aliases.py"
     _ = path.write_text("type Pair = tuple[int, str]\ntype Many[T] = list[T]\n", encoding="utf-8")
     assert project.index([path]).modules["aliases"].aliases == {"Pair": False, "Many": True}
+
+
+_MADE: Final = """
+from typing import TypeVar
+
+from typing_extensions import TypeAliasType
+
+T = TypeVar("T")
+Many = TypeAliasType("Many", list[T], type_params=(T,))
+Listed = TypeAliasType("Listed", list[T], type_params=[T])
+Plain = TypeAliasType("Plain", list[int])
+Empty = TypeAliasType("Empty", list[int], type_params=())
+"""
+
+
+def test_an_alias_type_alias_type_makes_with_type_parameters_is_generic(tmp_path: Path) -> None:
+    """As mcp's `ElicitationResult`: written bare it's missing its arguments, here and where it's imported."""
+    made: Path = tmp_path / "made.py"
+    _ = made.write_text(_MADE, encoding="utf-8")
+    user: Path = tmp_path / "user.py"
+    _ = user.write_text("from made import Many, Plain\n", encoding="utf-8")
+    catalog: project.Index = project.index([made, user])
+    assert catalog.modules["made"].aliases == {"Many": True, "Listed": True}
+    assert {"Many", "Listed"} <= catalog.modules["made"].generics
+    assert not {"Plain", "Empty"} & catalog.modules["made"].generics
+    assert crossed.imported(catalog, user).generics == {"Many"}
 
 
 def test_the_classes_a_file_imports_for_type_checking_are_its_own(tmp_path: Path) -> None:
@@ -282,3 +309,84 @@ def test_a_whole_imports_name_that_is_no_other_class_leaves_the_hint(
     hints: tuple[Hints, ...] = (Hints("basedpyright", {_AT: offered.text}, {_AT: offered}),)
     found: Hints = offers.vetted(project.index([tmp_path / "pkg" / "__init__.py", path]), path, hints)[0]
     assert (found.types, found.offered) == ({_AT: offered.text}, {_AT: offered})
+
+
+_MODELS: Final = "class Response:\n    pass\n\n\nclass Path:\n    pass\n"
+_BOUND: Final = """
+from typing import TYPE_CHECKING
+
+from .models import Path, Response
+
+if TYPE_CHECKING:
+    from elsewhere import Pic
+    from pkg import Image
+
+x = 1
+"""
+
+
+def _bound(tmp_path: Path) -> list[Path]:
+    """Write `pkg/`: `models.py`, `other.py` (another `Response`), `Image.py` (its `Image`), and `use.py`.
+
+    `use.py` binds `Response` and `Path` to `models.py`'s, and `Image` to the module, for type checking.
+
+    Returns:
+      Their paths, `use.py` last.
+
+    """
+    package: Path = tmp_path / "pkg"
+    package.mkdir()
+    sources: dict[str, str] = {
+        "__init__": "",
+        "models": _MODELS,
+        "other": "class Response:\n    pass\n",
+        "Image": "class Image:\n    pass\n",
+        "use": _BOUND,
+    }
+    paths: list[Path] = []
+    name: str
+    source: str
+    for name, source in sources.items():
+        path: Path = package / f"{name}.py"
+        _ = path.write_text(source, encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+@pytest.mark.parametrize(
+    ("shown", "offered", "kept"),
+    [
+        ("Response", Offered("Response", ("from pkg.other import Response",)), None),  # httpcore's
+        ("Response", Offered("Response", ("import pkg.other",)), None),  # its module's, bare
+        ("list[Response]", Offered("list[Response]", ("from pkg.other import Response",)), None),
+        ("Response", Offered("Response", ("from pkg.models import Response",)), "Response"),  # the file's own
+        ("Response", Offered("Response", ("from .models import Response",)), "Response"),
+        ("Response", Offered("Response", ("from pkg.other import Other",)), "Response"),  # says nothing of it
+        ("list[Response]", Offered("list[Response]"), "list[Response]"),
+        ("Path", Offered("Path", ("from pathlib import Path",)), None),  # the standard library's
+        ("Image", Offered("Image", ("from pkg.Image import Image",)), None),  # the file's is the module
+        ("Image", Offered("Image"), None),  # a module, written bare, edits or none
+        ("Image", Offered("Image", ("from pkg import Image",)), None),  # the module, as the file binds it
+        ("Image.Image", Offered("Image.Image"), "Image.Image"),  # through the module
+        ("Image", Offered("Image.Image"), "Image.Image"),  # as the edit writes it
+        ("Image", Offered("pkg.Image.Image", ("import pkg.Image",)), "pkg.Image.Image"),
+        ("Pic", Offered("Pic", ("from elsewhere.Pic import Pic",)), None),  # a module the index hasn't
+        ("Pic", Offered("Pic", ("from pkg.other import Response as Pic",)), "Pic"),  # the file's, unknown
+    ],
+)
+def test_a_hint_naming_another_thing_than_the_file_binds_is_dropped(
+    tmp_path: Path,
+    shown: str,
+    offered: Offered,
+    kept: str | None,
+) -> None:
+    """As sphinx's `img: Image` (its `Image` is `PIL.Image`) and httpx's `resp: Response` (httpcore's).
+
+    A checker prints a class by its bare name, whatever the file binds that name to: where the file's
+    is a module, or its edits import another class, the hint goes whole, unless its edit writes the
+    class otherwise (`datetime.datetime`, where the file's `datetime` is the module).
+    """
+    paths: list[Path] = _bound(tmp_path)
+    hints: tuple[Hints, ...] = (Hints("pyrefly", {_AT: shown, (2, 1): "int"}, {_AT: offered}),)
+    found: Hints = offers.vetted(project.index(paths), paths[-1], hints)[0]
+    assert found.types == ({(2, 1): "int"} if kept is None else {_AT: kept, (2, 1): "int"})

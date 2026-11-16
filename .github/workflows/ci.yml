@@ -37,7 +37,7 @@ jobs:
       tested: ${{ steps.find.outputs.tested }}
       tree: ${{ steps.find.outputs.tree }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -73,7 +73,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -140,7 +140,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -174,7 +174,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -223,7 +223,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -263,7 +263,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -315,7 +315,7 @@ jobs:
       # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks.
       # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
       # (3.14t). The two on port 80 are where Windows asks whether a certificate is revoked.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -364,7 +364,7 @@ jobs:
     steps:
       # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks,
       # and the two on port 80 are where Windows asks whether a certificate is revoked.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -404,7 +404,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -432,7 +432,7 @@ jobs:
     timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >

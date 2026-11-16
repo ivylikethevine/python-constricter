@@ -962,7 +962,12 @@ module body's annotation quoted. Never by an import that runs: the checker's Pyt
 the project's oldest doesn't. The first hint to import a name decides what it means in the file: a
 later one importing it from elsewhere is dropped. A hint that shows, or whose edit writes, a name
 the file binds where a module it imports whole has a class of that name too, is dropped: basedpyright
-shows `enum.Enum` as `Enum`, and its edit writes it so, in a file defining an `Enum` of its own. A type alias naming a type variable, in a forward reference alone too
+shows `enum.Enum` as `Enum`, and its edit writes it so, in a file defining an `Enum` of its own. So is
+one writing bare a name the file binds to a module, or one its edits import from where another class
+than the file's is defined: sphinx's `img: Image`, `PIL.Image.Image` where the file's `Image` is the
+module (`from PIL import Image`), and httpx's `resp: Response`, httpcore's class where the file's
+`Response` is httpx's own; an edit spelling the class otherwise (`datetime.datetime`, where the file
+imports the module `datetime`) is judged in its place. A type alias naming a type variable, in a forward reference alone too
 (`Union["Mapper[_T]", "AliasedInsp[_T]"]`), takes arguments as a generic class does: neither a
 hint's edit nor a fix writes it bare (a fix copying another file's bare annotation of it included). Where what a hint shows names something the file
 can't, the annotation as its edit spells it is judged too (`things.Thing[str]`, through
@@ -978,7 +983,8 @@ only for a class or a type alias a checked file or an installed package that dec
 defines (in a public module of the package's: not `numpy._core`), or a class the standard-library
 tables have in a public module (not `_collections_abc`'s `dict_keys`). A type alias is a name
 annotated `TypeAlias`, bound to a subscript or a union at its module's top level (under an `if` or
-`try` too), or a `type` statement's; one that takes type arguments is never written bare. A bare
+`try` too), a `type` statement's, or one `TypeAliasType` makes; one that takes type arguments (a
+`TypeAliasType` given `type_params`, mcp's `ElicitationResult`) is never written bare. A bare
 class's alias, or a class of a package that isn't checked, is left out.
 
 With several checkers, each name takes the first checker's hint, in the order they're named, that

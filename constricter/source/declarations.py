@@ -16,7 +16,7 @@ from constricter.source.concrete import binds_all, unbound_names
 from constricter.source.decorators import Held, passing, spelled
 from constricter.source.keys import key, keys
 from constricter.source.quoted import written
-from constricter.source.syntax import child_statements, own_classes, top_level
+from constricter.source.syntax import child_statements, made, own_classes, top_level
 from constricter.source.usable import OVERLOADS, agreed, usable_return
 
 _TYPE_VARS: Final = frozenset({"TypeVar", "ParamSpec", "TypeVarTuple"})
@@ -44,6 +44,8 @@ _GENERIC_BASES: Final = frozenset({"Generic", "Protocol"})  # a base that lists 
 _TYPE_VAR: Final = "TypeVar"  # the node class of a plain type parameter (`ast.TypeVar`, Python 3.12+)
 _GET: Final = "__get__"  # a descriptor's: what an instance's attribute of it gives
 _DEFAULT: Final = "default"  # a type variable's default, as `TypeVar` takes it
+_ALIAS_TYPES: Final = frozenset({"TypeAliasType"})  # what makes an alias by a call
+_TYPE_PARAMS: Final = "type_params"  # its type parameters, as `TypeAliasType` takes them
 _NO_NAMES: Final[frozenset[str]] = frozenset()
 
 
@@ -617,20 +619,30 @@ def defaulted_type_vars(tree: ast.Module) -> frozenset[str]:
       Those names.
 
     """
-    names: set[str] = set()
-    stmt: ast.stmt
-    name: str
-    func: ast.expr
-    keywords: list[ast.keyword]
-    for stmt in top_level(tree.body):  # under an `if TYPE_CHECKING:` too
-        match stmt:
-            case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call(func=func, keywords=keywords)) if (
-                node_name(func) in _TYPE_VARS and any(keyword.arg == _DEFAULT for keyword in keywords)
-            ):
-                names.add(name)
-            case _:
-                pass
-    return frozenset(names)
+    return frozenset(
+        name
+        for name, keywords in made(tree, _TYPE_VARS)
+        if any(keyword.arg == _DEFAULT for keyword in keywords)
+    )
+
+
+def generic_alias_types(tree: ast.Module) -> frozenset[str]:
+    """Find the module-level names bound to an alias `TypeAliasType` makes with type parameters.
+
+    `Result = TypeAliasType("Result", Accepted[T] | Declined, type_params=(T,))`: generic, missing
+    its arguments written bare. A `type_params` that isn't a display (a name) is taken to give some.
+
+    Returns:
+      Those names.
+
+    """
+    return frozenset(
+        name
+        for name, keywords in made(tree, _ALIAS_TYPES)
+        for keyword in keywords
+        if keyword.arg == _TYPE_PARAMS
+        and not (isinstance(keyword.value, ast.Tuple | ast.List) and not keyword.value.elts)
+    )
 
 
 def descriptors(tree: ast.Module) -> dict[str, str | None]:

@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- A type checker's hint is dropped where it writes bare a name the file binds to a module, or one
+  its edits import from where another class than the file's is defined: sphinx's `img: Image`
+  (`PIL.Image.Image`, the file's `Image` the module) and httpx's `resp: Response` (httpcore's, the
+  file's httpx's own). An edit spelling the class otherwise (`datetime.datetime`) stands in for it.
+- An alias `TypeAliasType` makes with `type_params` is generic: neither a hint nor a fix writes it
+  bare (mcp's `outcome: ElicitationResult`).
 - `python -m constricter.trace --check` holds a run's values to the annotations its functions
   declare: each annotated parameter, each local declared `name: T` at every statement that binds
   it, and each `return` to its `-> T`. A binding a value differed from is listed as an offence

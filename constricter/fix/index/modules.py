@@ -38,6 +38,7 @@ from constricter.source.declarations import (
     defaulted_type_vars,
     defined_type_vars,
     descriptors,
+    generic_alias_types,
     generic_classes,
     generic_members,
     generic_names,
@@ -810,7 +811,8 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
     """Find a module's type aliases, at its top level or under an `if` or `try` there.
 
     A name annotated `TypeAlias`, bound to a subscript or a union (`Json = dict[str, "Json"] | str`),
-    or a `type` statement's.
+    a `type` statement's, or one `TypeAliasType` makes with type parameters
+    (`Result = TypeAliasType("Result", Accepted[T] | Declined, type_params=(T,))`), which is generic.
 
     Returns:
       Each one's name, and whether it takes type arguments: its value names one of the module's type
@@ -838,7 +840,7 @@ def _aliases(tree: ast.Module) -> dict[str, bool]:
                 found[named.id] = bool(cast("object", getattr(stmt, "type_params", ())))
             case _:
                 pass
-    return found
+    return found | dict.fromkeys(generic_alias_types(tree), True)
 
 
 def _assigned(body: Sequence[ast.stmt]) -> Counter[str]:
