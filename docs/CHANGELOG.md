@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- CI runs only its Docs job on a tree whose code it already passed, where only `docs/` and
+  `corpus-runs/` differ (a corpus run's records and the docs written from them); a passing run
+  records its tree's code beside the tree (`tested-code`). `ruff format --check`, `typos` and
+  `reuse lint`, which read those folders too, move from the Lint job to the Docs job.
 - A type checker's hint is dropped where it writes bare a name the file binds to a module, or one
   its edits import from where another class than the file's is defined: sphinx's `img: Image`
   (`PIL.Image.Image`, the file's `Image` the module) and httpx's `resp: Response` (httpcore's, the
