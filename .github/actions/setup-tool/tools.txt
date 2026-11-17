@@ -62,7 +62,7 @@ actionlint|1.7.12|tar.gz|https://github.com/rhysd/actionlint/releases/download/v
 # Every target installs zizmor from here, never from a Python lock: the shared
 # workflows' inline ignores hold on this version, and another can read them
 # differently (1.31.0 missed one on `on:` that 1.31.1 honours).
-zizmor|1.31.1|tar.gz|https://github.com/zizmorcore/zizmor/releases/download/v%v/zizmor-x86_64-unknown-linux-gnu.tar.gz|--version|github:zizmorcore/zizmor||d185f726bdaf92df78273217dfdd24ebcd6b0ef48cf3ce776ff5762b6e138c99
+zizmor|1.32.0|tar.gz|https://github.com/zizmorcore/zizmor/releases/download/v%v/zizmor-x86_64-unknown-linux-gnu.tar.gz|--version|github:zizmorcore/zizmor||bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
 # Tags are "lychee-v<version>"; the tag-prefix column strips that so the drift
 # check compares versions, not strings.
 lychee|0.24.2|tar.gz|https://github.com/lycheeverse/lychee/releases/download/lychee-v%v/lychee-x86_64-unknown-linux-gnu.tar.gz|--version|github:lycheeverse/lychee|lychee-v|1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
@@ -71,4 +71,4 @@ gitleaks|8.30.1|tar.gz|https://github.com/gitleaks/gitleaks/releases/download/v%
 # Every lockfile as Scorecard's Vulnerabilities check reads it, before a merge
 # rather than after. Like trivy, the advisories are fetched on every run,
 # whatever this pin is.
-osv-scanner|2.7.0|raw|https://github.com/google/osv-scanner/releases/download/v%v/osv-scanner_linux_amd64|--version|github:google/osv-scanner||160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b
+osv-scanner|2.7.1|raw|https://github.com/google/osv-scanner/releases/download/v%v/osv-scanner_linux_amd64|--version|github:google/osv-scanner||fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8
