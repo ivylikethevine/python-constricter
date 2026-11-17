@@ -19,8 +19,10 @@ measure before building.
 
 ### Built, waiting on a run
 
-The latest run is `mega-11-11-2026-1113` (`855c719`, 95 minutes, 16CPU/60GB), read for the checkers'
-hints by a copy's own settings and environment ([COMPLETED.md](COMPLETED.md#corpus)); before it
+The latest run is `mega-11-16-2026-1443` (`39de5e3`, 97 minutes, 16CPU/60GB), read for a hint held
+to what the file binds its name to, a generic `TypeAliasType` and an environment for each corpus
+with no checkout ([COMPLETED.md](COMPLETED.md#corpus)); before it `mega-11-11-2026-1113` (`855c719`,
+95 minutes), read for the checkers' hints by a copy's own settings and environment; before that
 `mega-11-10-2026-2235` (`565ac6c`, 80 minutes), read for `echoed`, the hinted steps' fixes with a
 corpus's stubs in the copy, and the suites' tests and checks, and `mega-11-10-2026-1742` (`d072990`,
 82 minutes), for the hinted steps' servers alone. Before them `mega-11-06-2026-2039` (`edcaba3`, 87
@@ -54,69 +56,17 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
 
-#### 2. An environment of its own for a corpus with no checkout
-
-The six corpora checked from an sdist (the standard library, twisted, pip, textual, stripe,
-matplotlib) had no environment: constricter and the checkers `--infer-with` starts read the dev
-venv's packages for them, which hold pandas, numpy, django and sqlalchemy and no Pillow, where a
-suite's corpus reads its own ([COMPLETED.md](COMPLETED.md#corpus), a copy's checkers). Built
-2026-11-11: each has a venv beside its unpacked source (`corpus_suite.own_environment`, made by
-`trees.found`) with what its entry `requires` (`corpora.toml`): itself where it installs on this
-Python (textual, stripe, matplotlib), which brings what it depends on; `zope.interface` for twisted,
-whose 12.3.0 is Python 2's; nothing for pip, which vendors what it needs, or the standard library. A
-copy of matplotlib fixed with guesses in one process (`scripts/scratch/second_pass_copy.py`, 61 seconds with
-1 worker on 16CPU/60GB) has 10,287 fixes from 10,266, 4 gone and 25 new, the new ones by Pillow's
-types (`im: Image.Image`, `img: ImageFile.ImageFile`), and leaves a second pass none; by
-`scripts/scratch/checker_roots.py` ty reads each one's own environment. What a requirement brings isn't
-pinned: an environment holds what resolved the day it was made. Waits on a mega run (95 minutes on
-16CPU/60GB), read against `mega-11-11-2026-1113`: done when the six corpora's fixes, new errors and
-second passes are recorded. Coverage: the six corpora's fixes move, by how much unknown until it
-runs.
-
-#### 3. A hint's name, held to what the file binds it to
-
-A checker's hint names a class by its bare name, and a fix wrote that name where the file binds it,
-to whatever. On `mega-11-11-2026-1113`, the first run whose checkers read each corpus's own
-packages, sphinx's `img: Image` (`builders/_epub_base.py`) is the class `PIL.Image.Image` where the
-file's `Image` is the module (`from PIL import Image`), and httpx's `resp: Response`
-(`_transports/default.py`) httpcore's class where the file's `Response` is httpx's own: 24 of
-sphinx's 37 new type errors and 12 of httpx's 16, by all three checkers, and likely where two agree
-(`agreed`). Built 2026-11-16 (`offers._misbound`): a hint writing bare a name the file binds to a
-module, or one its edits import from where the index defines another class than the file's (a
-checked file's own against the standard library's too), is dropped whole; where only what it shows
-does, its edit's spelling is judged in its place (`datetime.datetime`, where the file imports the
-module). Not respelled through the module (`Image.Image`): no edit writes it so. Of the hints the
-store holds for seven corpora, every checker's and round's, it drops httpx's 6 of 2,131, sphinx's 10
-of 23,572, mcp's 4 of 7,074, pydantic's none of 12,865, sqlalchemy's 55 of 76,509, django's 207 of
-78,737 and pandas's 43 of 398,023 (`scripts/scratch/misbound_hints.py`), each naming another thing
-than the file's name: most a bare `datetime` where the file imports the module, the rest read by
-hand (jsonschema's `ValidationError` against pydantic's, `forms.CharField` against the model
-field's, `email.charset` imported as `Charset`, numpy's `Generator` against `collections.abc`'s). Waits on a
-mega run (95 minutes on 16CPU/60GB): done when it shows those errors gone and no new ones. Coverage
-unchanged, some hundreds of guesses withdrawn.
-
-#### 4. A generic alias hinted without its arguments
-
-mcp's `outcome: ElicitationResult` and `dep_outcome: ElicitationResult`
-(`server/mcpserver/resolve.py`, by pyrefly's hint) name a generic alias with no arguments, one made
-by a call (`ElicitationResult = TypeAliasType("ElicitationResult", ..., type_params=(T,))`): its own
-Pyright asks for them (`reportMissingTypeArgument`), 12 of mcp's 26 new type errors on
-`mega-11-11-2026-1113`, where the run before had 10 in all. Built 2026-11-16: such an alias is a
-generic one (`declarations.generic_alias_types`, read into `modules._aliases`), so neither a hint
-nor a fix writes it bare; on mcp's checkout the index has `ElicitationResult` generic where
-`resolve.py` imports it. Waits on a mega run (95 minutes on 16CPU/60GB): done when mcp's 12 errors
-are gone. Coverage unchanged.
-
 ### Small: under 4 hours
 
-#### 5. sqlalchemy's four `test_compare` failures after `infer-union`
+#### 2. sqlalchemy's four `test_compare` failures after `infer-union`
 
 On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
 step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
 `test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
 `mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the seven mega runs since
 2026-10-30 that aren't these, `mega-11-11-2026-1113` the latest, with 9, 13, 14 and 16 workers where
-it failed with 10 and 11. Found 2026-11-11, and no fix's: the suite's own order.
+it failed with 10 and 11; they fail in it again on `mega-11-16-2026-1443`. Found 2026-11-11, and no
+fix's: the suite's own order.
 `test/sql/test_compare.py` registers `sqlite_foo` for `Insert` as it's imported
 (`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the process shares, and
 `test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after each of its tests
@@ -134,7 +84,7 @@ a proposal, since it changes what a run reports: the four named in the catalog
 (`[corpus.sqlalchemy.suite.differs]`), or the union's tests run again as a fixed step's are. About
 an hour for either; coverage unchanged.
 
-#### 6. A run with no earlier run, held to the solver's shortest
+#### 3. A run with no earlier run, held to the solver's shortest
 
 A run whose steps are measured is at the solver's shortest, read against the waits the runner keeps:
 `alt-11-08-2026-1157` took 5.2 minutes to a proved 5.2 and `alt-11-08-2026-1213` 5.5 to 5.5
@@ -156,7 +106,7 @@ measured. About an hour beside the run; coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
-#### 7. The hinted steps' second pass
+#### 4. The hinted steps' second pass
 
 A run reports what a second pass would still fix after the certain fixes and the guesses
 (`render._CONVERGING`), where no corpus is left any since a module's stub is read in every check,
@@ -182,7 +132,7 @@ mega run (95 minutes on 16CPU/60GB) shows the hinted steps leaving matplotlib an
 than `mega-11-10-2026-1742` did (4, 6 and 0; 23, 21 and 25) and pyrefly's new ones are traced. About
 4 hours; coverage unchanged.
 
-#### 8. Annotations held to a run
+#### 5. Annotations held to a run
 
 The corpora's witness holds each fix to the values its package's tests bind
 (`tests/corpus/witness/constricter_witness.py`): of the certain fixes a test could tell of, 99.4%
@@ -211,7 +161,7 @@ cast kept and the report given a way to pass one over, which is to decide; a `*a
 LVA016 named where the other codes are (`--explain`, the README's table) if it's to stay a code.
 About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
-#### 9. Mutation testing
+#### 6. Mutation testing
 
 Line coverage is held at 100% (`fail_under`), so it no longer says which lines run without a test
 checking what they do; a mutant the suite survives does. How: `mutmut` over `constricter/`, its
@@ -221,7 +171,7 @@ killed or recorded as equivalent. Written, not yet run: `scripts/scratch/mutatio
 worktree of HEAD under `local/mutation/`, the unit tests alone, the lines they cover, `--only` for a
 first pass). About 6 hours beside the run; coverage unchanged.
 
-#### 10. A check's peak, past the resumed files
+#### 7. A check's peak, past the resumed files
 
 The standard library's check in one process (2026-10-24, 16CPU/60GB, `scripts/scratch/peak_rss.py`) peaked
 at 2.65 GiB: every file's tree, and its whole finished check (scopes, bindings, inferences: 84,624
@@ -256,7 +206,7 @@ measured on 10-24), the listing identical. What's left is the resume kept from l
 check. Each timing here predates the changes since 2026-10-28: time it again first. About 6 hours;
 coverage unchanged.
 
-#### 11. A parallel check, past its longest chain
+#### 8. A parallel check, past its longest chain
 
 With every CPU the standard library checks in 13.5 and 13.9s and in 47.6s in one process
 (2026-10-27, 16CPU/60GB), pandas in 11.3s and 50s; 29s in two processes, 18s in four, 13.7s and
@@ -293,7 +243,7 @@ About 8 hours; coverage unchanged.
 
 ### Large: more than 8 hours
 
-#### 12. Types observed at run time, past what a parameter gives
+#### 9. Types observed at run time, past what a parameter gives
 
 `python -m constricter.trace` records what each binding of a function's locals held, by statement,
 through pytest-xdist's workers and django's `runtests.py`, and `--infer-from` takes it
@@ -348,19 +298,20 @@ built for now, the first the one worth building:
 
 What to measure before building, smallest first.
 
-#### 13. Two checkers' agreement, read again
+#### 10. Two checkers' agreement, read again
 
 A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026-0441` it passed
 [LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
 each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
 environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
-narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name ("A hint's name,
-held to what the file binds it to" above). Done when its guesses are read against that run's
-verdicts and type checks (`scripts/scratch/guess_report.py --step infer-union`): whether it still
-passes the bars, and with the two names above set aside. About an hour; if it fails a bar, `agreed`
-leaves the likely fixes, which is to decide.
+narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name. On
+`mega-11-16-2026-1443`, with a hint dropped where it names another thing than the file binds the
+name to ([COMPLETED.md](COMPLETED.md#corpus)), they blame 20. Done when its guesses are read against
+that run's verdicts and type checks (`scripts/scratch/guess_report.py --step infer-union`): whether
+it still passes the bars. About an hour; if it fails a bar, `agreed` leaves the likely fixes, which
+is to decide.
 
-#### 14. Types from a model
+#### 11. Types from a model
 
 Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict types (TypyBench and
 TypeEvalPy score them), but none is deterministic, and each needs a model or an API. Only as a file
