@@ -1182,6 +1182,24 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   (`46bdc27`, 16CPU/60GB) every stage exited 0 and no hinted process crashed; its
   `infer-basedpyright` checker fixes are rc.2's (`44c05d5`) on all five corpora, 8,630 in both,
   pandas's 6 more and sqlalchemy's 1 fewer (`type_: TypeEngine[_T]`).
+- **Read on `mega-11-16-2026-1443`** (`39de5e3`, 97 minutes on 16CPU/60GB, no step failed, no server
+  hung), against `mega-11-11-2026-1113`: the first with a hint dropped where it names another thing
+  than the file binds the name to (`offers._misbound`), an alias `TypeAliasType` makes with
+  `type_params` read as generic, and an environment of its own for each corpus with no checkout. The
+  suites' own checks find 710 new errors from 802, every one gone a hinted step's: 123 from 146
+  after basedpyright's hints, 111 from 133 after ty's, 144 from 161 after pyrefly's, 203 from 233
+  after the union. sphinx's are 13 from 37 (`img: Image` gone), httpx's 4 from 16
+  (`resp: Response`), mcp's 6 from 26 (`outcome: ElicitationResult`), and those blamed on a hint two
+  checkers agree on 20 from 35; none is new (langchain-core's one `literal-required` error is blamed
+  on another of its line's fixes). The hinted steps' fixes are 239,086 with basedpyright's hints
+  (239,252), 234,001 with ty's (234,121) and 247,682 with pyrefly's (247,731); a second pass would
+  still fix 138, 108 and 197 after them (142, 116 and 227). Of the six corpora with an environment
+  of their own, matplotlib's guesses are 10,287 from 10,266 and its hinted steps' 99, 98 and 33
+  fewer; textual's 6, 10 and 7 fewer; twisted's after basedpyright's hints 8,598 from 8,627, leaving
+  12 for a second pass where it left none; the standard library's, pip's and stripe's within 5.
+  Tests: sqlalchemy's four `test_compare` tests fail after `infer-union` again, and nibabel's union
+  step fails 2 anew from 1. Not looked into: twisted's 12, matplotlib's fewer hinted fixes,
+  nibabel's second test.
 - **A copy's checkers, held to the copy's own settings and environment.** A fix step's copy lies
   under this checkout, and a checker with no settings of its own there read this project's: its
   source as the import root, the dev venv's packages, Python 3.11 (pyrefly on 41 of the 55 corpora's
@@ -1202,8 +1220,8 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   `[tool.ty]` naming a `typestubs` directory the copy lacks; each checker is tested under a project
   whose settings name another environment (`tests/corpus/test_launch.py`). The six corpora with no
   checkout (the standard library, twisted, pip, textual, stripe, matplotlib) had no environment
-  then, so their checkers still read the dev venv's packages (one of its own each since:
-  [ROADMAP.md](ROADMAP.md)). Read on `mega-11-11-2026-1113` (`855c719`, 95 minutes on 16CPU/60GB, no
+  then, so their checkers still read the dev venv's packages (one of its own each since,
+  `corpus_suite.own_environment`: the entry above). Read on `mega-11-11-2026-1113` (`855c719`, 95 minutes on 16CPU/60GB, no
   step failed, every checker asked afresh but for 5 later rounds; basedpyright hung on one of
   pandas's test files), against `mega-11-10-2026-2235`: the hinted steps' fixes are 239,252 with
   basedpyright's hints (238,371), 234,121 with ty's (231,918), 247,731 with pyrefly's (235,977) and

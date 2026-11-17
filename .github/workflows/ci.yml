@@ -22,22 +22,26 @@ defaults:
 
 jobs:
   # CI already passed on this exact tree (a merge to main with nothing else in it, or the release
-  # tag on that merge): every job below is skipped, which a required check counts as passing. Only
-  # this repository's own successful runs of this workflow count: a fork's pull request runs its own
-  # copy of it. Any change at all, to the code, the tests or this file, is a new tree.
+  # tag on that merge): every job below is skipped, which a required check counts as passing. Or on
+  # a tree that differs from this one only in docs/ and corpus-runs/ (a run's records and the docs
+  # written from them): only the Docs job runs, and the rest are skipped. Only this repository's own
+  # successful runs of this workflow count: a fork's pull request runs its own copy of it. Any other
+  # change, to the code, the tests, a Markdown file elsewhere or this file, is new code.
   reuse:
     name: Reuse
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
-      actions: read # find an earlier run's tested-tree artifact
+      actions: read # find an earlier run's tested-tree and tested-code artifacts
       contents: read # read the commit's tree
     outputs:
       tested: ${{ steps.find.outputs.tested }}
       tree: ${{ steps.find.outputs.tree }}
+      code-tested: ${{ steps.find.outputs.code-tested }}
+      code: ${{ steps.find.outputs.code }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -49,31 +53,48 @@ jobs:
           REPO_ID: ${{ github.repository_id }}
           SHA: ${{ github.sha }}
         run: |
+          # The run that uploaded artifact $1 and passed, if one did.
+          passed() {
+            local runs run
+            runs=$(gh api "repos/$REPO/actions/artifacts?name=$1&per_page=20" \
+              --jq ".artifacts[] | select(.expired | not) | select(.workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id" || true)
+            for run in $runs; do
+              if gh api "repos/$REPO/actions/runs/$run" \
+                --jq '.conclusion == "success" and .path == ".github/workflows/ci.yml"' | grep -qx true; then
+                echo "$run"
+                return
+              fi
+            done
+          }
           tree=$(gh api "repos/$REPO/git/commits/$SHA" --jq .tree.sha)
+          # The tree's top-level entries but docs/ and corpus-runs/, each by its object: the code.
+          code=$(gh api "repos/$REPO/git/trees/$tree" \
+            --jq '.tree[] | select(.path != "docs" and .path != "corpus-runs") | "\(.path) \(.sha)"' | sha256sum | cut -c1-40)
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
           tested=false
-          runs=$(gh api "repos/$REPO/actions/artifacts?name=tested-tree-$tree&per_page=20" \
-            --jq ".artifacts[] | select(.expired | not) | select(.workflow_run.head_repository_id == $REPO_ID) | .workflow_run.id" || true)
-          for run in $runs; do
-            if gh api "repos/$REPO/actions/runs/$run" \
-              --jq '.conclusion == "success" and .path == ".github/workflows/ci.yml"' | grep -qx true; then
-              tested=true
-              echo "CI passed on tree $tree in run $run: reusing it." >> "$GITHUB_STEP_SUMMARY"
-              break
-            fi
-          done
+          code_tested=false
+          if run=$(passed "tested-tree-$tree") && [ -n "$run" ]; then
+            tested=true
+            code_tested=true
+            echo "CI passed on tree $tree in run $run: reusing it." >> "$GITHUB_STEP_SUMMARY"
+          elif run=$(passed "tested-code-$code") && [ -n "$run" ]; then
+            code_tested=true
+            echo "CI passed on this code in run $run, the docs aside: only the Docs job runs." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "tested=$tested" >> "$GITHUB_OUTPUT"
+          echo "code-tested=$code_tested" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -87,7 +108,6 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - run: ruff check --output-format=github .
-      - run: ruff format --check .
       - run: basedpyright
       # Every symbol the package exports has a known type. `--verifytypes` reads the package as the
       # `python` first on PATH has it installed (the dev venv's editable install; it ignores
@@ -117,8 +137,6 @@ jobs:
           --msg-template='::warning file={path},line=1,title=Long module::{msg}'
           constricter stdlib_tables tests hatch_build.py
       - run: flake8 constricter stdlib_tables tests hatch_build.py
-      - run: typos
-      - run: reuse lint
       - run: validate-pyproject pyproject.toml
       - run: lint-imports --cache-dir local/.import_linter_cache
       - run: deptry constricter
@@ -131,6 +149,7 @@ jobs:
       - run: constricter --coverage --all-scopes --fail-under=100 constricter stdlib_tables tests hatch_build.py
       - run: pre-commit try-repo . constricter --all-files
 
+  # Every check that reads docs/ or corpus-runs/: it runs where only they changed (see the reuse job).
   docs:
     name: Docs
     needs: reuse
@@ -140,7 +159,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -148,9 +167,18 @@ jobs:
             release-assets.githubusercontent.com:443
             results-receiver.actions.githubusercontent.com:443
             registry.npmjs.org:443
+            pypi.org:443
+            files.pythonhosted.org:443
+            raw.githubusercontent.com:443
+            releases.astral.sh:443
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup
+      # The Python code blocks in Markdown too.
+      - run: ruff format --check .
+      - run: typos
+      - run: reuse lint
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
@@ -168,13 +196,13 @@ jobs:
   action:
     name: Action
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -212,7 +240,7 @@ jobs:
   corpus:
     name: Corpus (${{ matrix.package }}, ${{ matrix.task }})
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -223,7 +251,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -252,7 +280,7 @@ jobs:
   profile:
     name: Profile (${{ matrix.package }})
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -263,7 +291,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -296,7 +324,7 @@ jobs:
   test:
     name: Test (${{ matrix.os }}, ${{ matrix.python }})
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -315,7 +343,7 @@ jobs:
       # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks.
       # pypi.org: setup-python upgrades pip when it downloads an interpreter the runner image lacks
       # (3.14t). The two on port 80 are where Windows asks whether a certificate is revoked.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -351,7 +379,7 @@ jobs:
   compiled:
     name: Compiled (${{ matrix.os }}, ${{ matrix.python }})
     needs: reuse
-    if: github.event.pull_request.draft != true && needs.reuse.outputs.tested != 'true'
+    if: github.event.pull_request.draft != true && needs.reuse.outputs.code-tested != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -364,7 +392,7 @@ jobs:
     steps:
       # block on every leg, each off its own audit runs: macOS reached nothing the Linux list lacks,
       # and the two on port 80 are where Windows asks whether a certificate is revoked.
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -404,7 +432,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -423,26 +451,39 @@ jobs:
           path: dist/
           if-no-files-found: error
 
-  # Everything passed on this tree: record it, for a later run on the same tree to reuse.
+  # Everything passed on this tree, or the Docs job on a tree whose code passed before: record the
+  # tree and its code, for a later run on either to reuse. Build passing means every job it needs did.
   tested:
     name: Tested
     needs: [reuse, lint, docs, action, corpus, test, compiled, build]
-    if: needs.reuse.outputs.tested != 'true'
+    if: >-
+      !cancelled() && needs.reuse.result == 'success' && needs.reuse.outputs.tested != 'true'
+      && needs.docs.result == 'success'
+      && (needs.reuse.outputs.code-tested == 'true' || needs.build.result == 'success')
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
           allowed-endpoints: >
             github.com:443
       - env:
           TREE: ${{ needs.reuse.outputs.tree }}
-        run: echo "$TREE" > tested-tree.txt
+          CODE: ${{ needs.reuse.outputs.code }}
+        run: |
+          echo "$TREE" > tested-tree.txt
+          echo "$CODE" > tested-code.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tested-tree-${{ needs.reuse.outputs.tree }}
           path: tested-tree.txt
+          retention-days: 90
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tested-code-${{ needs.reuse.outputs.code }}
+          path: tested-code.txt
           retention-days: 90
           if-no-files-found: error

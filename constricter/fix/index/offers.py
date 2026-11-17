@@ -67,6 +67,8 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
 
     And those writing a name the file binds that a module it imports whole has a class of too (see
     `_ambiguous`); a hint showing such a name is dropped whole, since what it shows is taken first.
+    So is a hint writing bare a name the file binds to a module, or one its edits say is another
+    class than the file's (see `_misbound`).
 
     Returns:
       The hints, without them: a hint without its edit is judged by what it shows alone.
@@ -79,27 +81,58 @@ def vetted(catalog: project.Index, path: Path, hints: tuple[Hints, ...]) -> tupl
     checking: Mapping[str, Origin] = Empty() if target is None else target.guarded
     found: dict[str, _Defined | None] = {name: _defined(catalog, origin) for name, origin in checking.items()}
     guarded: dict[str, _Defined] = {name: defined for name, defined in found.items() if defined is not None}
+    bound: dict[str, Origin] = {} if target is None else {**target.guarded, **target.names}
     return tuple(
         _shared(
             catalog,
             module,
-            found._replace(
-                types={
-                    where: shown
-                    for where, shown in found.types.items()
-                    if not _ambiguous(catalog, target, shown, ())
-                },
-                offered={
-                    where: offered
-                    for where, offered in found.offered.items()
-                    if _sound(catalog, module, offered, found.types.get(where, ""))
-                    and not _ambiguous(catalog, target, offered.text, offered.imports)
-                    and not _ambiguous(catalog, target, found.types.get(where, ""), ())
-                },
-            ),
+            _kept(catalog, module, target, bound, found),
             guarded,
         )
         for found in hints
+    )
+
+
+def _kept(
+    catalog: project.Index,
+    module: tuple[str, bool],
+    target: project.Module | None,
+    bound: Mapping[str, Origin],
+    found: Hints,
+) -> Hints:
+    """Keep the hints `vetted` keeps of one checker's, and the edits it keeps of them.
+
+    `bound`: what each name the file binds at its top level is, an `if TYPE_CHECKING:` import's too.
+
+    Returns:
+      Them.
+
+    """
+    types: dict[tuple[int, int], str] = {}
+    misbound: set[tuple[int, int]] = set()
+    where: tuple[int, int]
+    shown: str
+    for where, shown in found.types.items():
+        edit: Offered | None = found.offered.get(where)
+        imports: tuple[str, ...] = () if edit is None else edit.imports
+        text: str = shown
+        if _misbound(catalog, module, bound, shown, imports):
+            if edit is None or _misbound(catalog, module, bound, edit.text, imports):
+                misbound.add(where)
+                continue
+            text = edit.text  # `datetime.datetime`, where the hint shows the module `datetime`
+        if not _ambiguous(catalog, target, text, ()):
+            types[where] = text
+    return found._replace(
+        types=types,
+        offered={
+            where: offered
+            for where, offered in found.offered.items()
+            if where not in misbound
+            and _sound(catalog, module, offered, types.get(where, ""))
+            and not _ambiguous(catalog, target, offered.text, offered.imports)
+            and not _ambiguous(catalog, target, found.types.get(where, ""), ())
+        },
     )
 
 
@@ -287,6 +320,112 @@ def _another(catalog: project.Index, other: Origin, bound: Origin) -> bool:
         return False
     defined: _Defined | None = _defined(catalog, other)
     return defined is None or defined != _defined(catalog, bound)
+
+
+def _misbound(
+    catalog: project.Index,
+    module: tuple[str, bool],
+    bound: Mapping[str, Origin],
+    text: str,
+    imports: tuple[str, ...],
+) -> bool:
+    """Check whether a hint's `text` writes bare a name the file binds to a module, or to another class.
+
+    A checker names a class by its bare name, whatever the file binds that name to: sphinx's
+    `img: Image`, `PIL.Image.Image` where the file's `Image` is the module (`from PIL import Image`),
+    and httpx's `resp: Response`, httpcore's class where the file's `Response` is httpx's own. Which
+    class it means is where its edits' `imports` import it from (see `_meant`): another than the
+    file's, by where the index defines each, is another class. `bound`: what each name the file binds is.
+
+    Returns:
+      Whether it does.
+
+    """
+    written: set[str] = _bare(text) & bound.keys()
+    if any(_whole(catalog, bound[name]) for name in written):
+        return True
+    meant: dict[str, Origin] = _meant(module, imports, written)
+    return any(_differs(catalog, bound[name], origin) for name, origin in meant.items())
+
+
+def _bare(text: str) -> set[str]:
+    """Name the names a hint's `text` writes bare: not a dotted name's root (`np` in `np.ndarray`).
+
+    Returns:
+      Them; none for a text that doesn't parse.
+
+    """
+    try:
+        tree: ast.Expression = ast.parse(text, mode="eval")
+    except SyntaxError:
+        return set()
+    roots: set[int] = {id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    return {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and id(node) not in roots}
+
+
+def _whole(catalog: project.Index, origin: Origin) -> bool:
+    """Check whether `origin`, what a file's name is bound to, is a module: `import m`, or one the index has.
+
+    Returns:
+      Whether it is.
+
+    """
+    return origin[1] is None or f"{origin[0]}.{origin[1]}" in catalog.modules
+
+
+def _meant(module: tuple[str, bool], imports: tuple[str, ...], written: set[str]) -> dict[str, Origin]:
+    """Read which class each of `written` is, by a hint's edits' `imports`.
+
+    A `from` import binding the name says where it's from; an `import m` says `m`'s class of the
+    name, whether the edit writes it through `m` or bare (`Response`, with `import httpcore._models`).
+
+    Returns:
+      Each name the edits say, and its class: relative to `module`, the hinted file's, made absolute.
+
+    """
+    if not written:
+        return {}
+    found: dict[str, Origin] = {}
+    statement: str
+    for statement in imports:
+        try:
+            node: ast.stmt = ast.parse(statement).body[0]
+        except SyntaxError:  # from a file no import can name (`v3.0.0.c.py`)
+            continue
+        alias: ast.alias
+        match node:
+            case ast.ImportFrom(names=[alias]) if (alias.asname or alias.name) in written:
+                origin: str = absolute(module[0], node.module, node.level, is_package=module[1])
+                found[alias.asname or alias.name] = (origin, alias.name)
+            case ast.Import(names=[alias]) if alias.asname is None:
+                found.update({name: (alias.name, name) for name in written if name not in found})
+            case _:
+                pass
+    return found
+
+
+def _differs(catalog: project.Index, bound: Origin, meant: Origin) -> bool:
+    """Check whether `meant`, the class a hint's edits import, isn't `bound`, what the file's name is.
+
+    It isn't where the file's name is the module that defines it, or where the index defines each
+    elsewhere. A class the index doesn't have isn't told from the file's, unless the file's is a
+    checked file's own and it's the standard library's (`pathlib.Path`, where the file has a `Path`).
+
+    Returns:
+      Whether it isn't.
+
+    """
+    if bound == meant:
+        return False
+    if f"{bound[0]}.{bound[1]}" == meant[0]:
+        return True
+    found: tuple[project.Module, str] | None
+    if (found := project.type_definition(catalog.modules, bound)) is None:
+        return False
+    defined: _Defined | None
+    if (defined := _defined(catalog, meant)) is not None:
+        return defined != (found[0].name, found[1])
+    return not found[0].installed and _class(catalog, meant) is not None
 
 
 def _private(catalog: project.Index, name: str) -> bool:
