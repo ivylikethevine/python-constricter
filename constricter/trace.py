@@ -503,7 +503,7 @@ def _reported(recording: witness.Witness, parts: Path) -> bool:
       Whether any did.
 
     """
-    lines: list[str] = witness.report(witness.gathered(parts, recording.judged()))
+    lines: list[str] = witness.report(witness.gathered(parts, recording.judged()), recording.root)
     _ = sys.stdout.write("\n".join(lines) + "\n")
     return len(lines) > 1
 

@@ -140,7 +140,7 @@ def verdicts(root: Path) -> Verdicts:
     part: Path
     for part in sorted((root / _VERDICTS).glob("*.json")):
         written: _Written
-        for written in cast("list[_Written]", json.loads(part.read_text(encoding="utf-8"))):
+        for written in cast("list[_Written]", json.loads(part.read_text(encoding="utf-8"))):  # noqa: LVA016
             judged: _Key = (written[0], written[1], written[2], written[3])
             had: list[int] = counts.setdefault(judged, [0, 0, 0])
             counts[judged] = [one + other for one, other in zip(had, written[4], strict=True)]

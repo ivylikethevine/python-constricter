@@ -258,7 +258,7 @@ def test_every_output_is_made_from_the_records(tmp_path: Path) -> None:
         "steps.csv",
     ]
     assert _CRLF not in (tmp_path / "tables" / "offences.csv").read_bytes()
-    report: dict[str, _Nested] = cast(
+    report: dict[str, _Nested] = cast(  # noqa: LVA016
         "dict[str, _Nested]",
         json.loads((tmp_path / "report.json").read_text(encoding="utf-8")),
     )

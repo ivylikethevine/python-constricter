@@ -46,10 +46,11 @@ from types import CodeType, FrameType
 from typing import Final, TypeAlias, cast
 from unittest import mock
 
-from constricter import recording
+from constricter import noqa, recording
+from constricter.offences import TRACED
 from constricter.overrides import override
 
-CODE: Final = "LVA016"  # what `report` lists a differing binding under
+CODE: Final = TRACED  # what `report` lists a differing binding under
 FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
@@ -747,17 +748,24 @@ def gathered(parts: Path, own: Iterable[_Judged]) -> dict[Key, _Counted]:
     return found
 
 
-def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]]) -> list[str]:
+def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]], root: Path) -> list[str]:
     """List each binding a run's value differed from its annotation, as `constricter` lists an offence.
+
+    Not one whose line under `root` has a `# noqa` that covers `CODE`, as a check's offence: a cast
+    narrowing a value to the part its code uses, say. The last line counts those too.
 
     Returns:
       A line each, in the files' order, then one counting what was held.
 
     """
     lines: list[str] = []
+    quiet: int = 0
+    sources: dict[str, list[str]] = {}
     key: Key
     for key in sorted(found):
-        if found[key][0][DIFFER]:
+        if found[key][0][DIFFER] and _passed_over(key, root, sources):
+            quiet += 1
+        elif found[key][0][DIFFER]:
             kinds: str = ", ".join(f"`{each}`" for each in found[key][1])
             what: str = (
                 f"a function annotated to return `{key[4]}` returned"
@@ -767,4 +775,21 @@ def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]]) -> list[str
             lines.append(f"{key[0]}:{key[1]}:{key[2]}: error: {CODE} {what} {kinds} in a traced run")
     untold: int = sum(1 for counts, _ in found.values() if not counts[FIT] and not counts[DIFFER])
     held: str = f"{len(found)} annotated bindings held to a run's values"
-    return [*lines, f"{held}: {len(lines)} differed, {untold} couldn't be told"]
+    passed: str = f", {quiet} passed over by `# noqa`" if quiet else ""
+    return [*lines, f"{held}: {len(lines)} differed{passed}, {untold} couldn't be told"]
+
+
+def _passed_over(key: Key, root: Path, sources: dict[str, list[str]]) -> bool:
+    """Check whether a binding's line has a `# noqa` that covers `CODE`, its file read once into `sources`.
+
+    Returns:
+      Whether it has; not where the file can't be read again.
+
+    """
+    if key[0] not in sources:
+        try:
+            sources[key[0]] = noqa.lines((root / key[0]).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            sources[key[0]] = []
+    found: list[str] = sources[key[0]]
+    return key[1] <= len(found) and noqa.suppressed(found[key[1] - 1], CODE)

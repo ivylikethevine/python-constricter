@@ -886,7 +886,7 @@ be wrong about what the code means. Its guesses feed the rest of the scope as `-
 copy of a hinted local is typed too, as a guess). With several checkers, the first named whose hint the file can use
 types the name; where a later one's usable hint gives the same type, the fix rests on their
 agreement too (kind `agreed`, beside `checker`): a set of its own, measured apart from one checker's
-alone, and likely, applied with `--likely` (see [LIKELY.md](LIKELY.md)).
+alone, and a guess as that is: it fails the blamed bar (see [LIKELY.md](LIKELY.md)).
 
 A checker reads the packages of the environment it finds, their stub packages too: ty and pyrefly
 `VIRTUAL_ENV`'s, basedpyright those of the `python` first on `PATH`. With a framework's stubs
@@ -1199,7 +1199,7 @@ and `--format=json`'s `fix` object has them as `kinds`.
 | `final`         | LVA012's `Final`: around its annotation, or with LVA001's type (`Final[int]`)                 |
 | `checker`       | a type checker's inferred type, from its inlay hints (`--infer-with`; a guess)                |
 | `traced`        | what a traced run bound the name to (`--infer-from`; a guess)                                 |
-| `agreed`        | with `checker`: a later type checker's hint gives the same type (a likely guess)              |
+| `agreed`        | with `checker`: a later type checker's hint gives the same type (a guess)                     |
 | `rebound`       | a name later bound to a wider type: the type every value fits (`int`, then `float`)           |
 | `optional`      | `x = None`, then only ever a value of one known type `T`: `T \| None`                         |
 | `filled`        | an empty container, then only what the function adds to it (a guess)                          |

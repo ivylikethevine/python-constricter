@@ -188,15 +188,18 @@ Every other set has fewer than 20 guesses a test told of.
 ## Hints
 
 A checker's hint (`--infer-with`) is read on the union's step, where the witness is told each
-checker's annotation for a binding (`scripts/scratch/guess_report.py --step infer-union`): on the mega run
-of 2026-11-06 (`mega-11-06-2026-0441`), a hint two or more checkers give alike passes the three bars
-and joins `LIKELY`; one checker's alone, or a traced type (`--infer-from`), doesn't.
+checker's annotation for a binding (`scripts/scratch/guess_report.py --step infer-union`). On the mega
+run of 2026-11-06 (`mega-11-06-2026-0441`) a hint two or more checkers give alike passed the three
+bars; on that of 2026-11-16 (`mega-11-16-2026-1443`), each checker reading the corpus's own
+environment, it fails the blamed one, and isn't in `LIKELY`. One checker's alone, or a traced type
+(`--infer-from`), never passed.
 
-| Mechanisms       | Guesses | Packages | Checked | Blamed |  Told |  Held |  Share |
-| ---------------- | ------: | -------: | ------: | -----: | ----: | ----: | -----: |
-| `agreed+checker` |  14,445 |       42 |  10,081 |      8 | 9,149 | 8,959 |  97.9% |
-| `checker`        |  11,612 |       42 |   8,207 |     75 | 6,434 | 5,689 |  88.4% |
-| `traced`         |   3,140 |       19 |   2,074 |      4 |   162 |   162 | 100.0% |
+| Mechanisms       | Run   | Guesses | Packages | Checked | Blamed |   Told |   Held |  Share |
+| ---------------- | ----- | ------: | -------: | ------: | -----: | -----: | -----: | -----: |
+| `agreed+checker` | 11-06 |  14,445 |       42 |  10,081 |      8 |  9,149 |  8,959 |  97.9% |
+| `agreed+checker` | 11-16 |  18,144 |       49 |  12,659 |     17 | 11,226 | 10,790 |  96.1% |
+| `checker`        | 11-06 |  11,612 |       42 |   8,207 |     75 |  6,434 |  5,689 |  88.4% |
+| `traced`         | 11-06 |   3,140 |       19 |   2,074 |      4 |    162 |    162 | 100.0% |
 
 ## Measuring again
 

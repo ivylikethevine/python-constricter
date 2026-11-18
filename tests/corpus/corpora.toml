@@ -145,6 +145,12 @@ tests = "-n {workers} --dist loadfile -m 'not memory_intensive and not mypy' --d
 checks = ["mypy noxfile.py ./lib/sqlalchemy"]
 most = 16
 
+[corpus.sqlalchemy.suite.differs]
+"test/sql/test_compare.py::CacheKeyTest::test_cache_key" = "it registers `sqlite_foo` for `Insert` as it's imported, a registry `test/sql/test_metadata.py`'s `DialectKWArgTest` clears after each of its tests: a worker given that file first refuses the argument"
+"test/sql/test_compare.py::CompareAndCopyTest::test_all_present" = "as `CacheKeyTest::test_cache_key`: the registry `test_metadata.py` clears, by the order a worker is given the files"
+"test/sql/test_compare.py::CompareAndCopyTest::test_compare_labels" = "as `CacheKeyTest::test_cache_key`: the registry `test_metadata.py` clears, by the order a worker is given the files"
+"test/sql/test_compare.py::CompareAndCopyTest::test_copy_internals" = "as `CacheKeyTest::test_cache_key`: the registry `test_metadata.py` clears, by the order a worker is given the files"
+
 # Its CI's test job and linting job (`pyright pydantic`, its pre-commit typecheck hook); its tests
 # of pydantic-core, its Rust core, which `--fix` doesn't touch, are left out.
 [corpus.pydantic]

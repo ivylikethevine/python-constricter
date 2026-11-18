@@ -640,7 +640,7 @@ def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
         seconds=10.0,
     )
     assert plan.wanted(tree, pipeline.TYPES) == sizing.Wanted(2, 16 * sizing.GIB // 3)
-    assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4), 10.0)
+    assert plan.wanted(tree, pipeline.CHECK) == sizing.Wanted(2, sizing.GIB * 3 // 10, 10.0)
     assert plan.wanted(tree._replace(suite=None), pipeline.CHECK).lasting == 0
     assert plan.wanted(tree, pipeline.TIMING).cpus == plan.cpus
     # The check and the census share one check: the one that only read it is held as the one that ran it.

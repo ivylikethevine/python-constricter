@@ -47,20 +47,19 @@ measure before building.
 - Open questions from `mega-11-16-2026-1443`, not looked into: twisted's 12 left for a second pass
   after basedpyright's hints, where it left none (4); matplotlib's hinted steps' 99, 98 and 33 fewer
   fixes; nibabel's union step failing 2 tests from 1.
-- Waiting on a decision: whether `agreed` leaves the likely fixes or `NotImplementedType` hints are
-  refused (10); the proposal in 2; which of 9's refusals to build, if any; for 5,
-  the 11 narrow casts and whether LVA016 stays a code; for 11, which model and whether a download or
-  hosted API is wanted.
+- Decided 2026-11-17, to build: `agreed` out of the likely fixes and `NotImplementedType` hints
+  refused (10); an unmeasured fix or check sized by its corpus's files (3); the three wrong casts
+  corrected, the ten JSON views marked `# noqa: LVA016`, LVA016 named as a code (5); sqlalchemy's
+  four named in the catalog (2). Items 9 and 11 moved to Later.
 
 ## Order of work
 
-- 4: matplotlib's one fix left after pyrefly's hints, then done. 3: built, its first run 27% over
-  its shortest; its two proposals wait on a decision.
+- 2, 10 and 3 built 2026-11-17 (5 done): an `alt` run into a fresh folder for 3, then one mega run
+  for 10, 2 and 4.
+- 4: matplotlib's one fix left after pyrefly's hints, then done.
 - 1: an hour beside the next super run, made in stages hours apart.
-- 5: this project's suite traced with the new checks, then the 11 casts and LVA016, each to decide.
 - 6: the mutation run, then its survivors.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
-- Once decided: 10, 2, then 9's first refusal, then 11.
 
 ## Now
 
@@ -108,9 +107,23 @@ The hinted steps no longer wait for a third of the memory: given 0.5 to 2.2 GB, 
 110 seconds behind other unmeasured steps, a fix's or a check's held at `_JOB_MEMORY` for each of
 the run's 4 jobs (5 GB, 0.2 to 0.5 used) and a suite's released tests at 8 (0.5 to 1.2 used:
 `requests` waited 244 seconds, `langchain-core` 265). matplotlib's hinted steps held 6.4 to 7.2 GB
-given 0.68 to 1.87, so the run's steps held 36.6 GB at once. Left, each a proposal: an unmeasured
-fix or check sized by the corpus's files rather than its jobs, and an unmeasured hinted step's
-estimate counting what the corpus's environment installs. A measured step can be as far off: on `mega-11-11-2026-1113` every checker was
+given 0.68 to 1.87, so the run's steps held 36.6 GB at once. Decided 2026-11-17: an unmeasured fix
+or check sized by the corpus's files rather than its jobs, by a ratio of bytes held to source bytes
+read from earlier runs, to build; an unmeasured hinted step's estimate counting what the corpus's
+environment installs, not built (`Plan.fitted` corrects it as the step runs). Built that day: an
+unmeasured step that's no hinted step, type check or suite's tests holds 0.3 GB and 450 bytes for
+each byte of the corpus's Python for a fix, 250 for a check, the census or coverage, where it held
+1.25 GB for each of the run's `--jobs` (`scripts/scratch/check_sizes.py` on `mega-11-17-2026-1641`:
+fixes held up to 440 a byte on the largest corpora, the rest under 300, every one at most 0.3 GB on
+the smallest). Its `alt` run into a fresh folder, `alt-fresh-11-17-2026-1912` (16CPU/60GB, 36 GB
+shared, no step failed): 7.0 minutes to a proved 5.0, from 7.6 to 6.0, and none of the run's memory
+held past the model's. Each check and fix started on 0.32 to 0.87 GB, matplotlib's fixes on 3.45
+(3.0 to 3.4 held). What waits now is CPUs, not memory: 64 steps waited 30 seconds or more, the
+longest the released tests (`requests` 191 seconds, `langchain-core` 184), each holding 8 CPUs and
+8 GB for 0.7 to 1.4 used, and small steps 125 to 138 seconds behind them. Its hinted steps read
+their hints from the store, so they took 2 to 3 seconds where they asked afresh before. Left, a
+proposal: a suite's unmeasured tests started on fewer CPUs, as a hinted step is. A measured step
+can be as far off: on `mega-11-11-2026-1113` every checker was
 asked afresh, each step sized by a run that read its hints from the store, so pip's
 `infer-basedpyright` held 4.1 GB where it was given 0.64 and matplotlib's 8.8 where 4.28, the load
 28 on 16 CPUs, and the run took 95 minutes for 80; no server passed its heap's cap. Not looked
@@ -155,6 +168,35 @@ after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 24
 234,001 and 247,682). Left: matplotlib's one after pyrefly's hints, the bar's 0, and the 72 left
 in all, not looked into. Coverage unchanged.
 
+### Small: under 4 hours
+
+#### 2. sqlalchemy's four `test_compare` failures after `infer-union`
+
+On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
+step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
+`test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
+`mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the seven mega runs since
+2026-10-30 that aren't these, `mega-11-11-2026-1113` the latest, with 9, 13, 14 and 16 workers where
+it failed with 10 and 11; they fail in it again on `mega-11-16-2026-1443`. Found 2026-11-11, and no
+fix's: the suite's own order.
+`test/sql/test_compare.py` registers `sqlite_foo` for `Insert` as it's imported
+(`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the process shares, and
+`test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after each of its tests
+(`Index._kw_registry.clear()`). Every worker imports both files to collect them, so a worker
+pytest-xdist gives `test_metadata.py` before `test_compare.py` (`--dist loadfile`: by which is free)
+refuses the argument in all four, as this run's one worker did: "Argument 'sqlite_foo' is not
+accepted by dialect 'sqlite' on behalf of `Insert`", the message of 2026-11-05. On the checkout at
+its tag, no fix applied, registering the argument, clearing the registry and building the statement
+raises the same. In one process the suite's plugin sorts the tests, so `test_compare.py` always runs
+first. It's the union's step each time because that one always runs: its tests stand for each fix's
+where they're the released tests' (`suite_steps.union`), so the others ran only on the two of the
+eight kept runs where its four failed. A fixed step's failures run again before they're called new
+(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Decided
+2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
+registry their order clears; the union's tests not run again. Built that day, by the names the runs
+record them under; done when a mega run where they fail lists them apart, not as new. Coverage
+unchanged.
+
 ### Medium: 4 to 8 hours
 
 #### 5. Annotations held to a run
@@ -195,9 +237,16 @@ function, as a binding's does: 2 of the tracer's own tests fail traced (a run of
 process under the trace), and the package's one annotation a value differed from was
 `recording.named`'s `module: str`, `None` there: such a class is now spelled unknown, and the
 tests' class that can't be read raises as its module is asked for. Traced once more: 20,576
-held, none of the package's differing, the 13 alone. Left: the 13, each widened or
-the cast kept and the report given a way to pass one over, which is to decide; and LVA016 named
-where the other codes are (`--explain`, the README's table) if it's to stay a code.
+held, none of the package's differing, the 13 alone. Decided 2026-11-17: the three that are wrong
+corrected (`planning._solved`, `sdist`, `tables`); the ten JSON documents read as the part a test
+uses kept, each marked `# noqa: LVA016`, which the trace's report honours as a check does; and
+LVA016 stays a code, named in `--explain` and the README's table. Built that day: `_solved` a
+`frozenset[CpSolverStatus]`, `sdist` a `TypedDict` with its `requires`, `tables` any TOML value;
+the ten marked; the report passes over a binding whose line has a `# noqa` covering LVA016 and
+counts those (`witness.report`); `--explain LVA016` and the README's table name it. Done
+2026-11-17: the suite traced (`python -m constricter.trace --check -m pytest -n 8`, 16CPU/60GB)
+holds 20,528 annotated bindings, none differing, the 10 marked passed over; 2 of the tracer's own
+tests fail traced, a trace inside a trace. To move to COMPLETED.md at the next groom.
 About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 #### 6. Mutation testing
@@ -280,37 +329,45 @@ now known, which a check's results don't name: their reasons are kinds (`member`
 the class and method. Each timing here predates the changes since 2026-10-28: time them again first.
 About 8 hours; coverage unchanged.
 
+### Measurement
+
+#### 10. Two checkers' agreement, read again
+
+A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026-0441` it passed
+[LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
+each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
+environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
+narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name. On
+`mega-11-16-2026-1443`, with a hint dropped where it names another thing than the file binds the
+name to ([COMPLETED.md](COMPLETED.md#corpus)), they blame 20. Read on 2026-11-17
+(`scripts/scratch/guess_report.py --from FOLDER --step infer-union`), it fails the blamed bar on both
+later runs:
+
+| Run                    | Guesses | Checked | Guesses blamed | Blamed per 100 |   Told | Held (%) |
+| ---------------------- | ------: | ------: | -------------: | -------------: | -----: | -------: |
+| `mega-11-06-2026-0441` |  14,445 |  10,081 |              8 |           0.08 |  9,149 |     97.9 |
+| `mega-11-11-2026-1113` |  18,170 |  12,662 |             23 |           0.18 | 11,238 |     96.1 |
+| `mega-11-16-2026-1443` |  18,144 |  12,659 |             17 |           0.13 | 11,226 |     96.1 |
+
+The bars are 20 told, over 95% held and under 0.1 blamed per 100 checked. On the latest run the 17
+blamed are spread over 11 corpora, narwhals' `default_col` three times (`_duckdb`, `_ibis`,
+`_spark_like`), pandas' `creso_infer: int` in two tests; 5 fewer would pass the bar. Of the 436 a
+traced value differed from, 318 are pandas's, about 230 of them a comparison's result hinted
+`NotImplementedType` (`result = cat == cat`, a `Series` at run time), 33 on the 11-06 run: the
+corpus's own environment gives both checkers the dunder's declared `NotImplementedType` arm. Without
+them the held share would be about 98%. Decided 2026-11-17, both: `agreed` leaves the likely
+fixes now; a checker's hint of `NotImplementedType` alone is refused (266 of the checkers'
+differing hints on the latest run name it); and `agreed` is read again on the next mega run, to
+come back once it passes all three bars (narwhals' three `default_col` blamed, if one cause, are
+what keeps it over the blamed bar). Built that day: `agreed+checker` out of `offences.LIKELY`, and
+`hinted._unimplemented` refusing a hint that's `NotImplementedType` alone; LIKELY.md, FIXES.md and
+the changelog say so. Left: the mega run (95 minutes on 16CPU/60GB), read for `agreed`'s bars.
+
 ## On hold
 
-Each waits on a decision, named in the item.
+Nothing waits on a decision.
 
-### Small: under 4 hours
-
-#### 2. sqlalchemy's four `test_compare` failures after `infer-union`
-
-On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
-step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
-`test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
-`mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the seven mega runs since
-2026-10-30 that aren't these, `mega-11-11-2026-1113` the latest, with 9, 13, 14 and 16 workers where
-it failed with 10 and 11; they fail in it again on `mega-11-16-2026-1443`. Found 2026-11-11, and no
-fix's: the suite's own order.
-`test/sql/test_compare.py` registers `sqlite_foo` for `Insert` as it's imported
-(`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the process shares, and
-`test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after each of its tests
-(`Index._kw_registry.clear()`). Every worker imports both files to collect them, so a worker
-pytest-xdist gives `test_metadata.py` before `test_compare.py` (`--dist loadfile`: by which is free)
-refuses the argument in all four, as this run's one worker did: "Argument 'sqlite_foo' is not
-accepted by dialect 'sqlite' on behalf of `Insert`", the message of 2026-11-05. On the checkout at
-its tag, no fix applied, registering the argument, clearing the registry and building the statement
-raises the same. In one process the suite's plugin sorts the tests, so `test_compare.py` always runs
-first. It's the union's step each time because that one always runs: its tests stand for each fix's
-where they're the released tests' (`suite_steps.union`), so the others ran only on the two of the
-eight kept runs where its four failed. A fixed step's failures run again before they're called new
-(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Left, each
-a proposal, since it changes what a run reports: the four named in the catalog
-(`[corpus.sqlalchemy.suite.differs]`), or the union's tests run again as a fixed step's are. About
-an hour for either; coverage unchanged.
+## Later
 
 ### Large: more than 8 hours
 
@@ -367,35 +424,6 @@ built for now, the first the one worth building:
 
 ### Measurement
 
-#### 10. Two checkers' agreement, read again
-
-A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026-0441` it passed
-[LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
-each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
-environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
-narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name. On
-`mega-11-16-2026-1443`, with a hint dropped where it names another thing than the file binds the
-name to ([COMPLETED.md](COMPLETED.md#corpus)), they blame 20. Read on 2026-11-17
-(`scripts/scratch/guess_report.py --from FOLDER --step infer-union`), it fails the blamed bar on both
-later runs:
-
-| Run                    | Guesses | Checked | Guesses blamed | Blamed per 100 |   Told | Held (%) |
-| ---------------------- | ------: | ------: | -------------: | -------------: | -----: | -------: |
-| `mega-11-06-2026-0441` |  14,445 |  10,081 |              8 |           0.08 |  9,149 |     97.9 |
-| `mega-11-11-2026-1113` |  18,170 |  12,662 |             23 |           0.18 | 11,238 |     96.1 |
-| `mega-11-16-2026-1443` |  18,144 |  12,659 |             17 |           0.13 | 11,226 |     96.1 |
-
-The bars are 20 told, over 95% held and under 0.1 blamed per 100 checked. On the latest run the 17
-blamed are spread over 11 corpora, narwhals' `default_col` three times (`_duckdb`, `_ibis`,
-`_spark_like`), pandas' `creso_infer: int` in two tests; 5 fewer would pass the bar. Of the 436 a
-traced value differed from, 318 are pandas's, about 230 of them a comparison's result hinted
-`NotImplementedType` (`result = cat == cat`, a `Series` at run time), 33 on the 11-06 run: the
-corpus's own environment gives both checkers the dunder's declared `NotImplementedType` arm. Without
-them the held share would be about 98%. To decide, each changing what's likely: `agreed` leaves the
-likely fixes, as this item planned; or a checker's hint of `NotImplementedType` alone refused (266
-of the checkers' differing hints on the latest run name it), then `agreed` read again on the next
-mega run. About an hour for either, then a mega run (95 minutes on 16CPU/60GB).
-
 #### 11. Types from a model
 
 Type4Py, TypeWriter, DLTPy, Typilus, HiTyper, TypeT5 and TypeGen predict types (TypyBench and
@@ -408,8 +436,6 @@ Type4Py's, passed in, and what's left without them is static; TypeT5 is a checko
 model to download, run on CPUs here. To decide first: which one, and whether a download of some
 gigabytes or a hosted API is wanted for it. About 6 hours once one runs; coverage unknown until
 measured.
-
-## Later
 
 ### Ongoing
 
@@ -432,6 +458,18 @@ allows it as untyped, `validate`'s parameters being unannotated). About an hour 
   the method-name edges dropped with late rechecks (no faster), both 2026-10-27 (8).
 - Measured and not worth building: the traced parameters' types as `callers`' seeds (9).
 - 2026-11-06: none of 9's four refusals built for now; the exhausted union first if any is (9).
+  2026-11-17: kept so, the item moved to Later: 5 new errors in about 3,200 traced fixes.
+- 2026-11-17: no model's types tried for now, the item in Later: none is deterministic, each needs a
+  download of gigabytes or a hosted API sent the project's source, and the checkers' hints cover
+  the ground; to revisit if those plateau (11).
+- 2026-11-17: `agreed+checker` leaves the likely fixes, failing the blamed bar, until a run passes
+  all three; a hint of `NotImplementedType` is refused (10).
+- 2026-11-17: a first run's unmeasured hinted step isn't sized by its environment's packages:
+  `Plan.fitted` corrects it as it runs (3).
+- 2026-11-17: LVA016 stays a code; a cast that narrows a JSON document to the part a test uses is
+  kept and marked `# noqa: LVA016`, not widened (5).
+- 2026-11-17: the union step's tests aren't run again before their failures are called new: a
+  suite's order-dependent tests are named in the catalog instead (2).
 
 ## Done
 

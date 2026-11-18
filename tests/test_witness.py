@@ -665,4 +665,20 @@ def test_a_runs_processes_verdicts_are_joined(tmp_path: Path, monkeypatch: pytes
     ]
     found: dict[witness.Key, _Counted] = witness.gathered(tmp_path, other)
     assert found["many.py", 2, 5, "held", "int"] == ([1, 4, 0], ["str", "bytes", "float"])
-    assert witness.report(found)[-1].endswith(": 2 differed, 1 couldn't be told")
+    assert witness.report(found, tmp_path)[-1].endswith(": 2 differed, 1 couldn't be told")
+
+
+def test_a_binding_marked_noqa_is_passed_over_and_counted(tmp_path: Path) -> None:
+    """A `# noqa` covering LVA016 on its line, as a check's offence; one naming another code doesn't."""
+    source: str = (
+        "def f(value):\n    held: int = value  # noqa: LVA016\n    kept: int = value  # noqa: LVA001\n"
+    )
+    _ = (tmp_path / "marked.py").write_text(source, encoding="utf-8")
+    found: dict[witness.Key, _Counted] = {
+        ("marked.py", 2, 5, "held", "int"): ([0, 1, 0], ["str"]),
+        ("marked.py", 3, 5, "kept", "int"): ([0, 1, 0], ["str"]),
+        ("gone.py", 1, 1, "lost", "int"): ([0, 1, 0], ["str"]),  # a file that can't be read again
+    }
+    lines: list[str] = witness.report(found, tmp_path)
+    assert [line.split(":", 1)[0] for line in lines[:-1]] == ["gone.py", "marked.py"]
+    assert lines[-1].endswith(": 2 differed, 1 passed over by `# noqa`, 0 couldn't be told")

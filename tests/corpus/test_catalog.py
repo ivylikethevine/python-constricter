@@ -113,7 +113,7 @@ def test_a_corpus_with_no_checkout_requires_what_its_environment_installs() -> N
 
 def test_an_installed_corpus_is_the_version_the_corpus_group_pins() -> None:
     """`pyproject.toml`'s `corpus` group and the catalog name one version of each, the suite's tag too."""
-    project: dict[str, dict[str, _Group]] = tomllib.loads(
+    project: dict[str, dict[str, _Group]] = tomllib.loads(  # noqa: LVA016
         (Path(__file__).parents[2] / "pyproject.toml").read_text(encoding="utf-8"),
     )
     pinned: dict[str, str] = dict(

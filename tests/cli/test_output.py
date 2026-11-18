@@ -146,7 +146,7 @@ def test_sarif_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     """`--format=sarif` prints a SARIF log with each result's level."""
     broken: Path = written(tmp_path / "broken.py", BROKEN)
     assert cli.main(["--format=sarif", str(broken)]) == cli.EXIT_FOUND
-    sarif: _Sarif = cast("_Sarif", json.loads(capsys.readouterr().out))
+    sarif: _Sarif = cast("_Sarif", json.loads(capsys.readouterr().out))  # noqa: LVA016
     results: list[dict[str, _Json]] = sarif["runs"][0]["results"]
     assert [(r["ruleId"], r["level"]) for r in results] == [
         ("LVA001", "error"),
@@ -215,7 +215,7 @@ def test_sarif_links_rules_and_offers_certain_fixes(
     log: _JsonObject = cast("_JsonObject", json.loads(out))  # a copy: validating fills in defaults
     valid: _JsonObject = cast("_JsonObject", fastjsonschema.validate(schema, log))
     assert valid == log
-    sarif: _Sarif = cast("_Sarif", json.loads(out))
+    sarif: _Sarif = cast("_Sarif", json.loads(out))  # noqa: LVA016
     run: _JsonObject = cast("_JsonObject", sarif["runs"][0])
     driver: _JsonObject = cast("_JsonObject", cast("_JsonObject", run["tool"])["driver"])
     rules: list[_JsonObject] = cast("list[_JsonObject]", driver["rules"])
@@ -260,7 +260,7 @@ def test_rdjson_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> No
     """`--format=rdjson` is reviewdog's JSON; a certain fix is a suggestion at the name's end."""
     demo: Path = written(tmp_path / "demo.py", DEMO)
     assert cli.main(["--format=rdjson", str(demo)]) == cli.EXIT_FOUND
-    report: dict[str, list[_JsonObject]] = cast(
+    report: dict[str, list[_JsonObject]] = cast(  # noqa: LVA016
         "dict[str, list[_JsonObject]]",
         json.loads(capsys.readouterr().out),
     )
@@ -281,7 +281,7 @@ def test_rdjson_declares_a_loop_target_on_a_line_of_its_own(
         "def f(items: list[str]) -> None:\n    for x in items:\n        pass\n",
     )
     assert cli.main(["--format=rdjson", str(loop)]) == cli.EXIT_CLEAN
-    report: dict[str, list[_JsonObject]] = cast(
+    report: dict[str, list[_JsonObject]] = cast(  # noqa: LVA016
         "dict[str, list[_JsonObject]]",
         json.loads(capsys.readouterr().out),
     )

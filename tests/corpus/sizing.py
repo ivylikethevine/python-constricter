@@ -22,7 +22,7 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
   check where measured (`Plan._servers`); a suite's type checks hold `_UNSIZED_SHARE` of the memory,
   their checkers' of no known size;
 - any other keeps `_STEP_CPUS` busy (a check runs in bursts between stretches in one process) and
-  holds `_JOB_MEMORY` for each of constricter's `--jobs`.
+  holds `_BASE_MEMORY` and a share of the corpus's Python bytes, more for a fix than a check.
 
 A step that wants all the memory there is, or more, runs alone. A suite's tests start once half the
 CPUs they want are free, or `_MOST_SHARE` of the machine's, and take as many more as are free then,
@@ -77,6 +77,7 @@ from tests.corpus import archive
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
     CHECK,
+    FIX,
     IMPLIED,
     INFER,
     PROFILE,
@@ -101,7 +102,13 @@ _STEP_CPUS: Final = 2  # what a step other than a suite's tests keeps busy, unme
 _TESTS_MEMORY: Final = 2  # the run's memory a suite's tests' workers may fill: a half
 _MEMORY_SHARE: Final = 0.8  # of the memory free as the run starts: the rest is for what else runs
 _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are seconds apart
-_JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
+# What an unmeasured constricter step holds: a base, and a share of the corpus's Python bytes, more
+# for a fix (its checks again, and its copy) than a check. The mega corpora's steps hold at most
+# 0.3 GB on the smallest, and fixes 330 to 440 bytes for each byte on the largest (pandas,
+# matplotlib), checks under 300 (`scripts/scratch/check_sizes.py`).
+_BASE_MEMORY: Final = GIB * 3 // 10
+_FIX_PER_BYTE: Final = 450
+_CHECK_PER_BYTE: Final = 250
 _UNSIZED_SHARE: Final = (
     3  # the unmeasured steps running checkers of no known size that the memory is split among
 )
@@ -810,7 +817,7 @@ class Plan(NamedTuple):
             return estimated
         if step.startswith(INFER) or step == TYPES:
             return self.memory // _UNSIZED_SHARE
-        return (self.run.jobs or self.cpus) * _JOB_MEMORY
+        return _BASE_MEMORY + (_FIX_PER_BYTE if step.startswith(FIX) else _CHECK_PER_BYTE) * _size(tree.root)
 
     def _named(self, step: str) -> list[Server]:
         """Name the servers of the checkers a step asks for hints: none for a step asking none.

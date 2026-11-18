@@ -9,7 +9,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
 - `python -m constricter.trace --check` holds a `*args: T` as a `tuple[T, ...]` and a `**kwargs: T`
   as a `dict[str, T]` (an `Unpack` of either as the whole), a coroutine's return to its `-> T` on
   Python 3.12 and later, and, as the run ends, each recorded module's and its classes' annotated
-  variables to what they hold then.
+  variables to what they hold then. It passes over a binding whose line has a `# noqa` covering
+  LVA016, and counts those; `constricter --explain LVA016` explains the code.
 - A trace no longer stops the run it records where a function returns a value whose type can't be
   read: that function is recorded no more, as one binding such a value already was. A class whose
   `__module__` is `None` is spelled as unknown.
@@ -84,8 +85,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
   there no longer gives the base the method is defined on (pandas's `subarr: Index` in
   `DatetimeIndex.__new__`, then returned as `Self`), and `object.__new__(cls)` is the class, or
   `Self` in a `__new__` declared to return it (pandas's `result: MultiIndex` was mypy's error).
-- `--likely` applies a type checker's hint that another checker gives alike (`agreed+checker`,
-  with `--infer-with` of two or more), which passed LIKELY.md's bars on the mega corpora.
+- A type checker's hint that another checker gives alike is a set of its own (`agreed+checker`,
+  with `--infer-with` of two or more), measured apart from one checker's alone. `--likely` doesn't
+  apply it: once each checker read the corpus's own environment it failed LIKELY.md's blamed bar on
+  the mega corpora (0.13 guesses in each 100 checked, for under 0.1).
+- A checker's hint of `NotImplementedType` alone is no fix: a binary dunder's declared return,
+  which checkers hint for the operation's result (pandas's `result = cat == cat`).
 - `--likely` applies a docstring's named return (`documented+returned`), which passed LIKELY.md's
   bars on the mega run of 2026-11-06: 41 told, 39 held, none blamed.
 - LVA013 offers no attribute type naming a type variable the class doesn't bind

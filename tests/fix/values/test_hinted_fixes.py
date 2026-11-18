@@ -136,6 +136,27 @@ def test_a_hint_is_widened_spelled_or_dropped(hint: str, fix: str | None) -> Non
 
 
 @pytest.mark.parametrize(
+    ("hint", "fix"),
+    [
+        ("NotImplementedType", None),
+        ("types.NotImplementedType", None),
+        ("SimpleNamespace", "SimpleNamespace"),  # another of `types`' classes, imported alike
+    ],
+)
+def test_a_binary_dunders_declared_return_alone_is_no_fix(hint: str, fix: str | None) -> None:
+    """`NotImplementedType` alone, which checkers hint for `cat == cat` where `__eq__` declares it."""
+    source: str = """
+    import types
+    from types import NotImplementedType, SimpleNamespace
+
+
+    def f(q) -> None:
+        x = q == q
+    """
+    assert _fixes(source, {"x": hint}) == [("x", fix, fix is not None)]
+
+
+@pytest.mark.parametrize(
     ("module", "fix"),
     [
         ("from re import Match", "Match[str]"),

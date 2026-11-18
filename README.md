@@ -81,6 +81,7 @@ class bodies too. Statements are read in source order, and only a name's first b
 | `LVA013` | opt-in: an instance attribute a plain class's method first stores, declared nowhere in it | `self.x: T = ...`                              |
 | `LVA014` | opt-in: a plain function that declares no return type                                     | `def f(...) -> T:`                             |
 | `LVA015` | opt-in: a parameter with no annotation                                                    | `def f(x: T):`                                 |
+| `LVA016` | with `python -m constricter.trace --check`: an annotation a traced value differed from    | fix the value, or the annotation               |
 
 Exempt: comprehensions, `except ... as`, imports, `def`/`class`, `type` aliases, parameters,
 `global`/`nonlocal`, and `_`; in module and class bodies, dunder names (`__all__`, `__slots__`) and

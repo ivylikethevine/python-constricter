@@ -14,7 +14,8 @@ the checker printed it:
   `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
   as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one with `Never` or `NoReturn` in it
-  (an empty display's `list[Never]`, or code the checker takes not to run), one nested as deep as
+  (an empty display's `list[Never]`, or code the checker takes not to run), `NotImplementedType`
+  alone (a binary dunder's declared return, never what the operation gives), one nested as deep as
   LVA006 reports, or a tuple as long as LVA011 does;
 - a special form alone (`type[Generic]`) is dropped, as is a union inside the hint
   (`dict[str, int | bytes]`), and a `Literal` in a class's own arguments, which may be bound to it
@@ -174,6 +175,9 @@ _RUNTIME: Final = {
 }
 _TYPES: Final = "types"
 _BOTTOM: Final = frozenset({"Never", "NoReturn"})  # the type of no value: never a variable's
+# What a binary dunder declares it may return, which checkers hint for the operation's result where
+# the operand's class is in reach (pandas' `cat == cat`): what the operation gives is never it.
+_UNIMPLEMENTED: Final = "NotImplementedType"
 
 
 class Site(NamedTuple):
@@ -341,7 +345,7 @@ def _spelled(text: str, known: Known, imports: tuple[str, ...], site: Site) -> s
     root = _abstract(root, plan, origins)
     lone: set[str] = _lone(root)
     # `TypeAlias` is `type_alias`'s to write. A special form alone isn't a type.
-    if _aliases(root) or lone & _FORMS or _misnamed(root, plan) or _bottom(root):
+    if _aliases(root) or lone & _FORMS or _misnamed(root, plan) or _bottom(root) or _unimplemented(root):
         return None
     names: list[str] = sorted(
         {
@@ -449,6 +453,18 @@ def _bottom(root: ast.expr) -> bool:
         (isinstance(node, ast.Name) and node.id in _BOTTOM)
         or (isinstance(node, ast.Attribute) and node.attr in _BOTTOM)
         for node in ast.walk(root)
+    )
+
+
+def _unimplemented(root: ast.expr) -> bool:
+    """Check whether an annotation is `NotImplementedType` alone, however it's spelled.
+
+    Returns:
+      Whether it is.
+
+    """
+    return (isinstance(root, ast.Name) and root.id == _UNIMPLEMENTED) or (
+        isinstance(root, ast.Attribute) and root.attr == _UNIMPLEMENTED
     )
 
 

@@ -18,7 +18,7 @@ import tomllib
 import urllib.request
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import IO, Final, NamedTuple, TypeAlias, cast
+from typing import IO, Final, NamedTuple, NotRequired, TypeAlias, TypedDict, cast
 
 
 class Source(NamedTuple):
@@ -38,6 +38,17 @@ _SDIST: Final = "sdist"
 _Table: TypeAlias = dict[str, object]  # a table of the catalog, as `tomllib` reads it
 
 
+class _Sdist(TypedDict):
+    """A corpus's `sdist` table: where its archive is (`url`, or `where` and `archive` on PyPI's host)."""
+
+    url: NotRequired[str]
+    where: NotRequired[str]
+    archive: NotRequired[str]
+    sha256: str
+    package: str  # the directory to check in it
+    requires: NotRequired[list[str]]  # what its environment installs
+
+
 def pinned(among: str | None = None) -> dict[str, Source]:
     """Read the sdists `corpora.toml` pins: every corpus's that has one, or those of the set `among`.
 
@@ -55,14 +66,13 @@ def pinned(among: str | None = None) -> dict[str, Source]:
     for name in names:
         entry: _Table = entries[name]
         if _SDIST in entry:
-            sdist: dict[str, str] = cast("dict[str, str]", entry[_SDIST])
-            requires: list[str] = cast("dict[str, list[str]]", entry[_SDIST]).get("requires", [])
+            sdist: _Sdist = cast("_Sdist", entry[_SDIST])
             found[name] = Source(
                 str(entry["version"]),
-                sdist.get("url") or f"{FILES}/{sdist['where']}/{sdist['archive']}",
+                sdist.get("url") or f"{FILES}/{sdist.get('where', '')}/{sdist.get('archive', '')}",
                 sdist["sha256"],
                 sdist["package"],
-                tuple(requires),
+                tuple(sdist.get("requires", [])),
             )
     return found
 

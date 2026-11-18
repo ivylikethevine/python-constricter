@@ -163,7 +163,7 @@ def test_a_suite_traced_by_its_script_is_one_process(tmp_path: Path) -> None:
     suite: catalog.Suite = celery.suite._replace(script=("runtests.py",))
     plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 64 * sizing.GIB, {})
     tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=suite)
-    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(2, 2 * (sizing.GIB + sizing.GIB // 4))
+    assert plan.wanted(tree, pipeline.TRACED) == sizing.Wanted(2, sizing.GIB * 3 // 10)
 
 
 def test_an_unmeasured_part_takes_its_kinds_largest_measured_one(tmp_path: Path) -> None:
@@ -213,6 +213,18 @@ def test_an_unmeasured_union_takes_its_largest_checkers_memory(tmp_path: Path) -
         == unmeasured.wanted(tree, "infer-basedpyright").memory
         > unmeasured.wanted(tree, "infer-ty").memory
     )
+
+
+def test_an_unmeasured_check_or_fix_holds_a_share_of_its_corpus(tmp_path: Path) -> None:
+    """A base and the corpus's Python bytes' share, whatever the run's `jobs`: a fix's more than a check's."""
+    file: IO[str]
+    with (tmp_path / "big.py").open("w", encoding="utf-8") as file:
+        _ = file.truncate(10 << 20)
+    tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 16}}), 16, 64 * sizing.GIB, {})
+    base: int = sizing.GIB * 3 // 10
+    assert plan.wanted(tree, pipeline.CHECK).memory == base + 250 * (10 << 20)
+    assert plan.wanted(tree, "fix-unsafe").memory == base + 450 * (10 << 20)
 
 
 def test_an_unmeasured_hinted_step_holds_its_servers_estimate(tmp_path: Path) -> None:

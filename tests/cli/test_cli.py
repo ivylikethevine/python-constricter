@@ -375,6 +375,19 @@ def test_explain_prints_each_code(code: str, capsys: pytest.CaptureFixture[str])
     assert out.rstrip().endswith("suffocate: error")
 
 
+def test_explain_prints_a_traced_runs_code(capsys: pytest.CaptureFixture[str]) -> None:
+    """LVA016 is no check's: its rationale, then what reports it, and how a line passes it over."""
+    exit_info: pytest.ExceptionInfo[SystemExit]
+    with pytest.raises(SystemExit) as exit_info:
+        _ = cli.main(["--explain", "LVA016"])
+    assert exit_info.value.code == cli.EXIT_CLEAN
+    out: str = capsys.readouterr().out
+    marked: str = "# noqa: LVA016"
+    assert out.startswith("LVA016: an annotation a traced run's value differed from")
+    assert marked in out
+    assert out.rstrip().endswith("reported by `python -m constricter.trace --check` alone")
+
+
 def test_statistics_counts_each_code(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """`--statistics` prints a count per code instead of each offence."""
     path: Path = written(tmp_path / "demo.py", DEMO)
