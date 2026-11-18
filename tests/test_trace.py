@@ -32,8 +32,8 @@ def same(function):
     return function
 
 
-class Odd:
-    __module__ = None
+class Odd(metaclass=type("Raising", (type,), {"__module__": property(lambda cls: [][0])})):
+    pass
 
 
 @same
@@ -97,7 +97,7 @@ def nameless(tell):
     return tell(), (lambda: tell())()
 """
 # Functions returning a value, an empty container (saying nothing), falling off their end, binding no
-# name, and a generator (not recorded).
+# name, a generator (not recorded), and a class whose module can't be read (its function dropped).
 _RETURNING: Final = """
 def same(value):
     return value
@@ -122,6 +122,12 @@ def counting(value):
     yield value
 
 
+class Nowhere(metaclass=type("Raising", (type,), {"__module__": property(lambda cls: [][0])})):
+    pass
+def odd():
+    return Nowhere
+
+
 same(1)
 same("a")
 empty(1)
@@ -129,6 +135,7 @@ early(1)
 early(0)
 doubled(2)
 list(counting(1))
+odd()
 """
 _MODULE: Final = """
 import sys
@@ -593,7 +600,8 @@ def test_only_the_roots_own_functions_are_recorded(run: _Run) -> None:
 def test_a_functions_returns_are_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """What each returns, at the line it returns from: one binding no name too; not a generator's.
 
-    Nor an empty container's, which says nothing.
+    Nor an empty container's, which says nothing, nor a class's that isn't one as Python makes them
+    (its function recorded no more, and the run going on).
 
     One that falls off its end returns `None` at its last line run.
     """

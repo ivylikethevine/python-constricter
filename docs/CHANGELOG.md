@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- `python -m constricter.trace --check` holds a `*args: T` as a `tuple[T, ...]` and a `**kwargs: T`
+  as a `dict[str, T]` (an `Unpack` of either as the whole), a coroutine's return to its `-> T` on
+  Python 3.12 and later, and, as the run ends, each recorded module's and its classes' annotated
+  variables to what they hold then.
+- A trace no longer stops the run it records where a function returns a value whose type can't be
+  read: that function is recorded no more, as one binding such a value already was. A class whose
+  `__module__` is `None` is spelled as unknown.
 - With `--infer-with`, `--fix` indexes again the files a round changed, as it does without, and the
   next round asks the type checkers about every file, not only those it changed: a checker can type
   a name once another file's fix is written. A file is checked again where its hints or what it

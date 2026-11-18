@@ -31,11 +31,17 @@ measure before building.
   bars and the tests still wait on a mega run.
 - `agreed+checker` fails the blamed bar on `mega-11-16-2026-1443` (0.13 per 100 for under 0.1; held
   96.1%), read 2026-11-17 (10).
-- Built 2026-11-17, not yet run: an unmeasured hinted step sized by its servers' estimate (3), and
-  every file asked about again after a hinted round that changed one (4); their unit tests pass in
-  the sandbox but `test_fix_stops_after_its_last_round`, which needs `--jobs=2` (the sandbox denies
-  the fork server's socket), and no full suite or Python 3.11 run was made. fastjsonschema 2.22.3 is
-  locked, and mypy reads its types (12).
+- Built 2026-11-17: an unmeasured hinted step sized by its servers' estimate (3); every file asked
+  about again after a hinted round that changed one (4), which on `mega-11-17-2026-1641` leaves a
+  second pass 17, 20 and 27 fixes from 138, 108 and 197, matplotlib's one after pyrefly's hints
+  over its bar; `--check`'s `*args`, `**kwargs`, coroutine returns and module and class variables
+  (5), the suite passing with 100% coverage. fastjsonschema 2.22.3 is locked, and mypy reads its types (12).
+- Item 3's first `alt` run (16:23 to 16:31, 2026-11-17) took 7.6 minutes to a proved 6.0, short of
+  its bar (3); the standard-library tables were regenerated at 16:25 during it, so its fix counts
+  aren't compared with other runs'. The 3.14 suite passes (`tests/ci_local.py test`, 100%
+  coverage) and Python 3.11's, synced with `--frozen` and its tests run
+  with `SETUPTOOLS_USE_DISTUTILS=stdlib` as CI's; `tests/ci_local.py interpreters` fails here at
+  `uv sync --locked`, which the global `exclude-newer` makes re-resolve.
 - Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
 - Open questions from `mega-11-16-2026-1443`, not looked into: twisted's 12 left for a second pass
@@ -48,10 +54,10 @@ measure before building.
 
 ## Order of work
 
-- 3 and 4: built 2026-11-17, each waiting on a run: an `alt` run into an output folder of its own,
-  then a mega run.
+- 4: matplotlib's one fix left after pyrefly's hints, then done. 3: built, its first run 27% over
+  its shortest; its two proposals wait on a decision.
 - 1: an hour beside the next super run, made in stages hours apart.
-- 5: finishes `--check`, already in the changelog's unreleased list.
+- 5: this project's suite traced with the new checks, then the 11 casts and LVA016, each to decide.
 - 6: the mutation run, then its survivors.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
 - Once decided: 10, 2, then 9's first refusal, then 11.
@@ -96,7 +102,15 @@ server loads what they import too: on `mega-11-16-2026-1443` a hinted step's pea
 times one server's estimate (`scripts/scratch/hinted_sizes.py`), the most dask's, matplotlib's and
 pandas's (9.2, 8.5 and 6.6 GB). Done when a first run of corpora no run measured takes within a
 tenth of its shortest (`scripts/scratch/schedule_solve.py --given`): the `alt` run into an output
-folder of its own. A measured step can be as far off: on `mega-11-11-2026-1113` every checker was
+folder of its own. Not met by the first, `alt-first-11-17-2026-1623` (8 corpora with matplotlib,
+218 steps, 16CPU/60GB, its memory 36 GB): 7.6 minutes to a proved 6.0, 27% over, no step failed.
+The hinted steps no longer wait for a third of the memory: given 0.5 to 2.2 GB, they waited 0 to
+110 seconds behind other unmeasured steps, a fix's or a check's held at `_JOB_MEMORY` for each of
+the run's 4 jobs (5 GB, 0.2 to 0.5 used) and a suite's released tests at 8 (0.5 to 1.2 used:
+`requests` waited 244 seconds, `langchain-core` 265). matplotlib's hinted steps held 6.4 to 7.2 GB
+given 0.68 to 1.87, so the run's steps held 36.6 GB at once. Left, each a proposal: an unmeasured
+fix or check sized by the corpus's files rather than its jobs, and an unmeasured hinted step's
+estimate counting what the corpus's environment installs. A measured step can be as far off: on `mega-11-11-2026-1113` every checker was
 asked afresh, each step sized by a run that read its hints from the store, so pip's
 `infer-basedpyright` held 4.1 GB where it was given 0.64 and matplotlib's 8.8 where 4.28, the load
 28 on 16 CPUs, and the run took 95 minutes for 80; no server passed its heap's cap. Not looked
@@ -132,8 +146,14 @@ another server has open only from the disk, which no test here covers. Not looke
 a corpus's first hinted run (the standard library's 39 after pyrefly's hints, pint's 15 to 19 after
 the others'). Done when a mega run (95 minutes on 16CPU/60GB) shows the hinted steps leaving
 matplotlib and pandas no more than `mega-11-10-2026-1742` did (4, 6 and 0; 23, 21 and 25) and
-pyrefly's new ones are traced; the run's hinted steps take longer, by a round's asking of every
-file. Coverage unchanged.
+pyrefly's new ones are traced. Read on `mega-11-17-2026-1641` (95 minutes on 16CPU/60GB, as the
+last; no step failed, no test fails anew, the suites' new type errors 710 as on
+`mega-11-16-2026-1443`): a second pass would still fix 17, 20 and 27 after the three checkers'
+hints, from 138, 108 and 197; matplotlib 0, 0 and 1, pandas 0, 3 and 3, pint none, pip 2, 7 and 3,
+django 3 after pyrefly's; the rest the standard library's 4, 10 and 9, celery's 6 and dask's 5 and 5
+after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 247,770 (239,086,
+234,001 and 247,682). Left: matplotlib's one after pyrefly's hints, the bar's 0, and the 72 left
+in all, not looked into. Coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -160,10 +180,24 @@ differed in the package are corrected (`workers`' context is whichever one start
 told, and 11 differ in the tests and the corpus tools, each a narrower cast than the value: a JSON
 document read as the part a test uses (`_Sarif`, `_Nested`, `_Sources`, `_Group`, `_Written`), and
 OR-Tools' status enum cast to `int` (`planning._solved`). Traced, 8 more of the suite's tests fail
-than untraced, the tracer's own among them, not looked into. Left: those 11, each widened or the
-cast kept and the report given a way to pass one over, which is to decide; a `*args`' and a
-`**kwargs`' elements, a coroutine's return, and a class's and a module's annotated variables; and
-LVA016 named where the other codes are (`--explain`, the README's table) if it's to stay a code.
+than untraced, the tracer's own among them, not looked into. Built 2026-11-17: a `*args: T` held as
+a `tuple[T, ...]`, a `**kwargs: T` as a `dict[str, T]`, an `Unpack` of either as the whole; a
+coroutine's return where `sys.monitoring` tells it from a suspension (Python 3.12); and, as the run
+ends, each recorded module's and its top-level classes' annotated variables, by what they hold
+then (`Witness.judged`), not an instance attribute declared alone, a descriptor or an enum's
+member. This project's suite traced again (2026-11-17, 33 seconds on 16CPU/60GB): 20,486
+annotated bindings held, 13 differing, the 11 and two more narrow casts of the same kind (`tables`
+in `checker_settings.py`, a `tool` table a test makes an `int`; `sdist` in `corpus_sources.py`, its
+`requires` a list), none a module's or a class's variable. Its 42 failing tests were the tracer's
+own, a recorded function returning a class whose `__module__` is `None` (`test_trace.py`'s `Odd`):
+reading it raised into the run. Traced again with a return that can't be read dropping its
+function, as a binding's does: 2 of the tracer's own tests fail traced (a run of `-m` and a pytest
+process under the trace), and the package's one annotation a value differed from was
+`recording.named`'s `module: str`, `None` there: such a class is now spelled unknown, and the
+tests' class that can't be read raises as its module is asked for. Traced once more: 20,576
+held, none of the package's differing, the 13 alone. Left: the 13, each widened or
+the cast kept and the report given a way to pass one over, which is to decide; and LVA016 named
+where the other codes are (`--explain`, the README's table) if it's to stay a code.
 About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 #### 6. Mutation testing
