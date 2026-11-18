@@ -24,9 +24,10 @@ Link any relevant issues or discussions here.
 
 If one of these cannot be completed, give a justification.
 
-- [ ] CI's checks pass locally (`tests/ci_local.py`, see docs/CONTRIBUTING.md)
-- [ ] New behaviour has tests; coverage stays at 100%
-- [ ] Affected docs are updated (README, and docs/CHANGELOG.md for user-facing changes)
+- [ ] The checks in [docs/CONTRIBUTING.md](https://github.com/ivylikethevine/python-constricter/blob/main/docs/CONTRIBUTING.md) pass locally, and the change keeps the rules it sets
+- [ ] A new feature or a bug fix comes with a test
+- [ ] Any disabled linter or code-style rule is explained
+- [ ] Affected docs are updated
 
 ## AI disclosure
 
