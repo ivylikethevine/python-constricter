@@ -207,7 +207,37 @@ def test_an_unmeasured_union_takes_its_largest_checkers_memory(tmp_path: Path) -
         measured.wanted(tree, "infer-union").memory,
     )
     unmeasured: sizing.Plan = plan._replace(before={})
-    assert unmeasured.wanted(tree, "infer-union").memory == unmeasured.wanted(tree, "infer-ty").memory
+    # None measured: its largest checker's servers (basedpyright's, a whole program each).
+    assert (
+        unmeasured.wanted(tree, "infer-union").memory
+        == unmeasured.wanted(tree, "infer-basedpyright").memory
+        > unmeasured.wanted(tree, "infer-ty").memory
+    )
+
+
+def test_an_unmeasured_hinted_step_holds_its_servers_estimate(tmp_path: Path) -> None:
+    """A server a CPU for the corpus's files, a margin over, and the corpus's check where measured."""
+    file: IO[str]
+    with (tmp_path / "big.py").open("w", encoding="utf-8") as file:
+        _ = file.truncate(20 << 20)
+    tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
+    run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
+    plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, {})
+    # basedpyright's servers each hold the whole program; ty's share the files.
+    whole: int = 2 * ((600 << 20) + 130 * (20 << 20))
+    shared: int = 2 * (420 << 20) + 38 * (20 << 20)
+    assert plan.wanted(tree, "infer-basedpyright") == sizing.Wanted(
+        2,
+        int(whole * 1.25),
+        least=1,
+        servers=hints.MEMORY,
+        server=whole // 2,
+    )
+    assert plan.wanted(tree, "infer-ty").memory == int(shared * 1.25)
+    checked: sizing.Plan = plan._replace(before={("dask", "check"): sizing.Before(2.0, 30.0, 3 * sizing.GIB)})
+    assert checked.wanted(tree, "infer-ty").memory == int(shared * 1.25) + 3 * sizing.GIB
+    # Far under the third of the run's memory it held before, and a step asking no checker keeps that.
+    assert plan.wanted(tree, "infer-ty").memory < plan.memory // 3 == plan.wanted(tree, "infer-trace").memory
 
 
 def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checker(tmp_path: Path) -> None:

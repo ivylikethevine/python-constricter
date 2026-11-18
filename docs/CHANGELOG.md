@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- With `--infer-with`, `--fix` indexes again the files a round changed, as it does without, and the
+  next round asks the type checkers about every file, not only those it changed: a checker can type
+  a name once another file's fix is written. A file is checked again where its hints or what it
+  imports changed. Each round that changes a file asks about every file once more.
+- The corpus runner sizes a hinted step no run has measured by its largest checker's servers for the
+  corpus's files, not a third of the run's memory.
 - CI runs only its Docs job on a tree whose code it already passed, where only `docs/` and
   `corpus-runs/` differ (a corpus run's records and the docs written from them); a passing run
   records its tree's code beside the tree (`tested-code`). `ruff format --check`, `typos` and

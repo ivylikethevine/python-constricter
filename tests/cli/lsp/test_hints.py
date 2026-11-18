@@ -511,6 +511,28 @@ def test_fix_repeats_while_the_hints_change(
     assert text.splitlines()[2:4] == fixed
 
 
+def test_every_file_is_asked_again_once_a_round_changes_one(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A file the first round left alone is asked about again once another's fix is written.
+
+    `uses.py`'s hint comes only once `made.py`'s `a` is annotated, as a checker's can: the second
+    round asks about every file, and fixes it.
+    """
+    _fake(monkeypatch)
+    made: str = "def f(q) -> None:\n    a = q.make()  # hint: int\n"
+    _ = (tmp_path / "made.py").write_text(made, encoding="utf-8")
+    uses: Path = tmp_path / "uses.py"
+    _ = uses.write_text("def g(q) -> None:\n    b = q.thing()  # once a: str\n", encoding="utf-8")
+    options: list[str] = ["--infer-with", _CHECKER, "--fix", "--unsafe-fixes", "--jobs=1", "-q"]
+    assert cli.main([*options, str(tmp_path)]) == cli.EXIT_CLEAN
+    assert not capsys.readouterr().out
+    fixed: str = "    b: str = q.thing()  # once a: str\n"
+    assert fixed in uses.read_text(encoding="utf-8")
+
+
 @JOBS
 def test_fix_stops_after_its_last_round(
     monkeypatch: pytest.MonkeyPatch,

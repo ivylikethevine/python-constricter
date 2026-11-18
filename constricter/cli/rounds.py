@@ -42,9 +42,11 @@ def settled(
     """Check every file, then again each one `--fix` changed in a way a second check would see.
 
     Until a round changes nothing, `HINT_ROUNDS` at most: a second pass is then left nothing. With
-    `--likely` or `--unsafe-fixes` and no type checker's hints, the files a round changed are indexed
-    again, and the others checked again too where that changes what they know from outside: what
-    reads a guess another file declares (an attribute LVA013's declares) now knows its type.
+    `--likely` or `--unsafe-fixes`, the files a round changed are indexed again, and the others
+    checked again too where that changes what they know from outside: what reads a guess another
+    file declares (an attribute LVA013's declares) now knows its type. With a type checker's hints,
+    every file is asked about again then, and checked again where its hints changed: a checker can
+    type a name once another file's fix is written.
 
     Returns:
       What each file found, a file's rounds joined.
@@ -60,7 +62,7 @@ def settled(
         session,
     )
     fixing: bool = options.mode is Mode.FIX
-    onward: bool = fixing and session is None and options.guesses is not Guesses.NONE
+    onward: bool = fixing and options.guesses is not Guesses.NONE
     # A signature written (LVA014, LVA015) changes what the other files know of the file whatever
     # the guesses: it's indexed again, and they're checked again where that reaches them.
     signing: bool = fixing and session is None and (options.checks.returns or options.checks.parameters)

@@ -17,8 +17,10 @@ first of them to start runs: each is expected to do the most either did. Unmeasu
 - the fix with every checker (`infer-union`), asked in turn (`--infer-in-turn`), takes the memory
   the largest of its corpus's checkers' steps took, the most CPUs any kept busy, and their seconds
   together;
-- a step that starts the type checkers (`infer-CHECKER`, a suite's type checks) keeps `_STEP_CPUS`
-  busy and holds `_UNSIZED_SHARE` of the memory: their servers', of no known size;
+- a step that asks the type checkers for hints (`infer-CHECKER`) keeps `_STEP_CPUS` busy and holds
+  what its largest checker's servers take for the corpus's files, a server a CPU, and the corpus's
+  check where measured (`Plan._servers`); a suite's type checks hold `_UNSIZED_SHARE` of the memory,
+  their checkers' of no known size;
 - any other keeps `_STEP_CPUS` busy (a check runs in bursts between stretches in one process) and
   holds `_JOB_MEMORY` for each of constricter's `--jobs`.
 
@@ -74,6 +76,7 @@ from constricter.source import parsed
 from tests.corpus import archive
 from tests.corpus.catalog import Suite
 from tests.corpus.pipeline import (
+    CHECK,
     IMPLIED,
     INFER,
     PROFILE,
@@ -99,7 +102,9 @@ _TESTS_MEMORY: Final = 2  # the run's memory a suite's tests' workers may fill: 
 _MEMORY_SHARE: Final = 0.8  # of the memory free as the run starts: the rest is for what else runs
 _MARGIN: Final = 1.25  # over the most a step was seen to hold: its readings are seconds apart
 _JOB_MEMORY: Final = GIB + GIB // 4  # what a step holds for each of constricter's `--jobs`, unmeasured
-_UNSIZED_SHARE: Final = 3  # the unmeasured steps starting the type checkers that the memory is split among
+_UNSIZED_SHARE: Final = (
+    3  # the unmeasured steps running checkers of no known size that the memory is split among
+)
 _UNION_STEP: Final = f"{INFER}{UNION}"
 _MOST_SHARE: Final = 2  # the most CPUs a step is given: the CPUs over this, or it waits for most to be idle
 _CHAIN: Final = (TRACED, TESTS, TYPES)  # a suite's kinds of step: their parts wait for the kind before
@@ -118,6 +123,12 @@ def testing(step: str) -> bool:
 @cache
 def _size(root: Path) -> int:  # the bytes of a tree's Python files, which its checkers' servers load
     return sum(path.stat().st_size for path in paths.python_files([root]))
+
+
+def _held(server: Server, count: int, size: int) -> int:  # `count` servers' bytes, for files of `size` bytes
+    if server.whole:  # each holds the whole program
+        return count * (server.memory + server.per_byte * size)
+    return count * server.memory + server.per_byte * size  # they share the files
 
 
 def _kind(step: str) -> str:  # a suite step's kind: a part's, or its own
@@ -748,13 +759,11 @@ class Plan(NamedTuple):
             return self._testing(tree.suite, (known, tested), lasting, heavy=heavy)
         cpus: int = math.ceil(known.cpus) if known is not None else _STEP_CPUS
         cpus = min(cpus, max(_STEP_CPUS, self.cpus // _MOST_SHARE))
-        memory: int
-        if known is not None and known.memory:
-            memory = int(known.memory * _MARGIN)
-        elif step.startswith(INFER) or step == TYPES:
-            memory = self.memory // _UNSIZED_SHARE
-        else:
-            memory = (self.run.jobs or self.cpus) * _JOB_MEMORY
+        memory: int = (
+            int(known.memory * _MARGIN)
+            if known is not None and known.memory
+            else self._unmeasured(tree, step, cpus)
+        )
         seconds: float = known.seconds if known is not None else 0.0
         least: int
         server: int
@@ -782,6 +791,34 @@ class Plan(NamedTuple):
           Them, and the bytes of one of its largest checker's servers; 0 and 0 for one asking none.
 
         """
+        named: list[Server]
+        if not (named := self._named(step)):
+            return 0, 0
+        size: int = _size(tree.root)
+        one: int = max(server.memory + server.per_byte * size for server in named)
+        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY))), one
+
+    def _unmeasured(self, tree: Tree, step: str, cpus: int) -> int:
+        """Estimate the memory an unmeasured step other than a suite's tests holds, keeping `cpus` busy.
+
+        Returns:
+          It, in bytes (see the module's docstring).
+
+        """
+        estimated: int
+        if estimated := self._servers(tree, step, cpus):
+            return estimated
+        if step.startswith(INFER) or step == TYPES:
+            return self.memory // _UNSIZED_SHARE
+        return (self.run.jobs or self.cpus) * _JOB_MEMORY
+
+    def _named(self, step: str) -> list[Server]:
+        """Name the servers of the checkers a step asks for hints: none for a step asking none.
+
+        Returns:
+          Them.
+
+        """
         checkers: Sequence[str] = (
             self.run.steps.infer
             if step == _UNION_STEP
@@ -789,12 +826,27 @@ class Plan(NamedTuple):
             if step.startswith(INFER)
             else ()
         )
+        return [SERVERS[each] for each in checkers if each in SERVERS]
+
+    def _servers(self, tree: Tree, step: str, cpus: int) -> int:
+        """Estimate what an unmeasured step asking the type checkers for hints holds, keeping `cpus` busy.
+
+        Its largest checker's servers for the tree's files, a server a CPU up to the checker's most
+        (`Server.fitting`'s measure), `_MARGIN` over, and the corpus's own check where a run measured
+        it: the fix's constricter beside them. It counts the corpus's files alone, where a server
+        loads what they import too, so the step's hold then follows what it uses (`fitted`).
+
+        Returns:
+          It, in bytes; 0 for a step asking none.
+
+        """
         named: list[Server]
-        if not (named := [SERVERS[each] for each in checkers if each in SERVERS]):
-            return 0, 0
+        if not (named := self._named(step)):
+            return 0
         size: int = _size(tree.root)
-        one: int = max(server.memory + server.per_byte * size for server in named)
-        return min(cpus, max(1, math.ceil(cpus * one / hints.MEMORY))), one
+        servers: int = max(_held(server, max(1, min(cpus, server.most)), size) for server in named)
+        check: Before | None = self.before.get((directory(tree.name), CHECK))
+        return int(servers * _MARGIN) + (check.memory if check is not None else 0)
 
     def _testing(
         self,
