@@ -54,10 +54,11 @@ measure before building.
 
 ## Order of work
 
-- 2, 10 and 3 built 2026-11-17 (5 done; 3's `alt` run read): the mega run for 10, 2 and 4,
-  `mega-11-17-2026-1924` on `20d9297`, started 19:24; read 10's bars (`guess_report.py --step
-infer-union`), sqlalchemy's four listed apart if they fail, and matplotlib's second pass.
-- 4: matplotlib's one fix left after pyrefly's hints, then done.
+- 10: narwhals' five blamed, then agreement read on each mega run (`mega-11-17-2026-1924`: 0.14
+  blamed for under 0.1).
+- 3: a suite's unmeasured tests started on fewer CPUs, to decide.
+- 4: matplotlib's one fix left after pyrefly's hints, then done. 2: confirmed by a mega run where
+  sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
 - 6: the mutation run, then its survivors.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
@@ -166,8 +167,9 @@ last; no step failed, no test fails anew, the suites' new type errors 710 as on
 hints, from 138, 108 and 197; matplotlib 0, 0 and 1, pandas 0, 3 and 3, pint none, pip 2, 7 and 3,
 django 3 after pyrefly's; the rest the standard library's 4, 10 and 9, celery's 6 and dask's 5 and 5
 after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 247,770 (239,086,
-234,001 and 247,682). Left: matplotlib's one after pyrefly's hints, the bar's 0, and the 72 left
-in all, not looked into. Coverage unchanged.
+234,001 and 247,682). On `mega-11-17-2026-1924` the same but 12, 11 and 28: the standard library's
+ty 1 from 10, dask's basedpyright none, pandas's pyrefly 4; matplotlib's one after pyrefly's hints
+again. Left: that one, the bar's 0, and the 51 left in all, not looked into. Coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -195,7 +197,8 @@ eight kept runs where its four failed. A fixed step's failures run again before 
 (`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Decided
 2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
 registry their order clears; the union's tests not run again. Built that day, by the names the runs
-record them under; done when a mega run where they fail lists them apart, not as new. Coverage
+record them under; done when a mega run where they fail lists them apart, not as new (they passed
+on `mega-11-17-2026-1924`, so it's still to see). Coverage
 unchanged.
 
 ### Medium: 4 to 8 hours
@@ -362,7 +365,13 @@ differing hints on the latest run name it); and `agreed` is read again on the ne
 come back once it passes all three bars (narwhals' three `default_col` blamed, if one cause, are
 what keeps it over the blamed bar). Built that day: `agreed+checker` out of `offences.LIKELY`, and
 `hinted._unimplemented` refusing a hint that's `NotImplementedType` alone; LIKELY.md, FIXES.md and
-the changelog say so. Left: the mega run (95 minutes on 16CPU/60GB), read for `agreed`'s bars.
+the changelog say so. Read on `mega-11-17-2026-1924` (`20d9297`, 79 minutes on 16CPU/60GB, no step
+failed): `agreed+checker`, a guess, holds 98.4% of 10,968 told (from 96.1%; 177 differing, from
+436, the `NotImplementedType` hints gone) but 17 of 12,390 checked are blamed, 0.14 in each 100, so
+it stays out of the likely fixes; narwhals has 5 of the 17, pandas 3, litestar 2. The likely tier
+holds 99.5% with 0.08 blamed, and the suites' new type errors are 710 as before, agreement's 20 now
+a guess's. Left: narwhals' five (`default_col` three times), whether one cause; agreement read again
+on each mega run, to come back once it passes.
 
 ## On hold
 
