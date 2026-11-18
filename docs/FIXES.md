@@ -897,7 +897,11 @@ could write.
 A hint is used only as an annotation the file can hold:
 
 - `Literal[...]` is widened to its values' types (`Literal[1] | None` is `int | None`,
-  `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`;
+  `Literal[Color.RED]` is `Color`), and `LiteralString` to `str`. A module's constant bound once to
+  a member of an enum the module defines, hinted the enum (`NO_DEFAULT = _NoDefault.no_default`), is
+  declared `NO_DEFAULT: Final = _NoDefault.no_default` instead: typed as the enum, it loses its
+  member's `Literal` and pyright no longer narrows `x is NO_DEFAULT`. A guess resting on the hint,
+  read as the enum;
 - ty's own spellings are read: a class object (`<class 'Point'>`) is `type[Point]`, a type variable
   printed with its scope (`Model@create_model`) the variable, and an intersection with a truthiness
   (`str & ~AlwaysFalsy`) its other member; any other intersection is dropped. A generator's,

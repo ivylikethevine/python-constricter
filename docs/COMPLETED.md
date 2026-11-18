@@ -217,6 +217,19 @@ What constricter does today and what was measured on the way, by scope. What's n
   462 on Django and 179 on SQLAlchemy, none bringing an error where the traced name is bound, and
   Django's tests the same after; pandas's traced tests take 99s on 14 workers, as they do untraced,
   Django's 20 minutes in one process.
+- **Annotations held to a run** (`python -m constricter.trace --check`, `constricter/witness.py`):
+  each annotated parameter, each local declared `name: T` at every statement that binds it, each
+  `return` (a coroutine's where `sys.monitoring` tells it from a suspension), a `*args: T` as a
+  `tuple[T, ...]` and a `**kwargs: T` as a `dict[str, T]`, and as the run ends each recorded
+  module's and its top-level classes' annotated variables, held to what the run binds by the corpus
+  witness's own `holds`; a protocol `isinstance` can't check is held to its members' names,
+  `typeguard` an optional extra. A differing binding is listed as LVA016 and the run exits 1; one
+  whose line has a `# noqa` covering LVA016 is passed over and counted. This project's suite traced
+  (`-m pytest -n 8`, 16CPU/60GB, 2026-11-17) holds 20,528 annotated bindings, none differing: the
+  package's four corrected (`workers`' context, `walked._Value`, `recording.named`'s module, a class
+  whose `__module__` is `None` now spelled unknown), three narrow casts in the tests and tools
+  corrected (`planning._solved`, `sdist`, `tables`), and ten JSON documents read as the part a test
+  uses marked `# noqa: LVA016`. 2 of the tracer's own tests fail traced, a trace inside a trace.
 - **Wider types, chosen** (`fix-widen`, [FIXES.md](FIXES.md#wider-types-fix-widen)): each a fix kind
   of its own, off unless listed (`all`: every one). A statement one writes ends with
   `# constricter: auto`: LVA005 passes over it, `--coverage` counts it apart (typed, widened), it

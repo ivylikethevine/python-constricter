@@ -12,6 +12,8 @@ from constricter.fix.libraries import stdlib
 from constricter.fix.libraries.library import chains
 from constricter.fix.values import aliased, callables, classvars, fills, hinted
 from constricter.fix.values.doubts import (
+    FINAL_KIND,
+    TYPING_FINAL,
     Facts,
     Owner,
     as_declared,
@@ -24,6 +26,7 @@ from constricter.fix.values.doubts import (
     narrowing,
     none_tested,
     says_self,
+    sentinel,
     tested,
     undeclared,
 )
@@ -66,8 +69,6 @@ _SELF: Final = "self"
 _NONE: Final = "None"
 _STATICMETHOD: Final = "staticmethod"
 _SELF_WORD: Final = re.compile(r"\bSelf\b")  # `Self` in an annotation, `typing.Self` too
-FINAL_KIND: Final = "final"  # the fix kind of LVA012's `Final`
-_TYPING_FINAL: Final = "typing.Final"
 _LITERAL_DOUBT: Final = frozenset({"literal"})  # a constant's literal, which `doubts` makes a guess
 _READS: Final = (ast.Name, ast.Attribute, ast.Subscript)  # a read of a value a type checker may narrow
 TESTED: Final = "tested"  # the fix kind of a read a test around it narrows
@@ -263,7 +264,14 @@ class Scope:
             found = called[0], *guesses_in(self, [called[1]])
         hint: Inference | None
         if found is None and (hint := self.hint(target, value)) is not None:
-            found = hint, True, hinted.resting(hint)
+            final: Inference | None = (
+                None
+                if function is not None or owner is not None
+                else sentinel(target.id, value, hint, facts, self.settings.known)
+            )
+            if final is not None:  # an enum's member, read as the enum still
+                self.inferred.learn(target.id, hint.annotation, hinted.resting(hint))
+            found = final or hint, True, hinted.resting(hint)
         return found or vague
 
     def _member(
@@ -452,7 +460,7 @@ class Scope:
 
         """
         plan: ImportPlan | None = self.settings.known.names.plan
-        spelled: str | None = None if plan is None else plan.spell(_TYPING_FINAL)
+        spelled: str | None = None if plan is None else plan.spell(TYPING_FINAL)
         self.inferred.learn(name, fix.annotation, _LITERAL_DOUBT)
         return (
             None

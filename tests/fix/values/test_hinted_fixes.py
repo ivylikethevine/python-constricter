@@ -464,6 +464,52 @@ def test_a_module_body_uses_only_what_is_bound_before() -> None:
     assert [(o.name, o.fix) for o in offences] == [("x", None), ("y", "Early")]
 
 
+def test_a_constant_bound_once_to_its_own_enums_member_is_final() -> None:
+    """Hinted its enum, the constant would lose its member's `Literal`: `x is OPEN` no longer narrows.
+
+    Only a module's constant, bound once, to a member of an enum the module defines (a class, or
+    `Enum(...)`'s); what's read of it is still the enum, a guess resting on the checker.
+    """
+    source: str = """
+    import enum
+    from kinds import Kind
+
+    class State(enum.IntEnum):
+        OPEN = 1
+
+    _Sentinel = enum.Enum("_Sentinel", "token")
+    class Zone: ...
+
+    OPEN = State.OPEN
+    TOKEN = _Sentinel.token
+    AGAIN = State.OPEN
+    AGAIN = State.OPEN
+    UTC = Zone.utc
+    KIND = Kind.A
+    COPY = OPEN
+
+    def f() -> None:
+        state = State.OPEN
+    """
+    hinted: dict[str, str] = dict.fromkeys(("OPEN", "AGAIN", "state"), "State")
+    hinted |= {"TOKEN": "_Sentinel", "UTC": "Zone", "KIND": "Kind"}
+    offences: list[Offence] = _checked(source, hinted, Checks(all_scopes=True))
+    assert [(o.name, o.fix, o.unsafe) for o in offences if o.name in {*hinted, "COPY"}] == [
+        ("OPEN", "Final", True),
+        ("TOKEN", "Final", True),
+        ("AGAIN", "State", True),  # bound again: no constant
+        ("UTC", "Zone", True),  # no enum's
+        ("KIND", "Kind", True),  # an enum out of sight
+        ("COPY", "State", True),  # what's read of it: the enum
+        ("state", "State", True),  # a local
+    ]
+    lines: list[str] = textwrap.dedent(source).splitlines(keepends=True)
+    fixed: set[str] = set("".join(fixes.apply(lines, [o for o in offences if o.edit])).splitlines())
+    assert {"from typing import Final", "OPEN: Final = State.OPEN", "COPY: State = OPEN"} <= fixed
+    trusting: Checks = Checks(all_scopes=True, fixes=FixPolicy(unsafe_select=frozenset({"checker"})))
+    assert not any(o.unsafe for o in _checked(source, hinted, trusting) if o.name.isupper())
+
+
 def test_another_name_for_a_class_stays_an_alias() -> None:
     """Declared a `type[C]`, a variable, it could no longer be an annotation: a lowercase local can."""
     source: str = "Number = int\nkind = int\n\n\ndef f(q) -> None:\n    Pair = q.pair\n    cls = q.kind\n"

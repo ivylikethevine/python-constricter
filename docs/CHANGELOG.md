@@ -6,6 +6,10 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- With `--infer-with`, a module's constant bound once to a member of an enum the module defines,
+  hinted as the enum, is declared `Final` (`NO_DEFAULT: Final = _NoDefault.no_default`): the enum
+  would lose the member's `Literal`, so pyright no longer narrowed `x is NO_DEFAULT` (narwhals'
+  `replace_strict`).
 - `python -m constricter.trace --check` holds a `*args: T` as a `tuple[T, ...]` and a `**kwargs: T`
   as a `dict[str, T]` (an `Unpack` of either as the whole), a coroutine's return to its `-> T` on
   Python 3.12 and later, and, as the run ends, each recorded module's and its classes' annotated

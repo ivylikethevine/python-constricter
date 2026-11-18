@@ -15,6 +15,7 @@
 
 import ast
 import bisect
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -22,7 +23,7 @@ from types import MappingProxyType
 from typing import Final, NamedTuple, TypeAlias, cast
 
 from constricter.fix.core.imports import checking, inner_imports, nested_classes, rebound_names
-from constricter.fix.core.known import ImportPlan, Inference, Passed
+from constricter.fix.core.known import ImportPlan, Inference, Known, Passed
 from constricter.fix.values.narrowed import Regions, regions
 from constricter.fix.values.shapes import COMPREHENSIONS, Comprehension, is_none
 from constricter.offences import CONSTRUCTOR
@@ -30,7 +31,7 @@ from constricter.source.annotations import node_name, roots
 from constricter.source.declarations import generic_classes
 from constricter.source.flow import members
 from constricter.source.quoted import parsed
-from constricter.source.syntax import FunctionDef, Start, within
+from constricter.source.syntax import FunctionDef, Start, own_nodes, within
 from constricter.source.walked import classes, of_type, walk
 
 # What a copy, an attribute and a subscript of a narrowable union rest on, as guesses.
@@ -56,6 +57,10 @@ _CLASS_OF: Final = "type[{}]"  # how `type(self)` is
 _INSTANCE: Final = "self"  # a method's first parameter: any other name is a classmethod's class
 _EXTENSIONS: Final = "typing_extensions"
 _TYPING: Final = frozenset({"typing", _EXTENSIONS})
+_ENUM_ENDINGS: Final = ("Enum", "Flag")  # how `enum`'s classes' names end (`IntEnum`, `StrEnum`, `IntFlag`)
+_DEFINITIONS: Final = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+FINAL_KIND: Final = "final"  # the fix kind of a `Final` (LVA012's, or one that keeps a `Literal`)
+TYPING_FINAL: Final = "typing.Final"
 
 
 @dataclass(frozen=True, eq=False)  # hashed by identity: a module's, cached with each function
@@ -104,6 +109,8 @@ class Facts(NamedTuple):
     # The classes defined in a class's body, and the class naming each (see `imports.nested_classes`).
     nested: Mapping[str, str] = MappingProxyType({})
     excused: tuple[int, ...] = ()  # the lines (from 0) a type-ignore comment is on, sorted (`late.excusing`)
+    enums: frozenset[str] = frozenset()  # the enums its body defines (see `enums`)
+    once: frozenset[str] = frozenset()  # what its own scope binds once (see `bound_once`)
 
 
 def facts(
@@ -140,7 +147,92 @@ def facts(
         rebound=rebound_names(tree),
         lazy=[(stmt.lineno, stmt.col_offset) for stmt in inner_imports(tree)],
         nested=nested_classes(tree),
+        enums=enums(tree),
+        once=bound_once(tree),
     )
+
+
+def enums(tree: ast.Module) -> frozenset[str]:
+    """Name the enums a module's body defines: a class with a base named as one, or a call making one.
+
+    `class State(enum.IntEnum)`, `_SENTINEL = enum.Enum("_SENTINEL", "sentinel")`: a base or a
+    factory whose name ends in `Enum` or `Flag`, as `enum`'s do.
+
+    Returns:
+      Their names.
+
+    """
+    found: set[str] = set()
+    stmt: ast.stmt
+    for stmt in tree.body:
+        if isinstance(stmt, ast.ClassDef) and any(_enum_named(base) for base in stmt.bases):
+            found.add(stmt.name)
+        elif (
+            isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call) and _enum_named(stmt.value.func)
+        ):
+            found.update(target.id for target in stmt.targets if isinstance(target, ast.Name))
+    return frozenset(found)
+
+
+def _enum_named(node: ast.expr) -> bool:  # `Enum`, `enum.IntFlag`, ...
+    return node_name(node).endswith(_ENUM_ENDINGS)
+
+
+def sentinel(name: str, value: ast.expr, hint: Inference, module: Facts, known: Known) -> Inference | None:
+    """Declare a module's constant `Final`, not the enum a hint says, where it's bound to the enum's member.
+
+    `NO_DEFAULT = _NoDefault.no_default`, hinted `_NoDefault`: declared so, the constant loses its
+    member's `Literal` type, and pyright no longer narrows `x is NO_DEFAULT`; `Final` keeps it, to
+    pyright and mypy. Only for a member of an enum the `module` defines (`enums`), bound once
+    (`bound_once`), and where it can name `Final`; a guess resting on the hint still.
+
+    Returns:
+      The `Final` inference, or `None`.
+
+    """
+    plan: ImportPlan | None = known.names.plan
+    enum: str | None = (
+        value.value.id if isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) else None
+    )
+    spelled: str | None = None
+    if (
+        enum != hint.annotation
+        or enum not in module.enums
+        or name not in module.once
+        or (spelled := None if plan is None else plan.spell(TYPING_FINAL)) is None
+    ):
+        return None
+    return Inference(
+        spelled,
+        f"{hint.reason}, an enum's member: `Final` keeps its `Literal`",
+        hint.kinds | {FINAL_KIND},
+    )
+
+
+def bound_once(tree: ast.Module) -> frozenset[str]:
+    """Name what a module's own scope binds once, and no function declares `global`.
+
+    A class's member of the same name (`OPEN = 1` in `State`, then `OPEN = State.OPEN`) isn't the
+    module's; a function's `global X` may bind it again. A comprehension's target counts too.
+
+    Returns:
+      Their names.
+
+    """
+    counted: Counter[str] = Counter()
+    declared: set[str] = set()
+    node: ast.AST
+    for node in own_nodes(tree.body):
+        if isinstance(node, _DEFINITIONS):
+            counted[node.name] += 1
+            declared.update(
+                name for each in walk(node) if isinstance(each, ast.Global) for name in each.names
+            )
+        elif isinstance(node, ast.Import | ast.ImportFrom):
+            counted.update((alias.asname or alias.name).partition(".")[0] for alias in node.names)
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            counted[node.id] += 1
+    return frozenset(name for name, times in counted.items() if times == 1 and name not in declared)
 
 
 def _bound_vars(tree: ast.Module, type_vars: frozenset[str]) -> dict[str, frozenset[str]]:

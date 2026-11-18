@@ -17,45 +17,51 @@ measure before building.
 
 ## Where it stands
 
-2026-11-17, at `1763d4b` (v0.4.6; `dev` and `main` alike).
+2026-11-17, at `41c919f` (`dev` and `main` alike; v0.4.6, at `1763d4b`, the last release).
 
-- The latest run is `mega-11-16-2026-1443` (`39de5e3`, 97 minutes on 16CPU/60GB, no step failed, no
-  server hung), read in [COMPLETED.md](COMPLETED.md#corpus): the suites' own checks find 710 new
-  errors from 802, every one gone a hinted step's; 20 from 35 are blamed on a hint two checkers
-  agree on. Every earlier run named here is read there too.
+- The latest run is `mega-11-17-2026-1924` (`20d9297`, 79 minutes on 16CPU/60GB, no step failed),
+  read in 4 and 10, with `mega-11-17-2026-1641` (95 minutes) before it; the suites' own checks find
+  710 new errors on both, as on `mega-11-16-2026-1443`. Neither is yet in
+  [COMPLETED.md](COMPLETED.md#corpus), where `mega-11-16-2026-1443` and every earlier run named here
+  are read.
 - What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
-  (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)), a mega run of all 55 80 to 97. A change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by
+  (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)), a mega run of all 55 79 to 97. A change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by
   `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the
   latest mega run's records with `scripts/scratch/run_fixes_diff.py`, or the latest `alt` run's for
   its eight; `mega-fixes-11-11-2026-1033`, 14 minutes), which measures none of the bars: a guess's
   bars and the tests still wait on a mega run.
-- `agreed+checker` fails the blamed bar on `mega-11-16-2026-1443` (0.13 per 100 for under 0.1; held
-  96.1%), read 2026-11-17 (10).
-- Built 2026-11-17: an unmeasured hinted step sized by its servers' estimate (3); every file asked
-  about again after a hinted round that changed one (4), which on `mega-11-17-2026-1641` leaves a
-  second pass 17, 20 and 27 fixes from 138, 108 and 197, matplotlib's one after pyrefly's hints
-  over its bar; `--check`'s `*args`, `**kwargs`, coroutine returns and module and class variables
-  (5), the suite passing with 100% coverage. fastjsonschema 2.22.3 is locked, and mypy reads its types (12).
-- Item 3's first `alt` run (16:23 to 16:31, 2026-11-17) took 7.6 minutes to a proved 6.0, short of
-  its bar (3); the standard-library tables were regenerated at 16:25 during it, so its fix counts
-  aren't compared with other runs'. The 3.14 suite passes (`tests/ci_local.py test`, 100%
-  coverage) and Python 3.11's, synced with `--frozen` and its tests run
-  with `SETUPTOOLS_USE_DISTUTILS=stdlib` as CI's; `tests/ci_local.py interpreters` fails here at
+- Done 2026-11-17: annotations held to a run (`python -m constricter.trace --check`), its item moved
+  to [COMPLETED.md](COMPLETED.md#--fix): this project's suite traced holds 20,528 annotated
+  bindings, none differing.
+- Built 2026-11-17, short of or waiting on their bars: an unmeasured hinted step sized by its
+  servers' estimate and a fix or check by its corpus's files, whose `alt-fresh-11-17-2026-1912`
+  took 7.0 minutes to a proved 5.0, waiting on CPUs now, not memory (3); every file asked about
+  again after a hinted round that changed one, leaving a second pass 12, 11 and 28 on
+  `mega-11-17-2026-1924`, matplotlib's one after pyrefly's hints over its bar of 0 (4);
+  sqlalchemy's four named in the catalog, passing on that run, so still to see (2);
+  `agreed+checker` out of the likely fixes and `NotImplementedType` hints refused, agreement then
+  holding 98.4% but 0.14 blamed per 100 for under 0.1 (10). fastjsonschema 2.22.3 is locked, and
+  mypy reads its types (12).
+- The 3.14 suite passed on 2026-11-17 (`tests/ci_local.py test`, 100% coverage) and Python 3.11's,
+  synced with `--frozen` and its tests run with `SETUPTOOLS_USE_DISTUTILS=stdlib` as CI's; not run
+  again since `e374d5e`'s test change. `tests/ci_local.py interpreters` fails here at
   `uv sync --locked`, which the global `exclude-newer` makes re-resolve.
 - Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
-- Open questions from `mega-11-16-2026-1443`, not looked into: twisted's 12 left for a second pass
-  after basedpyright's hints, where it left none (4); matplotlib's hinted steps' 99, 98 and 33 fewer
-  fixes; nibabel's union step failing 2 tests from 1.
-- Decided 2026-11-17, to build: `agreed` out of the likely fixes and `NotImplementedType` hints
-  refused (10); an unmeasured fix or check sized by its corpus's files (3); the three wrong casts
-  corrected, the ten JSON views marked `# noqa: LVA016`, LVA016 named as a code (5); sqlalchemy's
-  four named in the catalog (2). Items 9 and 11 moved to Later.
+- narwhals' five blamed guesses read 2026-11-18: four are ty's `NO_DEFAULT: _NoDefault` hint, a
+  sentinel losing its literal, and one is `_how: str`, each blamed on the fix at the error's line.
+  Built 2026-11-18, waiting on a mega run: an enum sentinel's hint declared `Final` (10). Refusing
+  `str` hints shown as string `Literal`s measured and not built: 65 to 183 fixes for 2 errors.
+- Open questions, not looked into: the 51
+  a second pass still fixes after the hints on `mega-11-17-2026-1924` and twisted's 12 of
+  `mega-11-16-2026-1443` (4); that run's matplotlib hinted steps' 99, 98 and 33 fewer fixes and
+  nibabel's union step failing 2 tests from 1.
+- To decide: 3's proposal and 10's blame proposal (On hold). Items 9 and 11 are in Later.
 
 ## Order of work
 
-- 10: narwhals' five blamed, then agreement read on each mega run (`mega-11-17-2026-1924`: 0.14
-  blamed for under 0.1).
+- 10: a mega run reading agreement with enum sentinels declared `Final`, blame by the name read to
+  decide, then agreement read on each mega run (`mega-11-17-2026-1924`: 0.14 blamed for under 0.1).
 - 3: a suite's unmeasured tests started on fewer CPUs, to decide.
 - 4: matplotlib's one fix left after pyrefly's hints, then done. 2: confirmed by a mega run where
   sqlalchemy's four fail.
@@ -203,56 +209,6 @@ unchanged.
 
 ### Medium: 4 to 8 hours
 
-#### 5. Annotations held to a run
-
-The corpora's witness holds each fix to the values its package's tests bind
-(`tests/corpus/witness/constricter_witness.py`): of the certain fixes a test could tell of, 99.4%
-hold on the mega corpora's suites, and what differs is a declared type the tests contradict or a
-test's stand-in. The same check of a project's own annotations, as `python -m constricter.trace
---check`: each annotated local, parameter and return held to what a run binds, and those a value
-differs from reported as an offence with the type seen. It needs the witness in the package (tested
-as the tracer is), a container's elements held to its arguments, and a protocol's members looked for
-where `isinstance` can't. `typeguard` does the last two, as an optional extra there: the package has
-no dependency. Done when a traced run of this project's own tests reports no annotation of its own.
-Built 2026-11-11 (`constricter/witness.py`, `--check` in `constricter/trace.py`): the corpus
-witness's `holds` is the package's, a protocol `isinstance` can't check held to its members' names
-without `typeguard`, and each annotated parameter, each local declared `name: T` at every
-statement that binds it and each `return` is held, a name the module imports under
-`if TYPE_CHECKING:` imported for its annotation; a differing binding is listed as LVA016, the
-report's own code, and the run exits 1. This project's suite traced (`python -m constricter.trace
---check -m pytest -n 8`, 35 seconds on 16CPU/60GB) holds 17,998 annotated bindings: the 3 that
-differed in the package are corrected (`workers`' context is whichever one starts workers, not
-`DefaultContext`; `walked._Value` lacked a constant's `...`, `bytes` and `float`), 101 can't be
-told, and 11 differ in the tests and the corpus tools, each a narrower cast than the value: a JSON
-document read as the part a test uses (`_Sarif`, `_Nested`, `_Sources`, `_Group`, `_Written`), and
-OR-Tools' status enum cast to `int` (`planning._solved`). Traced, 8 more of the suite's tests fail
-than untraced, the tracer's own among them, not looked into. Built 2026-11-17: a `*args: T` held as
-a `tuple[T, ...]`, a `**kwargs: T` as a `dict[str, T]`, an `Unpack` of either as the whole; a
-coroutine's return where `sys.monitoring` tells it from a suspension (Python 3.12); and, as the run
-ends, each recorded module's and its top-level classes' annotated variables, by what they hold
-then (`Witness.judged`), not an instance attribute declared alone, a descriptor or an enum's
-member. This project's suite traced again (2026-11-17, 33 seconds on 16CPU/60GB): 20,486
-annotated bindings held, 13 differing, the 11 and two more narrow casts of the same kind (`tables`
-in `checker_settings.py`, a `tool` table a test makes an `int`; `sdist` in `corpus_sources.py`, its
-`requires` a list), none a module's or a class's variable. Its 42 failing tests were the tracer's
-own, a recorded function returning a class whose `__module__` is `None` (`test_trace.py`'s `Odd`):
-reading it raised into the run. Traced again with a return that can't be read dropping its
-function, as a binding's does: 2 of the tracer's own tests fail traced (a run of `-m` and a pytest
-process under the trace), and the package's one annotation a value differed from was
-`recording.named`'s `module: str`, `None` there: such a class is now spelled unknown, and the
-tests' class that can't be read raises as its module is asked for. Traced once more: 20,576
-held, none of the package's differing, the 13 alone. Decided 2026-11-17: the three that are wrong
-corrected (`planning._solved`, `sdist`, `tables`); the ten JSON documents read as the part a test
-uses kept, each marked `# noqa: LVA016`, which the trace's report honours as a check does; and
-LVA016 stays a code, named in `--explain` and the README's table. Built that day: `_solved` a
-`frozenset[CpSolverStatus]`, `sdist` a `TypedDict` with its `requires`, `tables` any TOML value;
-the ten marked; the report passes over a binding whose line has a `# noqa` covering LVA016 and
-counts those (`witness.report`); `--explain LVA016` and the README's table name it. Done
-2026-11-17: the suite traced (`python -m constricter.trace --check -m pytest -n 8`, 16CPU/60GB)
-holds 20,528 annotated bindings, none differing, the 10 marked passed over; 2 of the tracer's own
-tests fail traced, a trace inside a trace. To move to COMPLETED.md at the next groom.
-About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
-
 #### 6. Mutation testing
 
 Line coverage is held at 100% (`fail_under`), so it no longer says which lines run without a test
@@ -370,12 +326,57 @@ failed): `agreed+checker`, a guess, holds 98.4% of 10,968 told (from 96.1%; 177 
 436, the `NotImplementedType` hints gone) but 17 of 12,390 checked are blamed, 0.14 in each 100, so
 it stays out of the likely fixes; narwhals has 5 of the 17, pandas 3, litestar 2. The likely tier
 holds 99.5% with 0.08 blamed, and the suites' new type errors are 710 as before, agreement's 20 now
-a guess's. Left: narwhals' five (`default_col` three times), whether one cause; agreement read again
-on each mega run, to come back once it passes.
+a guess's. narwhals' five read 2026-11-18, two causes, neither the blamed fix's own. Four
+(`default_col` in `_duckdb`, `_ibis` and `_spark_like`, `extra_kwargs` in `_polars/expr.py`) are
+ty's hint `NO_DEFAULT: _NoDefault = _NoDefault.no_default` (`_utils.py:2232`, kind `checker`, no
+error blamed on it): typed as its enum, the sentinel loses its literal, so pyright no longer
+narrows `default is NO_DEFAULT` and reports the `default` each `replace_strict` passes on as still
+possibly `Literal[_NoDefault.no_default]`; mypy narrows either way. Three more of ty's step's
+errors, blamed on no fix (`_arrow/series.py`, `_dask/expr.py`, `expr.py`), are the same. The
+fifth, `result: DataFrame | LazyFrame` (`_polars/namespace.py:172`), is mypy's on the next
+statement's `pl.concat(..., how=_how)`, after `_how: str` (line 167, also `agreed+checker`) widened
+a conditional of `Literal`s. An error is blamed on the fix at its line, not the one whose type it
+names. Blamed on the hints that cause them, agreement keeps 13 of 12,390, 0.105 in each 100,
+one over the bar. Two proposals, neither built: a hint refused that types a name bound to an enum
+member as the enum (a sentinel `is` narrows against); and blame given to the fix whose name the
+error's expression reads, where it isn't the line's. The first measured 2026-11-18 on
+`mega-11-17-2026-1924` (`scripts/scratch/enum_sentinels.py`, seconds on 16CPU/60GB): 34 checker
+hints type `NAME = E.member` as an enum `E` on 14 corpora, every one a single checker's (`checker`,
+never `agreed`). 14 are a function's locals (black's `changed: Changed = Changed.NO`, rebound to
+another member), where the enum is the right type. 20 are module constants bound once on 8 corpora
+(websockets' 10 `Opcode`, `Side` and `State` members, attrs' `NOTHING`, dask's and xarray's
+`no_default`, pytest's `HIDDEN_PARAM`, aiohttp's `sentinel` and two `WSMsgType`s), 17 compared
+against somewhere. Only narwhals' brings errors: 8 in each of ty's and the union's steps, 7 naming
+`Literal[_NoDefault.no_default]` and `extra_kwargs`', all pyright's. Of the other seven corpora
+only websockets' suite runs a checker, mypy, which narrows by an enum-typed name too. Refusing a
+module constant's hint bound once withdraws 20 fixes for narwhals' 8 in each step; a function's local isn't
+a sentinel and keeps its hint. Decided 2026-11-18: such a constant declared `Final` rather than
+refused, which pyright and mypy both keep the member's `Literal` for. Built that day
+(`doubts.sentinel`): a module's constant its own scope binds once (`doubts.bound_once`: a class's
+member of the same name, as websockets' `OPEN = State.OPEN`, isn't the module's), bound to a member
+of an enum the module defines (`doubts.enums`: a class with a base named `...Enum` or `...Flag`, or
+such a factory's call), hinted the enum, is declared `Final`, a guess resting on the hint, read as
+the enum; an enum another module defines keeps its hint (aiohttp's two `WSMsgType`s). Measured the
+same day, `_how`'s kind: a checker's `str` hint shown as string `Literal`s
+(`scripts/scratch/literal_hints.py --store`, matching the hint store's texts, about two minutes on
+16CPU/60GB) is 183 of the run's 3,218 checker `str` hints on 27 corpora (131 `agreed`), 65 passed to
+a call in their scope, 97 told by a traced run and none differing; errors come from 2, nibabel's
+`mode` (`memmap`'s `Literal` mode) and narwhals' `_how`, both `agreed`. Refusing them withdraws 183
+fixes, or 65 if only those passed to a call, for those 2: not built. narwhals' `_time_unit`, `tu`
+and `unit` are another kind, ty's `str` where the project's checker sees `Any`. With `Final` for
+the sentinels, agreement's blamed would be 13 (narwhals' four gone) of about 12,390, 0.105 per 100,
+one over the bar. Left: a mega run reading agreement with `Final` in; blame by the name an error
+reads, to decide; agreement read again on each mega run, to come back once it passes.
 
 ## On hold
 
-Nothing waits on a decision.
+- 3's proposal waits on a decision: a suite's unmeasured tests started on fewer CPUs, as a hinted
+  step is, where each now holds 8 CPUs and 8 GB for 0.7 to 1.4 used and small steps wait 125 to 138
+  seconds behind them.
+- 10's blame proposal waits on a decision: an error blamed on the fix whose name it reads rather
+  than the fix on its line (narwhals' `_how` error is blamed on `result`, the next line's). A
+  refusal of a checker's `str` shown as string `Literal`s, measured, withdraws 65 to 183 fixes for
+  2 errors: kept, unless decided otherwise.
 
 ## Later
 
@@ -461,7 +462,7 @@ allows it as untyped, `validate`'s parameters being unannotated). About an hour 
 
 ## Decisions
 
-- `typeguard` only as an optional extra for `--check`: the package has no dependency (5).
+- `typeguard` only as an optional extra for `--check`: the package has no dependency (5, done).
 - Weighed and left for a check's peak: `msgspec` or `orjson` for the pickled index, more
   `__slots__`, `sys.intern` of the annotations' text (7).
 - Tried and dropped for a parallel check: a worker checking files ahead of their turn (slower), and
@@ -477,7 +478,7 @@ allows it as untyped, `validate`'s parameters being unannotated). About an hour 
 - 2026-11-17: a first run's unmeasured hinted step isn't sized by its environment's packages:
   `Plan.fitted` corrects it as it runs (3).
 - 2026-11-17: LVA016 stays a code; a cast that narrows a JSON document to the part a test uses is
-  kept and marked `# noqa: LVA016`, not widened (5).
+  kept and marked `# noqa: LVA016`, not widened (5, done).
 - 2026-11-17: the union step's tests aren't run again before their failures are called new: a
   suite's order-dependent tests are named in the catalog instead (2).
 
