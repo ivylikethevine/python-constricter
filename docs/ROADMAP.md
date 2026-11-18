@@ -54,8 +54,9 @@ measure before building.
 
 ## Order of work
 
-- 2, 10 and 3 built 2026-11-17 (5 done): an `alt` run into a fresh folder for 3, then one mega run
-  for 10, 2 and 4.
+- 2, 10 and 3 built 2026-11-17 (5 done; 3's `alt` run read): the mega run for 10, 2 and 4,
+  `mega-11-17-2026-1924` on `20d9297`, started 19:24; read 10's bars (`guess_report.py --step
+infer-union`), sqlalchemy's four listed apart if they fail, and matplotlib's second pass.
 - 4: matplotlib's one fix left after pyrefly's hints, then done.
 - 1: an hour beside the next super run, made in stages hours apart.
 - 6: the mutation run, then its survivors.
@@ -422,7 +423,7 @@ built for now, the first the one worth building:
   by, which no rule here avoids, as for a written return (the signature codes,
   [COMPLETED.md](COMPLETED.md#corpus)).
 
-### Measurement
+### To measure, some time
 
 #### 11. Types from a model
 

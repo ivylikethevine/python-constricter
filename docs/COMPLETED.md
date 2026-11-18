@@ -1044,7 +1044,7 @@ None`, `frozenset[str]`; the shim binds `bytes` too), one `member` guess re-list
   untyped binding, classified by the statement that binds it, the shape of its value, its scope,
   whether its function is annotated, and what a call through an import resolves to and where from.
   On the seven corpora at 0.4.0: 251,517 untyped bindings, 140,562 with no fix at all, 79.0% of
-  those in functions with no annotations. The items under [the roadmap](ROADMAP.md#next) are sized
+  those in functions with no annotations. The items under [the roadmap](ROADMAP.md#now) are sized
   by it: each count is the bindings with no fix an item could reach, not what it would fix. Measured
   and too small to build: an unannotated parameter typed by its literal default (76 bindings) or its
   docstring (325); and signatures first, by `pyrefly infer` before `--fix`: 2,254 more certain fixes

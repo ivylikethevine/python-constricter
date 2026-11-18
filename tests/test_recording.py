@@ -10,7 +10,7 @@ import runpy
 import sys
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, NoReturn, TypeAlias, cast
 from unittest import mock
 
 import pytest
@@ -28,7 +28,7 @@ _ASKED: list[str] = ["int", "float", "float", "Odd", "Odd"]
 _ODD: Final = type("Unhashed", (type,), {"__hash__": None})("Odd", (), {})
 
 
-def _unread(cls: type) -> str:
+def _unread(cls: type) -> NoReturn:
     """Raise, as a class's module is asked for: what a class that isn't one as Python makes them can do.
 
     Raises:
