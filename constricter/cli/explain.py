@@ -12,6 +12,7 @@ from constricter.offences import (
     NESTED_TYPE,
     OPT_IN,
     REDUNDANT_TYPE,
+    TRACED,
     UNANNOTATED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_MEMBER,
@@ -106,13 +107,26 @@ _WHY: Final = {
 }
 
 
+# What a traced run reports (`python -m constricter.trace --check`), which no check does.
+_TRACED_MESSAGE: Final = "an annotation a traced run's value differed from"
+_TRACED_WHY: Final = (
+    "A run of the code (its tests, say) held each annotated parameter, local and return to what\n"
+    "it was bound to, and one value wasn't what the annotation says: `count: int` given a `str`.\n"
+    "Fix the annotation or the value. A cast narrowing a value on purpose to the part the code uses\n"
+    "(a JSON document read as a `TypedDict`) can say so: `# noqa: LVA016` on its line."
+)
+_TRACED_BY: Final = "reported by `python -m constricter.trace --check` alone"
+
+
 def explain(code: str) -> str:
     """Explain `code`.
 
     Returns:
-      Its message, rationale and the levels that report it.
+      Its message, rationale and the levels that report it; for `TRACED`, what reports it.
 
     """
+    if code == TRACED:
+        return f"{code}: {_TRACED_MESSAGE}\n\n{_TRACED_WHY}\n\n{_TRACED_BY}\n"
     offence: Offence = Offence(1, 0, "name", code)
     levels: list[str] = [
         f"{level.name.lower()}: {'error' if offence.is_error(level) else 'warning'}"

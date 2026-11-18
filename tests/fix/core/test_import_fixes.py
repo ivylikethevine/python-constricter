@@ -452,7 +452,7 @@ def test_a_notebook_fix_that_needs_an_import_isnt_applied(tmp_path: Path) -> Non
     path: Path = tmp_path / "demo.ipynb"
     _ = path.write_text(json.dumps({"cells": cells, "metadata": {}, "nbformat": 4}), encoding="utf-8")
     assert cli.main(["-q", "--fix", "--all-scopes", str(path)]) == cli.EXIT_FOUND
-    notebook: dict[str, list[_Sources]] = cast(
+    notebook: dict[str, list[_Sources]] = cast(  # noqa: LVA016
         "dict[str, list[_Sources]]",
         json.loads(path.read_text(encoding="utf-8")),
     )

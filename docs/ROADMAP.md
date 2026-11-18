@@ -2,8 +2,6 @@
 
 What's next. What's done, and what was measured on the way, is in [COMPLETED.md](COMPLETED.md).
 
-## Next
-
 By size (smallest first) and, within each, by value: the bindings with no fix an item could reach,
 of the 140,562 on the seven corpora at 0.4.0, or of the 23,647 on pydantic, sqlalchemy and django
 for an item that needs `--infer-with`; what only makes a run or a check faster comes last. An item's
@@ -17,26 +15,57 @@ item cites a sample, it's 41 directories of the standard library, pandas, django
 each checked alone: 28,931 bindings with no fix. First what's built and waits on a run, last what to
 measure before building.
 
-### Built, waiting on a run
+## Where it stands
 
-The latest run is `mega-11-16-2026-1443` (`39de5e3`, 97 minutes, 16CPU/60GB), read for a hint held
-to what the file binds its name to, a generic `TypeAliasType` and an environment for each corpus
-with no checkout ([COMPLETED.md](COMPLETED.md#corpus)); before it `mega-11-11-2026-1113` (`855c719`,
-95 minutes), read for the checkers' hints by a copy's own settings and environment; before that
-`mega-11-10-2026-2235` (`565ac6c`, 80 minutes), read for `echoed`, the hinted steps' fixes with a
-corpus's stubs in the copy, and the suites' tests and checks, and `mega-11-10-2026-1742` (`d072990`,
-82 minutes), for the hinted steps' servers alone. Before them `mega-11-06-2026-2039` (`edcaba3`, 87
-minutes), read for `documented`'s bars and the `LiteralString` splits, with `vague-11-06-2026-2206`
-beside it for the `vague = 0` census (both in [COMPLETED.md](COMPLETED.md#corpus)); before them
-`mega-lva013-11-06-2026-1718` (`2843438`, 56 minutes) for LVA013; the latest read in full is
-`mega-11-06-2026-0441` (`fa5cbd5`, 85 minutes; [COMPLETED.md](COMPLETED.md#corpus)). A basic run of
-the seven corpora, `basic-11-03-2026-2103` (`8c3a756`, [basic-corpora.md](runs/basic-corpora.md)),
-takes 35 minutes on 16CPU/60GB, from 0.3.8's 58; a mega run's 80 to 95 buys the other 48 corpora. A
-change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by `mega-fixes`
-(`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the latest mega
-run's records with `scripts/scratch/run_fixes_diff.py`, or the latest `alt` run's for its eight;
-`mega-fixes-11-11-2026-1033`, 14 minutes), which measures none of the bars: a guess's bars and the
-tests still wait on a mega run.
+2026-11-17, at `1763d4b` (v0.4.6; `dev` and `main` alike).
+
+- The latest run is `mega-11-16-2026-1443` (`39de5e3`, 97 minutes on 16CPU/60GB, no step failed, no
+  server hung), read in [COMPLETED.md](COMPLETED.md#corpus): the suites' own checks find 710 new
+  errors from 802, every one gone a hinted step's; 20 from 35 are blamed on a hint two checkers
+  agree on. Every earlier run named here is read there too.
+- What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
+  (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)), a mega run of all 55 80 to 97. A change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by
+  `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the
+  latest mega run's records with `scripts/scratch/run_fixes_diff.py`, or the latest `alt` run's for
+  its eight; `mega-fixes-11-11-2026-1033`, 14 minutes), which measures none of the bars: a guess's
+  bars and the tests still wait on a mega run.
+- `agreed+checker` fails the blamed bar on `mega-11-16-2026-1443` (0.13 per 100 for under 0.1; held
+  96.1%), read 2026-11-17 (10).
+- Built 2026-11-17: an unmeasured hinted step sized by its servers' estimate (3); every file asked
+  about again after a hinted round that changed one (4), which on `mega-11-17-2026-1641` leaves a
+  second pass 17, 20 and 27 fixes from 138, 108 and 197, matplotlib's one after pyrefly's hints
+  over its bar; `--check`'s `*args`, `**kwargs`, coroutine returns and module and class variables
+  (5), the suite passing with 100% coverage. fastjsonschema 2.22.3 is locked, and mypy reads its types (12).
+- Item 3's first `alt` run (16:23 to 16:31, 2026-11-17) took 7.6 minutes to a proved 6.0, short of
+  its bar (3); the standard-library tables were regenerated at 16:25 during it, so its fix counts
+  aren't compared with other runs'. The 3.14 suite passes (`tests/ci_local.py test`, 100%
+  coverage) and Python 3.11's, synced with `--frozen` and its tests run
+  with `SETUPTOOLS_USE_DISTUTILS=stdlib` as CI's; `tests/ci_local.py interpreters` fails here at
+  `uv sync --locked`, which the global `exclude-newer` makes re-resolve.
+- Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
+  peak and parallel timings again, which predate 2026-10-28 (7, 8).
+- Open questions from `mega-11-16-2026-1443`, not looked into: twisted's 12 left for a second pass
+  after basedpyright's hints, where it left none (4); matplotlib's hinted steps' 99, 98 and 33 fewer
+  fixes; nibabel's union step failing 2 tests from 1.
+- Decided 2026-11-17, to build: `agreed` out of the likely fixes and `NotImplementedType` hints
+  refused (10); an unmeasured fix or check sized by its corpus's files (3); the three wrong casts
+  corrected, the ten JSON views marked `# noqa: LVA016`, LVA016 named as a code (5); sqlalchemy's
+  four named in the catalog (2). Items 9 and 11 moved to Later.
+
+## Order of work
+
+- 10: narwhals' five blamed, then agreement read on each mega run (`mega-11-17-2026-1924`: 0.14
+  blamed for under 0.1).
+- 3: a suite's unmeasured tests started on fewer CPUs, to decide.
+- 4: matplotlib's one fix left after pyrefly's hints, then done. 2: confirmed by a mega run where
+  sqlalchemy's four fail.
+- 1: an hour beside the next super run, made in stages hours apart.
+- 6: the mutation run, then its survivors.
+- 7, then 8: memory and speed, last by this file's rule; each timed again first.
+
+## Now
+
+### Built, waiting on a run
 
 #### 1. Runs in stages
 
@@ -55,6 +84,92 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 `fixes` 16.5 minutes, `traced` 11, `tests` 20.5, `timed` 4, each exiting 0 and joining, the report
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
+
+#### 3. A run with no earlier run, held to the solver's shortest
+
+A run whose steps are measured is at the solver's shortest, read against the waits the runner keeps:
+`alt-11-08-2026-1157` took 5.2 minutes to a proved 5.2 and `alt-11-08-2026-1213` 5.5 to 5.5
+(16CPU/60GB; [COMPLETED.md](COMPLETED.md#corpus)). `alt-11-08-2026-1133` (`19a3e9c`), the first run
+of its seven corpora, none of its steps measured, took 7.2 minutes to a proved 6.0, 20% over, though
+planned by its like corpora (`planning.like`). Its 72 seconds went to memory at the head of the
+run's longest chain: trio's `infer-basedpyright` waited 65 seconds wanting 6.6 GB with 3.2 free,
+each unmeasured hinted step holding a third of the run's memory between its CPUs
+(`sizing._UNSIZED_SHARE`), where trio's held 0.5 GB once measured. Built 2026-11-17, approved that
+day: an unmeasured `infer-CHECKER` step holds its largest checker's servers for the corpus's files,
+a server a CPU up to the checker's most, `_MARGIN` over, and the corpus's `check` where measured
+(`Plan._servers`), then follows what it's seen to use (`Plan.fitted`) as before; a suite's type
+checks and `infer-trace` keep the third. The estimate counts the corpus's files alone, where a
+server loads what they import too: on `mega-11-16-2026-1443` a hinted step's peak was 0.3 to 8.6
+times one server's estimate (`scripts/scratch/hinted_sizes.py`), the most dask's, matplotlib's and
+pandas's (9.2, 8.5 and 6.6 GB). Done when a first run of corpora no run measured takes within a
+tenth of its shortest (`scripts/scratch/schedule_solve.py --given`): the `alt` run into an output
+folder of its own. Not met by the first, `alt-first-11-17-2026-1623` (8 corpora with matplotlib,
+218 steps, 16CPU/60GB, its memory 36 GB): 7.6 minutes to a proved 6.0, 27% over, no step failed.
+The hinted steps no longer wait for a third of the memory: given 0.5 to 2.2 GB, they waited 0 to
+110 seconds behind other unmeasured steps, a fix's or a check's held at `_JOB_MEMORY` for each of
+the run's 4 jobs (5 GB, 0.2 to 0.5 used) and a suite's released tests at 8 (0.5 to 1.2 used:
+`requests` waited 244 seconds, `langchain-core` 265). matplotlib's hinted steps held 6.4 to 7.2 GB
+given 0.68 to 1.87, so the run's steps held 36.6 GB at once. Decided 2026-11-17: an unmeasured fix
+or check sized by the corpus's files rather than its jobs, by a ratio of bytes held to source bytes
+read from earlier runs, to build; an unmeasured hinted step's estimate counting what the corpus's
+environment installs, not built (`Plan.fitted` corrects it as the step runs). Built that day: an
+unmeasured step that's no hinted step, type check or suite's tests holds 0.3 GB and 450 bytes for
+each byte of the corpus's Python for a fix, 250 for a check, the census or coverage, where it held
+1.25 GB for each of the run's `--jobs` (`scripts/scratch/check_sizes.py` on `mega-11-17-2026-1641`:
+fixes held up to 440 a byte on the largest corpora, the rest under 300, every one at most 0.3 GB on
+the smallest). Its `alt` run into a fresh folder, `alt-fresh-11-17-2026-1912` (16CPU/60GB, 36 GB
+shared, no step failed): 7.0 minutes to a proved 5.0, from 7.6 to 6.0, and none of the run's memory
+held past the model's. Each check and fix started on 0.32 to 0.87 GB, matplotlib's fixes on 3.45
+(3.0 to 3.4 held). What waits now is CPUs, not memory: 64 steps waited 30 seconds or more, the
+longest the released tests (`requests` 191 seconds, `langchain-core` 184), each holding 8 CPUs and
+8 GB for 0.7 to 1.4 used, and small steps 125 to 138 seconds behind them. Its hinted steps read
+their hints from the store, so they took 2 to 3 seconds where they asked afresh before. Left, a
+proposal: a suite's unmeasured tests started on fewer CPUs, as a hinted step is. A measured step
+can be as far off: on `mega-11-11-2026-1113` every checker was
+asked afresh, each step sized by a run that read its hints from the store, so pip's
+`infer-basedpyright` held 4.1 GB where it was given 0.64 and matplotlib's 8.8 where 4.28, the load
+28 on 16 CPUs, and the run took 95 minutes for 80; no server passed its heap's cap. Not looked
+into: whether a step whose hints were read from the store should count as measured. Coverage
+unchanged.
+
+#### 4. The hinted steps' second pass
+
+A run reports what a second pass would still fix after the certain fixes and the guesses
+(`render._CONVERGING`), where no corpus is left any since a module's stub is read in every check,
+not after a checker's hints, where it has long left some: 102, 76 and 84 fixes after
+`infer-basedpyright`, `infer-ty` and `infer-pyrefly` on `mega-11-10-2026-1742`, 142, 116 and 227
+(180 after `infer-union`) on `mega-11-11-2026-1113`, the first with that and with each checker held
+to the copy's own settings ([COMPLETED.md](COMPLETED.md#corpus)), and 138, 108 and 197 on
+`mega-11-16-2026-1443`, twisted's 12 after basedpyright's hints among them where it left none. Found
+2026-11-11 on the run between them, each in one process, which gives a run's counts
+(`scripts/scratch/second_pass_copy.py`).
+matplotlib's, the stub's apart, rest on one fix, `get_size_in_points: Callable[..., float] =
+get_size` in `font_manager.py`: the files calling it know its type only from an index read after
+that fix, and with a checker's hints the files a round changed weren't indexed again; it left 8, 11
+and 9 on `mega-11-11-2026-1113`. pandas has no stub beside a source (its 41 are compiled modules').
+Its 29 after pyrefly's hints were 25 with eight rounds for `HINT_ROUNDS`' four, so not the rounds'
+cap: 17 of the 28 fixes are a hint pyrefly gives only when asked again of the fixed tree, where a
+round asked again only of the files it changed, and 11 rest on a method's declared return or an
+attribute of a name such a hint typed (`DataFrameGroupBy.filter`); measured before pyrefly read the
+copy's own settings, it left 24, 24 and 28 on `mega-11-11-2026-1113`. Built 2026-11-17, approved
+that day: with a checker's hints, as without, the files a round changed are indexed again
+(`rounds.settled`'s `onward`), so the next round asks the checkers about every file and checks one
+again where what it knows from outside, its hints among it, changed; tested with a hint the fake
+server gives only once another file annotates a name (`# once N: T`). A server learns of a file
+another server has open only from the disk, which no test here covers. Not looked into: pyrefly's
+46 on pint, 32 on pip and 25 on django, none on the run before; twisted's 12; and what's as old as
+a corpus's first hinted run (the standard library's 39 after pyrefly's hints, pint's 15 to 19 after
+the others'). Done when a mega run (95 minutes on 16CPU/60GB) shows the hinted steps leaving
+matplotlib and pandas no more than `mega-11-10-2026-1742` did (4, 6 and 0; 23, 21 and 25) and
+pyrefly's new ones are traced. Read on `mega-11-17-2026-1641` (95 minutes on 16CPU/60GB, as the
+last; no step failed, no test fails anew, the suites' new type errors 710 as on
+`mega-11-16-2026-1443`): a second pass would still fix 17, 20 and 27 after the three checkers'
+hints, from 138, 108 and 197; matplotlib 0, 0 and 1, pandas 0, 3 and 3, pint none, pip 2, 7 and 3,
+django 3 after pyrefly's; the rest the standard library's 4, 10 and 9, celery's 6 and dask's 5 and 5
+after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 247,770 (239,086,
+234,001 and 247,682). On `mega-11-17-2026-1924` the same but 12, 11 and 28: the standard library's
+ty 1 from 10, dask's basedpyright none, pandas's pyrefly 4; matplotlib's one after pyrefly's hints
+again. Left: that one, the bar's 0, and the 51 left in all, not looked into. Coverage unchanged.
 
 ### Small: under 4 hours
 
@@ -79,58 +194,14 @@ raises the same. In one process the suite's plugin sorts the tests, so `test_com
 first. It's the union's step each time because that one always runs: its tests stand for each fix's
 where they're the released tests' (`suite_steps.union`), so the others ran only on the two of the
 eight kept runs where its four failed. A fixed step's failures run again before they're called new
-(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Left, each
-a proposal, since it changes what a run reports: the four named in the catalog
-(`[corpus.sqlalchemy.suite.differs]`), or the union's tests run again as a fixed step's are. About
-an hour for either; coverage unchanged.
-
-#### 3. A run with no earlier run, held to the solver's shortest
-
-A run whose steps are measured is at the solver's shortest, read against the waits the runner keeps:
-`alt-11-08-2026-1157` took 5.2 minutes to a proved 5.2 and `alt-11-08-2026-1213` 5.5 to 5.5
-(16CPU/60GB; [COMPLETED.md](COMPLETED.md#corpus)). `alt-11-08-2026-1133` (`19a3e9c`), the first run
-of its seven corpora, none of its steps measured, took 7.2 minutes to a proved 6.0, 20% over, though
-planned by its like corpora (`planning.like`). Its 72 seconds went to memory at the head of the
-run's longest chain: trio's `infer-basedpyright` waited 65 seconds wanting 6.6 GB with 3.2 free,
-each unmeasured hinted step holding a third of the run's memory between its CPUs
-(`sizing._UNSIZED_SHARE`), where trio's held 0.5 GB once measured. Left, a proposal (it changes a
-first run's sizing): an unmeasured hinted step sized by its checkers' servers' estimate for the
-corpus's files (`Plan._hinted`'s, as a measured one's fewest CPUs are), then by what it's seen to
-use (`Plan.fitted`). Done when a first run of corpora no run measured takes within a tenth of its
-shortest (`scripts/scratch/schedule_solve.py --given`). A measured step can be as far off: on
-`mega-11-11-2026-1113` every checker was asked afresh, each step sized by a run that read its hints
-from the store, so pip's `infer-basedpyright` held 4.1 GB where it was given 0.64 and matplotlib's
-8.8 where 4.28, the load 28 on 16 CPUs, and the run took 95 minutes for 80; no server passed its
-heap's cap. Not looked into: whether a step whose hints were read from the store should count as
-measured. About an hour beside the run; coverage unchanged.
+(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Decided
+2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
+registry their order clears; the union's tests not run again. Built that day, by the names the runs
+record them under; done when a mega run where they fail lists them apart, not as new (they passed
+on `mega-11-17-2026-1924`, so it's still to see). Coverage
+unchanged.
 
 ### Medium: 4 to 8 hours
-
-#### 4. The hinted steps' second pass
-
-A run reports what a second pass would still fix after the certain fixes and the guesses
-(`render._CONVERGING`), where no corpus is left any since a module's stub is read in every check,
-not after a checker's hints, where it has long left some: 102, 76 and 84 fixes after
-`infer-basedpyright`, `infer-ty` and `infer-pyrefly` on `mega-11-10-2026-1742`, and 142, 116 and 227
-(180 after `infer-union`) on `mega-11-11-2026-1113`, the first with that and with each checker held
-to the copy's own settings ([COMPLETED.md](COMPLETED.md#corpus)). Found 2026-11-11 on the run
-between them, each in one process, which gives a run's counts (`scripts/scratch/second_pass_copy.py`).
-matplotlib's, the stub's apart, rest on one fix, `get_size_in_points: Callable[..., float] =
-get_size` in `font_manager.py`: the files calling it know its type only from an index read after
-that fix, and with a checker's hints the files a round changed aren't indexed again
-(`rounds.settled`'s `onward`); it leaves 8, 11 and 9 now. pandas has no stub beside a source (its 41
-are compiled modules'). Its 29 after pyrefly's hints were 25 with eight rounds for `HINT_ROUNDS`'
-four, so not the rounds' cap: 17 of the 28 fixes are a hint pyrefly gives only when asked again of
-the fixed tree, where a round asks again only of the files it changed, and 11 rest on a method's
-declared return or an attribute of a name such a hint typed (`DataFrameGroupBy.filter`); measured
-before pyrefly read the copy's own settings, it leaves 24, 24 and 28 now. Not looked into: pyrefly's
-46 on pint, 32 on pip and 25 on django, none on the run before, and what's as old as a corpus's
-first hinted run (the standard library's 39 after pyrefly's hints, pint's 15 to 19 after the
-others'). Left, a proposal, since it adds checks to every hinted run: the files a hinted round
-changed indexed again, and every file asked of again while a round brings a new hint. Done when a
-mega run (95 minutes on 16CPU/60GB) shows the hinted steps leaving matplotlib and pandas no more
-than `mega-11-10-2026-1742` did (4, 6 and 0; 23, 21 and 25) and pyrefly's new ones are traced. About
-4 hours; coverage unchanged.
 
 #### 5. Annotations held to a run
 
@@ -155,10 +226,31 @@ differed in the package are corrected (`workers`' context is whichever one start
 told, and 11 differ in the tests and the corpus tools, each a narrower cast than the value: a JSON
 document read as the part a test uses (`_Sarif`, `_Nested`, `_Sources`, `_Group`, `_Written`), and
 OR-Tools' status enum cast to `int` (`planning._solved`). Traced, 8 more of the suite's tests fail
-than untraced, the tracer's own among them, not looked into. Left: those 11, each widened or the
-cast kept and the report given a way to pass one over, which is to decide; a `*args`' and a
-`**kwargs`' elements, a coroutine's return, and a class's and a module's annotated variables; and
-LVA016 named where the other codes are (`--explain`, the README's table) if it's to stay a code.
+than untraced, the tracer's own among them, not looked into. Built 2026-11-17: a `*args: T` held as
+a `tuple[T, ...]`, a `**kwargs: T` as a `dict[str, T]`, an `Unpack` of either as the whole; a
+coroutine's return where `sys.monitoring` tells it from a suspension (Python 3.12); and, as the run
+ends, each recorded module's and its top-level classes' annotated variables, by what they hold
+then (`Witness.judged`), not an instance attribute declared alone, a descriptor or an enum's
+member. This project's suite traced again (2026-11-17, 33 seconds on 16CPU/60GB): 20,486
+annotated bindings held, 13 differing, the 11 and two more narrow casts of the same kind (`tables`
+in `checker_settings.py`, a `tool` table a test makes an `int`; `sdist` in `corpus_sources.py`, its
+`requires` a list), none a module's or a class's variable. Its 42 failing tests were the tracer's
+own, a recorded function returning a class whose `__module__` is `None` (`test_trace.py`'s `Odd`):
+reading it raised into the run. Traced again with a return that can't be read dropping its
+function, as a binding's does: 2 of the tracer's own tests fail traced (a run of `-m` and a pytest
+process under the trace), and the package's one annotation a value differed from was
+`recording.named`'s `module: str`, `None` there: such a class is now spelled unknown, and the
+tests' class that can't be read raises as its module is asked for. Traced once more: 20,576
+held, none of the package's differing, the 13 alone. Decided 2026-11-17: the three that are wrong
+corrected (`planning._solved`, `sdist`, `tables`); the ten JSON documents read as the part a test
+uses kept, each marked `# noqa: LVA016`, which the trace's report honours as a check does; and
+LVA016 stays a code, named in `--explain` and the README's table. Built that day: `_solved` a
+`frozenset[CpSolverStatus]`, `sdist` a `TypedDict` with its `requires`, `tables` any TOML value;
+the ten marked; the report passes over a binding whose line has a `# noqa` covering LVA016 and
+counts those (`witness.report`); `--explain LVA016` and the README's table name it. Done
+2026-11-17: the suite traced (`python -m constricter.trace --check -m pytest -n 8`, 16CPU/60GB)
+holds 20,528 annotated bindings, none differing, the 10 marked passed over; 2 of the tracer's own
+tests fail traced, a trace inside a trace. To move to COMPLETED.md at the next groom.
 About 4 hours; coverage unchanged: it finds wrong annotations, not missing ones.
 
 #### 6. Mutation testing
@@ -241,6 +333,52 @@ now known, which a check's results don't name: their reasons are kinds (`member`
 the class and method. Each timing here predates the changes since 2026-10-28: time them again first.
 About 8 hours; coverage unchanged.
 
+### Measurement
+
+#### 10. Two checkers' agreement, read again
+
+A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026-0441` it passed
+[LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
+each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
+environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
+narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name. On
+`mega-11-16-2026-1443`, with a hint dropped where it names another thing than the file binds the
+name to ([COMPLETED.md](COMPLETED.md#corpus)), they blame 20. Read on 2026-11-17
+(`scripts/scratch/guess_report.py --from FOLDER --step infer-union`), it fails the blamed bar on both
+later runs:
+
+| Run                    | Guesses | Checked | Guesses blamed | Blamed per 100 |   Told | Held (%) |
+| ---------------------- | ------: | ------: | -------------: | -------------: | -----: | -------: |
+| `mega-11-06-2026-0441` |  14,445 |  10,081 |              8 |           0.08 |  9,149 |     97.9 |
+| `mega-11-11-2026-1113` |  18,170 |  12,662 |             23 |           0.18 | 11,238 |     96.1 |
+| `mega-11-16-2026-1443` |  18,144 |  12,659 |             17 |           0.13 | 11,226 |     96.1 |
+
+The bars are 20 told, over 95% held and under 0.1 blamed per 100 checked. On the latest run the 17
+blamed are spread over 11 corpora, narwhals' `default_col` three times (`_duckdb`, `_ibis`,
+`_spark_like`), pandas' `creso_infer: int` in two tests; 5 fewer would pass the bar. Of the 436 a
+traced value differed from, 318 are pandas's, about 230 of them a comparison's result hinted
+`NotImplementedType` (`result = cat == cat`, a `Series` at run time), 33 on the 11-06 run: the
+corpus's own environment gives both checkers the dunder's declared `NotImplementedType` arm. Without
+them the held share would be about 98%. Decided 2026-11-17, both: `agreed` leaves the likely
+fixes now; a checker's hint of `NotImplementedType` alone is refused (266 of the checkers'
+differing hints on the latest run name it); and `agreed` is read again on the next mega run, to
+come back once it passes all three bars (narwhals' three `default_col` blamed, if one cause, are
+what keeps it over the blamed bar). Built that day: `agreed+checker` out of `offences.LIKELY`, and
+`hinted._unimplemented` refusing a hint that's `NotImplementedType` alone; LIKELY.md, FIXES.md and
+the changelog say so. Read on `mega-11-17-2026-1924` (`20d9297`, 79 minutes on 16CPU/60GB, no step
+failed): `agreed+checker`, a guess, holds 98.4% of 10,968 told (from 96.1%; 177 differing, from
+436, the `NotImplementedType` hints gone) but 17 of 12,390 checked are blamed, 0.14 in each 100, so
+it stays out of the likely fixes; narwhals has 5 of the 17, pandas 3, litestar 2. The likely tier
+holds 99.5% with 0.08 blamed, and the suites' new type errors are 710 as before, agreement's 20 now
+a guess's. Left: narwhals' five (`default_col` three times), whether one cause; agreement read again
+on each mega run, to come back once it passes.
+
+## On hold
+
+Nothing waits on a decision.
+
+## Later
+
 ### Large: more than 8 hours
 
 #### 9. Types observed at run time, past what a parameter gives
@@ -294,22 +432,7 @@ built for now, the first the one worth building:
   by, which no rule here avoids, as for a written return (the signature codes,
   [COMPLETED.md](COMPLETED.md#corpus)).
 
-### Measurement
-
-What to measure before building, smallest first.
-
-#### 10. Two checkers' agreement, read again
-
-A hint two checkers give alike is likely (`agreed+checker`): on `mega-11-06-2026-0441` it passed
-[LIKELY.md](LIKELY.md)'s three bars, 97.9% of 9,149 told held and 8 of 10,081 read blamed (0.08 in
-each 100). On `mega-11-11-2026-1113`, each checker reading the corpus's own settings and
-environment, the suites' own checks blame 35 new errors on it, 14 on the run before (sphinx 7,
-narwhals 5, httpx 4): the checkers agree more often, and on the same wrong name. On
-`mega-11-16-2026-1443`, with a hint dropped where it names another thing than the file binds the
-name to ([COMPLETED.md](COMPLETED.md#corpus)), they blame 20. Done when its guesses are read against
-that run's verdicts and type checks (`scripts/scratch/guess_report.py --step infer-union`): whether
-it still passes the bars. About an hour; if it fails a bar, `agreed` leaves the likely fixes, which
-is to decide.
+### To measure, some time
 
 #### 11. Types from a model
 
@@ -324,12 +447,41 @@ model to download, run on CPUs here. To decide first: which one, and whether a d
 gigabytes or a hosted API is wanted for it. About 6 hours once one runs; coverage unknown until
 measured.
 
-## Ongoing
+### Ongoing
 
-- **Revisit the [disabled rules](CONTRIBUTING.md#disabled-rules)** as tools change (last checked
-  2026-10-31: `ossf/scorecard-action` v2.5.0 is taken, so zizmor's `self-repository` now waits on
-  actionlint, whose newest, 1.7.12, rejects `$/`; harden-runner's block policy on macOS and Windows
-  is on in `ci.yml` and in `build.yml`'s wheels, the latter unproven until `build.yml` is run by
-  hand on a branch; astroid 4.3.4
-  still ships no `py.typed`, and fastjsonschema 2.22.2 is as before; reuse 6.3.0 ships a wheel at
-  last, and `reuse lint` is back on). About an hour a pass.
+#### 12. Revisit the disabled rules
+
+The [disabled rules](CONTRIBUTING.md#disabled-rules), as tools change (last checked 2026-11-17:
+zizmor's `self-repository` still waits on actionlint, whose newest is still 1.7.12, rejecting `$/`
+(scorecard-action v2.5.0 and zizmor 1.32.0 the newest); harden-runner's block policy is proven in
+`build.yml`'s wheels, its run on `dev` of 2026-11-16 passing on every macOS and Windows job; astroid
+4.3.4 still ships no `py.typed`; fastjsonschema 2.22.3 ships one, now locked, so mypy reads it
+(`untyped_calls_exclude` drops it, `tests/cli/test_output.py` clean), while basedpyright still
+allows it as untyped, `validate`'s parameters being unannotated). About an hour a pass.
+
+## Decisions
+
+- `typeguard` only as an optional extra for `--check`: the package has no dependency (5).
+- Weighed and left for a check's peak: `msgspec` or `orjson` for the pickled index, more
+  `__slots__`, `sys.intern` of the annotations' text (7).
+- Tried and dropped for a parallel check: a worker checking files ahead of their turn (slower), and
+  the method-name edges dropped with late rechecks (no faster), both 2026-10-27 (8).
+- Measured and not worth building: the traced parameters' types as `callers`' seeds (9).
+- 2026-11-06: none of 9's four refusals built for now; the exhausted union first if any is (9).
+  2026-11-17: kept so, the item moved to Later: 5 new errors in about 3,200 traced fixes.
+- 2026-11-17: no model's types tried for now, the item in Later: none is deterministic, each needs a
+  download of gigabytes or a hosted API sent the project's source, and the checkers' hints cover
+  the ground; to revisit if those plateau (11).
+- 2026-11-17: `agreed+checker` leaves the likely fixes, failing the blamed bar, until a run passes
+  all three; a hint of `NotImplementedType` is refused (10).
+- 2026-11-17: a first run's unmeasured hinted step isn't sized by its environment's packages:
+  `Plan.fitted` corrects it as it runs (3).
+- 2026-11-17: LVA016 stays a code; a cast that narrows a JSON document to the part a test uses is
+  kept and marked `# noqa: LVA016`, not widened (5).
+- 2026-11-17: the union step's tests aren't run again before their failures are called new: a
+  suite's order-dependent tests are named in the catalog instead (2).
+
+## Done
+
+In [COMPLETED.md](COMPLETED.md), what was built and measured, and [CHANGELOG.md](CHANGELOG.md), by
+release.

@@ -32,6 +32,7 @@ from constricter.offences import (
     NESTING,
     OPT_IN,
     PLAIN_BASES,
+    TRACED,
     UNANNOTATED_ATTRIBUTE,
     UNANNOTATED_PARAMETER,
     UNANNOTATED_RETURN,
@@ -450,7 +451,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     _ = parser.add_argument(
         "--explain",
-        choices=list(MESSAGES),
+        choices=[*MESSAGES, TRACED],
         metavar="CODE",
         help="explain a code and exit",
     )

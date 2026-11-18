@@ -2,9 +2,12 @@
 
 A `Witness` records as a `Recorder` does. As a statement of a recorded function ends, each name it
 bound that the function declares (a parameter's annotation, or a local's `name: T`) is held to that
-annotation; as the function returns, or a generator is suspended, each annotated parameter is
-(not a `*args`' or a `**kwargs`'), and what it returns to its `-> T` (not a generator's or a
-coroutine's). An annotation is
+annotation; as the function returns, or a generator is suspended, each annotated parameter is (a
+`*args: T` as a `tuple[T, ...]`, a `**kwargs: T` as a `dict[str, T]`, an `Unpack` of either the
+whole), and what it returns to its `-> T`: not a generator's, and a coroutine's only where
+`sys.monitoring` tells its return from a suspension (Python 3.12). As the run ends, each recorded
+module's annotated variables, and its classes', are held to their annotations by what they hold
+then (`Witness.judged`). An annotation is
 evaluated where its function runs, once: its module's names and the frame's, then the names the
 module imports for type checking alone, imported for it.
 
@@ -29,9 +32,11 @@ import ast
 import collections
 import collections.abc
 import contextlib
+import enum
 import io
 import itertools
 import json
+import sys
 import types
 import typing
 from collections.abc import Iterable, Iterator, Mapping, Sequence
@@ -41,10 +46,11 @@ from types import CodeType, FrameType
 from typing import Final, TypeAlias, cast
 from unittest import mock
 
-from constricter import recording
+from constricter import noqa, recording
+from constricter.offences import TRACED
 from constricter.overrides import override
 
-CODE: Final = "LVA016"  # what `report` lists a differing binding under
+CODE: Final = TRACED  # what `report` lists a differing binding under
 FIT: Final = 0
 DIFFER: Final = 1
 UNKNOWN: Final = 2
@@ -89,10 +95,17 @@ _CALLABLE: Final = collections.abc.Callable
 _UNIONS: Final = frozenset({types.UnionType, cast("object", vars(typing)["Union"])})
 _GUARD: Final = "TYPE_CHECKING"  # what a module tests to import a name for type checking alone
 _BLOCKS: Final = (ast.stmt, ast.excepthandler, ast.match_case)  # what holds statements
+_ARGS: Final = "*"  # a `*args`: its annotation is each element's
+_KWARGS: Final = "**"  # a `**kwargs`: its annotation is each value's
+_COROUTINE: Final = 0x80  # `inspect.CO_COROUTINE`: an `async def`'s code, whose return is its awaited value
 # A binding and its annotation: its file's path, the line and column it's bound at, its name, the text.
 Key: TypeAlias = tuple[str, int, int, str, str]
 _Judged: TypeAlias = list[str | int | list[int] | list[str]]  # a key, its counts, what differed
 _Counted: TypeAlias = tuple[list[int], list[str]]  # a key's counts in every process, and what differed
+_Names: TypeAlias = Mapping[str, object]  # a module's or a class's names, and what each holds
+# A module's or a class's body, what holds its names, and what its annotations are evaluated among
+# besides the module's names (a class's own).
+_Owned: TypeAlias = tuple[Sequence[ast.stmt], _Names, _Names]
 
 
 def holds(value: object, hint: object) -> bool | None:
@@ -352,6 +365,7 @@ class _Declared:
     columns: Mapping[tuple[int, str], int]  # each store's column, by its line and name
     returns: str | None  # the annotation after `->`
     guarded: tuple[str, ...]  # the module's imports for type checking alone, as statements
+    packed: Mapping[str, str]  # the `*args` (`_ARGS`) and the `**kwargs` (`_KWARGS`) annotated, by name
 
 
 def _declarations(tree: ast.Module) -> dict[int, _Declared]:
@@ -361,18 +375,41 @@ def _declarations(tree: ast.Module) -> dict[int, _Declared]:
       Each one's, by its first line (its first decorator's), as a recorder's plans are.
 
     """
-    guarded: tuple[str, ...] = tuple(
+    guarded: tuple[str, ...] = _guarded(tree)
+    return {
+        min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]): _declared(node, guarded)
+        for node in ast.walk(tree)
+        if isinstance(node, recording.Def)
+    }
+
+
+def _guarded(tree: ast.Module) -> tuple[str, ...]:
+    """Read a module's imports for type checking alone.
+
+    Returns:
+      Each, as a statement.
+
+    """
+    return tuple(
         ast.unparse(each)
         for stmt in tree.body
         if isinstance(stmt, ast.If) and ast.unparse(stmt.test).rsplit(".", 1)[-1] == _GUARD
         for each in stmt.body
         if isinstance(each, ast.Import | ast.ImportFrom)
     )
-    return {
-        min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)]): _declared(node, guarded)
-        for node in ast.walk(tree)
-        if isinstance(node, recording.Def)
-    }
+
+
+def _variables(body: Sequence[ast.stmt]) -> Iterator[ast.AnnAssign]:
+    """Find a module's or a class's own annotated variables: `name: T`, at its top level.
+
+    Yields:
+      Each one's statement.
+
+    """
+    statement: ast.stmt
+    for statement in body:
+        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+            yield statement
 
 
 def _declared(function: recording.Def, guarded: tuple[str, ...]) -> _Declared:
@@ -386,11 +423,19 @@ def _declared(function: recording.Def, guarded: tuple[str, ...]) -> _Declared:
     names: dict[str, str] = {}
     parameters: dict[str, tuple[int, int]] = {}
     columns: dict[tuple[int, str], int] = {}
-    arg: ast.arg
-    for arg in (*given.posonlyargs, *given.args, *given.kwonlyargs):
-        if arg.annotation is not None:
+    packing: dict[str, str] = {}
+    arg: ast.arg | None
+    how: str
+    for arg, how in (
+        *((each, "") for each in (*given.posonlyargs, *given.args, *given.kwonlyargs)),
+        (given.vararg, _ARGS),
+        (given.kwarg, _KWARGS),
+    ):
+        if arg is not None and arg.annotation is not None:
             names[arg.arg] = _written(arg.annotation)
             parameters[arg.arg] = (arg.lineno, arg.col_offset + 1)
+            if how:
+                packing[arg.arg] = how
     statement: ast.stmt
     for statement in recording.statements(function):
         if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
@@ -400,7 +445,7 @@ def _declared(function: recording.Def, guarded: tuple[str, ...]) -> _Declared:
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
                 _ = columns.setdefault((node.lineno, node.id), node.col_offset + 1)
     returns: str | None = None if function.returns is None else _written(function.returns)
-    return _Declared(names, parameters, columns, returns, guarded)
+    return _Declared(names, parameters, columns, returns, guarded, packing)
 
 
 def _written(annotation: ast.expr) -> str:
@@ -440,6 +485,7 @@ class Witness(recording.Recorder):
         self.read: dict[str, dict[int, _Declared]] = {}  # each file's functions' declarations
         # What each function declares, by its id, kept with it (`None`: nothing).
         self.declared: dict[int, tuple[recording.Function, _Declared | None]] = {}
+        self.settled: bool = False  # whether the modules' and classes' variables were held (`judged`)
 
     @override
     def ended(self, frame: FrameType, function: recording.Function) -> None:
@@ -472,7 +518,9 @@ class Witness(recording.Recorder):
 
         """
         function: recording.Function | None = self._function(frame)
-        suspends: bool = bool(frame.f_code.co_flags & recording.SUSPENDS)
+        flags: int = frame.f_code.co_flags
+        # A coroutine's return is told apart from its suspensions only where `finished` says so.
+        suspends: bool = bool(flags & recording.SUSPENDS) and not (finished and flags & _COROUTINE)
         declared: _Declared | None = None if function is None else self._declared(frame, function)
         if function is not None and declared is not None:
             path: str = function.file.path.as_posix()
@@ -511,9 +559,13 @@ class Witness(recording.Recorder):
         if sum(self.verdicts.get(key, ())) >= _MOST:
             return
         if key not in self.hints:
-            self.hints[key] = evaluated(key[4], frame, declared.guarded)
+            self.hints[key] = packed(evaluated(key[4], frame, declared.guarded), declared.packed.get(key[3]))
+        self._counted(key, value, module_of(frame))
+
+    def _counted(self, key: Key, value: object, module: str) -> None:
+        """Count `value`'s verdict against `key`'s evaluated annotation, its binding in `module`."""
         found: bool | None = fits(value, self.hints[key])
-        if patched(self.hints[key], module_of(frame)):  # evaluated again once the test's done
+        if patched(self.hints[key], module):  # evaluated again once the test's done
             found = None
             del self.hints[key]
         self.verdicts.setdefault(key, [0, 0, 0])[UNKNOWN if found is None else FIT if found else DIFFER] += 1
@@ -528,13 +580,62 @@ class Witness(recording.Recorder):
         _ = output.with_suffix(VERDICTS).write_text(json.dumps(self.judged()), encoding="utf-8")
 
     def judged(self) -> list[_Judged]:
-        """List this process's verdicts, as they're written.
+        """List this process's verdicts, as they're written: the modules' and classes' variables held first.
 
         Returns:
           Each key, then its counts, then what differed.
 
         """
+        if not self.settled:
+            self.settled = True
+            module: types.ModuleType
+            for module in list(sys.modules.values()):
+                self._held_at_end(module)
         return [[*key, counts, self.differed.get(key, [])] for key, counts in self.verdicts.items()]
+
+    def _held_at_end(self, module: types.ModuleType) -> None:
+        """Hold a recorded module's annotated variables, and its classes', to their annotations, as they end.
+
+        Each `name: T` at a module's top level, or at the top level of a class the module binds by its
+        name, held once to what the module or the class holds by that name now: not one it holds
+        nothing by (a class's instance attribute, declared alone), a descriptor (a `NamedTuple`'s
+        field, a slot, a method), or an enumeration's member.
+        """
+        filename: str | None = cast("str | None", getattr(module, "__file__", None))
+        file: recording.File | None
+        if (file := self._file(filename) if isinstance(filename, str) else None) is None:
+            return
+        try:
+            tree: ast.Module = ast.parse((self.root / file.path).read_bytes())
+        except (OSError, SyntaxError, ValueError):
+            return
+        guarded: tuple[str, ...] = _guarded(tree)
+        scope: _Names = vars(module)
+        owners: list[_Owned] = [(tree.body, scope, {})]
+        owners += [
+            (node.body, vars(cast("type", scope[node.name])), vars(cast("type", scope[node.name])))
+            for node in tree.body
+            if isinstance(node, ast.ClassDef)
+            and isinstance(scope.get(node.name), type)
+            and not issubclass(cast("type", scope[node.name]), enum.Enum)
+        ]
+        body: Sequence[ast.stmt]
+        holding: _Names
+        local: _Names
+        for body, holding, local in owners:
+            statement: ast.AnnAssign
+            for statement in _variables(body):
+                name: str = cast("ast.Name", statement.target).id
+                if name in holding and not hasattr(type(holding[name]), "__get__"):
+                    key: Key = (
+                        file.path.as_posix(),
+                        statement.lineno,
+                        statement.target.col_offset + 1,
+                        name,
+                        _written(statement.annotation),
+                    )
+                    self.hints[key] = evaluated_in(key[4], dict(scope), dict(local), guarded)
+                    self._counted(key, holding[name], module.__name__)
 
 
 def evaluated(text: str, frame: FrameType, guarded: Sequence[str]) -> object:
@@ -544,16 +645,50 @@ def evaluated(text: str, frame: FrameType, guarded: Sequence[str]) -> object:
       What it names, or `UNSET` where it can't be evaluated there.
 
     """
+    return evaluated_in(text, dict(frame.f_globals), dict(frame.f_locals), guarded)
+
+
+def evaluated_in(
+    text: str,
+    scope: dict[str, object],
+    local: dict[str, object],
+    guarded: Sequence[str],
+) -> object:
+    """Evaluate an annotation among `scope`'s and `local`'s names, `guarded` imported for a missing one.
+
+    Returns:
+      What it names, or `UNSET` where it can't be evaluated there.
+
+    """
     try:
-        return read(text, dict(frame.f_globals), dict(frame.f_locals))
+        return read(text, scope, local)
     except NameError:
         pass
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
         return UNSET
     try:
-        return read(text, _imported(dict(frame.f_globals), guarded), dict(frame.f_locals))
+        return read(text, _imported(dict(scope), guarded), local)
     except Exception:  # ruff: ignore[blind-except]  # pylint: disable=broad-exception-caught
         return UNSET
+
+
+def packed(hint: object, how: str | None) -> object:
+    """Make a `*args`' or a `**kwargs`' evaluated annotation what the parameter holds.
+
+    `how`: `_ARGS`, `_KWARGS`, or `None` for another name.
+
+    Returns:
+      A `tuple` of `hint`'s, or a `dict` of it by name; what an `Unpack` names (a tuple's or a
+      `TypedDict`'s, the whole); `hint` itself for another name, or one that couldn't be evaluated.
+
+    """
+    if how is None or hint is UNSET:
+        return hint
+    if typing.get_origin(hint) is typing.Unpack:
+        return cast("object", typing.get_args(hint)[0])
+    return (
+        types.GenericAlias(tuple, (hint, Ellipsis)) if how == _ARGS else types.GenericAlias(dict, (str, hint))
+    )
 
 
 def _imported(scope: dict[str, object], imports: Sequence[str]) -> dict[str, object]:
@@ -613,17 +748,24 @@ def gathered(parts: Path, own: Iterable[_Judged]) -> dict[Key, _Counted]:
     return found
 
 
-def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]]) -> list[str]:
+def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]], root: Path) -> list[str]:
     """List each binding a run's value differed from its annotation, as `constricter` lists an offence.
+
+    Not one whose line under `root` has a `# noqa` that covers `CODE`, as a check's offence: a cast
+    narrowing a value to the part its code uses, say. The last line counts those too.
 
     Returns:
       A line each, in the files' order, then one counting what was held.
 
     """
     lines: list[str] = []
+    quiet: int = 0
+    sources: dict[str, list[str]] = {}
     key: Key
     for key in sorted(found):
-        if found[key][0][DIFFER]:
+        if found[key][0][DIFFER] and _passed_over(key, root, sources):
+            quiet += 1
+        elif found[key][0][DIFFER]:
             kinds: str = ", ".join(f"`{each}`" for each in found[key][1])
             what: str = (
                 f"a function annotated to return `{key[4]}` returned"
@@ -633,4 +775,21 @@ def report(found: Mapping[Key, tuple[Sequence[int], Sequence[str]]]) -> list[str
             lines.append(f"{key[0]}:{key[1]}:{key[2]}: error: {CODE} {what} {kinds} in a traced run")
     untold: int = sum(1 for counts, _ in found.values() if not counts[FIT] and not counts[DIFFER])
     held: str = f"{len(found)} annotated bindings held to a run's values"
-    return [*lines, f"{held}: {len(lines)} differed, {untold} couldn't be told"]
+    passed: str = f", {quiet} passed over by `# noqa`" if quiet else ""
+    return [*lines, f"{held}: {len(lines)} differed{passed}, {untold} couldn't be told"]
+
+
+def _passed_over(key: Key, root: Path, sources: dict[str, list[str]]) -> bool:
+    """Check whether a binding's line has a `# noqa` that covers `CODE`, its file read once into `sources`.
+
+    Returns:
+      Whether it has; not where the file can't be read again.
+
+    """
+    if key[0] not in sources:
+        try:
+            sources[key[0]] = noqa.lines((root / key[0]).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            sources[key[0]] = []
+    found: list[str] = sources[key[0]]
+    return key[1] <= len(found) and noqa.suppressed(found[key[1] - 1], CODE)

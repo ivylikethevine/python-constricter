@@ -17,6 +17,7 @@ _CHECKERS: Final = (
 )
 _PROJECT: Final = "pyproject.toml"
 _Table: TypeAlias = dict[str, object]  # a table of a `pyproject.toml`, as `tomllib` reads it
+_Value: TypeAlias = object  # any of a table's values: a table, an array, a string, a number, a date
 # The settings a copy of a checkout takes with its files (`launch.copied`).
 FILES: Final = (_PROJECT, *(name for name, _, _ in _CHECKERS))
 
@@ -67,5 +68,5 @@ def _tools(project: Path) -> frozenset[str]:
         read: _Table = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
         return frozenset()
-    tables: _Table | None = cast("_Table | None", read.get("tool"))
-    return frozenset(tables) if isinstance(tables, dict) else frozenset()
+    tables: _Value = read.get("tool")  # a table, where the file is as TOML's tools write it
+    return frozenset(cast("_Table", tables)) if isinstance(tables, dict) else frozenset()

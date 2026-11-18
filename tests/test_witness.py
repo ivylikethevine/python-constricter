@@ -1,6 +1,9 @@
 """`python -m constricter.trace --check`: a run's values held to the annotations its functions declare."""
 
 import collections.abc
+import importlib.abc
+import importlib.machinery
+import importlib.util
 import inspect
 import json
 import os
@@ -111,6 +114,12 @@ _Verdict: TypeAlias = tuple[int, list[int], list[str]]  # a binding's line, its 
 _Counted: TypeAlias = tuple[list[int], list[str]]  # a binding's counts in every process, and what differed
 
 
+class _Options(typing.TypedDict):
+    """A `**kwargs`' keywords, as an `Unpack` names them."""
+
+    size: int
+
+
 def _script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str) -> Path:
     """Write `source` where a run finds it, the interpreter's state restored after the test.
 
@@ -161,7 +170,8 @@ def test_a_checked_run_lists_each_binding_a_value_differed_from(
 
     An annotation is evaluated where it runs, a name imported for type checking alone imported for
     it, a quoted one's text read; one that can't be, a test's class and a generator's return say
-    nothing. Not a `*args`, a `**kwargs`, an unannotated name, or Python 3.14's `__annotate__`.
+    nothing; an empty `*args` and `**kwargs` hold. Not an unannotated name, or Python 3.14's
+    `__annotate__`.
     """
     path: Path = _script(tmp_path, monkeypatch, _CHECKED)
     assert trace.main(["--check", f"--root={tmp_path}", path.name]) == 1
@@ -176,7 +186,7 @@ def test_a_checked_run_lists_each_binding_a_value_differed_from(
         _said("total = ", "total", "int", "str"),
         _said("def spun", "values", "list[int]", "list[str]"),
         f"{returned} to return `int` returned `str` in a traced run",
-        "14 annotated bindings held to a run's values: 8 differed, 4 couldn't be told",
+        "16 annotated bindings held to a run's values: 8 differed, 4 couldn't be told",
     ]
     assert not (tmp_path / trace.DEFAULT).exists()
 
@@ -237,6 +247,10 @@ def silent(tell, leave, value):
 
 def spun(tell, leave, value: int):
     yield (tell(), value)[1]
+
+
+async def waited(tell, leave, value) -> int:
+    return leave((tell(), value)[1])
 """
 _Functions: TypeAlias = "Mapping[str, Callable[..., object]]"  # a script's, by name
 _Spun: TypeAlias = "GeneratorType[str, None, None]"  # what a call of `spun` answers
@@ -251,6 +265,7 @@ class _Told:
         _ = self.path.write_text(_TOLD, encoding="utf-8", newline="\n")
         self.witness: witness.Witness = witness.Witness(tmp_path)
         self.functions: _Functions = cast("_Functions", runpy.run_path(str(self.path)))
+        self.finished: bool = True  # what `leave` tells: a return (`sys.monitoring`), or any leaving
 
     def tell(self) -> None:
         """Tell the witness its caller arrived at a line."""
@@ -263,7 +278,7 @@ class _Told:
           `value`.
 
         """
-        _ = self.witness.left(_caller(), finished=True, returned=True, value=value)
+        _ = self.witness.left(_caller(), finished=self.finished, returned=True, value=value)
         return value
 
     def call(self, name: str, *args: object) -> object:
@@ -308,14 +323,15 @@ def _caller(depth: int = 2) -> FrameType:
 def test_a_statements_names_are_held_as_it_ends_and_parameters_as_the_function_returns(
     tmp_path: Path,
 ) -> None:
-    """Each to what the function declares of it; not an undeclared name, an unbound one, or a `*args`."""
+    """Each to what its function declares of it, a `*args` by its elements; not an undeclared name."""
     told: _Told = _Told(tmp_path)
-    assert told.call("bound", _TEXT, Path()) == _TEXT
+    assert told.call("bound", _TEXT, Path(), None, 1, _TEXT) == _TEXT
     assert told.call("silent", 1) == 1
     assert told.judged() == {
         "held": (17, [0, 1, 0], ["str"]),
         "value": (16, [0, 1, 0], ["str"]),
         "odd": (16, [0, 0, 1], []),
+        "rest": (16, [0, 1, 0], ["tuple[int, str]"]),
         recording.RETURN: (23, [0, 1, 0], ["str"]),
     }
     assert not told.witness.left(_caller(1))
@@ -344,6 +360,118 @@ def test_a_generators_parameters_are_held_as_its_suspended_too(tmp_path: Path) -
     assert told.judged() == {"value": (31, [0, 2, 0], ["str"])}
 
 
+@pytest.mark.parametrize(("finished", "counts"), [(True, [1, 0, 0]), (False, None)])
+def test_a_coroutines_return_is_held_where_its_follower_tells_it(
+    tmp_path: Path,
+    *,
+    finished: bool,
+    counts: list[int] | None,
+) -> None:
+    """A coroutine's return is held to its `-> T` where its follower tells it from a suspension.
+
+    `sys.monitoring` does; `sys.settrace` can't, and a suspension's value isn't the coroutine's:
+    nothing is held then.
+    """
+    told: _Told = _Told(tmp_path)
+    told.finished = finished
+    coroutine: collections.abc.Coroutine[None, None, int] = cast(
+        "collections.abc.Coroutine[None, None, int]",
+        told.call("waited", 1),
+    )
+    ended: pytest.ExceptionInfo[StopIteration]
+    with pytest.raises(StopIteration) as ended:
+        _ = coroutine.send(None)
+    assert cast("object", ended.value.value) == 1
+    verdict: _Verdict | None = told.judged().get(recording.RETURN)
+    assert (None if verdict is None else verdict[1]) == counts
+
+
+@pytest.mark.parametrize(
+    ("how", "hint", "value", "holds"),
+    [
+        ("*", int, (1, 2), True),
+        ("*", int, (1, _TEXT), False),
+        ("**", int, {"a": 1}, True),
+        ("**", int, {"a": _TEXT}, False),
+        ("*", typing.Unpack[tuple[int, str]], (1, _TEXT), True),
+        ("**", typing.Unpack[_Options], {"size": 1}, True),
+        (None, int, 1, True),
+    ],
+)
+def test_a_packed_parameter_is_held_as_what_it_holds(
+    how: str | None,
+    hint: object,
+    value: object,
+    *,
+    holds: bool,
+) -> None:
+    """A `*args: T` is a `tuple[T, ...]`, a `**kwargs: T` a `dict[str, T]`, an `Unpack` the whole.
+
+    Another name is held to its annotation.
+    """
+    assert witness.holds(value, witness.packed(hint, how)) is holds
+
+
+def test_an_annotation_that_cant_be_evaluated_stays_so_packed() -> None:
+    """A `*args`' annotation that couldn't be evaluated says nothing, as any other."""
+    assert witness.packed(witness.UNSET, "*") is witness.UNSET
+
+
+_VARIABLES: Final = """\
+import enum
+from typing import NamedTuple
+
+LIMIT: int = 3
+NAME: int = "a"
+LATER: int
+
+
+class Box:
+    size: int = "big"
+    kept: int = 1
+    alone: int
+
+    def method(self) -> None:
+        pass
+
+
+class Pair(NamedTuple):
+    first: int
+
+
+class Colour(enum.Enum):
+    RED: int = 1
+"""
+
+
+def test_a_modules_and_its_classes_variables_are_held_as_the_run_ends(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """By what they hold then, once.
+
+    Not an instance attribute declared alone, a `NamedTuple`'s field, a method or an enum's member.
+    """
+    path: Path = tmp_path / "held_vars.py"
+    _ = path.write_text(_VARIABLES, encoding="utf-8", newline="\n")
+    spec: importlib.machinery.ModuleSpec = cast(
+        "importlib.machinery.ModuleSpec",
+        importlib.util.spec_from_file_location("held_vars", path),
+    )
+    module: ModuleType = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "held_vars", module)  # taken out again once the test's done
+    cast("importlib.abc.Loader", spec.loader).exec_module(module)
+    held: witness.Witness = witness.Witness(tmp_path)
+    found: list[_Judged] = held.judged()
+    assert held.judged() == found
+    assert sorted((cast("str", each[3]), cast("list[int]", each[5])) for each in found) == [
+        ("LIMIT", [1, 0, 0]),
+        ("NAME", [0, 1, 0]),
+        ("kept", [1, 0, 0]),
+        ("size", [0, 1, 0]),
+    ]
+
+
 def test_a_file_that_cant_be_read_again_says_nothing(tmp_path: Path) -> None:
     """Gone since the recorder read it: its functions are recorded on, and none judged."""
     told: _Told = _Told(tmp_path)
@@ -355,6 +483,20 @@ def test_a_file_that_cant_be_read_again_says_nothing(tmp_path: Path) -> None:
     assert told.call("bound", _TEXT) == _TEXT
     assert told.judged() == before
     assert told.witness.read == {"told.py": {}}
+
+
+def test_a_modules_variables_say_nothing_once_its_file_is_gone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A module the recorder read whose file can't be read again as the run ends: none of it is held."""
+    told: _Told = _Told(tmp_path)
+    assert told.call("silent", 1) == 1
+    told.path.unlink()
+    module: ModuleType = ModuleType("told")
+    module.__file__ = str(told.path)
+    monkeypatch.setitem(sys.modules, "told", module)
+    assert not told.witness.judged()
 
 
 class _Fake:  # pylint: disable=too-few-public-methods
@@ -523,4 +665,20 @@ def test_a_runs_processes_verdicts_are_joined(tmp_path: Path, monkeypatch: pytes
     ]
     found: dict[witness.Key, _Counted] = witness.gathered(tmp_path, other)
     assert found["many.py", 2, 5, "held", "int"] == ([1, 4, 0], ["str", "bytes", "float"])
-    assert witness.report(found)[-1].endswith(": 2 differed, 1 couldn't be told")
+    assert witness.report(found, tmp_path)[-1].endswith(": 2 differed, 1 couldn't be told")
+
+
+def test_a_binding_marked_noqa_is_passed_over_and_counted(tmp_path: Path) -> None:
+    """A `# noqa` covering LVA016 on its line, as a check's offence; one naming another code doesn't."""
+    source: str = (
+        "def f(value):\n    held: int = value  # noqa: LVA016\n    kept: int = value  # noqa: LVA001\n"
+    )
+    _ = (tmp_path / "marked.py").write_text(source, encoding="utf-8")
+    found: dict[witness.Key, _Counted] = {
+        ("marked.py", 2, 5, "held", "int"): ([0, 1, 0], ["str"]),
+        ("marked.py", 3, 5, "kept", "int"): ([0, 1, 0], ["str"]),
+        ("gone.py", 1, 1, "lost", "int"): ([0, 1, 0], ["str"]),  # a file that can't be read again
+    }
+    lines: list[str] = witness.report(found, tmp_path)
+    assert [line.split(":", 1)[0] for line in lines[:-1]] == ["gone.py", "marked.py"]
+    assert lines[-1].endswith(": 2 differed, 1 passed over by `# noqa`, 0 couldn't be told")

@@ -401,13 +401,13 @@ def test_a_fix_has_one_tier_which_says_what_applies_it() -> None:
     assert (errs(UNTYPED_TARGET, Level.STRICT), reports(VAGUE_TYPE, Level.RELAXED)) == (False, False)
 
 
-def test_a_hint_two_checkers_agree_on_is_likely_and_one_alone_isnt() -> None:
-    """`agreed+checker` passed LIKELY.md's bars; `checker` alone, or with another mechanism, didn't."""
+def test_a_checkers_hint_is_a_guess_however_many_agree() -> None:
+    """`agreed+checker` fails LIKELY.md's blamed bar since checkers read a corpus's own environment."""
     tiers: list[Tier | None] = [
         Offence(1, 0, "x", UNANNOTATED, edit=Fix("T", unsafe=True, kinds=frozenset(kinds))).tier
         for kinds in ({"agreed", "checker"}, {"checker"}, {"agreed", "checker", "constructor"})
     ]
-    assert tiers == [Tier.LIKELY, Tier.GUESS, Tier.GUESS]
+    assert tiers == [Tier.GUESS, Tier.GUESS, Tier.GUESS]
 
 
 def test_levels_by_name_and_number() -> None:

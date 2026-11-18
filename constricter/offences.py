@@ -22,6 +22,8 @@ CAN_BE_FINAL: Final = "LVA012"
 UNANNOTATED_ATTRIBUTE: Final = "LVA013"
 UNANNOTATED_RETURN: Final = "LVA014"
 UNANNOTATED_PARAMETER: Final = "LVA015"
+# An annotation a traced run's value differed from: `python -m constricter.trace --check`'s, no check's.
+TRACED: Final = "LVA016"
 # The guessing mechanisms that type a parameter (LVA015 writes what they give on it).
 PARAMETER_KINDS: Final = frozenset({"callers", "reads", "fixture", "named"})
 # Codes reported only when selected by their full code (`--select LVA012`), never by a prefix.
@@ -114,7 +116,6 @@ STARRED_SUBSCRIPTS: Final = (3, 11)  # the first Python to parse `tuple[int, *Ts
 # The guesses `--likely` applies: each a whole set of mechanisms, measured (see docs/LIKELY.md).
 LIKELY: Final = frozenset(
     {
-        frozenset({"agreed", "checker"}),  # a hint two or more checkers give alike (`--infer-with`)
         frozenset({"arithmetic", "copy"}),
         frozenset({"arithmetic", "copy", "literal"}),
         frozenset({"arithmetic", "literal"}),

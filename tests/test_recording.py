@@ -10,7 +10,7 @@ import runpy
 import sys
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, NoReturn, TypeAlias, cast
 from unittest import mock
 
 import pytest
@@ -26,6 +26,22 @@ _KEPT: list[str] = ["int", "int", recording.UNKNOWN, recording.UNKNOWN, "Odd", "
 _ASKED: list[str] = ["int", "float", "float", "Odd", "Odd"]
 # A class that can't be hashed: its class of classes has no `__hash__`.
 _ODD: Final = type("Unhashed", (type,), {"__hash__": None})("Odd", (), {})
+
+
+def _unread(cls: type) -> NoReturn:
+    """Raise, as a class's module is asked for: what a class that isn't one as Python makes them can do.
+
+    Raises:
+      LookupError: Always.
+
+    """
+    raise LookupError(cls.__name__)
+
+
+# A class whose module can't be read: its class of classes raises on being asked.
+_NOWHERE: Final = type("Raising", (type,), {"__module__": property(_unread)})("Nowhere", (), {})
+# A function that hands a hook its value, and returns what the hook does.
+_Returns: TypeAlias = "Callable[[Callable[[int | type], int | type], int | type], int | type]"
 
 
 def test_what_a_class_says_is_kept_but_for_one_that_cant_be() -> None:
@@ -170,6 +186,7 @@ def test_a_value_is_spelled_as_its_annotation(value: object, spelling: str) -> N
     [
         len,  # a builtin class `builtins` doesn't name
         type("Inner", (), {"__qualname__": "Outer.Inner"}),
+        type("Nowhere", (), {"__module__": None})(),  # a class that says it's in no module
         mock.Mock(),
         [1, "a", None, 2.5],  # more types than a union is written with
         [len],
@@ -182,6 +199,27 @@ def test_a_value_is_spelled_as_its_annotation(value: object, spelling: str) -> N
 def test_what_no_annotation_names_is_unknown(value: object) -> None:
     """A class nothing reaches by its name, a mock, a container of too many types or too deep."""
     assert recording.spelled(value) == recording.UNKNOWN
+
+
+def test_a_return_that_cant_be_read_ends_its_functions_recording(tmp_path: Path) -> None:
+    """A class that isn't one as Python makes them, returned: nothing of its function is written.
+
+    What reading it raises reaches nothing, and what was noted of the function before is forgotten.
+    """
+    source: str = "def odd(leave, value):\n    return leave(value)\n"
+    _ = (tmp_path / "odd.py").write_text(source, encoding="utf-8")
+    recorder: recording.Recorder = recording.Recorder(tmp_path)
+
+    def leave(value: int | type) -> int | type:
+        frame: FrameType = cast("FrameType", cast("FrameType", inspect.currentframe()).f_back)
+        _ = recorder.left(frame, finished=True, returned=True, value=value)
+        return value
+
+    odd: _Returns = cast("_Returns", runpy.run_path(str(tmp_path / "odd.py"))["odd"])
+    assert odd(leave, 1) == 1
+    assert recorder.found()["files"]
+    assert odd(leave, _NOWHERE) is _NOWHERE
+    assert not recorder.found()["files"]
 
 
 @pytest.mark.parametrize("value", [[], {}, (), [[]], ([],), ([], [], [], [], [])])

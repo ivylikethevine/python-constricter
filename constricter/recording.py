@@ -59,6 +59,9 @@ _DEPTH: Final = 2  # how deep a container's elements are spelled
 _MEMBERS: Final = 3  # how many types a container's elements may have
 _LENGTH: Final = 4  # the longest tuple spelled part by part
 _IDLE: Final = 20  # how many times with nothing new end a statement's recording, or a function's
+# What reading a value's type raises where its class isn't one as Python makes them (a `__module__`
+# that's no name), or a container another thread changes as it's read.
+_UNREADABLE: Final = (AttributeError, LookupError, RuntimeError, TypeError, ValueError)
 _QUIET: Final = 50_000  # how many lines with nothing new end a function's: one that loops, and never returns
 _INSTALLED: Final = "site-packages"
 _MODULE: Final = "<module>"  # the name of a module body's code
@@ -227,14 +230,19 @@ def named(cls: type) -> str:
     """Name a class as an annotation would: a builtin bare, another as `module:Class`.
 
     Returns:
-      It; `UNKNOWN` for one no annotation can name (a function's, a nested one, a mock).
+      It; `UNKNOWN` for one no annotation can name (a function's, a nested one, a mock, one that
+      says it's in no module).
 
     """
-    module: str = cls.__module__
+    module: str | None = cast("str | None", cls.__module__)
     name: str = cls.__qualname__
     if module == _BUILTINS:
         return name if _held(builtins, name) is cls else UNKNOWN
-    if module.startswith(_MOCK) or not all(part.isidentifier() for part in name.split(_DOT)):
+    if (
+        module is None
+        or module.startswith(_MOCK)
+        or not all(part.isidentifier() for part in name.split(_DOT))
+    ):
         return UNKNOWN
     if _DOT in name and _reached(module, name) is not cls:  # a class in another, by another name
         return UNKNOWN
@@ -346,6 +354,7 @@ class _Function:
 
 Function: TypeAlias = _Function  # as what tells a recorder's `ended` more names it
 Statement: TypeAlias = _Statement  # as what reads the statement a frame is in names it
+File: TypeAlias = _File  # as what reads a recorded file's source names it
 
 
 def _plans(tree: ast.Module) -> dict[int, dict[int, _Statement]]:
@@ -501,7 +510,10 @@ class Recorder:
             return True
         self.ended(frame, function)
         if returned and not frame.f_code.co_flags & SUSPENDS:
-            _returning(frame, function, value)
+            try:
+                _returning(frame, function, value)
+            except _UNREADABLE:  # a class that isn't one: its function isn't recorded
+                self._dropped(frame.f_code, function)
         function.idle = 0 if function.fresh else function.idle + 1
         function.fresh = False
         return self.functions[id(frame.f_code)] is function and not function.spent
@@ -515,18 +527,25 @@ class Recorder:
             return
         try:
             new: bool = _noted(function.file.held, statement.stores, frame.f_locals)
-        except (AttributeError, LookupError, RuntimeError, TypeError, ValueError):
+        except _UNREADABLE:
             # A container another thread changed, or a class that isn't one: its function isn't recorded.
-            self.functions[id(code)] = None
-            line: int
-            name: str
-            for line, name in (store for each in function.lines.values() for store in each.stores):
-                _ = function.file.held.get(line, {}).pop(name, None)
+            self._dropped(frame.f_code, function)
             return
         statement.idle = 0 if new else statement.idle + 1
         function.fresh = function.fresh or new
         if new:
             function.quiet = 0
+
+    def _dropped(self, code: CodeType, function: _Function) -> None:
+        """Record `code`'s function no more, and forget what was noted of it: its names and its returns."""
+        self.functions[id(code)] = None
+        line: int
+        name: str
+        for line, name in (store for each in function.lines.values() for store in each.stores):
+            _ = function.file.held.get(line, {}).pop(name, None)
+        at: int
+        for at in (line for _, _, line in code.co_lines() if line):
+            _ = function.file.held.get(at, {}).pop(RETURN, None)
 
     def raised(self, frame: FrameType) -> None:
         """Forget the statement `frame` was in: an exception ended it."""

@@ -436,7 +436,7 @@ def test_a_notebook_declaration_lands_in_its_cell(tmp_path: Path) -> None:
     path: Path = tmp_path / "demo.ipynb"
     _ = path.write_text(json.dumps({"cells": cells, "metadata": {}, "nbformat": 4}), encoding="utf-8")
     assert cli.main(["-q", "--fix", "--all-scopes", str(path)]) == cli.EXIT_CLEAN
-    notebook: dict[str, list[_Sources]] = cast(
+    notebook: dict[str, list[_Sources]] = cast(  # noqa: LVA016
         "dict[str, list[_Sources]]",
         json.loads(path.read_text(encoding="utf-8")),
     )

@@ -136,7 +136,9 @@ def _solved(
     solver: cp_model.CpSolver = cast("type[cp_model.CpSolver]", sat.CpSolver)()
     solver.parameters.max_time_in_seconds = _SECONDS
     solver.parameters.num_workers = _WORKERS
-    solved: frozenset[int] = frozenset({cast("int", sat.OPTIMAL), cast("int", sat.FEASIBLE)})
+    solved: frozenset[cp_model.CpSolverStatus] = frozenset(
+        {cast("cp_model.CpSolverStatus", sat.OPTIMAL), cast("cp_model.CpSolverStatus", sat.FEASIBLE)},
+    )
     if solver.solve(model) not in solved:
         return {}
     return {key: float(solver.value(start)) for key, start in starts.items()}

@@ -6,10 +6,12 @@ A line `name = value  # hint: T` gets a variable-type hint `: T` after `name` (t
 after a `; `), as long as `name` is unannotated (so fixing it ends its hint, as a real checker's
 does); `# parts: T` gives the label as parts; `# kinds: T` adds a parameter-name hint and a
 return-type one, which `--infer-with` ignores; `# round N: T` hints only from the file's Nth version
-(as a checker's view changes, as a file is annotated); `# edits: T => U @ E @ L:C F` gives the hint
-`T` the edits an editor would apply: the annotation as `U` (`T` itself, without `=> U`), `E` added at
-the top of the file, and `F` inserted at line `L` (from 0), character `C`; `# located: T @ N=P`
-gives the label as parts, the name `N` in it with the file `P` it's defined in. A file with a line
+(as a checker's view changes, as a file is annotated); `# once N: T` only once another open file
+annotates a name `N` (as a checker's can, once a fix there is written); `# edits: T => U @ E @ L:C
+F` gives the hint `T` the edits an editor would apply: the annotation as `U` (`T` itself, without
+`=> U`), `E` added at the top of the file, and `F` inserted at line `L` (from 0), character `C`;
+`# located: T @ N=P` gives the label as parts, the name `N` in it with the file `P` it's defined in.
+A file with a line
 `# hang` is never answered; with `# hang once`, only by a server started after one has hung on it
 (the first creates the file `FAKE_SERVER_HUNG` names). A file with a line `# heap N` takes N MB:
 asked about it, the server exits, as Node does past its heap's cap, where `NODE_OPTIONS` caps it
@@ -35,7 +37,7 @@ import os
 import re
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -46,8 +48,9 @@ _Object: TypeAlias = dict[str, _Json]
 
 # The name bound last on the line: at its start, or after a `; `.
 _HINTED: Final = re.compile(
-    r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|edits|located|round \d+): (.+)$",
+    r"^((?:.*; )?\s*)(\w+) = .*#\s*(hint|parts|kinds|edits|located|round \d+|once \w+): (.+)$",
 )
+_ONCE: Final = "once "
 _PLACED: Final = re.compile(r"^(\d+):(\d+) (.*)$")  # an edit's line and character, and its text
 _BEHAVIOURS: Final = frozenset(sys.argv[1:])
 _UTF8: Final = "utf-8"
@@ -125,8 +128,26 @@ def _column(text: str) -> int:
     return len(text.encode()) if _UTF8 in _BEHAVIOURS else len(text.encode("utf-16-le")) // 2
 
 
-def _hints(text: str, version: int) -> list[_Json]:
-    """Hint what `text`'s comments say, as of its `version`.
+def _due(how: str, version: int, others: Sequence[str]) -> bool:
+    """Check whether a hint is given yet, as of the file's `version` and the other open files' texts.
+
+    A `round N` hint is given from the file's Nth version, a `once N` one once another file
+    annotates `N`, any other always.
+
+    Returns:
+      Whether it is.
+
+    """
+    if how.startswith(_ROUND):
+        return version >= int(how.removeprefix(_ROUND))
+    if how.startswith(_ONCE):
+        annotated: re.Pattern[str] = re.compile(rf"\b{how.removeprefix(_ONCE)}: \w")
+        return any(annotated.search(other) for other in others)
+    return True
+
+
+def _hints(text: str, version: int, others: Sequence[str] = ()) -> list[_Json]:
+    """Hint what `text`'s comments say, as of its `version`, the other open files' `others`.
 
     Returns:
       The hints.
@@ -137,7 +158,7 @@ def _hints(text: str, version: int) -> list[_Json]:
     line: str
     for number, line in enumerate(text.splitlines()):
         match: re.Match[str] | None = _HINTED.match(line)
-        if match is None or (match[3].startswith(_ROUND) and version < int(match[3].removeprefix(_ROUND))):
+        if match is None or not _due(match[3], version, others):
             continue
         indent: str
         name: str
@@ -290,7 +311,8 @@ def _hinted(message: _Object, documents: _Documents) -> bool:
         code: int = _REQUEST_CANCELLED if _CANCELLED in _BEHAVIOURS else _CONTENT_MODIFIED
         reply["error"] = {"code": code, "message": "content modified"}
     else:
-        reply["result"] = _hints(documents.texts[uri], documents.versions[uri])
+        others: list[str] = [text for each, text in documents.texts.items() if each != uri]
+        reply["result"] = _hints(documents.texts[uri], documents.versions[uri], others)
     if _SWAP in _BEHAVIOURS and documents.held is None:
         documents.held = reply
     elif _SILENT not in _BEHAVIOURS:

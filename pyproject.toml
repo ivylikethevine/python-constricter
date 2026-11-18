@@ -229,8 +229,8 @@ cache_dir = "local/.mypy_cache"
 strict = true
 warn_unreachable = true
 follow_untyped_imports = true
-# astroid and fastjsonschema (the SARIF test's validator) ship no annotations.
-untyped_calls_exclude = ["astroid", "fastjsonschema"]
+# astroid ships no annotations.
+untyped_calls_exclude = ["astroid"]
 enable_error_code = [
     "deprecated",
     "exhaustive-match",
@@ -401,5 +401,6 @@ error-on-warning = true
 
 [tool.basedpyright]
 typeCheckingMode = "all"
-# astroid (pylint's AST) and fastjsonschema (the SARIF test's validator) ship no annotations.
+# astroid (pylint's AST) ships no annotations; fastjsonschema (the SARIF test's validator) ships
+# `py.typed` with `validate`'s parameters unannotated.
 allowedUntypedLibraries = ["astroid", "fastjsonschema"]
