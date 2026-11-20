@@ -17,13 +17,13 @@ measure before building.
 
 ## Where it stands
 
-2026-11-17, at `41c919f` (`dev` and `main` alike; v0.4.6, at `1763d4b`, the last release).
+2026-11-20, at `9ffc314` on `dev`, `main` at `41c919f`; v0.4.6, at `1763d4b`, the last release.
 
 - The latest run is `mega-11-17-2026-1924` (`20d9297`, 79 minutes on 16CPU/60GB, no step failed),
   read in 4 and 10, with `mega-11-17-2026-1641` (95 minutes) before it; the suites' own checks find
   710 new errors on both, as on `mega-11-16-2026-1443`. Neither is yet in
   [COMPLETED.md](COMPLETED.md#corpus), where `mega-11-16-2026-1443` and every earlier run named here
-  are read.
+  are read. No run since `9ffc314`'s enum sentinels declared `Final` (10).
 - What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
   (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)), a mega run of all 55 79 to 97. A change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by
   `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the
@@ -42,21 +42,19 @@ measure before building.
   `agreed+checker` out of the likely fixes and `NotImplementedType` hints refused, agreement then
   holding 98.4% but 0.14 blamed per 100 for under 0.1 (10). fastjsonschema 2.22.3 is locked, and
   mypy reads its types (12).
-- The 3.14 suite passed on 2026-11-17 (`tests/ci_local.py test`, 100% coverage) and Python 3.11's,
-  synced with `--frozen` and its tests run with `SETUPTOOLS_USE_DISTUTILS=stdlib` as CI's; not run
-  again since `e374d5e`'s test change. `tests/ci_local.py interpreters` fails here at
-  `uv sync --locked`, which the global `exclude-newer` makes re-resolve.
+- The 3.14 suite passed on `9ffc314` on 2026-11-20 (`tests/ci_local.py test`, 100% coverage, 31s
+  on 16CPU/60GB). Python 3.11's suite last passed 2026-11-17, before `e374d5e`'s test change.
+  `tests/ci_local.py interpreters` fails here at `uv sync --locked`, which the global
+  `exclude-newer` makes re-resolve.
 - Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
-- narwhals' five blamed guesses read 2026-11-18: four are ty's `NO_DEFAULT: _NoDefault` hint, a
-  sentinel losing its literal, and one is `_how: str`, each blamed on the fix at the error's line.
-  Built 2026-11-18, waiting on a mega run: an enum sentinel's hint declared `Final` (10). Refusing
-  `str` hints shown as string `Literal`s measured and not built: 65 to 183 fixes for 2 errors.
 - Open questions, not looked into: the 51
   a second pass still fixes after the hints on `mega-11-17-2026-1924` and twisted's 12 of
   `mega-11-16-2026-1443` (4); that run's matplotlib hinted steps' 99, 98 and 33 fewer fixes and
   nibabel's union step failing 2 tests from 1.
 - To decide: 3's proposal and 10's blame proposal (On hold). Items 9 and 11 are in Later.
+- Waiting on the next mega run: 10's `Final` sentinels, 2's four tests listed apart, 4's matplotlib
+  bar. 1 waits on a super run.
 
 ## Order of work
 
@@ -90,6 +88,33 @@ were written once the last was in. The 0.4.3-rc.4 super run (`46bdc27`) ran them
 `fixes` 16.5 minutes, `traced` 11, `tests` 20.5, `timed` 4, each exiting 0 and joining, the report
 naming one commit for all four. Left: stages hours apart, with other work between. About an hour
 beside the runs.
+
+#### 2. sqlalchemy's four `test_compare` failures after `infer-union`
+
+On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
+step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
+`test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
+`mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the seven mega runs since
+2026-10-30 that aren't these, `mega-11-11-2026-1113` the latest, with 9, 13, 14 and 16 workers where
+it failed with 10 and 11; they fail in it again on `mega-11-16-2026-1443`. Found 2026-11-11, and no
+fix's: the suite's own order.
+`test/sql/test_compare.py` registers `sqlite_foo` for `Insert` as it's imported
+(`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the process shares, and
+`test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after each of its tests
+(`Index._kw_registry.clear()`). Every worker imports both files to collect them, so a worker
+pytest-xdist gives `test_metadata.py` before `test_compare.py` (`--dist loadfile`: by which is free)
+refuses the argument in all four, as this run's one worker did: "Argument 'sqlite_foo' is not
+accepted by dialect 'sqlite' on behalf of `Insert`", the message of 2026-11-05. On the checkout at
+its tag, no fix applied, registering the argument, clearing the registry and building the statement
+raises the same. In one process the suite's plugin sorts the tests, so `test_compare.py` always runs
+first. It's the union's step each time because that one always runs: its tests stand for each fix's
+where they're the released tests' (`suite_steps.union`), so the others ran only on the two of the
+eight kept runs where its four failed. A fixed step's failures run again before they're called new
+(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Decided
+2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
+registry their order clears; the union's tests not run again. Built that day, by the names the runs
+record them under; done when a mega run where they fail lists them apart, not as new (they passed
+on `mega-11-17-2026-1924`, so it's still to see). Coverage unchanged.
 
 #### 3. A run with no earlier run, held to the solver's shortest
 
@@ -176,36 +201,6 @@ after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 24
 234,001 and 247,682). On `mega-11-17-2026-1924` the same but 12, 11 and 28: the standard library's
 ty 1 from 10, dask's basedpyright none, pandas's pyrefly 4; matplotlib's one after pyrefly's hints
 again. Left: that one, the bar's 0, and the 51 left in all, not looked into. Coverage unchanged.
-
-### Small: under 4 hours
-
-#### 2. sqlalchemy's four `test_compare` failures after `infer-union`
-
-On `mega-11-10-2026-2235` sqlalchemy's suite fails four tests after `infer-union` and after no other
-step: `test/sql/test_compare.py`'s `CacheKeyTest::test_cache_key`, and `CompareAndCopyTest`'s
-`test_all_present`, `test_compare_labels` and `test_copy_internals`. They failed in that step on
-`mega-10-29-2026-2241` and `mega-11-05-2026-0219` too, and passed in it on the seven mega runs since
-2026-10-30 that aren't these, `mega-11-11-2026-1113` the latest, with 9, 13, 14 and 16 workers where
-it failed with 10 and 11; they fail in it again on `mega-11-16-2026-1443`. Found 2026-11-11, and no
-fix's: the suite's own order.
-`test/sql/test_compare.py` registers `sqlite_foo` for `Insert` as it's imported
-(`dml.Insert.argument_for("sqlite", "foo", None)`), in a registry the process shares, and
-`test/sql/test_metadata.py`'s `DialectKWArgTest` clears that registry after each of its tests
-(`Index._kw_registry.clear()`). Every worker imports both files to collect them, so a worker
-pytest-xdist gives `test_metadata.py` before `test_compare.py` (`--dist loadfile`: by which is free)
-refuses the argument in all four, as this run's one worker did: "Argument 'sqlite_foo' is not
-accepted by dialect 'sqlite' on behalf of `Insert`", the message of 2026-11-05. On the checkout at
-its tag, no fix applied, registering the argument, clearing the registry and building the statement
-raises the same. In one process the suite's plugin sorts the tests, so `test_compare.py` always runs
-first. It's the union's step each time because that one always runs: its tests stand for each fix's
-where they're the released tests' (`suite_steps.union`), so the others ran only on the two of the
-eight kept runs where its four failed. A fixed step's failures run again before they're called new
-(`suite_steps.weighed`); the union's tests run once, so its report lists the four as new. Decided
-2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
-registry their order clears; the union's tests not run again. Built that day, by the names the runs
-record them under; done when a mega run where they fail lists them apart, not as new (they passed
-on `mega-11-17-2026-1924`, so it's still to see). Coverage
-unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -363,10 +358,9 @@ same day, `_how`'s kind: a checker's `str` hint shown as string `Literal`s
 a call in their scope, 97 told by a traced run and none differing; errors come from 2, nibabel's
 `mode` (`memmap`'s `Literal` mode) and narwhals' `_how`, both `agreed`. Refusing them withdraws 183
 fixes, or 65 if only those passed to a call, for those 2: not built. narwhals' `_time_unit`, `tu`
-and `unit` are another kind, ty's `str` where the project's checker sees `Any`. With `Final` for
-the sentinels, agreement's blamed would be 13 (narwhals' four gone) of about 12,390, 0.105 per 100,
-one over the bar. Left: a mega run reading agreement with `Final` in; blame by the name an error
-reads, to decide; agreement read again on each mega run, to come back once it passes.
+and `unit` are another kind, ty's `str` where the project's checker sees `Any`. Left: a mega run
+reading agreement with `Final` in (13 blamed expected, one over the bar); blame by the name an
+error reads, to decide; agreement read again on each mega run, to come back once it passes.
 
 ## On hold
 
@@ -374,9 +368,7 @@ reads, to decide; agreement read again on each mega run, to come back once it pa
   step is, where each now holds 8 CPUs and 8 GB for 0.7 to 1.4 used and small steps wait 125 to 138
   seconds behind them.
 - 10's blame proposal waits on a decision: an error blamed on the fix whose name it reads rather
-  than the fix on its line (narwhals' `_how` error is blamed on `result`, the next line's). A
-  refusal of a checker's `str` shown as string `Literal`s, measured, withdraws 65 to 183 fixes for
-  2 errors: kept, unless decided otherwise.
+  than the fix on its line (narwhals' `_how` error is blamed on `result`, the next line's).
 
 ## Later
 
@@ -481,6 +473,10 @@ allows it as untyped, `validate`'s parameters being unannotated). About an hour 
   kept and marked `# noqa: LVA016`, not widened (5, done).
 - 2026-11-17: the union step's tests aren't run again before their failures are called new: a
   suite's order-dependent tests are named in the catalog instead (2).
+- 2026-11-18: a module constant bound once to a member of an enum the module defines, hinted the
+  enum, is declared `Final` rather than its hint refused (10).
+- 2026-11-18, measured and not built: refusing a checker's `str` hint shown as string `Literal`s,
+  which withdraws 65 to 183 fixes for 2 errors (10).
 
 ## Done
 
