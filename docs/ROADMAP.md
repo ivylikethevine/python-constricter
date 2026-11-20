@@ -19,11 +19,10 @@ measure before building.
 
 2026-11-20, at `9ffc314` on `dev`, `main` at `41c919f`; v0.4.6, at `1763d4b`, the last release.
 
-- The latest run is `mega-11-17-2026-1924` (`20d9297`, 79 minutes on 16CPU/60GB, no step failed),
-  read in 4 and 10, with `mega-11-17-2026-1641` (95 minutes) before it; the suites' own checks find
-  710 new errors on both, as on `mega-11-16-2026-1443`. Neither is yet in
-  [COMPLETED.md](COMPLETED.md#corpus), where `mega-11-16-2026-1443` and every earlier run named here
-  are read. No run since `9ffc314`'s enum sentinels declared `Final` (10).
+- The latest run is `mega-11-20-2026-1208` (below), with `mega-11-17-2026-1924` (79 minutes) and
+  `mega-11-17-2026-1641` (95) before it, whose suites' own checks find 710 new errors, as on
+  `mega-11-16-2026-1443`. None of the three is yet in [COMPLETED.md](COMPLETED.md#corpus), where
+  `mega-11-16-2026-1443` and every earlier run named here are read.
 - What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
   (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)), a mega run of all 55 79 to 97. A change to what `--fix` offers or refuses is read on all 55 in 12 to 14 minutes by
   `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`: the fix steps and type checks alone, against the
@@ -48,18 +47,22 @@ measure before building.
   `exclude-newer` makes re-resolve.
 - Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
-- Open questions, not looked into: the 51
-  a second pass still fixes after the hints on `mega-11-17-2026-1924` and twisted's 12 of
+- Open questions, not looked into: the 58
+  a second pass still fixes after the hints on `mega-11-20-2026-1208` and twisted's 12 of
   `mega-11-16-2026-1443` (4); that run's matplotlib hinted steps' 99, 98 and 33 fewer fixes and
   nibabel's union step failing 2 tests from 1.
 - To decide: 3's proposal and 10's blame proposal (On hold). Items 9 and 11 are in Later.
-- Waiting on the next mega run: 10's `Final` sentinels, 2's four tests listed apart, 4's matplotlib
-  bar. 1 waits on a super run.
+- `mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB, no step failed), read in 10, 2 and
+  4: the suites' new type errors 694 from 710, narwhals' 8 fewer in each of ty's and the union's
+  steps with its fixes the same; agreement 13 blamed of 12,389, 0.105 per 100, still one over;
+  sqlalchemy's four passed again; matplotlib's one after pyrefly's hints still left. The only new
+  test failure is nibabel's one in the union step, as on `mega-11-17-2026-1924`. 1 waits on a super
+  run.
 
 ## Order of work
 
-- 10: a mega run reading agreement with enum sentinels declared `Final`, blame by the name read to
-  decide, then agreement read on each mega run (`mega-11-17-2026-1924`: 0.14 blamed for under 0.1).
+- 10: blame by the name read, to decide, then agreement read on each mega run
+  (`mega-11-20-2026-1208`: 0.105 blamed for under 0.1).
 - 3: a suite's unmeasured tests started on fewer CPUs, to decide.
 - 4: matplotlib's one fix left after pyrefly's hints, then done. 2: confirmed by a mega run where
   sqlalchemy's four fail.
@@ -114,7 +117,7 @@ eight kept runs where its four failed. A fixed step's failures run again before 
 2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
 registry their order clears; the union's tests not run again. Built that day, by the names the runs
 record them under; done when a mega run where they fail lists them apart, not as new (they passed
-on `mega-11-17-2026-1924`, so it's still to see). Coverage unchanged.
+on `mega-11-17-2026-1924` and `mega-11-20-2026-1208`, so it's still to see). Coverage unchanged.
 
 #### 3. A run with no earlier run, held to the solver's shortest
 
@@ -200,7 +203,9 @@ django 3 after pyrefly's; the rest the standard library's 4, 10 and 9, celery's 
 after basedpyright's and pyrefly's. The hinted steps fix 239,137, 234,050 and 247,770 (239,086,
 234,001 and 247,682). On `mega-11-17-2026-1924` the same but 12, 11 and 28: the standard library's
 ty 1 from 10, dask's basedpyright none, pandas's pyrefly 4; matplotlib's one after pyrefly's hints
-again. Left: that one, the bar's 0, and the 51 left in all, not looked into. Coverage unchanged.
+again. On `mega-11-20-2026-1208` 12, 20 and 26: the standard library's 4, 10 and 9 and pip's 2,
+7 and 3 the most, matplotlib's one after pyrefly's hints again. Left: that one, the bar's 0, and
+the 58 left in all, not looked into. Coverage unchanged.
 
 ### Medium: 4 to 8 hours
 
@@ -358,9 +363,12 @@ same day, `_how`'s kind: a checker's `str` hint shown as string `Literal`s
 a call in their scope, 97 told by a traced run and none differing; errors come from 2, nibabel's
 `mode` (`memmap`'s `Literal` mode) and narwhals' `_how`, both `agreed`. Refusing them withdraws 183
 fixes, or 65 if only those passed to a call, for those 2: not built. narwhals' `_time_unit`, `tu`
-and `unit` are another kind, ty's `str` where the project's checker sees `Any`. Left: a mega run
-reading agreement with `Final` in (13 blamed expected, one over the bar); blame by the name an
-error reads, to decide; agreement read again on each mega run, to come back once it passes.
+and `unit` are another kind, ty's `str` where the project's checker sees `Any`. Read on
+`mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB): with `Final` in, narwhals' new type
+errors are 7 in ty's step and 12 in the union's, from 15 and 20, its fixes the same, and the
+suites' 694 from 710; `agreed+checker` holds 98.4% of 10,983 told with 13 of 12,389 blamed, 0.105
+per 100, one over the bar, as expected. Left: blame by the name an error reads, to decide;
+agreement read again on each mega run, to come back once it passes.
 
 ## On hold
 
