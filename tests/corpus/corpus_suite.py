@@ -12,8 +12,9 @@ that breaks the code itself (a declaration, a dropped comment or annotation, a m
 `__annotations__`), not a wrong type: that's a type checker's job, and the package's own run as its
 CI runs them. An error the fixed run has that the released one hasn't is new (of a file's alike
 errors, those on a line a fix wrote first); each new one is traced to the fix whose annotation it's
-about (`blamed`: the fix on its line, else the nearest one before it in its scope, else the
-module's, of a name on its line or in its message), and named by the mechanisms that decided that
+about (`blame`: the fix of the name an argument it names reads, else the fix on its line, else the
+nearest one before it in its scope, else the module's, of a name on its line or in its message),
+and named by the mechanisms that decided that
 fix (`--format=json`'s `kinds`), a guess's marked `(likely)` or `(guess)`. A trace is by line, not
 by cause: a certain fix can be blamed for what a guess beside it brought.
 
@@ -26,7 +27,6 @@ its workers forked, each recording itself), or the suite names a script that doe
 (`Suite.script`).
 """
 
-import ast
 import difflib
 import functools
 import hashlib
@@ -50,6 +50,8 @@ from xml.etree import ElementTree as ET  # ruff: ignore[suspicious-xml-etree-imp
 from constricter import recording
 from constricter.offences import Tier
 from tests.corpus import catalog, checker_settings, jsonl
+from tests.corpus.blame import Complaint, Fix, Fixed, scopes
+from tests.corpus.blame import blamed as blamed_on
 from tests.corpus.run_config import scrubbed
 
 Suite: TypeAlias = catalog.Suite
@@ -69,27 +71,6 @@ class Test(NamedTuple):
     outcome: str  # `passed`, `failed`, `error`, `skipped` or `xfailed`
     seconds: float
     reason: str = ""  # a skipped or expected failure's
-
-
-class Complaint(NamedTuple):
-    """One type checker error: its file (relative to the checkout), its line, and its message."""
-
-    path: str
-    line: int
-    message: str
-
-
-class Fix(NamedTuple):
-    """One fix `--format=json` reports: where, the name, its annotation, and what decided it."""
-
-    path: str
-    line: int
-    name: str
-    annotation: str
-    kinds: str  # its mechanisms, joined by `+`
-    unsafe: bool
-    likely: bool = False  # a guess `--likely` applies
-    imports: tuple[str, ...] = ()  # the import statements it adds
 
 
 WORK: Final = Path(__file__).resolve().parents[2] / "local" / "corpus-suites"
@@ -144,9 +125,6 @@ _ERROR: Final = re.compile(
     re.MULTILINE,
 )
 _OTHER_LINE: Final = re.compile(r"\bline \d+")  # a message's reference to another line, which a fix moves
-_QUOTED: Final = re.compile(r"""["'`]([A-Za-z_]\w*)["'`]""")
-_NAME: Final = re.compile(r"[A-Za-z_]\w*")
-_TYPES: Final = re.compile(r'"([^"]+)"')  # the types a checker's message quotes (`has type "int | float"`)
 _INSERTED: Final = "insert"  # difflib's opcode for lines only the fixed file has
 _EQUAL: Final = "equal"  # and for lines both have
 _Fixes: TypeAlias = dict[str, list[Fix]]  # those `--fix` makes, per file
@@ -830,38 +808,7 @@ def _origins(original: list[str], changed: list[str]) -> tuple[list[int], frozen
     return origins, frozenset(edited)
 
 
-def _scopes(source: str) -> list[int]:
-    """Map each line of a file to the function, lambda or class it's in.
-
-    Returns:
-      The first line of each line's innermost one (0: the module), the first at index 1; all 0 if
-      the file doesn't parse.
-
-    """
-    scopes: list[int] = [0] * (source.count("\n") + 2)
-    try:
-        tree: ast.Module = ast.parse(source)
-    except SyntaxError:
-        return scopes
-    node: ast.AST
-    for node in ast.walk(tree):  # breadth first: an inner scope overwrites its outer one
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | ast.ClassDef):
-            line: int
-            for line in range(node.lineno, (node.end_lineno or node.lineno) + 1):
-                scopes[line] = node.lineno
-    return scopes
-
-
-class _Fixed(NamedTuple):
-    """A fixed file: its lines, each's original line, those a fix wrote, and each original line's scope."""
-
-    lines: list[str]
-    origins: list[int]
-    edited: frozenset[int]
-    scopes: list[int]
-
-
-def _fixed_file(root: Path, path: str) -> _Fixed:
+def _fixed_file(root: Path, path: str) -> Fixed:
     """Read a fixed file, and map it to its original (`HEAD`'s).
 
     Returns:
@@ -870,10 +817,10 @@ def _fixed_file(root: Path, path: str) -> _Fixed:
     """
     original: str = _output(["git", "show", f"HEAD:{path}"], root)
     lines: list[str] = (root / path).read_text("utf-8").splitlines()
-    return _Fixed(lines, *_origins(original.splitlines(), lines), _scopes(original))
+    return Fixed(lines, *_origins(original.splitlines(), lines), scopes(original))
 
 
-def _file(root: Path, files: dict[str, _Fixed], path: str) -> _Fixed:
+def _file(root: Path, files: dict[str, Fixed], path: str) -> Fixed:
     """Read a fixed file (see `_fixed_file`), once: `files` keeps each read.
 
     Returns:
@@ -889,7 +836,7 @@ def _new(
     root: Path,
     after: list[Complaint],
     added: Counter[tuple[str, str]],
-    files: dict[str, _Fixed],
+    files: dict[str, Fixed],
 ) -> list[Complaint]:
     """Pick the errors of `after` that are new: `added`'s count of each file's alike ones (see `_key`).
 
@@ -916,41 +863,6 @@ def _new(
             ]
         new.extend(found[:count])
     return new
-
-
-def _blamed(complaint: Complaint, file: _Fixed, fixes: list[Fix]) -> Fix | None:
-    """Return the fix a new error is about, if one can be told.
-
-    The fix on its (original) line, preferring one whose name its message quotes; else the nearest
-    fix before it in its scope of a name its line or its message has, one whose annotation holds a
-    type the message quotes first (`params: dict[str, int | float]` for `target has type "int |
-    float"`, over the `name: str` before it on the line `params[name] = param`); else the module's
-    last fix of such a name (a global it reads).
-
-    Returns:
-      The fix, or None.
-
-    """
-    origin: int = file.origins[complaint.line] if complaint.line < len(file.origins) else 0
-    text: str = file.lines[complaint.line - 1] if complaint.line <= len(file.lines) else ""
-    names: set[str] = set(_QUOTED.findall(complaint.message)) | set(_NAME.findall(text))
-    here: list[Fix] = sorted(
-        (fix for fix in fixes if fix.line == origin),
-        key=lambda fix: fix.name not in names,
-    )
-    if here:
-        return here[0]
-    scope: int = file.scopes[origin] if origin < len(file.scopes) else -1
-    named: list[Fix] = [fix for fix in fixes if fix.name in names and fix.line < len(file.scopes)]
-    candidates: list[Fix] = [
-        fix for fix in named if fix.line < origin and file.scopes[fix.line] == scope
-    ] or [fix for fix in named if not file.scopes[fix.line]]
-    quoted: list[str] = _TYPES.findall(complaint.message)
-    return (
-        max(candidates, key=lambda fix: (any(each in fix.annotation for each in quoted), fix.line))
-        if candidates
-        else None
-    )
 
 
 class Blamed(NamedTuple):
@@ -986,12 +898,12 @@ def blamed(
     """
     before: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in released)
     now: Counter[tuple[str, str]] = Counter(_key(complaint) for complaint in after)
-    files: dict[str, _Fixed] = {}
+    files: dict[str, Fixed] = {}
     new: list[Blamed] = []
     complaint: Complaint
     for complaint in _new(root, after, now - before, files):
-        file: _Fixed = _file(root, files, complaint.path)
-        fix: Fix | None = _blamed(complaint, file, made[0].get(complaint.path, []))
+        file: Fixed = _file(root, files, complaint.path)
+        fix: Fix | None = blamed_on(complaint, file, made[0].get(complaint.path, []))
         tier: Tier = Tier.of(unsafe=bool(fix and fix.unsafe), likely=bool(fix and fix.likely))
         guess: str = "" if tier is Tier.CERTAIN else f" ({tier.value})"
         new.append(Blamed(complaint, fix, "(untraced)" if fix is None else fix.kinds + guess))

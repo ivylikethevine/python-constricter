@@ -16,7 +16,7 @@ from unittest import mock
 import pytest
 
 from constricter import trace, witness
-from tests.corpus import corpus_guesses, corpus_suite
+from tests.corpus import blame, corpus_guesses
 
 _Holds: TypeAlias = Callable[[object, object], bool | None]
 _Patched: TypeAlias = Callable[[object, str], bool]
@@ -204,12 +204,12 @@ def test_a_verdict_tells_of_the_values_that_differed(tmp_path: Path) -> None:
 def test_the_witness_is_told_each_annotation_a_binding_is_given_once(tmp_path: Path) -> None:
     """Two fix steps' same annotation once; two annotations both, each with its fix's imports."""
     (tmp_path / ".venv").mkdir()
-    fixes: dict[str, list[corpus_suite.Fix]] = {
+    fixes: dict[str, list[blame.Fix]] = {
         "src/a.py": [
-            corpus_suite.Fix("src/a.py", 1, "x", "str", "constructor", unsafe=True),
-            corpus_suite.Fix("src/a.py", 1, "x", "str", "checker", unsafe=True),
-            corpus_suite.Fix("src/a.py", 1, "x", "Path", "checker", unsafe=True, imports=(_IMPORT,)),
-            corpus_suite.Fix("src/a.py", 2, "y", "int", "literal", unsafe=False),
+            blame.Fix("src/a.py", 1, "x", "str", "constructor", unsafe=True),
+            blame.Fix("src/a.py", 1, "x", "str", "checker", unsafe=True),
+            blame.Fix("src/a.py", 1, "x", "Path", "checker", unsafe=True, imports=(_IMPORT,)),
+            blame.Fix("src/a.py", 2, "y", "int", "literal", unsafe=False),
         ],
     }
     told: list[str] = cast("list[str]", json.loads(corpus_guesses.expected(tmp_path, fixes)))

@@ -445,7 +445,8 @@ def test_files_are_shared_among_servers_and_stay_with_theirs(
         first: dict[Path, int] = dict(pyright.assigned)
         some: dict[Path, str] = dict(list(files.items())[:3])
         again: dict[Path, tuple[Hints, ...]] = session.hints(some)
-        assert [len(checker.servers) for checker in session.checkers] == [2, 2]
+        # pyrefly's are stale, started anew: one is enough for three files.
+        assert [len(checker.servers) for checker in session.checkers] == [2, 1]
         assert set(first.values()) <= {0, 1}  # whichever was free took each batch
         assert pyright.assigned == first
     assert [len(found[path][0].types) for path in files] == [text.count("\n") for text in files.values()]

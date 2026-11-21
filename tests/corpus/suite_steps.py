@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Final, TypeAlias, cast
 
 from constricter.offences import Tier
-from tests.corpus import archive, corpus_guesses, corpus_suite, launch
+from tests.corpus import archive, blame, corpus_guesses, corpus_suite, launch
 from tests.corpus.pipeline import (
     FIX_UNSAFE,
     FROM,
@@ -152,7 +152,7 @@ def hinted(run: Run) -> list[str]:
     return [f"{INFER}{checker}" for checker in run.steps.infer] if united(run) else []
 
 
-def witnessed(job: Job) -> dict[str, list[corpus_suite.Fix]]:
+def witnessed(job: Job) -> dict[str, list[blame.Fix]]:
     """Read the fixes the witness is told: `fix-unsafe`'s, and each checker's hints' (`hinted`).
 
     The union's fixes are those sources' in the run's order and the trace's (`union`), so a union
@@ -163,11 +163,11 @@ def witnessed(job: Job) -> dict[str, list[corpus_suite.Fix]]:
       Them, per file, as `fixes_made` reads a step's.
 
     """
-    found: dict[str, list[corpus_suite.Fix]] = {}
+    found: dict[str, list[blame.Fix]] = {}
     step: str
     for step in (FIX_UNSAFE, *hinted(job.run)):
         path: str
-        listed: list[corpus_suite.Fix]
+        listed: list[blame.Fix]
         for path, listed in fixes_made(job, step).items():
             found.setdefault(path, []).extend(listed)
     return found
@@ -191,7 +191,7 @@ def traced(job: Job) -> Record:
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     base: Path = prepared(job, TRACED)
-    made: dict[str, list[corpus_suite.Fix]] = fixes_made(job, FIX_UNSAFE)
+    made: dict[str, list[blame.Fix]] = fixes_made(job, FIX_UNSAFE)
     os.environ.update(job.tree.variables or {})
     os.environ[corpus_suite.TRACER_VARIABLE] = corpus_guesses.TRACER
     os.environ[corpus_guesses.WITNESS_VARIABLE] = corpus_guesses.expected(base, witnessed(job))
@@ -215,7 +215,7 @@ def traced(job: Job) -> Record:
     return record | _judged(job, made, TRACED)
 
 
-def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]], step: str) -> Record:
+def _judged(job: Job, made: dict[str, list[blame.Fix]], step: str) -> Record:
     """Read the witness's verdict on each of the fixes `made` by `step`, and keep each, a line each.
 
     With the types the trace saw the binding hold (`<step>.verdicts.jsonl`). A fix whose annotation
@@ -236,7 +236,7 @@ def _judged(job: Job, made: dict[str, list[corpus_suite.Fix]], step: str) -> Rec
     )
     counts: dict[str, Counter[str]] = {key: Counter() for key in ("told", "held", "differed", _UNASKED)}
     lines: list[str] = []
-    each: corpus_suite.Fix
+    each: blame.Fix
     for each in itertools.chain.from_iterable(made.values()):
         verdict: corpus_guesses.Verdict = corpus_guesses.verdict(
             judged,

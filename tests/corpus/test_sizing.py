@@ -227,29 +227,40 @@ def test_an_unmeasured_check_or_fix_holds_a_share_of_its_corpus(tmp_path: Path) 
     assert plan.wanted(tree, "fix-unsafe").memory == base + 450 * (10 << 20)
 
 
-def test_an_unmeasured_hinted_step_holds_its_servers_estimate(tmp_path: Path) -> None:
-    """A server a CPU for the corpus's files, a margin over, and the corpus's check where measured."""
+def test_an_unmeasured_hinted_step_holds_its_fitted_estimate(tmp_path: Path) -> None:
+    """For the corpus's files, a server a CPU, and what they import from its environment, a margin over."""
+    source: Path = tmp_path / "pkg"
+    source.mkdir()
     file: IO[str]
-    with (tmp_path / "big.py").open("w", encoding="utf-8") as file:
+    with (source / "big.py").open("w", encoding="utf-8") as file:
+        _ = file.write("import numpy\nfrom os import path\nfrom . import pkg\nimport pkg\n")
         _ = file.truncate(20 << 20)
-    tree: Tree = Tree("dask", "1", tmp_path, tmp_path)
+    site: Path = tmp_path / ".venv" / "lib" / "python3.14" / "site-packages"
+    (site / "numpy").mkdir(parents=True)
+    (site / "numpy-stubs").mkdir()
+    _ = (site / "numpy" / "core.py").write_text("x = 1\n" * 1000, encoding="utf-8")  # its stub's read instead
+    _ = (site / "numpy" / "core.pyi").write_text("x: int\n", encoding="utf-8")
+    _ = (site / "numpy" / "_lib.py").write_text("y = 2\n", encoding="utf-8")
+    _ = (site / "numpy-stubs" / "__init__.pyi").write_text("z: int\n", encoding="utf-8")
+    _ = (site / "os.py").write_text("unread\n", encoding="utf-8")  # the standard library's
+    _ = (site / "pkg.py").write_text("unread\n", encoding="utf-8")  # the tree's own
+    imported: int = len("x: int\n") + len("y = 2\n") + len("z: int\n")
+    tree: Tree = Tree("dask", "1", source, source, environment=tmp_path / ".venv")
     run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
     plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, {})
-    # basedpyright's servers each hold the whole program; ty's share the files.
-    whole: int = 2 * ((600 << 20) + 130 * (20 << 20))
-    shared: int = 2 * (420 << 20) + 38 * (20 << 20)
-    assert plan.wanted(tree, "infer-basedpyright") == sizing.Wanted(
-        2,
-        int(whole * 1.25),
-        least=1,
-        servers=hints.MEMORY,
-        server=whole // 2,
-    )
+    size: int = 20 << 20
+    # basedpyright's servers each hold the whole program, two of them on two CPUs; ty's share the files.
+    whole: int = sizing.GIB * 157 // 100 + 225 * size * 2 + 47 * imported
+    shared: int = sizing.GIB * 63 // 100 + 422 * size + 23 * imported
+    assert plan.wanted(tree, "infer-basedpyright").memory == int(whole * 1.25)
     assert plan.wanted(tree, "infer-ty").memory == int(shared * 1.25)
+    # The corpus's check isn't added: the estimate is the whole step's, its constricter's too.
     checked: sizing.Plan = plan._replace(before={("dask", "check"): sizing.Before(2.0, 30.0, 3 * sizing.GIB)})
-    assert checked.wanted(tree, "infer-ty").memory == int(shared * 1.25) + 3 * sizing.GIB
-    # Far under the third of the run's memory it held before, and a step asking no checker keeps that.
-    assert plan.wanted(tree, "infer-ty").memory < plan.memory // 3 == plan.wanted(tree, "infer-trace").memory
+    assert checked.wanted(tree, "infer-ty").memory == int(shared * 1.25)
+    # With no environment, its files alone; a step asking no checker holds the third it held before.
+    bare: Tree = tree._replace(environment=None)
+    assert plan.wanted(bare, "infer-ty").memory == int((sizing.GIB * 63 // 100 + 422 * size) * 1.25)
+    assert plan.wanted(tree, "infer-trace").memory == plan.memory // 3
 
 
 def test_a_hinted_step_starts_with_as_few_cpus_as_hold_one_server_of_each_checker(tmp_path: Path) -> None:

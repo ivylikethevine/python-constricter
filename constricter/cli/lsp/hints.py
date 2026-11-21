@@ -1,7 +1,8 @@
 """`--infer-with`: ask a type checker's language server what type each untyped name has.
 
-Each checker's servers are started once (each round, asked in turn: see `Asking`), over standard
-input and output, with the project root as their workspace, and work at once (see `Session`); each
+Each checker's servers are started once (each round, asked in turn, see `Asking`, or a stale
+checker's, see `Server.stale`), over standard input and output, with the project root as their
+workspace, and work at once (see `Session`); each
 file is opened with the text constricter read, and its inlay hints asked for over the whole file. A
 variable-type hint (`: int`) sits just after the name it types: that end is its key, as the line
 (from 1) and the UTF-8 byte column `ast` gives the name's end. What the hint says is
@@ -121,6 +122,9 @@ class Session:
         turns: list[list[Checker]] = [[checker] for checker in asking] if self.how.in_turn else [asking]
         turn: list[Checker]
         for turn in turns:
+            for checker in turn:
+                if checker.server.stale:
+                    checker.stop()
             _asked(files, turn, found)
             for checker in turn if self.how.in_turn else ():
                 checker.stop()

@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- With `--infer-with=pyrefly`, `--fix` starts pyrefly's servers anew for each round after the first:
+  a server kept from the round before went on typing names from what it had read of files since
+  changed, leaving a second pass fixes to make (32 on pip, matplotlib's `fill_frames`).
+- The corpus runner starts a suite's unmeasured tests once two CPUs are free, not half the machine's,
+  and blames a new type error about an argument (`Argument "how" to "concat"`) on the fix of the
+  name passed as it, not the fix of the name its line binds.
 - With `--infer-with`, a module's constant bound once to a member of an enum the module defines,
   hinted as the enum, is declared `Final` (`NO_DEFAULT: Final = _NoDefault.no_default`): the enum
   would lose the member's `Literal`, so pyright no longer narrowed `x is NO_DEFAULT` (narwhals'
@@ -22,8 +28,8 @@ Notable changes, newest first. Each release's full notes are generated from its 
   next round asks the type checkers about every file, not only those it changed: a checker can type
   a name once another file's fix is written. A file is checked again where its hints or what it
   imports changed. Each round that changes a file asks about every file once more.
-- The corpus runner sizes a hinted step no run has measured by its largest checker's servers for the
-  corpus's files, not a third of the run's memory.
+- The corpus runner sizes a hinted step no run has measured by a fit to its checker's measured
+  steps, for the corpus's files and the packages they import, not a third of the run's memory.
 - CI runs only its Docs job on a tree whose code it already passed, where only `docs/` and
   `corpus-runs/` differ (a corpus run's records and the docs written from them); a passing run
   records its tree's code beside the tree (`tested-code`). `ruff format --check`, `typos` and
