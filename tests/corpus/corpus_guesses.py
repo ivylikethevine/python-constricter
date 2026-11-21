@@ -52,7 +52,7 @@ _TRACED: Final = "traced"  # the step (`pipeline.TRACED`)
 
 
 class Fixed(Protocol):
-    """A fix, as `corpus_suite.Fix` has one."""
+    """A fix, as `blame.Fix` has one."""
 
     @property
     def line(self) -> int:

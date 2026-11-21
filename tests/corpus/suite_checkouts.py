@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Final, TypeAlias, cast
 
-from tests.corpus import corpus_suite, jsonl
+from tests.corpus import blame, corpus_suite, jsonl
 from tests.corpus.pipeline import (
     FIX,
     FIX_UNSAFE,
@@ -152,7 +152,7 @@ def patched_checkout(job: Job, step: str, base: Path | None = None) -> str | Non
     return applied.stderr.strip() if applied.returncode else None
 
 
-def fixes_made(job: Job, step: str) -> dict[str, list[corpus_suite.Fix]]:
+def fixes_made(job: Job, step: str) -> dict[str, list[blame.Fix]]:
     """Read the fixes a fix step listed (`<step>.fixes.jsonl`), as the suite's checkout names their files.
 
     Returns:
@@ -161,12 +161,12 @@ def fixes_made(job: Job, step: str) -> dict[str, list[corpus_suite.Fix]]:
     """
     suite: corpus_suite.Suite = cast("corpus_suite.Suite", job.tree.suite)
     listed: Path = job.store.path(job.tree.name, job.recorded, step, ".fixes.jsonl")
-    found: dict[str, list[corpus_suite.Fix]] = {}
+    found: dict[str, list[blame.Fix]] = {}
     each: _Entry
     for each in jsonl.read(listed):
         path: str = f"{suite.source}/{each['path']}"
         found.setdefault(path, []).append(
-            corpus_suite.Fix(
+            blame.Fix(
                 path,
                 cast("int", each["line"]),
                 str(each["name"]),
@@ -187,7 +187,7 @@ def _error(each: corpus_suite.Blamed) -> Record:
       Where it is, what it says, its fix's mechanisms (`(untraced)` with none), and the fix.
 
     """
-    about: corpus_suite.Fix | None = each.fix
+    about: blame.Fix | None = each.fix
     return {
         "path": each.complaint.path,
         "line": each.complaint.line,
@@ -271,7 +271,7 @@ def types_part(job: Job, name: str) -> Record:
     corpus_suite.reset(base, suite)
     if (step := name.removeprefix(f"{TYPES}-")) == RELEASED:
         start: float = time.perf_counter()
-        found: list[corpus_suite.Complaint] = corpus_suite.complaints(base, suite)
+        found: list[blame.Complaint] = corpus_suite.complaints(base, suite)
         return {
             "seconds": round(time.perf_counter() - start, 1),
             "errors": [list(each) for each in found],
@@ -301,7 +301,7 @@ def types_part(job: Job, name: str) -> Record:
     compared: corpus_suite.Compared = corpus_suite.blamed(
         base,
         corpus_suite.complaints(base, suite),
-        [corpus_suite.Complaint(str(path), int(line), str(said)) for path, line, said in errors],
+        [blame.Complaint(str(path), int(line), str(said)) for path, line, said in errors],
         (fixes_made(job, step), change),
     )
     corpus_suite.reset(base, suite)

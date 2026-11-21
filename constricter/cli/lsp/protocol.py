@@ -35,7 +35,9 @@ class Server(NamedTuple):
     Its executable, the arguments that start it over stdio, and the most of it to run (up to
     `MAX_SERVERS`). And the memory its servers take, as measured: `memory` bytes each before the
     files, and `per_byte` more for each byte of them: each server's again where each holds the
-    `whole` program, once among them all where each holds what it's asked about.
+    `whole` program, once among them all where each holds what it's asked about. A `stale` one goes
+    on answering from what it read of a file before its new text was sent: its servers are started
+    anew for each round of files after their first.
     """
 
     executable: str
@@ -45,6 +47,7 @@ class Server(NamedTuple):
     per_byte: int
     whole: bool = False
     node: bool = False  # it runs on Node, whose heap its share of the memory caps (`--max-old-space-size`)
+    stale: bool = False
 
     def fitting(self, budget: int, size: int) -> int:
         """Count the servers that fit in `budget` bytes, for files of `size` bytes together.
@@ -75,8 +78,9 @@ SERVERS: Final = {
     # with two, 22s with three and 21s with four (1.2 GB with one, 1.7 with two, 2.5 with four).
     "ty": Server("ty", ("server",), MAX_SERVERS, 420 << 20, 38),
     # Parallel too: pandas's takes 132s with one, 58s with two and 32s with four (2.8 GB, 3.2, 4.2);
-    # the standard library's 39 MB, 4.3 GB with one and 5.6 with four.
-    "pyrefly": Server("pyrefly", ("lsp",), MAX_SERVERS, 480 << 20, 120),
+    # the standard library's 39 MB, 4.3 GB with one and 5.6 with four. Stale (1.3.2): a server kept
+    # from the round before gave pip 32 fewer fixes, which a second pass then made.
+    "pyrefly": Server("pyrefly", ("lsp",), MAX_SERVERS, 480 << 20, 120, stale=True),
 }
 _PROBE: Final = "--version"  # quick for each; basedpyright-langserver's exits 1 all the same
 _PROBE_TIMEOUT: Final = 10.0  # seconds it may take

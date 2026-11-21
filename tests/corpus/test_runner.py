@@ -586,6 +586,19 @@ def test_a_traced_run_finds_constricter_alone(tmp_path: Path) -> None:
     assert corpus_suite.tracer_path(tmp_path) == first
 
 
+def test_a_suites_unmeasured_tests_start_on_a_steps_cpus(tmp_path: Path) -> None:
+    """Where they'd wait for half the machine's; measured, if not by their workers, they still do."""
+    celery: catalog.Entry = catalog.load().entries["celery"]
+    assert celery.suite is not None
+    tree: Tree = Tree("celery", "1", tmp_path, tmp_path, suite=celery.suite)
+    plan: sizing.Plan = sizing.Plan(parse({"run": {"jobs": 2}}), 8, 64 * sizing.GIB, {})
+    assert plan.wanted(tree, pipeline.TESTS) == sizing.Wanted(6, int(6 * 4.6 * sizing.GIB), least=2)
+    legacy: sizing.Plan = plan._replace(
+        before={("celery", pipeline.TESTS): sizing.Before(2.5, 10.0, sizing.GIB)},
+    )
+    assert legacy.wanted(tree, pipeline.TESTS).least == plan.cpus // 2
+
+
 def test_a_step_is_given_what_it_took_in_the_last_run(tmp_path: Path) -> None:
     """Its CPUs and its memory, a margin over; unmeasured, by what it is; the timed ones, every CPU."""
     known: catalog.Catalog = catalog.load()

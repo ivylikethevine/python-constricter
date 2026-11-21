@@ -1,4 +1,4 @@
-"""`--infer-with`'s memory: checkers asked in turn, and a Node server's heap capped at its share."""
+"""`--infer-with`'s servers: asked in turn, a stale checker's started anew, a Node server's heap capped."""
 
 import sys
 from collections.abc import Callable, Mapping
@@ -18,6 +18,7 @@ _Task: TypeAlias = Callable[[], connection.Found]  # one server's work (`Checker
 _Tasks: TypeAlias = Callable[[hints.Checker, Mapping[Path, str]], list[_Task]]
 _CHECKER: Final = "basedpyright"  # on Node: its heap capped
 _TY: Final = "ty"
+_PYREFLY: Final = "pyrefly"  # stale: its servers started anew each round
 _CAPPED: Final = "--trace-warnings --max-old-space-size=3686"  # nine tenths of 4 GB, after the user's own
 
 
@@ -61,6 +62,32 @@ def test_checkers_asked_in_turn_run_one_at_a_time(monkeypatch: pytest.MonkeyPatc
     assert [(each.checker, each.types) for each in found] == [
         ("ty", {(1, 1): "int"}),
         (_CHECKER, {(1, 1): "int"}),
+    ]
+    assert again == found
+
+
+def test_a_stale_checkers_servers_are_started_anew_each_round(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Only pyrefly's: the other checkers' servers are kept from round to round; the same hints."""
+    _fake(monkeypatch)
+    assert [name for name, server in protocol.SERVERS.items() if server.stale] == [_PYREFLY]
+    path: Path = tmp_path / "both.py"
+    session: hints.Session
+    with hints.Session([_PYREFLY, _TY], tmp_path, how=hints.Asking(kept=False)) as session:
+        found: tuple[Hints, ...] = session.hints({path: "x = 1  # hint: int\n"})[path]
+        first: list[list[connection.Connection]] = [list(checker.servers) for checker in session.checkers]
+        again: tuple[Hints, ...] = session.hints({path: "x = 1  # hint: int\n"})[path]
+        pyrefly: hints.Checker
+        ty: hints.Checker
+        pyrefly, ty = session.checkers
+        assert pyrefly.servers
+        assert not set(pyrefly.servers) & set(first[0])
+        assert ty.servers == first[1]
+    assert [(each.checker, each.types) for each in found] == [
+        (_PYREFLY, {(1, 1): "int"}),
+        (_TY, {(1, 1): "int"}),
     ]
     assert again == found
 

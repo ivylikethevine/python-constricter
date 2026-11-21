@@ -10,7 +10,7 @@ from typing import Final, TypeAlias, cast
 
 import pytest
 
-from tests.corpus import catalog, corpus_suite, jsonl, suite_checkouts, suite_steps
+from tests.corpus import blame, catalog, corpus_suite, jsonl, suite_checkouts, suite_steps
 from tests.corpus.catalog import PYTEST, Suite
 from tests.corpus.corpus_suite import Outcome
 from tests.corpus.pipeline import Job, Record, Store
@@ -684,13 +684,13 @@ def test_a_new_error_is_blamed_on_the_fix_whose_type_it_quotes(
     message: str = (
         'Incompatible types in assignment (expression has type "int | str", target has type "int | float")'
     )
-    fixes: list[corpus_suite.Fix] = [
-        corpus_suite.Fix("m.py", 2, "params", "dict[str, int | float]", "copy+filled", unsafe=True),
-        corpus_suite.Fix("m.py", 3, "name", "str", "assigned+loop", unsafe=False, likely=True),
+    fixes: list[blame.Fix] = [
+        blame.Fix("m.py", 2, "params", "dict[str, int | float]", "copy+filled", unsafe=True),
+        blame.Fix("m.py", 3, "name", "str", "assigned+loop", unsafe=False, likely=True),
     ]
     compared: corpus_suite.Compared = corpus_suite.blamed(
         tmp_path,
-        [corpus_suite.Complaint("m.py", 9, message)],
+        [blame.Complaint("m.py", 9, message)],
         [],
         ({"m.py": fixes}, ""),
     )

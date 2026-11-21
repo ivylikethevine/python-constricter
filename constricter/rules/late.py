@@ -20,7 +20,7 @@ from constricter.fix.core.known import ImportPlan, Inference
 from constricter.fix.values import callables, displays, hinted
 from constricter.fix.values import fills as filling
 from constricter.fix.values import unchecked as misused
-from constricter.fix.values.doubts import contains_inner, narrowing, spelled_self
+from constricter.fix.values.doubts import FINAL_KIND, contains_inner, narrowing, spelled_self
 from constricter.fix.values.inference import RETURNED
 from constricter.fix.values.narrowed import narrowed_at
 from constricter.offences import (
@@ -42,7 +42,7 @@ from constricter.offences import (
 from constricter.rules import widened
 from constricter.rules.rebinding import Refit, refit
 from constricter.rules.rebound import apart, converted, emptied, heads, looped, operated, unites
-from constricter.rules.scope import FINAL_KIND, Scope, guesses_in
+from constricter.rules.scope import Scope, guesses_in
 from constricter.source.annotations import node_name, roots
 from constricter.source.flow import Binding, Lifetime, members
 from constricter.source.syntax import FunctionDef
