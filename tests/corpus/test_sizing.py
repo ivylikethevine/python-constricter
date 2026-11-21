@@ -9,7 +9,7 @@ from typing import IO, Final
 import pytest
 
 from constricter.cli.lsp import hints
-from tests.corpus import catalog, pipeline, sizing
+from tests.corpus import catalog, hinted_memory, pipeline, sizing
 from tests.corpus.run_config import Run, parse
 from tests.corpus.trees import Tree
 
@@ -235,16 +235,22 @@ def test_an_unmeasured_hinted_step_holds_its_fitted_estimate(tmp_path: Path) -> 
     with (source / "big.py").open("w", encoding="utf-8") as file:
         _ = file.write("import numpy\nfrom os import path\nfrom . import pkg\nimport pkg\n")
         _ = file.truncate(20 << 20)
+    # Bytes, as written: text would gain a carriage return a line on Windows.
     site: Path = tmp_path / ".venv" / "lib" / "python3.14" / "site-packages"
     (site / "numpy").mkdir(parents=True)
     (site / "numpy-stubs").mkdir()
-    _ = (site / "numpy" / "core.py").write_text("x = 1\n" * 1000, encoding="utf-8")  # its stub's read instead
-    _ = (site / "numpy" / "core.pyi").write_text("x: int\n", encoding="utf-8")
-    _ = (site / "numpy" / "_lib.py").write_text("y = 2\n", encoding="utf-8")
-    _ = (site / "numpy-stubs" / "__init__.pyi").write_text("z: int\n", encoding="utf-8")
-    _ = (site / "os.py").write_text("unread\n", encoding="utf-8")  # the standard library's
-    _ = (site / "pkg.py").write_text("unread\n", encoding="utf-8")  # the tree's own
-    imported: int = len("x: int\n") + len("y = 2\n") + len("z: int\n")
+    _ = (site / "numpy" / "core.py").write_bytes(b"x = 1\n" * 1000)  # its stub's read instead
+    _ = (site / "numpy" / "core.pyi").write_bytes(b"x: int\n")
+    _ = (site / "numpy" / "_lib.py").write_bytes(b"y = 2\n")
+    _ = (site / "numpy-stubs" / "__init__.pyi").write_bytes(b"z: int\n")
+    _ = (site / "os.py").write_bytes(b"unread\n")  # the standard library's
+    _ = (site / "pkg.py").write_bytes(b"unread\n")  # the tree's own
+    imported: int = len(b"x: int\n") + len(b"y = 2\n") + len(b"z: int\n")
+    # A Windows venv's packages are under `Lib`, with no version.
+    windows: Path = tmp_path / "windows"
+    (windows / "Lib" / "site-packages" / "numpy-stubs").mkdir(parents=True)
+    _ = (windows / "Lib" / "site-packages" / "numpy-stubs" / "__init__.pyi").write_bytes(b"z: int\n")
+    assert hinted_memory.imported(source, windows) == len(b"z: int\n")
     tree: Tree = Tree("dask", "1", source, source, environment=tmp_path / ".venv")
     run: Run = parse({"steps": {"infer-with": ["basedpyright", "ty"]}})
     plan: sizing.Plan = sizing.Plan(run, 16, 64 * sizing.GIB, {})

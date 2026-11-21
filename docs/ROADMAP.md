@@ -50,8 +50,9 @@ measure before building.
 
 ## Order of work
 
-- 3: an `alt-fresh` run into a folder no run has written (about 7 minutes), held to a tenth over
-  its proved shortest (`alt-fresh-11-20-2026-1800`: 25% over, before the hinted steps' fit).
+- 3a, then 3b: a run file that asks the checkers afresh (about an hour, then an `alt-fresh` run),
+  then the runner's start order against the solver's (about 3 hours): `alt-fresh-11-20-2026-1845`
+  took 6.8 minutes to a proved 4.9 (39% over, bar 10%), all CPUs held and 16 GB free.
 - 4, 10: the next mega run: matplotlib's 0 after pyrefly's hints; agreement read with errors
   blamed by the argument they name (0.105 blamed for under 0.1). 2: confirmed by a mega run where
   sqlalchemy's four fail.
@@ -148,10 +149,46 @@ steps `mega-11-11-2026-1113` and `alt-fresh-11-20-2026-1800` asked afresh
 (`scripts/scratch/hinted_sizes.py`): each held a median 0.9 to 1.0 of its fit, at most 1.8 to 2.7
 (dask's, optuna's, pandas's), where the server measure gave a fifth to a tenth of the bytes for the
 corpus's own files; imports add 0.02 to 0.04 GB a MB. matplotlib's three then estimate 4.9 to 6.7
-GB. Left: the next `alt-fresh` run, about 7 minutes and a quarter hour to read. Not looked into:
+GB. Read on `alt-fresh-11-20-2026-1845` (`3be4558`, 16CPU/60GB, no step failed): 6.8 minutes to a
+proved 4.9, 39% over. Its hinted steps read their hints from the store the 18:00 run filled
+(matplotlib's 3.5 to 3.7 GB in 96 to 102 seconds, from 6.2 to 9.1 in 123 to 169), so it doesn't test
+the fit, and the runner has no way to ask afresh. What waited is CPUs, not memory: with small steps
+waiting up to 133 seconds, all 16 CPUs were held and 16 GB free. So what's left is the order the
+runner starts steps in against the solver's, on the same holds (3b), and a run file's way to ask
+the checkers afresh, to read the fit on servers (3a). Not looked
+into:
 whether a step whose hints were read from the store should count as measured (on
 `mega-11-11-2026-1113`, asked afresh after a run that read them from the store, pip's
 `infer-basedpyright` held 4.1 GB given 0.64, and the run took 95 minutes for 80). Coverage unchanged.
+
+#### 3a. A run file that asks the checkers afresh
+
+A run's hinted steps read their hints from the store wherever an earlier run asked the same texts
+(`constricter.cli.lsp.stored`), so their servers don't start: `alt-fresh-11-20-2026-1845`'s
+matplotlib hinted steps held 3.5 to 3.7 GB where asking afresh they held 6.2 to 9.1, and no run
+since `alt-fresh-11-20-2026-1800` can show whether the unmeasured hinted steps' fit
+(`tests/corpus/hinted_memory.py`) holds on servers. How: a `[steps]` key (`infer-fresh = true`) that
+gives `--infer-fresh` to every step asking the checkers for hints, recorded in the report, and set
+in `tests/corpus/runs/alt-fresh.toml`, whose first run is the point. Done when an `alt-fresh` run
+with it (about 8 minutes on 16CPU/60GB) reads no round from the store, and its hinted steps' peaks
+set beside the fit (`scripts/scratch/hinted_sizes.py`) fall within the 121 steps' range it was fitted
+to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them. About an hour
+beside the run; coverage unchanged.
+
+#### 3b. A first run's start order against the solver's
+
+With its memory sized, a first run waits on CPUs: on `alt-fresh-11-20-2026-1845` (16CPU/60GB) small
+steps waited up to 133 seconds with all 16 CPUs held and 16 GB free, and the run took 6.8 minutes
+where the solver, on the holds the runner gave each step (`scripts/scratch/schedule_solve.py
+--given`), proved 4.9. The runner starts steps in the order `planning` solved before the run, from
+what each took in earlier runs, an unmeasured step by its like corpora's median (`planning.like`);
+of those that could start, the one ranked first, then the one lasting longest (`Slots.take`). How:
+set each step's planned start beside its start in the run and in the solver's schedule of the
+finished run, and find which steps the plan put late or early, and whether it's their planned
+seconds (like corpora's medians, steps read from the store), the steps none ranked, or the
+patience rule (`_PATIENCE`) keeping CPUs for one step. Then change what's found, as a proposal if it
+withdraws anything. Done when a first run, its hinted steps asked afresh (3a), takes within a tenth
+of its proved shortest: item 3's bar. About 3 hours, then an `alt-fresh` run; coverage unchanged.
 
 #### 4. The hinted steps' second pass
 

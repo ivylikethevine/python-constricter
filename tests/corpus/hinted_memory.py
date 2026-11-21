@@ -53,9 +53,9 @@ def imported(root: Path, environment: Path | None) -> int:
     """Count the bytes of what a tree's files import from its environment: each package they name.
 
     Each top-level name an `import` or `from` names, but the tree's own and the standard library's,
-    as its environment's `site-packages` has it: a package's modules (each's stub where it has one
-    beside it, else its source) and its `-stubs` package's, or a module. Once a run: a checker's
-    servers load what the files import.
+    as its environment's `site-packages` has it (`Lib/site-packages` on Windows): a package's
+    modules (each's stub where it has one beside it, else its source) and its `-stubs` package's, or
+    a module. Once a run: a checker's servers load what the files import.
 
     Returns:
       Them; 0 for a tree with no environment.
@@ -73,7 +73,7 @@ def imported(root: Path, environment: Path | None) -> int:
     total: int = 0
     site: Path
     name: str
-    for site in environment.glob("lib/python3*/site-packages"):
+    for site in (*environment.glob("lib/python3*/site-packages"), environment / "Lib" / "site-packages"):
         for name in names:
             total += sum(_package(folder) for folder in (site / name, site / f"{name}-stubs"))
             total += sum(
