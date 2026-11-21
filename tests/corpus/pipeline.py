@@ -267,7 +267,8 @@ def check(job: Job) -> Record:
     This checkout's constricter once, at `suffocate` (`suffocated`): a level only chooses the codes
     it reports and which are errors (`offences.reports`, `offences.errs`), so each lower level's
     counts are read from that one. A run file's `every-level`, or another version, checks at each
-    level, the levels at once.
+    level, one after another: each check's workers keep every CPU busy already, and four at once
+    held 13.8 GB on the standard library (4 workers each), one 3.4, past CI's 16 GB runner.
 
     Returns:
       The step's record.
@@ -287,13 +288,7 @@ def check(job: Job) -> Record:
             job.run.jobs,
         )
 
-    runs: list[launch.Ran]
-    if every:
-        pool: ThreadPoolExecutor
-        with ThreadPoolExecutor(len(Level)) as pool:
-            runs = list(pool.map(at, Level))
-    else:
-        runs = [suffocated(job)[1]]
+    runs: list[launch.Ran] = [at(level) for level in Level] if every else [suffocated(job)[1]]
     levels: dict[str, list[int]] = {}
     entries: list[_Entry] = []
     ran: launch.Ran
