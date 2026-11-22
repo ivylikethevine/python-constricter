@@ -54,6 +54,7 @@ def run_facts(run: Run, started: datetime) -> Record:
         "fix": list(run.steps.fix),
         "coverage": run.steps.coverage,
         "infer-with": list(run.steps.infer),
+        "infer-fresh": run.steps.infer_fresh,
         "census": run.steps.census,
         "tests": run.steps.tests,
         "types": run.steps.types,

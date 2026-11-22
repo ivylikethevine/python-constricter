@@ -1,10 +1,11 @@
 # The alt corpora as a first run, no step measured, to see how near the solver's shortest a run
 # planned without measurements comes (`scripts/scratch/schedule_solve.py --given`): `output` must
-# be a folder no run has written, so name a new one each time. Not published.
+# be a folder no run has written, so name a new one each time. Its hinted steps ask the checkers
+# again (`infer-fresh`), so their servers' memory is measured, not a hint store's reads. Not published.
 
 [run]
 label = "alt-fresh"
-output = "local/runs/alt-fit"
+output = "local/runs/alt-asked"
 versions = ["dev"]
 jobs = 4
 at-once = 8
@@ -17,6 +18,7 @@ include = ["alt"]
 check = true
 fix = ["certain", "likely", "unsafe"]
 infer-with = ["basedpyright", "ty", "pyrefly"]
+infer-fresh = true
 census = true
 coverage = true
 timing = 1

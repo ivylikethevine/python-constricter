@@ -37,12 +37,12 @@ one on one CPU would hold the run's end (stripe's basedpyright, 36 minutes). The
 (`timing`, `profile`) want every CPU, so nothing runs beside the check timed: the run starts them
 last, one at a time.
 
-Of the steps waiting, the one with the most seconds still to come starts first: its own and those
-of its corpus's suite's steps after it, which wait for it. One that has waited `_PATIENCE` seconds
-for what smaller ones keep taking has what's free kept for it, from all but those that go before it
-and those its last run says end within `_BESIDE` seconds. And a running step's hold follows
-what it's seen to use (`Plan.fitted`): an unmeasured one gives back what it isn't using, and any
-one takes what it uses over its share from the next to start.
+Of the steps waiting, the one with the most seconds still to come starts first (its own and its
+suite's steps after it), then the one with the most steps behind it (`planning.behind`). One that
+has waited `_PATIENCE` seconds for what smaller ones keep taking has what's free kept for it, from
+all but those that go before it and those its last run says end within `_BESIDE` seconds. And a
+running step's hold follows what it's seen to use (`Plan.fitted`): an unmeasured one gives back
+what it isn't using, and any one takes what it uses over its share from the next to start.
 
 The steps share the machine's CPUs and `_MEMORY_SHARE` of the memory free as the run starts, unless
 the run file says (`cpus`, `memory`), or a share of the machine (`share`, `--share`): that percent
@@ -207,16 +207,17 @@ class _Waiter:
     locks: tuple[threading.Lock, ...] = ()  # its checkouts' and its port's, taken as it starts
     name: str = ""  # its corpus and step, as the queue's log names it
     rank: float = math.inf  # when the run's plan starts it (`planning`): `inf` for one not planned
+    behind: int = 0  # the steps of its corpus waiting for it (`planning.behind`)
 
 
 def _ahead(one: _Waiter, other: _Waiter) -> bool:
-    """Check whether a waiting step goes before another: ranked first by the run's plan, else lasting longer.
+    """Check whether a waiting step goes before another: ranked first, lasting longer, then more behind it.
 
     Returns:
       Whether it does.
 
     """
-    return (one.rank, -one.lasting) < (other.rank, -other.lasting)
+    return (one.rank, -one.lasting, -one.behind) < (other.rank, -other.lasting, -other.behind)
 
 
 def group(process: int | None = None) -> Path | None:
@@ -524,6 +525,7 @@ class Slots:
         locks: Sequence[threading.Lock] = (),
         name: str = "",
         rank: float = math.inf,
+        after: int = 0,
     ) -> int:
         """Wait until the CPUs and the memory a step `wanted` are free, and its `locks`, and hold them.
 
@@ -537,8 +539,8 @@ class Slots:
         most, or one that's expected to end before the other could start. `locks`: those of the
         checkouts it works on and the port its tests bind, taken with the rest as it starts, none
         held while it waits. `name`: what the queue's log calls it (`report`), and `give` frees by.
-        `rank`: when the run's plan starts it (`planning`); of the steps that could start, the one
-        ranked first does, then the one that lasts longest.
+        `rank`, `after`: its planned start (`planning`), and its steps behind (`planning.behind`); of
+        steps that could start, the one ranked first does, then the longest, then the most after.
 
         Returns:
           How many CPUs are held, to `give` back with their `share` of the memory, and the locks.
@@ -557,6 +559,7 @@ class Slots:
                 tuple(locks),
                 name,
                 rank,
+                after,
             )
             self.waiting.append(waiter)
             _ = self.changed.wait_for(lambda: self._turn(waiter))

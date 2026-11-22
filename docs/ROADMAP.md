@@ -17,8 +17,8 @@ measure before building.
 
 ## Where it stands
 
-2026-11-20, at `8dc5d91` on `dev` (its code `9ffc314`'s) with uncommitted work for 3, 4 and 10,
-`main` at `41c919f`; v0.4.6, at `1763d4b`, the last release.
+2026-11-22, at `b2fa80d` on `dev` and `main`, tagged v0.4.7, the last release, with uncommitted
+work for 3a, 3b, 12 and 13.
 
 - The latest mega run is `mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB, no step
   failed): the suites' new type errors 694 from 710, narwhals' 8 fewer in each of ty's and the
@@ -27,15 +27,22 @@ measure before building.
   nibabel's one test failing in the union step, as on `mega-11-17-2026-1924`. Neither that run nor
   the two `mega-11-17` runs before it is yet in [COMPLETED.md](COMPLETED.md#corpus), where
   `mega-11-16-2026-1443` and every earlier run named here are read.
-- Built 2026-11-20, uncommitted, each waiting on a run: pyrefly's servers started anew for each
-  round after their first, leaving pip and matplotlib no second pass in one process (4, a mega
-  run); a suite's unmeasured tests started once 2 CPUs are free, and an unmeasured hinted step
+- Built 2026-11-20 (`3be4558`, in v0.4.7), each waiting on a run: pyrefly's servers started anew
+  for each round after their first, leaving pip and matplotlib no second pass in one process (4, a
+  mega run); a suite's unmeasured tests started once 2 CPUs are free, and an unmeasured hinted step
   sized by a fit to measured peaks that counts what the corpus imports (3, an `alt-fresh` run); a
-  new type error naming an argument blamed on the fix of the name passed (10, a mega run).
-- Verified on 16CPU/60GB: `tests/ci_local.py test lint` outside the sandbox (39s, coverage 100%),
-  only `uv lock --check` failing, which the global `exclude-newer` makes re-resolve here; the docs
-  job, `reuse lint` outside the sandbox. Python 3.11 last ran before 3's and 10's changes: all but
-  8 `distutils` table tests, which the 3.11 venv's setuptools shim fails.
+  new type error naming an argument blamed on the fix of the name passed (10, a mega run). Since,
+  in v0.4.7: a run file's `every-level` check, or another version's, checks the levels one after
+  another, not four at once (`6599abc`: the standard library's 13.8 GB to 3.4, under CI's 16 GB
+  runner); a run checking this checkout once is unchanged.
+- Built 2026-11-22, uncommitted, waiting on an `alt-fresh` run: `infer-fresh`, set in
+  `alt-fresh.toml` (3a); a first run's unmeasured steps started by how many steps wait for each
+  (3b). Proposed, not built: trio's `at-once = 7` (3b).
+- Verified: CI, CodeQL and Security green on `b2fa80d` (GitHub), the test matrix's Python 3.11 to
+  3.14 included, and its Release run. On 16CPU/60GB, 2026-11-22 with the uncommitted work:
+  `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only `uv lock --check`
+  failing, which the global `exclude-newer` makes re-resolve here; `tests/corpus` on Python 3.11;
+  the docs job, `reuse lint` outside the sandbox.
 - What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
   (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)); a mega run of all 55 78 to
   97 minutes; `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`, the fix steps and type checks alone
@@ -46,19 +53,21 @@ measure before building.
 - Open questions, not looked into: the rest of the 58 a second pass still fixes after the hints on
   `mega-11-20-2026-1208`, and twisted's 12 of `mega-11-16-2026-1443` (4); that run's matplotlib
   hinted steps' 99, 98 and 33 fewer fixes; nibabel's union step failing 2 tests where it failed 1.
-- Nothing waits on a decision. Items 9 and 11 are in Later.
+- Waiting on a decision: trio's `at-once = 7` (3b); item 13's open questions (which operations,
+  what's exempt, a fix or not). Items 9 and 11 are in Later.
 
 ## Order of work
 
-- 3a, then 3b: a run file that asks the checkers afresh (about an hour, then an `alt-fresh` run),
-  then the runner's start order against the solver's (about 3 hours): `alt-fresh-11-20-2026-1845`
-  took 6.8 minutes to a proved 4.9 (39% over, bar 10%), all CPUs held and 16 GB free.
+- 3a, 3b: the next `alt-fresh` run (about 8 minutes, `tests/corpus/runs/alt-fresh.toml`) reads
+  both: no round from the store and the fit's peaks (3a), and a first run within a tenth of its
+  shortest with the steps-behind order (3b, replayed 8% over). Trio's `at-once = 7` waits on a yes.
 - 4, 10: the next mega run: matplotlib's 0 after pyrefly's hints; agreement read with errors
   blamed by the argument they name (0.105 blamed for under 0.1). 2: confirmed by a mega run where
   sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
 - 6: the mutation run, then its survivors.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
+- 13, on hold: once its open questions are answered.
 
 ## Now
 
@@ -167,13 +176,16 @@ A run's hinted steps read their hints from the store wherever an earlier run ask
 (`constricter.cli.lsp.stored`), so their servers don't start: `alt-fresh-11-20-2026-1845`'s
 matplotlib hinted steps held 3.5 to 3.7 GB where asking afresh they held 6.2 to 9.1, and no run
 since `alt-fresh-11-20-2026-1800` can show whether the unmeasured hinted steps' fit
-(`tests/corpus/hinted_memory.py`) holds on servers. How: a `[steps]` key (`infer-fresh = true`) that
-gives `--infer-fresh` to every step asking the checkers for hints, recorded in the report, and set
-in `tests/corpus/runs/alt-fresh.toml`, whose first run is the point. Done when an `alt-fresh` run
-with it (about 8 minutes on 16CPU/60GB) reads no round from the store, and its hinted steps' peaks
-set beside the fit (`scripts/scratch/hinted_sizes.py`) fall within the 121 steps' range it was fitted
-to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them. About an hour
-beside the run; coverage unchanged.
+(`tests/corpus/hinted_memory.py`) holds on servers. Built 2026-11-22: `[steps]`'s `infer-fresh =
+true` gives `--infer-fresh` to every step asking the checkers for hints, the union's and each fix's
+second pass included, so none reads from or writes to the store; the run's facts and each hinted
+step's `options` record it. Set in `tests/corpus/runs/alt-fresh.toml`, its `output` moved to a
+folder no run has written (the old one holds the 18:45 run, which a run there would be planned
+from). Done when an `alt-fresh` run with it (about 8 minutes on
+16CPU/60GB) reads no round from the store (no hinted record has `stored`), and its hinted steps'
+peaks set beside the fit (`scripts/scratch/hinted_sizes.py FOLDER`) fall within the 121 steps' range
+it was fitted to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them. A
+quarter hour to read the run; coverage unchanged.
 
 #### 3b. A first run's start order against the solver's
 
@@ -182,13 +194,37 @@ steps waited up to 133 seconds with all 16 CPUs held and 16 GB free, and the run
 where the solver, on the holds the runner gave each step (`scripts/scratch/schedule_solve.py
 --given`), proved 4.9. The runner starts steps in the order `planning` solved before the run, from
 what each took in earlier runs, an unmeasured step by its like corpora's median (`planning.like`);
-of those that could start, the one ranked first, then the one lasting longest (`Slots.take`). How:
-set each step's planned start beside its start in the run and in the solver's schedule of the
-finished run, and find which steps the plan put late or early, and whether it's their planned
-seconds (like corpora's medians, steps read from the store), the steps none ranked, or the
-patience rule (`_PATIENCE`) keeping CPUs for one step. Then change what's found, as a proposal if it
-withdraws anything. Done when a first run, its hinted steps asked afresh (3a), takes within a tenth
-of its proved shortest: item 3's bar. About 3 hours, then an `alt-fresh` run; coverage unchanged.
+of those that could start, the one ranked first, then the one lasting longest (`Slots.take`).
+
+Found 2026-11-22 on that run (`scripts/scratch/schedule_solve.py --given --starts 15`, and
+`scripts/scratch/start_order.py`, which replays a run's steps under the runner's holds in a given
+order; seconds on 16CPU/60GB): its output held no earlier run, so nothing was ranked and every
+step lasted 0, and the runner took them as their threads woke. The run ended on trio: its suite
+runs in one process with no `at-once`, so its 7 fixed test runs go one after another on one
+checkout, 32 seconds each on 1 CPU, and from 195 seconds to the end at 409 that line ran alone. It
+started late: trio's `fix-unsafe` at 122 seconds where the schedule starts it at 0, its `traced` at
+129 for 10. The solver's 4.9 is that line itself. Replayed (the run's own order 6.4 minutes against
+6.8 recorded):
+
+| Order                            | Trio as catalogued (min) | Trio 7 at once (min) |
+| -------------------------------- | -----------------------: | -------------------: |
+| As run                           |                      6.4 |                  4.2 |
+| Longest line, measured           |                      4.8 |                  3.2 |
+| Steps behind it                  |                      5.3 |                  3.7 |
+| Corpus's set, then steps behind  |                      5.1 |                  4.2 |
+| Solver's shortest (proved least) |                4.9 (4.9) |            3.2 (2.8) |
+
+"Steps behind it" is what a first run knows: how many of its corpus's steps wait for a step, those
+sharing its checkout counted one after another. Built that day: of the steps `planning` doesn't
+rank and as long as each other (none measured: 0), the one with the most behind it starts first
+(`planning.behind`, `Slots.take`'s `after`), 8% over the shortest replayed; a measured run's order
+is unchanged. Proposed, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
+have, its fixed test runs side by side on 7 checkouts: its line from 4.8 minutes to under 1, the
+shortest to 3.2, and with this order 3.7 (16% over). Its tests are timing-sensitive (`--run-slow`),
+so 7 beside the other steps may fail some that pass alone, which the reruns before a failure is
+called new catch; 7 more checkouts to install. Done when a first run, its hinted steps asked afresh
+(3a), takes within a tenth of its proved shortest: item 3's bar. An `alt-fresh` run to read it;
+coverage unchanged.
 
 #### 4. The hinted steps' second pass
 
@@ -402,7 +438,20 @@ unchanged.
 
 ## On hold
 
-Nothing: 3's and 10's proposals were approved and built 2026-11-20.
+### Waiting on a decision
+
+#### 13. An opt-in code for a string literal used in an operation
+
+An opt-in code, as `LVA012` to `LVA015` are: a string literal written as an operand (compared,
+passed, subscripted with, joined) where it should be a name declared before it with a narrow type:
+`ACTIVE: Final = "active"`, a `Literal["active"]`, an enum member. Wanted to keep a codebase's
+strings named and typed once, as this project's own `Final` constants are. On hold for what to
+decide first: which operations count (a comparison, a call's argument, a subscript, `+` and `%`, a
+`return`), what's exempt (docstrings, annotations' strings, `__all__`, f-string parts, `""`), which
+declarations satisfy it, and whether `--fix` makes the constant (it would have to name it) or the
+code only reports. Done when the code reports, with `--explain`, the flake8, pylint and ruff wiring
+and the README's rules table, and its count on the seven corpora and on constricter itself is in
+COMPLETED.md. More than 8 hours: about 10 without a fix; coverage unchanged (a new code, not a fix).
 
 ## Later
 
@@ -478,13 +527,14 @@ measured.
 
 #### 12. Revisit the disabled rules
 
-The [disabled rules](CONTRIBUTING.md#disabled-rules), as tools change (last checked 2026-11-17:
-zizmor's `self-repository` still waits on actionlint, whose newest is still 1.7.12, rejecting `$/`
-(scorecard-action v2.5.0 and zizmor 1.32.0 the newest); harden-runner's block policy is proven in
-`build.yml`'s wheels, its run on `dev` of 2026-11-16 passing on every macOS and Windows job; astroid
-4.3.4 still ships no `py.typed`; fastjsonschema 2.22.3 ships one, now locked, so mypy reads it
-(`untyped_calls_exclude` drops it, `tests/cli/test_output.py` clean), while basedpyright still
-allows it as untyped, `validate`'s parameters being unannotated). About an hour a pass.
+The [disabled rules](CONTRIBUTING.md#disabled-rules), as tools change (last checked 2026-11-22,
+none to turn on: zizmor's `self-repository` still waits on actionlint, whose newest is still
+1.7.12, rejecting `$/`; scorecard-action v2.6.0 (Scorecard 5.7.0) and zizmor 1.33.0 are out, the
+repo on v2.5.0 and its batch's zizmor, and neither's notes touch the `$/` form; harden-runner's
+block policy is proven in `build.yml`'s wheels, its run on `dev` of 2026-11-16 passing on every
+macOS and Windows job; astroid 4.3.4, still the newest, ships no `py.typed`; fastjsonschema 2.22.3,
+still the newest, ships one, locked, so mypy reads it, while basedpyright still allows it as
+untyped, `validate`'s parameters being unannotated). About an hour a pass.
 
 ## Decisions
 
