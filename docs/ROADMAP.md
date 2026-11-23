@@ -17,8 +17,8 @@ measure before building.
 
 ## Where it stands
 
-2026-11-22, at `b2fa80d` on `dev` and `main`, tagged v0.4.7, the last release, with uncommitted
-work for 3a, 3b, 12 and 13.
+2026-11-22, at `28c1bb6` on `dev`, one commit past `b2fa80d` on `main` (tagged v0.4.7, the last
+release), which holds the work for 3a, 3b, 12 and 13; no PR open, so CI hasn't run on it.
 
 - The latest mega run is `mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB, no step
   failed): the suites' new type errors 694 from 710, narwhals' 8 fewer in each of ty's and the
@@ -35,11 +35,18 @@ work for 3a, 3b, 12 and 13.
   in v0.4.7: a run file's `every-level` check, or another version's, checks the levels one after
   another, not four at once (`6599abc`: the standard library's 13.8 GB to 3.4, under CI's 16 GB
   runner); a run checking this checkout once is unchanged.
-- Built 2026-11-22, uncommitted, waiting on an `alt-fresh` run: `infer-fresh`, set in
-  `alt-fresh.toml` (3a); a first run's unmeasured steps started by how many steps wait for each
-  (3b). Proposed, not built: trio's `at-once = 7` (3b).
+- Built 2026-11-22 (`28c1bb6`): `infer-fresh`, set in `alt-fresh.toml` (3a); a first run's
+  unmeasured steps started by how many steps wait for each (3b). Read on
+  `alt-fresh-11-22-2026-1703` (`28c1bb6`, 16CPU/60GB, no step failed), both bars met: no hinted
+  round read from the store, the 24 hinted steps' peaks a median 0.92 of the fit, at most 1.90
+  (matplotlib's basedpyright); 8.0 minutes to a proved 7.7, 4% over. urllib3's union step lists
+  one new test error, its dummy server's `EADDRINUSE` retry leaking a socket, as `infer-ty`'s two
+  that passed again. Proposed, not built, and not needed for the bar: trio's `at-once = 7` (3b).
+  `schedule_solve.py --starts` looped on that run, its walk back from the last step going
+  between urllib3's two 0.2s `tests-fix-*` on one checkout; fixed the same day (a step's
+  predecessor starts strictly earlier), and both 11-20's and 11-22's lines now print.
 - Verified: CI, CodeQL and Security green on `b2fa80d` (GitHub), the test matrix's Python 3.11 to
-  3.14 included, and its Release run. On 16CPU/60GB, 2026-11-22 with the uncommitted work:
+  3.14 included, and its Release run. On 16CPU/60GB, 2026-11-22 on `28c1bb6`'s tree:
   `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only `uv lock --check`
   failing, which the global `exclude-newer` makes re-resolve here; `tests/corpus` on Python 3.11;
   the docs job, `reuse lint` outside the sandbox.
@@ -58,9 +65,8 @@ work for 3a, 3b, 12 and 13.
 
 ## Order of work
 
-- 3a, 3b: the next `alt-fresh` run (about 8 minutes, `tests/corpus/runs/alt-fresh.toml`) reads
-  both: no round from the store and the fit's peaks (3a), and a first run within a tenth of its
-  shortest with the steps-behind order (3b, replayed 8% over). Trio's `at-once = 7` waits on a yes.
+- 3, 3a, 3b: bars met on `alt-fresh-11-22-2026-1703`; to move to COMPLETED.md. Trio's
+  `at-once = 7` waits on a yes or no, no longer needed for the bar.
 - 4, 10: the next mega run: matplotlib's 0 after pyrefly's hints; agreement read with errors
   blamed by the argument they name (0.105 blamed for under 0.1). 2: confirmed by a mega run where
   sqlalchemy's four fail.
@@ -176,16 +182,18 @@ A run's hinted steps read their hints from the store wherever an earlier run ask
 (`constricter.cli.lsp.stored`), so their servers don't start: `alt-fresh-11-20-2026-1845`'s
 matplotlib hinted steps held 3.5 to 3.7 GB where asking afresh they held 6.2 to 9.1, and no run
 since `alt-fresh-11-20-2026-1800` can show whether the unmeasured hinted steps' fit
-(`tests/corpus/hinted_memory.py`) holds on servers. Built 2026-11-22: `[steps]`'s `infer-fresh =
-true` gives `--infer-fresh` to every step asking the checkers for hints, the union's and each fix's
+(`tests/corpus/hinted_memory.py`) holds on servers. Built 2026-11-22 (`28c1bb6`): `[steps]`'s
+`infer-fresh = true` gives `--infer-fresh` to every step asking the checkers for hints, the union's and each fix's
 second pass included, so none reads from or writes to the store; the run's facts and each hinted
 step's `options` record it. Set in `tests/corpus/runs/alt-fresh.toml`, its `output` moved to a
 folder no run has written (the old one holds the 18:45 run, which a run there would be planned
 from). Done when an `alt-fresh` run with it (about 8 minutes on
 16CPU/60GB) reads no round from the store (no hinted record has `stored`), and its hinted steps'
 peaks set beside the fit (`scripts/scratch/hinted_sizes.py FOLDER`) fall within the 121 steps' range
-it was fitted to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them. A
-quarter hour to read the run; coverage unchanged.
+it was fitted to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them.
+Met on `alt-fresh-11-22-2026-1703` (`28c1bb6`, 16CPU/60GB): every hinted step's rounds `[0, 0]`,
+its 24 peaks a median 0.92 of the fit, at most 1.90 (`scripts/scratch/hinted_sizes.py`).
+Coverage unchanged.
 
 #### 3b. A first run's start order against the solver's
 
@@ -215,16 +223,17 @@ started late: trio's `fix-unsafe` at 122 seconds where the schedule starts it at
 | Solver's shortest (proved least) |                4.9 (4.9) |            3.2 (2.8) |
 
 "Steps behind it" is what a first run knows: how many of its corpus's steps wait for a step, those
-sharing its checkout counted one after another. Built that day: of the steps `planning` doesn't
-rank and as long as each other (none measured: 0), the one with the most behind it starts first
+sharing its checkout counted one after another. Built that day (`28c1bb6`): of the steps
+`planning` doesn't rank and as long as each other (none measured: 0), the one with the most behind it starts first
 (`planning.behind`, `Slots.take`'s `after`), 8% over the shortest replayed; a measured run's order
 is unchanged. Proposed, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
 have, its fixed test runs side by side on 7 checkouts: its line from 4.8 minutes to under 1, the
 shortest to 3.2, and with this order 3.7 (16% over). Its tests are timing-sensitive (`--run-slow`),
 so 7 beside the other steps may fail some that pass alone, which the reruns before a failure is
 called new catch; 7 more checkouts to install. Done when a first run, its hinted steps asked afresh
-(3a), takes within a tenth of its proved shortest: item 3's bar. An `alt-fresh` run to read it;
-coverage unchanged.
+(3a), takes within a tenth of its proved shortest: item 3's bar. Met on `alt-fresh-11-22-2026-1703`
+(`28c1bb6`, 16CPU/60GB, no step failed): 8.0 minutes to a proved 7.7 (`schedule_solve.py --given`),
+4% over; the shortest up from 4.9 with every hinted step's servers started. Coverage unchanged.
 
 #### 4. The hinted steps' second pass
 

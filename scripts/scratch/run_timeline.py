@@ -59,6 +59,8 @@ def main() -> int:
     parser.add_argument("--top", type=int, default=15)
     parser.add_argument("--every", type=float, default=5.0, help="minutes a bucket")
     args = parser.parse_args()
+    if not args.every > 0:  # a bucket of no width never moves past the first step, and loops for ever
+        parser.error("--every must be over 0 minutes")
     facts = archive.facts(args.folder)
     cpus = int(facts.get("cpus", 1))
     started = datetime.fromisoformat(str(facts["started"])).timestamp()

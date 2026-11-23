@@ -278,16 +278,23 @@ def critical(steps: list[schedule_sim.Step], kept: Kept) -> list[schedule_sim.St
 
     That is what it waits for (`after`), or the step that last held a lock it takes, whichever
     ended last before it started; a step none ended just before started when the CPUs or memory
-    were free, and the line stops there.
+    were free, and the line stops there. Only a step that started strictly earlier counts, so each
+    step of the line starts before the one after it and none can come twice: two steps shorter
+    than `_SLACK` on one lock each end within it of the other's start, and without that the walk
+    went back and forth between them for ever (urllib3's two 0.2s `tests-fix-*` on
+    `alt-fresh-11-22-2026-1703`).
 
     Returns:
       The line, first step first.
+
+    Raises:
+      RuntimeError: the line grew past the steps that ran, which strictly earlier starts rule out.
 
     """
     ran: list[schedule_sim.Step] = [step for step in steps if step.seconds and step.name not in kept.last]
     by: dict[tuple[str, str], schedule_sim.Step] = {(step.corpus, step.name): step for step in ran}
     line: list[schedule_sim.Step] = [max(ran, key=lambda step: step.started + step.seconds)]
-    while True:
+    for _ in range(len(ran)):
         step: schedule_sim.Step = line[-1]
         before: list[schedule_sim.Step] = [
             other for name in step.after if (other := by.get((step.corpus, name))) is not None
@@ -295,15 +302,17 @@ def critical(steps: list[schedule_sim.Step], kept: Kept) -> list[schedule_sim.St
         locks: set[tuple[str, str]] = set(kept.locks(step))
         before += [other for other in ran if other is not step and locks & set(kept.locks(other))]
         ended: list[schedule_sim.Step] = [
-            other for other in before if other.started + other.seconds <= step.started + _SLACK
+            other
+            for other in before
+            if other.started < step.started and other.started + other.seconds <= step.started + _SLACK
         ]
         if not ended:
             return line[::-1]
         last: schedule_sim.Step = max(ended, key=lambda other: other.started + other.seconds)
-        if step.started - (last.started + last.seconds) > _SLACK:
-            line.append(last)  # it waited for the CPUs or memory after `last` ended
-            return line[::-1]
         line.append(last)
+        if step.started - (last.started + last.seconds) > _SLACK:
+            return line[::-1]  # it waited for the CPUs or memory after `last` ended
+    raise RuntimeError(f"the line back from {line[0].corpus}/{line[0].name} passed all {len(ran)} steps")
 
 
 def main() -> None:
