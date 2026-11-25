@@ -114,6 +114,14 @@ class _Hold:
     held: tuple[int, int]
 
 
+class _Turn(NamedTuple):
+    """What a step waits for before it asks for its share of the machine, and how much waits for it."""
+
+    after: Sequence["Future[bool]"] = ()  # the steps it reads
+    ready: Sequence["Future[Path]"] = ()  # its checkouts, installed
+    behind: int = 0  # the steps of its corpus waiting for it (`planning.behind`)
+
+
 class Running(NamedTuple):
     """A run under way: its folder, what its steps share of the machine, and what counts their use."""
 
@@ -207,12 +215,13 @@ class Running(NamedTuple):
                 looked, before = now, seen.cpu
         return sizing.Used()
 
-    def step(self, entry: catalog.Entry, job: pipeline.Job, name: str) -> bool:
+    def step(self, entry: catalog.Entry, job: pipeline.Job, name: str, behind: int = 0) -> bool:
         """Run one step (`process`), once what it's expected to take is free (`sizing`).
 
         With the locks of the checkouts it works on and of its tests' port, if they bind one, taken
-        with the rest: waited for holding nothing. What it used goes into the step's record
-        (`_recorded`).
+        with the rest: waited for holding nothing. `behind`: the steps of its corpus waiting for it,
+        which order it among those as long as it (`planning.behind`). What it used goes into the
+        step's record (`_recorded`).
 
         Returns:
           Whether the step has a record: one that failed has none, and its log says why.
@@ -222,7 +231,7 @@ class Running(NamedTuple):
         locks: list[threading.Lock] = self.locks(entry, job, name)
         asked: float = time.perf_counter()
         rank: float = (self.ranks or {}).get((entry.name, name), math.inf)
-        held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank)
+        held: int = self.slots.take(wanted, locks, f"{entry.name}/{name}", rank, behind)
         memory: int = self.slots.share(wanted.cpus, wanted.memory, held)
         given: sizing.Wanted = wanted._replace(
             cpus=held,
@@ -313,7 +322,7 @@ class Running(NamedTuple):
           Those that failed, each as the run's last lines say it.
 
         """
-        done: list[bool] = [self._after(entry, job, name, [], []) for name in names]
+        done: list[bool] = [self._after(entry, job, name, _Turn()) for name in names]
         return self._failed(entry, job, names, done)
 
     def _failed(
@@ -341,10 +350,9 @@ class Running(NamedTuple):
         entry: catalog.Entry,
         job: pipeline.Job,
         name: str,
-        after: Sequence["Future[bool]"],
-        ready: Sequence["Future[Path]"],
+        turn: _Turn,
     ) -> bool:
-        """Run a step that has no record yet once the steps it comes `after` and its checkouts are `ready`.
+        """Run a step that has no record yet once what it comes after and its checkouts are ready (`turn`).
 
         Waited for holding nothing. The tests as released, where an earlier run's record of them
         may be taken (`suite_steps.taken`: the run doesn't run them, or the traced tests confirm
@@ -354,8 +362,8 @@ class Running(NamedTuple):
           Whether it has a record.
 
         """
-        _ = wait(after)  # each one failing is the step's to say: it reads what's missing
-        _ = wait(ready)
+        _ = wait(turn.after)  # each one failing is the step's to say: it reads what's missing
+        _ = wait(turn.ready)
         if self.store.read(job.tree.name, job.recorded, name) is not None:
             return True
         taken: Record | None
@@ -368,7 +376,7 @@ class Running(NamedTuple):
                 f"{job.recorded} on {job.tree.name}: {name}: {taken[pipeline.FROM]}'s{said}\n",
             )
             return True
-        return self.step(entry, job, name)
+        return self.step(entry, job, name, turn.behind)
 
     def measured(self, entry: catalog.Entry) -> _Measured:
         """Measure one corpus with each of the run's versions.
@@ -407,12 +415,14 @@ class Running(NamedTuple):
           The steps that failed.
 
         """
-        last: frozenset[str] = sizing.held_last(self.run)
-        beside: list[str] = [name for name in pipeline.steps(self.run) if name not in last]
+        beside: list[str] = [
+            name for name in pipeline.steps(self.run) if name not in sizing.held_last(self.run)
+        ]
         suited: list[str] = [name for name in suite_steps.waiting(job) if self._chosen(name)]
         needs: dict[str, frozenset[str]] = suite_steps.needs(job)
         names: list[str] = self._runnable(job, _ordered([*beside, *suited], needs), needs)
         suited = [name for name in suited if name in names]
+        counted: dict[str, int] = planning.behind(names, needs, partial(_held, entry, job, frozenset(suited)))
         ended: dict[str, Future[bool]] = {}
         installing: ThreadPoolExecutor
         pool: ThreadPoolExecutor
@@ -432,7 +442,7 @@ class Running(NamedTuple):
                     if name in suited
                     else []
                 )
-                ended[name] = pool.submit(self._after, entry, job, name, after, ready)
+                ended[name] = pool.submit(self._after, entry, job, name, _Turn(after, ready, counted[name]))
         return self._failed(entry, job, names, [ended[name].result() for name in names])
 
     def timed(self, entry: catalog.Entry, tree: trees.Tree) -> list[str]:
@@ -483,6 +493,21 @@ class Running(NamedTuple):
         for name in left:
             self.said(f"{job.recorded} on {job.tree.name}: {name}: left for the stage it needs")
         return kept
+
+
+def _held(entry: catalog.Entry, job: pipeline.Job, suited: frozenset[str], name: str) -> frozenset[str]:
+    """Name the locks a step takes as it starts (`Running.locks`): its suite checkouts', and its tests' port.
+
+    Returns:
+      Them, as `planning.behind` compares them; none for a step of no suite (not of `suited`).
+
+    """
+    if name not in suited:
+        return frozenset()
+    port: frozenset[str] = (
+        frozenset({f"port {entry.port}"}) if entry.port and suite_checkouts.binds(name) else frozenset()
+    )
+    return frozenset(suite_checkouts.checkouts(job, name)) | port
 
 
 def _ordered(names: Sequence[str], needs: Mapping[str, frozenset[str]]) -> list[str]:

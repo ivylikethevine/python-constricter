@@ -6,6 +6,13 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- The corpus runner's `infer-fresh` (in `[steps]`): every step asking the type checkers for hints
+  asks them again (`--infer-fresh`), none read from the hint store, so a first run measures their
+  servers. Its facts and each hinted step's options record it; `alt-fresh.toml` sets it.
+- Of the steps waiting that no run measured, the corpus runner starts first the one with the most of
+  its corpus's steps waiting for it, those sharing its suite checkout counted one after another: a
+  first run took them as their threads woke, which left trio's fixed tests, one after another on one
+  checkout, to start two minutes late.
 - With `--infer-with=pyrefly`, `--fix` starts pyrefly's servers anew for each round after the first:
   a server kept from the round before went on typing names from what it had read of files since
   changed, leaving a second pass fixes to make (32 on pip, matplotlib's `fill_frames`).

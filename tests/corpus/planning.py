@@ -191,6 +191,46 @@ def _modelled(
     return starts
 
 
+def behind(
+    names: Sequence[str],
+    needs: Mapping[str, frozenset[str]],
+    locks: Callable[[str], frozenset[str]],
+) -> dict[str, int]:
+    """Count, for each of a corpus's steps, the steps waiting for it: what a first run knows of its length.
+
+    The longest line of `names` that wait for it (`needs`), itself included, and the others of
+    `names` taking one of its `locks` (a suite checkout or port), which run one after another with
+    it. Of steps as long as each other by what was measured (a first run's, none), the runner starts
+    the one with the most first (`sizing.Slots.take`). Replayed on `alt-fresh-11-20-2026-1845`,
+    nothing measured, that order ends in 5.3 minutes where the run's took 6.4 and the solver's
+    shortest is 4.9 (`scripts/scratch/start_order.py`).
+
+    Returns:
+      Each step's count, by its name.
+
+    """
+    among: frozenset[str] = frozenset(names)
+    later: dict[str, list[str]] = {name: [] for name in names}
+    name: str
+    for name in names:
+        each: str
+        for each in needs.get(name, frozenset()) & among:
+            later[each].append(name)
+    held: dict[str, frozenset[str]] = {name: locks(name) for name in names}
+    found: dict[str, int] = {}
+
+    def line(step: str) -> int:
+        if step not in found:
+            found[step] = 0  # a cycle, were there one, ends here
+            sharing: int = sum(1 for other in names if other != step and held[step] & held[other])
+            found[step] = 1 + max((line(each) for each in later[step]), default=0) + sharing
+        return found[step]
+
+    for name in names:
+        _ = line(name)
+    return found
+
+
 def like(
     before: Mapping[tuple[str, str], sizing.Before],
     corpus: str,

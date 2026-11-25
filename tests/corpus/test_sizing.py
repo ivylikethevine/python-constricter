@@ -9,7 +9,7 @@ from typing import IO, Final
 import pytest
 
 from constricter.cli.lsp import hints
-from tests.corpus import catalog, hinted_memory, pipeline, sizing
+from tests.corpus import catalog, hinted_memory, pipeline, planning, sizing
 from tests.corpus.run_config import Run, parse
 from tests.corpus.trees import Tree
 
@@ -102,6 +102,48 @@ def test_a_step_going_before_a_kept_one_isnt_kept_for_it(monkeypatch: pytest.Mon
     for each in threads:
         each.join()
     assert sorted(started) == ["2", "3", "4"]
+
+
+def test_of_steps_no_run_measured_the_one_with_more_behind_it_starts_first() -> None:
+    """Both lasting 0 and unranked: the one more of its corpus's steps wait for goes first."""
+    slots: sizing.Slots = sizing.Slots(2, 10)
+    held: int = slots.take(sizing.Wanted(2, 0))
+    started: list[str] = []
+
+    def take(name: str, after: int) -> None:
+        got: int = slots.take(sizing.Wanted(2, 0), (), name, math.inf, after)
+        started.append(name)
+        slots.give(got, 0, (), name)
+
+    threads: list[threading.Thread] = []
+    count: int
+    name: str
+    after: int
+    for count, (name, after) in enumerate((("few", 1), ("many", 9)), 1):
+        threads.append(threading.Thread(target=take, args=(name, after), daemon=True))
+        threads[-1].start()
+        assert _waiting(slots, count)
+    slots.give(held)
+    each: threading.Thread
+    for each in threads:
+        each.join()
+    assert started == ["many", "few"]
+
+
+def test_a_steps_count_behind_it_follows_its_waits_and_its_locks() -> None:
+    """The longest line waiting for it, itself counted, and the others taking a lock it takes."""
+    needs: dict[str, frozenset[str]] = {
+        "traced": frozenset({"fix"}),
+        "tests-a": frozenset({"traced"}),
+        "tests-b": frozenset({"fix"}),
+        "tests": frozenset({"tests-a", "tests-b"}),
+    }
+    names: list[str] = ["fix", "census", "traced", "tests-a", "tests-b", "tests"]
+    run0: frozenset[str] = frozenset({"run0"})
+    locks: dict[str, frozenset[str]] = {"tests-a": run0, "tests-b": run0, "tests": run0}
+    counted: dict[str, int] = planning.behind(names, needs, lambda name: locks.get(name, frozenset()))
+    # `tests`: itself and the two sharing `run0`; `tests-a`: itself, `tests`'s 3, and its two sharers.
+    assert counted == {"fix": 8, "census": 1, "traced": 7, "tests-a": 6, "tests-b": 6, "tests": 3}
 
 
 def test_a_port_is_taken_as_its_step_starts() -> None:

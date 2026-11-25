@@ -25,6 +25,8 @@
     fix = ["certain", "likely", "unsafe"]   # each on a copy: fixed, broken, a second pass, typed after
     coverage = true                  # the bindings typed as released
     infer-with = ["basedpyright"]    # `--fix --unsafe-fixes --infer-with` each, on a copy
+    infer-fresh = false              # true: every step asking the checkers for hints asks them again
+                                     # (`--infer-fresh`), none read from or kept in the hint store
     census = true                    # every untyped binding, classified: what has no fix, and why
     tests = true                     # a suite's own tests, as released and after each fix
     types = true                     # its own type checks, each new error traced to its fix
@@ -105,6 +107,7 @@ _KEYS: Final = {
         "check",
         "fix",
         "infer-with",
+        "infer-fresh",
         "census",
         "coverage",
         "tests",
@@ -149,6 +152,9 @@ class Steps(NamedTuple):
     every_level: bool = False  # a check at each level, not one at `suffocate` the others are read from
     tests_released: bool = True  # the tests as released run, unless the traced tests confirm an earlier run's
     tests_union: bool = True  # the tests once after every fix at once, standing for each fix's where released
+    infer_fresh: bool = (
+        False  # each hinted step asks the checkers again, not the hint store (`--infer-fresh`)
+    )
 
 
 class Publish(NamedTuple):
@@ -266,6 +272,7 @@ def parse(data: _Table) -> Run:
             bool(steps.get("every-level", default.steps.every_level)),
             bool(steps.get("tests-released", default.steps.tests_released)),
             bool(steps.get("tests-union", default.steps.tests_union)),
+            bool(steps.get("infer-fresh", default.steps.infer_fresh)),
         ),
         cast("int", run.get("at-once", default.at_once)),
         Publish(

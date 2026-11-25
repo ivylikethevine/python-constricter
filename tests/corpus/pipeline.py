@@ -427,6 +427,18 @@ def _budgeted(version: str, extra: Sequence[str]) -> list[str]:
     )
 
 
+def _fresh(job: Job, extra: Sequence[str]) -> list[str]:
+    """Ask a hinted fix's checkers again, not the hint store, where the run file says so.
+
+    Returns:
+      `--infer-fresh` where the run's `infer-fresh` is set, `extra` asks for hints and the version
+      has the option; else nothing: rounds an earlier run asked are read from the store.
+
+    """
+    hinted: bool = any(each.startswith("--infer-with") for each in extra)
+    return launch.offered(job.version, "--infer-fresh") if job.run.steps.infer_fresh and hinted else []
+
+
 def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     """Fix a copy of the corpus with `--fix` and `extra`, then ask a second pass what it would still fix.
 
@@ -438,6 +450,7 @@ def fix(job: Job, step: str, extra: Sequence[str]) -> Record:
     where: launch.Place
     valid: list[Path]
     where, valid = launch.copied(job.tree, job.work(step))
+    extra = [*extra, *_fresh(job, extra)]
     options: list[str] = [*extra, *_budgeted(job.version, extra), _SUFFOCATE]
     record: Record = {"options": ["--fix", *extra], "fixed": None}
     fixed: int | None

@@ -578,6 +578,39 @@ def test_a_hinted_fix_started_short_gives_its_servers_its_memory(
     assert not any(memory in options for options in asked)
 
 
+def test_infer_fresh_asks_a_hinted_fixs_checkers_again(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`infer-fresh` gives `--infer-fresh` to a hinted fix and its second pass, recorded; no other fix."""
+    root: Path = tmp_path / "pkg"
+    root.mkdir()
+    _ = (root / "a.py").write_text("x = 1\n", encoding="utf-8")
+    run: Run = parse({"steps": {"infer-with": ["ty"], "infer-fresh": True}})
+    job: pipeline.Job = pipeline.Job(run, Store(tmp_path / "out"), Tree("pandas", "1", root), DEV)
+    job.store.path("pandas", job.recorded, "x").parent.mkdir(parents=True)
+    asked: list[list[str]] = []
+
+    def faked(_version: str, _where: launch.Place, options: list[str], _jobs: int) -> launch.Ran:
+        asked.append(options)
+        return launch.Ran("[]", "", 0, 1.0)
+
+    monkeypatch.setattr(launch, "run", faked)
+    fresh: str = "--infer-fresh"
+    hinted: Record = pipeline.fix(job, "infer-ty", ["--unsafe-fixes", "--infer-with=ty"])
+    assert [fresh in options for options in asked] == [True, True, False]  # the fix, `--diff`, `--coverage`
+    assert hinted["options"] == ["--fix", "--unsafe-fixes", "--infer-with=ty", fresh]
+    asked.clear()
+    assert pipeline.fix(job, "fix-unsafe", ["--unsafe-fixes"])["options"] == ["--fix", "--unsafe-fixes"]
+    assert not any(fresh in options for options in asked)
+    asked.clear()
+    stale: pipeline.Job = job._replace(run=parse({"steps": {"infer-with": ["ty"]}}))
+    _ = pipeline.fix(stale, "infer-ty", ["--infer-with=ty"])
+    assert not any(fresh in options for options in asked)
+    assert not Steps().infer_fresh
+    assert resume.run_facts(run, datetime(2026, 11, 22, tzinfo=UTC))["infer-fresh"] is True
+
+
 def test_a_traced_run_finds_constricter_alone(tmp_path: Path) -> None:
     """Its path has a directory with the package linked, not this checkout's root and its `tests`."""
     first: Path = corpus_suite.tracer_path(tmp_path)
@@ -830,7 +863,13 @@ def test_the_tests_as_released_are_an_earlier_runs_record_where_one_may_be_taken
     ran: list[str] = []
     found: Record = {"counts": {"passed": 1}, "failed": [], "from": "old", "confirmed": "traced"}
 
-    def step(_self: runner.Running, _entry: catalog.Entry, _job: pipeline.Job, name: str) -> bool:
+    def step(
+        _self: runner.Running,
+        _entry: catalog.Entry,
+        _job: pipeline.Job,
+        name: str,
+        _behind: int,
+    ) -> bool:
         ran.append(name)
         return True
 
