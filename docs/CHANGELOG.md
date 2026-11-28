@@ -6,6 +6,12 @@ Notable changes, newest first. Each release's full notes are generated from its 
 
 ## Unreleased
 
+- With `--infer-with`, no checker's hint types a name where one checker hints a union holding
+  `Literal[True]` or `Literal[False]` beside another type (`str | Literal[True] | None`): widened
+  to `bool`, the annotation let the other value in, so `if proxy is True` no longer narrowed it
+  (websockets' `proxy`, urllib3's `redirect_location`). An optional flag's
+  `Literal[True] | None` is `bool | None` as before.
+
 - The corpus runner's `infer-fresh` (in `[steps]`): every step asking the type checkers for hints
   asks them again (`--infer-fresh`), none read from the hint store, so a first run measures their
   servers. Its facts and each hinted step's options record it; `alt-fresh.toml` sets it.

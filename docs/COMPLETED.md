@@ -1827,6 +1827,14 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   one after pyrefly's); `mega-11-27-2026-1715` (`54d2435`, 93 minutes, no step failed) 17, 13 and 11,
   none on matplotlib, the suites' new type errors 694 as on 11-20 and no test failing anew but
   nibabel's one in the union step, as on the two runs before.
+- **trio's fixed test runs side by side.** Its catalog entry takes `at-once = 7`, as anyio's and
+  pint's do, so its 7 fixed test runs go on 7 checkouts, not one after another on one; its sockets
+  bind port 0 alone. `alt-fresh-11-28-2026-1023` (`d848774`, 16CPU/60GB, no step failed, every
+  hinted step asked afresh) took 5.6 minutes to a proved 4.7 (`scripts/scratch/schedule_solve.py
+--given`), from `alt-fresh-11-22-2026-1703`'s 8.0 to 7.7, with no new trio failure. It's 19% over:
+  trio is still the last line, its `fix-unsafe`, first in the schedule, waiting 65 seconds for 2
+  CPUs the hinted steps started at 0 held, and its chain 55 seconds behind the schedule to the end.
+  Holding CPUs for the longest line's head was left unbuilt.
 
 ## CI, security and releases
 

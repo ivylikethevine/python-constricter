@@ -11,7 +11,9 @@ the checker printed it:
   project's oldest Python parses it (`min-python`); else written with `Unpack` where the module
   imports it (one level deeper, to LVA006), and dropped where it doesn't;
 - a `Literal` is widened to its values' types (`Literal[1, 2]` is `int`, `Literal[Color.RED]` is
-  `Color`), and `LiteralString` to `str`, then a union's repeated members dropped;
+  `Color`), and `LiteralString` to `str`, then a union's repeated members dropped; but where any
+  checker's hint is a union holding one of `Literal[True]` and `Literal[False]` beside other types
+  (see `flagged`), no checker's hint types the name;
 - anything that isn't an annotation (`Module("os")`, a callable's signature, `Self@C`) is dropped,
   as is a vague one (`Any`, `list[Unknown]`), a bare `None`, one with `Never` or `NoReturn` in it
   (an empty display's `list[Never]`, or code the checker takes not to run), `NotImplementedType`
@@ -178,6 +180,9 @@ _BOTTOM: Final = frozenset({"Never", "NoReturn"})  # the type of no value: never
 # What a binary dunder declares it may return, which checkers hint for the operation's result where
 # the operand's class is in reach (pandas' `cat == cat`): what the operation gives is never it.
 _UNIMPLEMENTED: Final = "NotImplementedType"
+_FLAGS: Final = frozenset({"Literal[True]", "Literal[False]"})  # a flag's one value (see `flagged`)
+_WIDE: Final = frozenset({"Any", "Unknown"})  # what a checker prints for a type it doesn't know
+_BOOL: Final = "bool"
 
 
 class Site(NamedTuple):
@@ -262,6 +267,32 @@ def type_alias(known: Known, before: int) -> str | None:
         return plan.spell(_ALIAS_ORIGINS[0]) if known.names.aliased else None
     bound: list[str] = [each for each in named if plan.defined.get(each.partition(".")[0], before) < before]
     return min(bound, key=lambda each: _DOT in each) if bound else None
+
+
+def flagged(text: str) -> bool:
+    """Check whether a checker's hint `text` is a union holding a flag's one value beside other types.
+
+    `Literal[True]` or `Literal[False]`, not both, beside a member that isn't `None`, none of them
+    `bool` or naming a type the checker doesn't know (`Any`, `Unknown`); an optional flag's
+    `Literal[True] | None` is `bool | None`. websockets' `proxy = self.proxy`, declared
+    `str | Literal[True] | None`. Widened to `bool`, the annotation lets the other value in, so
+    after `if proxy is True` a checker still sees `False`; another checker's hint there, printed
+    `str | bool | None`, lost it already.
+
+    Returns:
+      Whether it does.
+
+    """
+    if not any(flag in text for flag in _FLAGS):
+        return False
+    try:
+        root: ast.expr = ast.parse(_plain(text), mode="eval").body
+    except SyntaxError:
+        return False
+    parts: list[ast.expr] = _members(root)
+    names: set[str] = {ast.unparse(part) for part in parts}
+    unknown: bool = any(isinstance(node, ast.Name) and node.id in _WIDE for node in ast.walk(root))
+    return bool(names - _FLAGS - {_NONE}) and len(names & _FLAGS) == 1 and _BOOL not in names and not unknown
 
 
 def renames(name: str, annotation: str, *, local: bool) -> bool:

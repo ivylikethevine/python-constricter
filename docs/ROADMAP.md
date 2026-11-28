@@ -28,8 +28,9 @@ and a CI sync; not released.
   the argument blame (10); sqlalchemy's four passed again (2); nibabel's one test failing in the
   union step, as on the two runs before. The two `mega-11-17` runs and `mega-11-20-2026-1208` are
   read only here and in the items.
-- Items 3 (with 3a and 3b) and 4 are done ([COMPLETED.md](COMPLETED.md#corpus)). Item 3's proposal
-  left, trio's `at-once = 7`, is item 14.
+- Items 3 (with 3a and 3b), 4 and 14 are done ([COMPLETED.md](COMPLETED.md#corpus)): trio's
+  fixed tests 7 at once took `alt-fresh-11-28-2026-1023` (`d848774`) to 5.6 minutes for a proved
+  4.7, 19% over, trio's chain starting 65 seconds late; closed so.
 - Verified: CI, CodeQL and Security green on `7e26e79` (GitHub, 2026-11-25), the test matrix's
   Python 3.11 to 3.14 included; v0.4.7's Release run green. On 16CPU/60GB, 2026-11-22 on
   `28c1bb6`'s tree: `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only
@@ -50,15 +51,14 @@ and a CI sync; not released.
   whether a step whose hints were read from the store should count as measured (asked afresh after
   a run that read them so, pip's `infer-basedpyright` held 4.1 GB given 0.64 on
   `mega-11-11-2026-1113`, which took 95 minutes for 80).
-- Decided 2026-11-28: trio's `at-once = 7` (14), a hint widening a declared `Literal` refused
+- Decided 2026-11-28: a hint widening a declared `Literal` refused
   (10), and item 13's operands, exemptions, declarations and no fix. Nothing waits on a decision;
   items 9 and 11 are in Later.
 
 ## Order of work
 
-- 14: an hour, then an `alt-fresh` run.
-- 10: the `Literal` refusal, 2 to 3 hours, then a `mega-fixes` run; agreement read again on each
-  mega run (0.13 blamed for under 0.1). 2: confirmed by a mega run where sqlalchemy's four fail.
+- 10: the flag refusal built, read on the next mega run (11 errors gone, 21 fixes withdrawn
+  expected); agreement read again on each mega run (0.13 blamed for under 0.1). 2: confirmed by a mega run where sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
 - 6: the mutation run, then its survivors.
 - 13: about 10 hours, a new code.
@@ -67,20 +67,6 @@ and a CI sync; not released.
 ## Now
 
 ### Approved, to build
-
-#### 14. trio's fixed test runs side by side
-
-Proposed 2026-11-22, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
-have, so its 7 fixed test runs go side by side on 7 checkouts, not one after another on one (32
-seconds each on 1 CPU), the line a first run ends on. Replayed on `alt-fresh-11-20-2026-1845`
-(`scripts/scratch/start_order.py`, 16CPU/60GB): trio's line from 4.8 minutes to under 1, the proved
-shortest from 4.9 to 3.2, and the runner's order 3.7 (16% over). Against: its tests are
-timing-sensitive (`--run-slow`), so 7 beside the other steps may fail some that pass alone (the
-reruns before a failure is called new catch those), and 7 more checkouts to install. Its sockets
-bind port 0 alone (`test_socket.py`, `test_highlevel_open_tcp_listeners.py`), so the checkouts
-share no port. Approved and built 2026-11-28 (`tests/corpus/corpora.toml`), `alt-fresh.toml`'s
-`output` moved to a folder no run has written. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
-failure and takes within a tenth of its proved shortest. About an hour; coverage unchanged.
 
 #### 13. An opt-in code for a string literal used in an operation
 
@@ -319,9 +305,17 @@ error falls on `_how` as expected; the three more are websockets' `proxy: str | 
 `str | Literal[False]`, blamed on `mega-11-20-2026-1208` on the certain `proxy_parsed: Proxy` of its
 line and the same errors there. `proxy = self.proxy` copies a parameter declared
 `str | Literal[True] | None`; the hint widens `Literal[True]` to `bool`, so after `if proxy is True`
-mypy still sees `False`. Approved 2026-11-28, not yet built: a checker's hint refused where it
-widens a `Literal` the value's declared type holds; read on a `mega-fixes` run for the fixes it
-withdraws and the errors it removes. Left: agreement read again on each
+mypy still sees `False`. Two of the three checkers hint `Literal[True] | str | None` there, which
+`hinted` widened to the third's `str | bool | None`. Approved and built 2026-11-28
+(`hinted.flagged`): where any checker's hint is a union holding one of `Literal[True]` and
+`Literal[False]` beside a member that isn't `None`, none `bool` or naming `Any` or `Unknown`, no
+checker's hint types the name (a traced run's still does); an optional flag's `Literal[True] | None`
+is `bool | None` as before. Measured on `mega-11-27-2026-1715`'s union step against the hint store
+(`scripts/scratch/bool_literal_hints.py`, about two minutes on 16CPU/60GB): it withdraws 21 of the
+1,034 checker fixes naming `bool` (10 `agreed`; a traced run held 16, differed from 1), 6 of them
+blamed for 11 new type errors (urllib3's `redirect_location` 6, sphinx's `versioning_condition` 2,
+websockets' `proxy` 3); agreement then 13 of about 12,377, 0.105 per 100, still one over the bar.
+`mega-fixes.toml` asks no checker, so a mega run reads it. Left: agreement read again on each
 mega run, to come back once it passes, a quarter hour a run. Coverage unchanged.
 
 ## On hold
@@ -444,7 +438,8 @@ untyped, `validate`'s parameters being unannotated). About an hour a pass.
 - 2026-11-20: an unmeasured hinted step is sized by a fit to measured peaks that counts what the
   corpus imports from its environment, kept apart from the servers' own measure, which caps a real
   server's heap (3, done).
-- 2026-11-28: trio's catalog entry takes `at-once = 7`, its fixed test runs side by side (14).
+- 2026-11-28: trio's catalog entry takes `at-once = 7`, its fixed test runs side by side (14,
+  done). Closed at 19% over its proved shortest; CPUs held for the longest line's head not built.
 - 2026-11-28: a checker's hint is refused where it widens a `Literal` the value's declared type
   holds (10).
 - 2026-11-28: the string-literal code counts comparisons, call arguments, subscripts, returns and

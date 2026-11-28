@@ -512,6 +512,8 @@ class Scope:
         in a module body, where it's written as a type made of others (not a bare class's alias,
         which declared one loses the class's type parameters). Where a later checker's usable hint
         gives the same type, the fix rests on their agreement too (`hinted.AGREED`), a set of its own.
+        Where any checker's hint holds a flag's one value beside other types (`hinted.flagged`), no
+        checker's hint types it.
 
         Returns:
           The inference (a guess), or `None`.
@@ -520,9 +522,14 @@ class Scope:
         where: tuple[int, int] = (target.lineno, target.end_col_offset or 0)
         composite: bool = value is not None and self.kind.function is None and is_composite(value)
         hints: tuple[Hints, ...] = self.settings.hints
+        flag: bool = any(
+            each.kind == hinted.KIND and hinted.flagged(each.types.get(where, "")) for each in hints
+        )
         place: int
         found: Hints
         for place, found in enumerate(hints):
+            if flag and found.kind == hinted.KIND:
+                continue
             # Not used at all where not offered: what follows from it would rest on it unseen.
             text: str | None = (
                 found.types.get(where) if self.settings.checks.fixes.allows(frozenset({found.kind})) else None
