@@ -76,8 +76,10 @@ seconds each on 1 CPU), the line a first run ends on. Replayed on `alt-fresh-11-
 (`scripts/scratch/start_order.py`, 16CPU/60GB): trio's line from 4.8 minutes to under 1, the proved
 shortest from 4.9 to 3.2, and the runner's order 3.7 (16% over). Against: its tests are
 timing-sensitive (`--run-slow`), so 7 beside the other steps may fail some that pass alone (the
-reruns before a failure is called new catch those), and 7 more checkouts to install. Approved
-2026-11-28. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
+reruns before a failure is called new catch those), and 7 more checkouts to install. Its sockets
+bind port 0 alone (`test_socket.py`, `test_highlevel_open_tcp_listeners.py`), so the checkouts
+share no port. Approved and built 2026-11-28 (`tests/corpus/corpora.toml`), `alt-fresh.toml`'s
+`output` moved to a folder no run has written. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
 failure and takes within a tenth of its proved shortest. About an hour; coverage unchanged.
 
 #### 13. An opt-in code for a string literal used in an operation

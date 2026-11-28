@@ -5,7 +5,7 @@
 
 [run]
 label = "alt-fresh"
-output = "local/runs/alt-asked"
+output = "local/runs/alt-trio"
 versions = ["dev"]
 jobs = 4
 at-once = 8

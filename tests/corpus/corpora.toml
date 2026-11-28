@@ -1026,6 +1026,9 @@ source = "src/trio"
 install = ["pip -r test-requirements.txt --no-deps", "pip -e ."]
 tests = "--run-slow src/trio"
 checks = ["mypy --platform linux", "pyright src/trio/_tests/type_tests src/trio/_core/_tests/type_tests"]
+# Its sockets bind port 0 alone, so its fixed runs, a first run's last line one after another on one
+# checkout, go side by side.
+at-once = 7
 
 [corpus.trio.suite.differs]
 "src/trio/_tests/test_deprecate.py::test_warn_deprecated" = "it asserts the warning it raises is on the line above its own `_here()` call, which a declaration added between moves"
