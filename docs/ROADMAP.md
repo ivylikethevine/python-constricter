@@ -17,8 +17,8 @@ measure before building.
 
 ## Where it stands
 
-2026-11-22, at `28c1bb6` on `dev`, one commit past `b2fa80d` on `main` (tagged v0.4.7, the last
-release), which holds the work for 3a, 3b, 12 and 13; no PR open, so CI hasn't run on it.
+2026-11-27, at `7e26e79` on `main` and `dev` (PR #96), past `b2fa80d` (tagged v0.4.7, the last
+release) by item 3's last two steps, `schedule_solve.py`'s fix and a CI sync; not released.
 
 - The latest mega run is `mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB, no step
   failed): the suites' new type errors 694 from 710, narwhals' 8 fewer in each of ty's and the
@@ -27,29 +27,20 @@ release), which holds the work for 3a, 3b, 12 and 13; no PR open, so CI hasn't r
   nibabel's one test failing in the union step, as on `mega-11-17-2026-1924`. Neither that run nor
   the two `mega-11-17` runs before it is yet in [COMPLETED.md](COMPLETED.md#corpus), where
   `mega-11-16-2026-1443` and every earlier run named here are read.
-- Built 2026-11-20 (`3be4558`, in v0.4.7), each waiting on a run: pyrefly's servers started anew
-  for each round after their first, leaving pip and matplotlib no second pass in one process (4, a
-  mega run); a suite's unmeasured tests started once 2 CPUs are free, and an unmeasured hinted step
-  sized by a fit to measured peaks that counts what the corpus imports (3, an `alt-fresh` run); a
-  new type error naming an argument blamed on the fix of the name passed (10, a mega run). Since,
-  in v0.4.7: a run file's `every-level` check, or another version's, checks the levels one after
-  another, not four at once (`6599abc`: the standard library's 13.8 GB to 3.4, under CI's 16 GB
-  runner); a run checking this checkout once is unchanged.
-- Built 2026-11-22 (`28c1bb6`): `infer-fresh`, set in `alt-fresh.toml` (3a); a first run's
-  unmeasured steps started by how many steps wait for each (3b). Read on
-  `alt-fresh-11-22-2026-1703` (`28c1bb6`, 16CPU/60GB, no step failed), both bars met: no hinted
-  round read from the store, the 24 hinted steps' peaks a median 0.92 of the fit, at most 1.90
-  (matplotlib's basedpyright); 8.0 minutes to a proved 7.7, 4% over. urllib3's union step lists
-  one new test error, its dummy server's `EADDRINUSE` retry leaking a socket, as `infer-ty`'s two
-  that passed again. Proposed, not built, and not needed for the bar: trio's `at-once = 7` (3b).
-  `schedule_solve.py --starts` looped on that run, its walk back from the last step going
-  between urllib3's two 0.2s `tests-fix-*` on one checkout; fixed the same day (a step's
-  predecessor starts strictly earlier), and both 11-20's and 11-22's lines now print.
-- Verified: CI, CodeQL and Security green on `b2fa80d` (GitHub), the test matrix's Python 3.11 to
-  3.14 included, and its Release run. On 16CPU/60GB, 2026-11-22 on `28c1bb6`'s tree:
-  `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only `uv lock --check`
-  failing, which the global `exclude-newer` makes re-resolve here; `tests/corpus` on Python 3.11;
-  the docs job, `reuse lint` outside the sandbox.
+- Built 2026-11-20 (`3be4558`, in v0.4.7), each waiting on a mega run: pyrefly's servers started
+  anew for each round after their first, leaving pip and matplotlib no second pass in one process
+  (4); a new type error naming an argument blamed on the fix of the name passed (10).
+- Item 3 is done, with 3a and 3b ([COMPLETED.md](COMPLETED.md#corpus)): `alt-fresh-11-22-2026-1703`
+  (`28c1bb6`, 16CPU/60GB, no step failed) took 8.0 minutes to a proved 7.7, 4% over, no hinted
+  round read from the store. Its proposal left, trio's `at-once = 7`, is item 14. urllib3's union
+  step there lists one new test error, its dummy server's `EADDRINUSE` retry leaking a socket, as
+  `infer-ty`'s two that passed again.
+- Verified: CI, CodeQL and Security green on `7e26e79` (GitHub, 2026-11-25), the test matrix's
+  Python 3.11 to 3.14 included; v0.4.7's Release run green. On 16CPU/60GB, 2026-11-22 on
+  `28c1bb6`'s tree: `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only
+  `uv lock --check` failing, which the global `exclude-newer` makes re-resolve here; `tests/corpus`
+  on Python 3.11; the docs job, `reuse lint` outside the sandbox. The commits since change scratch
+  scripts, docs and the shared CI files.
 - What a run costs on 16CPU/60GB: the seven corpora's basic run 35 minutes
   (`basic-11-03-2026-2103`, [basic-corpora.md](runs/basic-corpora.md)); a mega run of all 55 78 to
   97 minutes; `mega-fixes` (`tests/corpus/runs/mega-fixes.toml`, the fix steps and type checks alone
@@ -59,18 +50,20 @@ release), which holds the work for 3a, 3b, 12 and 13; no PR open, so CI hasn't r
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
 - Open questions, not looked into: the rest of the 58 a second pass still fixes after the hints on
   `mega-11-20-2026-1208`, and twisted's 12 of `mega-11-16-2026-1443` (4); that run's matplotlib
-  hinted steps' 99, 98 and 33 fewer fixes; nibabel's union step failing 2 tests where it failed 1.
-- Waiting on a decision: trio's `at-once = 7` (3b); item 13's open questions (which operations,
+  hinted steps' 99, 98 and 33 fewer fixes; nibabel's union step failing 2 tests where it failed 1;
+  whether a step whose hints were read from the store should count as measured (asked afresh after
+  a run that read them so, pip's `infer-basedpyright` held 4.1 GB given 0.64 on
+  `mega-11-11-2026-1113`, which took 95 minutes for 80).
+- Waiting on a decision: trio's `at-once = 7` (14); item 13's open questions (which operations,
   what's exempt, a fix or not). Items 9 and 11 are in Later.
 
 ## Order of work
 
-- 3, 3a, 3b: bars met on `alt-fresh-11-22-2026-1703`; to move to COMPLETED.md. Trio's
-  `at-once = 7` waits on a yes or no, no longer needed for the bar.
 - 4, 10: the next mega run: matplotlib's 0 after pyrefly's hints; agreement read with errors
   blamed by the argument they name (0.105 blamed for under 0.1). 2: confirmed by a mega run where
   sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
+- 14: once a yes, an hour and an `alt-fresh` run.
 - 6: the mutation run, then its survivors.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
 - 13, on hold: once its open questions are answered.
@@ -124,116 +117,6 @@ registry their order clears; the union's tests not run again. Built that day, by
 record them under; done when a mega run where they fail lists them apart, not as new (they passed
 on `mega-11-17-2026-1924` and `mega-11-20-2026-1208`, so it's still to see). A quarter hour to read
 the run that shows it; coverage unchanged.
-
-#### 3. A run with no earlier run, held to the solver's shortest
-
-A run whose steps are measured is at the solver's shortest, read against the waits the runner keeps
-(`scripts/scratch/schedule_solve.py --given`): `alt-11-08-2026-1157` took 5.2 minutes to a proved
-5.2 and `alt-11-08-2026-1213` 5.5 to 5.5 (16CPU/60GB; [COMPLETED.md](COMPLETED.md#corpus)). A first
-run, none of its steps measured, isn't: `alt-11-08-2026-1133` took 7.2 to 6.0, its hinted steps
-each holding a third of the run's memory (`sizing._UNSIZED_SHARE`) where trio's held 0.5 GB once
-measured. Done when a first run of corpora no run measured takes within a tenth of its shortest:
-`tests/corpus/runs/alt-fresh.toml` (the 8 alt corpora, 218 steps, 36 GB shared), its `output` a
-folder no run has written. Each step below was approved the day it was built:
-
-| Run                         | Took (min) | Proved shortest (min) | Over shortest (%) |
-| --------------------------- | ---------: | --------------------: | ----------------: |
-| `alt-first-11-17-2026-1623` |        7.6 |                   6.0 |                27 |
-| `alt-fresh-11-17-2026-1912` |        7.0 |                   5.0 |                40 |
-| `alt-fresh-11-20-2026-1800` |        7.4 |                   5.9 |                25 |
-
-All on 16CPU/60GB, no step failed; each after, in turn, hinted steps sized by their servers'
-measure, a fix or check by its corpus's bytes, and a suite's unmeasured tests on 2 CPUs. Built
-2026-11-17: an unmeasured fix or check holds 0.3 GB and
-450 bytes for each byte of the corpus's Python (250 for a check, the census or coverage), where it
-held 1.25 GB for each of the run's jobs (`scripts/scratch/check_sizes.py`: fixes held up to 440 a
-byte on the largest corpora); after it the released tests waited longest (`requests` 191 seconds,
-`langchain-core` 184), each holding 8 CPUs and 8 GB for 0.7 to 1.4 used, and small steps 125 to 138
-seconds behind them. Built 2026-11-20: a suite's tests no run has measured (`Plan._testing`) start
-once `_STEP_CPUS` (2) are free, not half the machine's, and take as many more as are free then, a
-worker each; measured ones, or ones whose record doesn't say how many workers ran, wait for half as
-before. They then started within 8 to 24 seconds (`langchain-core`'s 140), but on 1 or 2 CPUs,
-keeping those workers: trio's and urllib3's released tests took 71 seconds each on 1. The small
-steps' waits moved to matplotlib's hinted steps, up to 225 seconds: they held 6.2 to 9.1 GB given
-0.68 to 3.74. Built that evening, reversing 2026-11-17's decision not to count what a corpus
-installs: an unmeasured hinted step holds its largest checker's fit (`tests/corpus/hinted_memory.py`:
-a base, bytes for each byte of the corpus's Python, each server's again for basedpyright, and for
-each byte of the packages its files import from its environment), `_MARGIN` over, where it held
-that checker's server measure (`protocol.SERVERS`) and the corpus's check. Fitted to the 121 hinted
-steps `mega-11-11-2026-1113` and `alt-fresh-11-20-2026-1800` asked afresh
-(`scripts/scratch/hinted_sizes.py`): each held a median 0.9 to 1.0 of its fit, at most 1.8 to 2.7
-(dask's, optuna's, pandas's), where the server measure gave a fifth to a tenth of the bytes for the
-corpus's own files; imports add 0.02 to 0.04 GB a MB. matplotlib's three then estimate 4.9 to 6.7
-GB. Read on `alt-fresh-11-20-2026-1845` (`3be4558`, 16CPU/60GB, no step failed): 6.8 minutes to a
-proved 4.9, 39% over. Its hinted steps read their hints from the store the 18:00 run filled
-(matplotlib's 3.5 to 3.7 GB in 96 to 102 seconds, from 6.2 to 9.1 in 123 to 169), so it doesn't test
-the fit, and the runner has no way to ask afresh. What waited is CPUs, not memory: with small steps
-waiting up to 133 seconds, all 16 CPUs were held and 16 GB free. So what's left is the order the
-runner starts steps in against the solver's, on the same holds (3b), and a run file's way to ask
-the checkers afresh, to read the fit on servers (3a). Not looked
-into:
-whether a step whose hints were read from the store should count as measured (on
-`mega-11-11-2026-1113`, asked afresh after a run that read them from the store, pip's
-`infer-basedpyright` held 4.1 GB given 0.64, and the run took 95 minutes for 80). Coverage unchanged.
-
-#### 3a. A run file that asks the checkers afresh
-
-A run's hinted steps read their hints from the store wherever an earlier run asked the same texts
-(`constricter.cli.lsp.stored`), so their servers don't start: `alt-fresh-11-20-2026-1845`'s
-matplotlib hinted steps held 3.5 to 3.7 GB where asking afresh they held 6.2 to 9.1, and no run
-since `alt-fresh-11-20-2026-1800` can show whether the unmeasured hinted steps' fit
-(`tests/corpus/hinted_memory.py`) holds on servers. Built 2026-11-22 (`28c1bb6`): `[steps]`'s
-`infer-fresh = true` gives `--infer-fresh` to every step asking the checkers for hints, the union's and each fix's
-second pass included, so none reads from or writes to the store; the run's facts and each hinted
-step's `options` record it. Set in `tests/corpus/runs/alt-fresh.toml`, its `output` moved to a
-folder no run has written (the old one holds the 18:45 run, which a run there would be planned
-from). Done when an `alt-fresh` run with it (about 8 minutes on
-16CPU/60GB) reads no round from the store (no hinted record has `stored`), and its hinted steps'
-peaks set beside the fit (`scripts/scratch/hinted_sizes.py FOLDER`) fall within the 121 steps' range
-it was fitted to (a median 0.9 to 1.0 of the fit, at most 2.7); or the fit is refitted with them.
-Met on `alt-fresh-11-22-2026-1703` (`28c1bb6`, 16CPU/60GB): every hinted step's rounds `[0, 0]`,
-its 24 peaks a median 0.92 of the fit, at most 1.90 (`scripts/scratch/hinted_sizes.py`).
-Coverage unchanged.
-
-#### 3b. A first run's start order against the solver's
-
-With its memory sized, a first run waits on CPUs: on `alt-fresh-11-20-2026-1845` (16CPU/60GB) small
-steps waited up to 133 seconds with all 16 CPUs held and 16 GB free, and the run took 6.8 minutes
-where the solver, on the holds the runner gave each step (`scripts/scratch/schedule_solve.py
---given`), proved 4.9. The runner starts steps in the order `planning` solved before the run, from
-what each took in earlier runs, an unmeasured step by its like corpora's median (`planning.like`);
-of those that could start, the one ranked first, then the one lasting longest (`Slots.take`).
-
-Found 2026-11-22 on that run (`scripts/scratch/schedule_solve.py --given --starts 15`, and
-`scripts/scratch/start_order.py`, which replays a run's steps under the runner's holds in a given
-order; seconds on 16CPU/60GB): its output held no earlier run, so nothing was ranked and every
-step lasted 0, and the runner took them as their threads woke. The run ended on trio: its suite
-runs in one process with no `at-once`, so its 7 fixed test runs go one after another on one
-checkout, 32 seconds each on 1 CPU, and from 195 seconds to the end at 409 that line ran alone. It
-started late: trio's `fix-unsafe` at 122 seconds where the schedule starts it at 0, its `traced` at
-129 for 10. The solver's 4.9 is that line itself. Replayed (the run's own order 6.4 minutes against
-6.8 recorded):
-
-| Order                            | Trio as catalogued (min) | Trio 7 at once (min) |
-| -------------------------------- | -----------------------: | -------------------: |
-| As run                           |                      6.4 |                  4.2 |
-| Longest line, measured           |                      4.8 |                  3.2 |
-| Steps behind it                  |                      5.3 |                  3.7 |
-| Corpus's set, then steps behind  |                      5.1 |                  4.2 |
-| Solver's shortest (proved least) |                4.9 (4.9) |            3.2 (2.8) |
-
-"Steps behind it" is what a first run knows: how many of its corpus's steps wait for a step, those
-sharing its checkout counted one after another. Built that day (`28c1bb6`): of the steps
-`planning` doesn't rank and as long as each other (none measured: 0), the one with the most behind it starts first
-(`planning.behind`, `Slots.take`'s `after`), 8% over the shortest replayed; a measured run's order
-is unchanged. Proposed, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
-have, its fixed test runs side by side on 7 checkouts: its line from 4.8 minutes to under 1, the
-shortest to 3.2, and with this order 3.7 (16% over). Its tests are timing-sensitive (`--run-slow`),
-so 7 beside the other steps may fail some that pass alone, which the reruns before a failure is
-called new catch; 7 more checkouts to install. Done when a first run, its hinted steps asked afresh
-(3a), takes within a tenth of its proved shortest: item 3's bar. Met on `alt-fresh-11-22-2026-1703`
-(`28c1bb6`, 16CPU/60GB, no step failed): 8.0 minutes to a proved 7.7 (`schedule_solve.py --given`),
-4% over; the shortest up from 4.9 with every hinted step's servers started. Coverage unchanged.
 
 #### 4. The hinted steps' second pass
 
@@ -462,6 +345,18 @@ code only reports. Done when the code reports, with `--explain`, the flake8, pyl
 and the README's rules table, and its count on the seven corpora and on constricter itself is in
 COMPLETED.md. More than 8 hours: about 10 without a fix; coverage unchanged (a new code, not a fix).
 
+#### 14. trio's fixed test runs side by side
+
+Proposed 2026-11-22, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
+have, so its 7 fixed test runs go side by side on 7 checkouts, not one after another on one (32
+seconds each on 1 CPU), the line a first run ends on. Replayed on `alt-fresh-11-20-2026-1845`
+(`scripts/scratch/start_order.py`, 16CPU/60GB): trio's line from 4.8 minutes to under 1, the proved
+shortest from 4.9 to 3.2, and the runner's order 3.7 (16% over). Against: its tests are
+timing-sensitive (`--run-slow`), so 7 beside the other steps may fail some that pass alone (the
+reruns before a failure is called new catch those), and 7 more checkouts to install. Waits on a yes
+or no. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
+failure and takes within a tenth of its proved shortest. About an hour; coverage unchanged.
+
 ## Later
 
 ### Large: more than 8 hours
@@ -561,7 +456,7 @@ untyped, `validate`'s parameters being unannotated). About an hour a pass.
 - 2026-11-17: `agreed+checker` leaves the likely fixes, failing the blamed bar, until a run passes
   all three; a hint of `NotImplementedType` is refused (10).
 - 2026-11-17: a first run's unmeasured hinted step isn't sized by its environment's packages:
-  `Plan.fitted` corrects it as it runs (3). Reversed 2026-11-20, below.
+  `Plan.fitted` corrects it as it runs (3, done). Reversed 2026-11-20, below.
 - 2026-11-17: LVA016 stays a code; a cast that narrows a JSON document to the part a test uses is
   kept and marked `# noqa: LVA016`, not widened (5, done).
 - 2026-11-17: the union step's tests aren't run again before their failures are called new: a
@@ -572,11 +467,11 @@ untyped, `validate`'s parameters being unannotated). About an hour a pass.
   which withdraws 65 to 183 fixes for 2 errors (10).
 - 2026-11-20: a stale checker's servers (pyrefly's) started anew each round; ty's and
   basedpyright's kept, their hints the same either way (4).
-- 2026-11-20, approved: a suite's unmeasured tests start on a step's CPUs (3), and an error naming
-  an argument is blamed on the fix of the name passed as it (10).
+- 2026-11-20, approved: a suite's unmeasured tests start on a step's CPUs (3, done), and an error
+  naming an argument is blamed on the fix of the name passed as it (10).
 - 2026-11-20: an unmeasured hinted step is sized by a fit to measured peaks that counts what the
   corpus imports from its environment, kept apart from the servers' own measure, which caps a real
-  server's heap (3).
+  server's heap (3, done).
 
 ## Done
 

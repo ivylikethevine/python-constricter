@@ -1797,6 +1797,23 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   pandas 35,014 to 34,849, xarray 11,196 to 11,037, dask 18,238 to 18,110, networkx 15,982 to
   16,009: 425 fewer of 80,430 (0.5%) on the four together; networkx's 27 more not looked into. The
   default costs them little.
+- **A first run held to the solver's shortest.** A run with no earlier run in its output takes
+  within a tenth of the shortest the solver proves on the runner's holds
+  (`scripts/scratch/schedule_solve.py --given`): `alt-fresh-11-22-2026-1703` (`28c1bb6`,
+  `tests/corpus/runs/alt-fresh.toml`, the 8 alt corpora, 218 steps, 16CPU/60GB, no step failed)
+  took 8.0 minutes to a proved 7.7, 4% over, where `alt-11-08-2026-1133` took 7.2 to 6.0 and
+  `alt-fresh-11-20-2026-1845` 6.8 to 4.9. Four changes, each read on an `alt-fresh` run: an
+  unmeasured fix or check holds 0.3 GB and 450 bytes for each byte of the corpus's Python (250 for a
+  check), from 1.25 GB for each of the run's jobs; a suite's unmeasured tests start once
+  `_STEP_CPUS` (2) are free, not half the machine's; an unmeasured hinted step holds its largest
+  checker's fit (`tests/corpus/hinted_memory.py`, fitted by `scripts/scratch/hinted_sizes.py` to 121
+  hinted steps asked afresh, counting what the corpus imports), `_MARGIN` over; and of the steps no
+  run measured, the one with the most of its corpus's steps behind it starts first
+  (`planning.behind`), where they were taken as their threads woke and trio's fixed tests started
+  two minutes late. `[steps]`'s `infer-fresh = true` gives `--infer-fresh` to every hinted step, so
+  none reads from the hint store and a run measures the servers: on that run every hinted step's
+  rounds `[0, 0]`, its 24 peaks a median 0.92 of the fit, at most 1.90 (matplotlib's basedpyright),
+  within the 121's range.
 
 ## CI, security and releases
 
