@@ -1814,6 +1814,19 @@ CORPUS`, the order the longest chain first, the new corpus's steps after every r
   none reads from the hint store and a run measures the servers: on that run every hinted step's
   rounds `[0, 0]`, its 24 peaks a median 0.92 of the fit, at most 1.90 (matplotlib's basedpyright),
   within the 121's range.
+- **The hinted steps' second pass, down to what a stale server left.** After a checker's hints, as
+  without, the files a round changed are indexed again (`rounds.settled`'s `onward`), so the next
+  round asks the checkers about every file; and a stale checker's servers (`Server.stale`,
+  pyrefly's) start anew for each round after their first. A pyrefly server kept from round to round
+  never typed matplotlib's `fill_frames` (`animation.py`), which waits on `_animation_data.py`'s
+  `INCLUDED_FRAMES: str`, though its texts were the finished tree's byte for byte; one started on
+  that tree did. In one process on 16CPU/60GB, pip after pyrefly's hints then left 0 of 32 (4,200
+  fixes from 4,168) and matplotlib 0 (12,989 fixes), its hinted fix 96s from 86s. What a second pass
+  still fixes after basedpyright's, ty's and pyrefly's hints, by run: `mega-11-11-2026-1113` 142, 116
+  and 227; `mega-11-17-2026-1641` 17, 20 and 27; `mega-11-20-2026-1208` 12, 20 and 26 (matplotlib's
+  one after pyrefly's); `mega-11-27-2026-1715` (`54d2435`, 93 minutes, no step failed) 17, 13 and 11,
+  none on matplotlib, the suites' new type errors 694 as on 11-20 and no test failing anew but
+  nibabel's one in the union step, as on the two runs before.
 
 ## CI, security and releases
 

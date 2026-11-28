@@ -17,24 +17,19 @@ measure before building.
 
 ## Where it stands
 
-2026-11-27, at `7e26e79` on `main` and `dev` (PR #96), past `b2fa80d` (tagged v0.4.7, the last
-release) by item 3's last two steps, `schedule_solve.py`'s fix and a CI sync; not released.
+2026-11-27, at `54d2435` on `dev`: `7e26e79` (on `main` by PR #96) and a docs-only commit, past
+`b2fa80d` (tagged v0.4.7, the last release) by item 3's last two steps, `schedule_solve.py`'s fix
+and a CI sync; not released.
 
-- The latest mega run is `mega-11-20-2026-1208` (`9ffc314`, 78 minutes on 16CPU/60GB, no step
-  failed): the suites' new type errors 694 from 710, narwhals' 8 fewer in each of ty's and the
-  union's steps, its fixes the same; agreement 13 blamed of 12,389, 0.105 per 100, one over its bar
-  (10); sqlalchemy's four passed again (2); matplotlib's one fix after pyrefly's hints left (4);
-  nibabel's one test failing in the union step, as on `mega-11-17-2026-1924`. Neither that run nor
-  the two `mega-11-17` runs before it is yet in [COMPLETED.md](COMPLETED.md#corpus), where
-  `mega-11-16-2026-1443` and every earlier run named here are read.
-- Built 2026-11-20 (`3be4558`, in v0.4.7), each waiting on a mega run: pyrefly's servers started
-  anew for each round after their first, leaving pip and matplotlib no second pass in one process
-  (4); a new type error naming an argument blamed on the fix of the name passed (10).
-- Item 3 is done, with 3a and 3b ([COMPLETED.md](COMPLETED.md#corpus)): `alt-fresh-11-22-2026-1703`
-  (`28c1bb6`, 16CPU/60GB, no step failed) took 8.0 minutes to a proved 7.7, 4% over, no hinted
-  round read from the store. Its proposal left, trio's `at-once = 7`, is item 14. urllib3's union
-  step there lists one new test error, its dummy server's `EADDRINUSE` retry leaking a socket, as
-  `infer-ty`'s two that passed again.
+- The latest mega run is `mega-11-27-2026-1715` (`54d2435`, a clean tree, 93 minutes on
+  16CPU/60GB, no step failed), read in [COMPLETED.md](COMPLETED.md#corpus): the suites' new type
+  errors 694, as on `mega-11-20-2026-1208`; no fix left after pyrefly's hints on matplotlib, so 4
+  is done; agreement 16 blamed of 12,387, 0.13 per 100, websockets' three errors moved onto it by
+  the argument blame (10); sqlalchemy's four passed again (2); nibabel's one test failing in the
+  union step, as on the two runs before. The two `mega-11-17` runs and `mega-11-20-2026-1208` are
+  read only here and in the items.
+- Items 3 (with 3a and 3b) and 4 are done ([COMPLETED.md](COMPLETED.md#corpus)). Item 3's proposal
+  left, trio's `at-once = 7`, is item 14.
 - Verified: CI, CodeQL and Security green on `7e26e79` (GitHub, 2026-11-25), the test matrix's
   Python 3.11 to 3.14 included; v0.4.7's Release run green. On 16CPU/60GB, 2026-11-22 on
   `28c1bb6`'s tree: `tests/ci_local.py test lint` outside the sandbox (coverage 100%), only
@@ -48,20 +43,21 @@ release) by item 3's last two steps, `schedule_solve.py`'s fix and a CI sync; no
   measuring none of the bars; an `alt-fresh` run of the 8 alt corpora about 7.
 - Not done or not run: a staged run with hours between its stages (1); the mutation run (6); the
   peak and parallel timings again, which predate 2026-10-28 (7, 8).
-- Open questions, not looked into: the rest of the 58 a second pass still fixes after the hints on
-  `mega-11-20-2026-1208`, and twisted's 12 of `mega-11-16-2026-1443` (4); that run's matplotlib
-  hinted steps' 99, 98 and 33 fewer fixes; nibabel's union step failing 2 tests where it failed 1;
+- Open questions, not looked into: the 41 a second pass still fixes after the hints on
+  `mega-11-27-2026-1715` (the standard library's 4, 6 and 9, celery's 6, dask's 5 after
+  basedpyright's where they were after pyrefly's), and twisted's 12 of `mega-11-16-2026-1443`;
+  that run's matplotlib hinted steps' 99, 98 and 33 fewer fixes; nibabel's union step failing 2 tests where it failed 1;
   whether a step whose hints were read from the store should count as measured (asked afresh after
   a run that read them so, pip's `infer-basedpyright` held 4.1 GB given 0.64 on
   `mega-11-11-2026-1113`, which took 95 minutes for 80).
-- Waiting on a decision: trio's `at-once = 7` (14); item 13's open questions (which operations,
+- Waiting on a decision: trio's `at-once = 7` (14); a checker's hint that widens a declared
+  `Literal` refused (10); item 13's open questions (which operations,
   what's exempt, a fix or not). Items 9 and 11 are in Later.
 
 ## Order of work
 
-- 4, 10: the next mega run: matplotlib's 0 after pyrefly's hints; agreement read with errors
-  blamed by the argument they name (0.105 blamed for under 0.1). 2: confirmed by a mega run where
-  sqlalchemy's four fail.
+- 10: agreement read on each mega run (0.13 blamed for under 0.1); its proposal waits on a yes or
+  no. 2: confirmed by a mega run where sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
 - 14: once a yes, an hour and an `alt-fresh` run.
 - 6: the mutation run, then its survivors.
@@ -115,48 +111,9 @@ eight kept runs where its four failed. A fixed step's failures run again before 
 2026-11-17: the four named in the catalog (`[corpus.sqlalchemy.suite.differs]`), with the
 registry their order clears; the union's tests not run again. Built that day, by the names the runs
 record them under; done when a mega run where they fail lists them apart, not as new (they passed
-on `mega-11-17-2026-1924` and `mega-11-20-2026-1208`, so it's still to see). A quarter hour to read
+on `mega-11-17-2026-1924`, `mega-11-20-2026-1208` and `mega-11-27-2026-1715`, so it's still to
+see). A quarter hour to read
 the run that shows it; coverage unchanged.
-
-#### 4. The hinted steps' second pass
-
-A run reports what a second pass would still fix after the certain fixes and the guesses
-(`render._CONVERGING`). None is left since a module's stub is read in every check, but after a
-checker's hints some long were; each is traced in one process with
-`scripts/scratch/second_pass_copy.py` (a run's counts) and `scripts/scratch/hint_rounds.py` (each
-round's hints and fixes in one file). Left after basedpyright's, ty's and pyrefly's hints:
-
-| Run                    | basedpyright (fixes) | ty (fixes) | pyrefly (fixes) |
-| ---------------------- | -------------------: | ---------: | --------------: |
-| `mega-11-10-2026-1742` |                  102 |         76 |              84 |
-| `mega-11-11-2026-1113` |                  142 |        116 |             227 |
-| `mega-11-16-2026-1443` |                  138 |        108 |             197 |
-| `mega-11-17-2026-1641` |                   17 |         20 |              27 |
-| `mega-11-17-2026-1924` |                   12 |         11 |              28 |
-| `mega-11-20-2026-1208` |                   12 |         20 |              26 |
-
-Built 2026-11-17: with a checker's hints, as without, the files a round changed are indexed again
-(`rounds.settled`'s `onward`), so the next round asks the checkers about every file and checks one
-again where what it knows from outside changed; tested with a hint the fake server gives only once
-another file annotates a name (`# once N: T`). matplotlib's, pandas's, pint's and most of pip's and
-django's went then (matplotlib's `get_size_in_points` read from an index the round didn't rebuild;
-17 of pandas's 28 a hint pyrefly gave only when asked again of the fixed tree). Each run since left
-one of matplotlib's after pyrefly's hints, traced 2026-11-20: `fill_frames: str` in
-`animation.py`, bound again to `_included_frames(...)`, which pyrefly types only once
-`_animation_data.py`'s `INCLUDED_FRAMES: str` is written; a hint is refused while a later binding's
-type is unknown (`rebinding`). A pyrefly server kept from round to round never typed that binding,
-though its texts in the last round were the finished tree's, byte for byte; one started on that tree
-did, and every text sent before any hint was asked changed nothing. pyrefly's alone (1.3.2), in one
-process on 16CPU/60GB: on pip its servers kept left 32 (the 32 of `mega-11-16-2026-1443`), restarted
-each round 0, 4,200 fixes from 4,168; ty's left 1 and basedpyright's 0 either way. Built that day:
-a stale checker's servers (`Server.stale`, pyrefly's) are started anew for each round after their
-first, as `--infer-in-turn` starts every checker's; matplotlib then leaves 0 (12,989 fixes), its
-hinted fix 96s from 86s, pip's 21s from 18s (1 worker; a round read from the store starts no
-server). Done when a mega run shows matplotlib's 0 after pyrefly's hints. Not looked into: the rest
-of the 58 (the standard library's 4, 10 and 9, pip's 2, 7 and 3 the most), twisted's 12 of
-`mega-11-16-2026-1443`, and what's as old as a corpus's first hinted run (the standard library's 39
-after pyrefly's hints). A quarter hour to read the mega run. Coverage up by at most what a second
-pass made after pyrefly's hints, 26 on `mega-11-20-2026-1208`.
 
 ### Medium: 4 to 8 hours
 
@@ -324,9 +281,17 @@ moved out of `corpus_suite`): an error naming the argument it's about (mypy's `A
 line passes that argument as a bare name, on that name's fix before it in its scope or the
 module's, before the fix on its line; an argument that's an expression, follows an unpacking, or
 isn't passed is blamed as before. narwhals' `_how` error then falls on `_how: str`, not `result`;
-both are `agreed+checker`, so agreement's 13 blamed stand on that run. Left: agreement read again
-on each mega run, with this blame, to come back once it passes, a quarter hour a run. Coverage
-unchanged.
+both are `agreed+checker`, so agreement's 13 blamed stand on that run. Read on
+`mega-11-27-2026-1715` (`54d2435`, 93 minutes on 16CPU/60GB), the first run with it:
+`agreed+checker` holds 98.4% of 10,986 told with 16 of 12,387 blamed, 0.13 per 100. narwhals'
+error falls on `_how` as expected; the three more are websockets' `proxy: str | bool | None`
+(`asyncio`, `sync` and `trio` clients), each mypy's `Argument 1 to "parse_proxy"` of
+`str | Literal[False]`, blamed on `mega-11-20-2026-1208` on the certain `proxy_parsed: Proxy` of its
+line and the same errors there. `proxy = self.proxy` copies a parameter declared
+`str | Literal[True] | None`; the hint widens `Literal[True]` to `bool`, so after `if proxy is True`
+mypy still sees `False`. Proposed, not built: a checker's hint refused where it widens a `Literal`
+the value's declared type holds, as `_how`'s kind was measured. Left: agreement read again on each
+mega run, to come back once it passes, a quarter hour a run. Coverage unchanged.
 
 ## On hold
 
@@ -466,7 +431,7 @@ untyped, `validate`'s parameters being unannotated). About an hour a pass.
 - 2026-11-18, measured and not built: refusing a checker's `str` hint shown as string `Literal`s,
   which withdraws 65 to 183 fixes for 2 errors (10).
 - 2026-11-20: a stale checker's servers (pyrefly's) started anew each round; ty's and
-  basedpyright's kept, their hints the same either way (4).
+  basedpyright's kept, their hints the same either way (4, done).
 - 2026-11-20, approved: a suite's unmeasured tests start on a step's CPUs (3, done), and an error
   naming an argument is blamed on the fix of the name passed as it (10).
 - 2026-11-20: an unmeasured hinted step is sized by a fit to measured peaks that counts what the
