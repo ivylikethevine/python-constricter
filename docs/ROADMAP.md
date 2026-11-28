@@ -50,21 +50,49 @@ and a CI sync; not released.
   whether a step whose hints were read from the store should count as measured (asked afresh after
   a run that read them so, pip's `infer-basedpyright` held 4.1 GB given 0.64 on
   `mega-11-11-2026-1113`, which took 95 minutes for 80).
-- Waiting on a decision: trio's `at-once = 7` (14); a checker's hint that widens a declared
-  `Literal` refused (10); item 13's open questions (which operations,
-  what's exempt, a fix or not). Items 9 and 11 are in Later.
+- Decided 2026-11-28: trio's `at-once = 7` (14), a hint widening a declared `Literal` refused
+  (10), and item 13's operands, exemptions, declarations and no fix. Nothing waits on a decision;
+  items 9 and 11 are in Later.
 
 ## Order of work
 
-- 10: agreement read on each mega run (0.13 blamed for under 0.1); its proposal waits on a yes or
-  no. 2: confirmed by a mega run where sqlalchemy's four fail.
+- 14: an hour, then an `alt-fresh` run.
+- 10: the `Literal` refusal, 2 to 3 hours, then a `mega-fixes` run; agreement read again on each
+  mega run (0.13 blamed for under 0.1). 2: confirmed by a mega run where sqlalchemy's four fail.
 - 1: an hour beside the next super run, made in stages hours apart.
-- 14: once a yes, an hour and an `alt-fresh` run.
 - 6: the mutation run, then its survivors.
+- 13: about 10 hours, a new code.
 - 7, then 8: memory and speed, last by this file's rule; each timed again first.
-- 13, on hold: once its open questions are answered.
 
 ## Now
+
+### Approved, to build
+
+#### 14. trio's fixed test runs side by side
+
+Proposed 2026-11-22, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
+have, so its 7 fixed test runs go side by side on 7 checkouts, not one after another on one (32
+seconds each on 1 CPU), the line a first run ends on. Replayed on `alt-fresh-11-20-2026-1845`
+(`scripts/scratch/start_order.py`, 16CPU/60GB): trio's line from 4.8 minutes to under 1, the proved
+shortest from 4.9 to 3.2, and the runner's order 3.7 (16% over). Against: its tests are
+timing-sensitive (`--run-slow`), so 7 beside the other steps may fail some that pass alone (the
+reruns before a failure is called new catch those), and 7 more checkouts to install. Approved
+2026-11-28. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
+failure and takes within a tenth of its proved shortest. About an hour; coverage unchanged.
+
+#### 13. An opt-in code for a string literal used in an operation
+
+An opt-in code, as `LVA012` to `LVA015` are: a string literal written as an operand where it should
+be a name declared once. Wanted to keep a codebase's strings named and typed once, as this
+project's own `Final` constants are. Decided 2026-11-28: the operands are a comparison's (`==`,
+`in`, a `match` case), a call's argument, a subscript, a `return`'s value and `+` or `%`'s; exempt
+are docstrings, annotations' strings and a `TypeVar` or `NewType` name, `__all__` and dunder names,
+an f-string's or format template's text, and an empty or one-character string; the literal is clean
+where it's written as a `Final` constant, an enum member or a module constant (an upper-case name
+bound once), and a `Literal`-typed parameter doesn't exempt what's passed to it; the code reports
+only, with no fix, since a fix would have to name the constant. Done when the code reports, with `--explain`, the flake8, pylint and ruff wiring
+and the README's rules table, and its count on the seven corpora and on constricter itself is in
+COMPLETED.md. More than 8 hours: about 10; coverage unchanged (a new code, not a fix).
 
 ### Built, waiting on a run
 
@@ -289,38 +317,14 @@ error falls on `_how` as expected; the three more are websockets' `proxy: str | 
 `str | Literal[False]`, blamed on `mega-11-20-2026-1208` on the certain `proxy_parsed: Proxy` of its
 line and the same errors there. `proxy = self.proxy` copies a parameter declared
 `str | Literal[True] | None`; the hint widens `Literal[True]` to `bool`, so after `if proxy is True`
-mypy still sees `False`. Proposed, not built: a checker's hint refused where it widens a `Literal`
-the value's declared type holds, as `_how`'s kind was measured. Left: agreement read again on each
+mypy still sees `False`. Approved 2026-11-28, not yet built: a checker's hint refused where it
+widens a `Literal` the value's declared type holds; read on a `mega-fixes` run for the fixes it
+withdraws and the errors it removes. Left: agreement read again on each
 mega run, to come back once it passes, a quarter hour a run. Coverage unchanged.
 
 ## On hold
 
-### Waiting on a decision
-
-#### 13. An opt-in code for a string literal used in an operation
-
-An opt-in code, as `LVA012` to `LVA015` are: a string literal written as an operand (compared,
-passed, subscripted with, joined) where it should be a name declared before it with a narrow type:
-`ACTIVE: Final = "active"`, a `Literal["active"]`, an enum member. Wanted to keep a codebase's
-strings named and typed once, as this project's own `Final` constants are. On hold for what to
-decide first: which operations count (a comparison, a call's argument, a subscript, `+` and `%`, a
-`return`), what's exempt (docstrings, annotations' strings, `__all__`, f-string parts, `""`), which
-declarations satisfy it, and whether `--fix` makes the constant (it would have to name it) or the
-code only reports. Done when the code reports, with `--explain`, the flake8, pylint and ruff wiring
-and the README's rules table, and its count on the seven corpora and on constricter itself is in
-COMPLETED.md. More than 8 hours: about 10 without a fix; coverage unchanged (a new code, not a fix).
-
-#### 14. trio's fixed test runs side by side
-
-Proposed 2026-11-22, not built: trio's catalog entry given `at-once = 7`, as anyio's and pint's
-have, so its 7 fixed test runs go side by side on 7 checkouts, not one after another on one (32
-seconds each on 1 CPU), the line a first run ends on. Replayed on `alt-fresh-11-20-2026-1845`
-(`scripts/scratch/start_order.py`, 16CPU/60GB): trio's line from 4.8 minutes to under 1, the proved
-shortest from 4.9 to 3.2, and the runner's order 3.7 (16% over). Against: its tests are
-timing-sensitive (`--run-slow`), so 7 beside the other steps may fail some that pass alone (the
-reruns before a failure is called new catch those), and 7 more checkouts to install. Waits on a yes
-or no. Done when an `alt-fresh` run with it (about 8 minutes on 16CPU/60GB) lists no new trio
-failure and takes within a tenth of its proved shortest. About an hour; coverage unchanged.
+Nothing waits on a decision.
 
 ## Later
 
@@ -396,10 +400,11 @@ measured.
 
 #### 12. Revisit the disabled rules
 
-The [disabled rules](CONTRIBUTING.md#disabled-rules), as tools change (last checked 2026-11-22,
+The [disabled rules](CONTRIBUTING.md#disabled-rules), as tools change (last checked 2026-11-27,
 none to turn on: zizmor's `self-repository` still waits on actionlint, whose newest is still
-1.7.12, rejecting `$/`; scorecard-action v2.6.0 (Scorecard 5.7.0) and zizmor 1.33.0 are out, the
-repo on v2.5.0 and its batch's zizmor, and neither's notes touch the `$/` form; harden-runner's
+1.7.12, rejecting `$/`; scorecard-action v2.6.0 (Scorecard 5.7.0) and zizmor 1.33.1 (a fix for a
+`services:` expression) are out, the repo on v2.5.0 and its batch's zizmor, and none of their notes
+touch the `$/` form; harden-runner's
 block policy is proven in `build.yml`'s wheels, its run on `dev` of 2026-11-16 passing on every
 macOS and Windows job; astroid 4.3.4, still the newest, ships no `py.typed`; fastjsonschema 2.22.3,
 still the newest, ships one, locked, so mypy reads it, while basedpyright still allows it as
@@ -437,6 +442,13 @@ untyped, `validate`'s parameters being unannotated). About an hour a pass.
 - 2026-11-20: an unmeasured hinted step is sized by a fit to measured peaks that counts what the
   corpus imports from its environment, kept apart from the servers' own measure, which caps a real
   server's heap (3, done).
+- 2026-11-28: trio's catalog entry takes `at-once = 7`, its fixed test runs side by side (14).
+- 2026-11-28: a checker's hint is refused where it widens a `Literal` the value's declared type
+  holds (10).
+- 2026-11-28: the string-literal code counts comparisons, call arguments, subscripts, returns and
+  `+` or `%`; exempts docstrings, annotations, dunder names, format text and strings of 0 or 1
+  characters; is satisfied by a `Final` constant, an enum member or a module constant, not a
+  `Literal` parameter; and only reports (13).
 
 ## Done
 
